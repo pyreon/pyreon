@@ -366,8 +366,9 @@ Each route file can export any combination of:
 ```tsx
 // src/routes/users/[id].tsx
 
-// Required: the page component. Read loader data with useLoaderData() —
-// the component receives { params, query, meta }, never the data itself.
+// Required: the page component. Read loader data with useLoaderData(), a
+// reactive accessor — call data() where the value is used. The component
+// receives { params, query, meta }, never the data itself.
 // Keep `props` whole: destructuring it captures the values once.
 import { useLoaderData } from '@pyreon/router'
 
@@ -375,7 +376,7 @@ export default function UserPage(props) {
   const data = useLoaderData()
   return (
     <div>
-      User {props.params.id}: {data.name}
+      User {props.params.id}: {data().name}
     </div>
   )
 }
@@ -738,7 +739,7 @@ export async function serverLoader(ctx: { request?: Request }) {
 
 ```tsx
 // src/routes/dashboard.tsx — reads it like any loader
-const data = useLoaderData<Dashboard>()
+const data = useLoaderData<Dashboard>() // read data() in JSX / effects
 ```
 
 How it works:

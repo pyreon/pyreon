@@ -165,6 +165,7 @@ import {
   widenFloatLocals,
   rootedAtExtDecl,
   widenFloatSignals,
+  isValueAccessorForFunction,
 } from './infer-type'
 import {
   safeIdent,
@@ -12077,9 +12078,12 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       // Also `swiftIdent`-escape the attr label in case the kebab→camel
       // conversion lands on a reserved keyword (e.g. `for-class` →
       // `forClass` — both halves are reserved when used as identifiers).
+      // An accessor passed uncalled to a `() => T` prop is a VALUE natively (`data`, a signal): pass it as a closure.
+      const expected = isUserComponent ? _componentPropsMap.get(e.tag)?.find((p) => p.name === a.name)?.type : undefined
+      const value = emitSwiftExpr(a.value, indent)
       argEntries.push({
         name: a.name,
-        part: `${swiftArgLabel(safeIdent(a.name))}: ${emitSwiftExpr(a.value, indent)}`,
+        part: `${swiftArgLabel(safeIdent(a.name))}: ${isValueAccessorForFunction(a.value, expected, _activeInferCtx) ? `{ ${value} }` : value}`,
       })
     } else if (a.kind === 'event' && isUserComponent) {
       // User component prop named `on<Cap>` — the parser stripped the

@@ -1454,13 +1454,13 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
-    /// Route loader data, destructured. The page must render only once the
-    /// loader's data exists (`PyreonRouteLoader` holds it back), with both
-    /// destructured fields read, and its `onMount` must see the loaded title —
-    /// on the web the loader runs before the component mounts, and this is the
-    /// same order. Before, `useLoaderData` reads were optional and did not
-    /// compile, and a destructure was not lowered at all.
-    func test_routeLoaderDataIsDestructuredAndReadyBeforeMount() throws {
+    /// Route loader data, read through its accessor (`data().title`). The page
+    /// must render only once the loader's data exists (`PyreonRouteLoader`
+    /// holds it back), with both fields read, and its `onMount` must see the
+    /// loaded title — on the web the loader runs before the component mounts,
+    /// and this is the same order. Before, `useLoaderData` reads were optional
+    /// and did not compile.
+    func test_routeLoaderDataIsReadAndReadyBeforeMount() throws {
         let app = XCUIApplication()
         app.launchFresh()
         XCTAssertTrue(

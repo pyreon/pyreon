@@ -207,7 +207,7 @@ describe('createApp — PR-S1 RouterProvider unwrap regression', () => {
 
     const DataView: ComponentFn = () => {
       const data = useLoaderData<{ value: string }>()
-      return h('div', { id: 'loaded' }, `value:${data?.value ?? 'MISSING'}`)
+      return h('div', { id: 'loaded' }, () => `value:${data()?.value ?? 'MISSING'}`)
     }
 
     const routes: RouteRecord[] = [
@@ -231,7 +231,7 @@ describe('createApp — PR-S1 RouterProvider unwrap regression', () => {
 
     const ParamView: ComponentFn = () => {
       const data = useLoaderData<{ who: string }>()
-      return h('div', { id: 'who' }, `who:${data?.who ?? 'MISSING'}`)
+      return h('div', { id: 'who' }, () => `who:${data()?.who ?? 'MISSING'}`)
     }
 
     const routes: RouteRecord[] = [

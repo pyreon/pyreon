@@ -74,6 +74,9 @@
     "jotai": "^3.0.2",
     "zustand": "^5.1.0"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

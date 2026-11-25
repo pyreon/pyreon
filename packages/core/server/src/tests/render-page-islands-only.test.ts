@@ -21,7 +21,7 @@ const App: ComponentFn = () => h(RouterView, null)
 
 const Page: ComponentFn = () => {
   const data = useLoaderData<{ title: string }>()
-  return h('main', null, data?.title ?? 'no data')
+  return h('main', null, () => data()?.title ?? 'no data')
 }
 
 const loader = async () => ({ title: 'from the loader' })

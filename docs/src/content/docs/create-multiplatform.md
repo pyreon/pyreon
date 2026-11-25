@@ -154,9 +154,9 @@ export function App() {
 
 | Target | Required |
 |---|---|
-| Web | Bun / Node 18+ |
-| iOS | macOS, Xcode 15+, xcodegen (`brew install xcodegen`) |
-| Android | JDK 17, Android SDK, and `gradle` on `PATH` (no Gradle wrapper is generated) |
+| Web | Node.js 22+ or Bun 1.3+ |
+| iOS | macOS, Xcode 15+, xcodegen (`brew install xcodegen`). The app runs on iOS 17 and later (the scaffolded deployment target). |
+| Android | JDK 17, Android SDK, and `gradle` on `PATH` (no Gradle wrapper is generated). The app runs on Android 8.0 (`minSdk 26`) and later. |
 
 The web target requires no platform-specific toolchain. iOS and Android targets are opt-in — you can scaffold the project and only build the web target if you don't need native immediately.
 

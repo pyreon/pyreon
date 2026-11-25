@@ -207,7 +207,7 @@ import { useLoaderData } from '@pyreon/router'
 import { Stack, Text } from '@pyreon/primitives'
 export function Page() {
   const d = useLoaderData<{ title: string }>()
-  return <Stack><Text>{d.title}</Text></Stack>
+  return <Stack><Text>{d().title}</Text></Stack>
 }`
 
 describe('inline object type arguments become named types', () => {

@@ -12,7 +12,7 @@ export default function SecretDataPage() {
     'div',
     { 'data-testid': 'secret-data-page' },
     h('h1', null, 'Server loader'),
-    h('p', { 'data-testid': 'secret-value' }, () => data?.secret ?? 'none'),
-    h('p', { 'data-testid': 'cookie-flag' }, () => data?.sawCookie ?? 'unknown'),
+    h('p', { 'data-testid': 'secret-value' }, () => data()?.secret ?? 'none'),
+    h('p', { 'data-testid': 'cookie-flag' }, () => data()?.sawCookie ?? 'unknown'),
   )
 }

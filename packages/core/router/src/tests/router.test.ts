@@ -2761,7 +2761,7 @@ describe('useLoaderData', () => {
     const el = container()
     let capturedData: unknown
     const DataComp = () => {
-      capturedData = useLoaderData()
+      capturedData = useLoaderData()()
       return h('span', null, 'data')
     }
     const viewRoutes: RouteRecord[] = [
@@ -4712,6 +4712,10 @@ describe('View Transitions API', () => {
     // A real page change still animates.
     await router.push('/')
     expect(startViewTransition).toHaveBeenCalledTimes(1)
+
+    // An explicit option still wins over the default (#4817's NavigateOptions).
+    await router.push('/?tab=2', { viewTransition: true })
+    expect(startViewTransition).toHaveBeenCalledTimes(2)
 
     delete (document as any).startViewTransition
     router.destroy()

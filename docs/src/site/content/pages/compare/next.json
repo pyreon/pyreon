@@ -108,7 +108,7 @@
     "pyreon": {
       "label": "Pyreon Zero",
       "file": "src/routes/users/[id].tsx + [id].server.ts",
-      "code": "// src/routes/users/[id].server.ts (server only, never in the client bundle)\nimport type { LoaderContext } from '@pyreon/router'\nimport { getUser } from '../../lib/users'\n\nexport async function serverLoader({ params }: LoaderContext) {\n  return getUser(params.id!)\n}\n\n// src/routes/users/[id].tsx\nimport { useLoaderData } from '@pyreon/router'\n\nexport const renderMode = 'isr' // stale-while-revalidate, 60 s by default\n\nexport default function UserPage() {\n  const user = useLoaderData<{ name: string }>()\n  return <h1>{user.name}</h1>\n}"
+      "code": "// src/routes/users/[id].server.ts (server only, never in the client bundle)\nimport type { LoaderContext } from '@pyreon/router'\nimport { getUser } from '../../lib/users'\n\nexport async function serverLoader({ params }: LoaderContext) {\n  return getUser(params.id!)\n}\n\n// src/routes/users/[id].tsx\nimport { useLoaderData } from '@pyreon/router'\n\nexport const renderMode = 'isr' // stale-while-revalidate, 60 s by default\n\nexport default function UserPage() {\n  const user = useLoaderData<{ name: string }>()\n  return <h1>{user().name}</h1>\n}"
     },
     "checked": "Zero side: the page and an equivalent loader typecheck against the repo; `serverLoader`, `renderMode = 'isr'` (60 s default) and `useLoaderData<T>()` are as documented in zero.md and `packages/core/router/src/loader.ts`. Next side: App Router conventions (`params` is a Promise since Next 15); not compiled here."
   },
@@ -183,7 +183,7 @@
     },
     {
       "claim": "useLoaderData<T>()",
-      "path": "packages/core/router/src/loader.ts line 27"
+      "path": "packages/core/router/src/loader.ts line 64"
     }
   ]
 }

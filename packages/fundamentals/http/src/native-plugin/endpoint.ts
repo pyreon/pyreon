@@ -32,7 +32,7 @@ import { encodeForm } from '../body'
 // on every platform. Encoding at COMPILE time is free for a literal, so the
 // emitted URL is a fully-encoded constant. Un-encoded substitution was not
 // cosmetic: `#` truncated the URL, `?` / `&` injected query structure.
-import { encodePathParam } from '../url'
+import { encodePathParam, joinPrefix, literalTemplateText, pathPartEnd, pathPartStart, pathTemplateTail } from '../url'
 
 // biome-ignore lint/suspicious/noExplicitAny: ESTree nodes are read structurally, as in the compiler.
 type AnyNode = any
@@ -497,8 +497,11 @@ function collectEndpointDefs(body: AnyNode[], facts: HttpFacts): void {
       const pathTemplate = raw.slice(sp + 1).trim()
       const paramNames: string[] = []
       const re = pathParamPattern()
+      // Placeholders live in the PATH part only — the web's `pathPartStart` /
+      // `pathPartEnd` cut (never the authority, query or fragment).
+      const pathPart = pathTemplate.slice(pathPartStart(pathTemplate), pathPartEnd(pathTemplate))
       let m: RegExpExecArray | null
-      while ((m = re.exec(pathTemplate)) !== null) {
+      while ((m = re.exec(pathPart)) !== null) {
         if (m[1]) paramNames.push(m[1])
       }
       // The DECLARATION's second argument — `{ response, headers, timeout,
@@ -664,8 +667,18 @@ function resolveEndpointParts(
   let bailed = false
   const PARAM_RE = pathParamPattern()
   let cursor = 0
-  for (let m = PARAM_RE.exec(def.pathTemplate); m; m = PARAM_RE.exec(def.pathTemplate)) {
-    const before = def.pathTemplate.slice(cursor, m.index)
+  // Placeholders are read in the PATH part only (the web's `pathPartStart` /
+  // `pathPartEnd`): a `:` in the authority (port, IPv6, `user:pw@`), a written
+  // query string or a fragment is sent as written, so the two targets never
+  // disagree about which parameters a template declares.
+  const pathStart = pathPartStart(def.pathTemplate)
+  const pathEnd = pathPartEnd(def.pathTemplate)
+  const authority = literalTemplateText(def.pathTemplate.slice(0, pathStart))
+  literalPath += authority
+  quasis[0] += authority
+  const pathPart = def.pathTemplate.slice(pathStart, pathEnd)
+  for (let m = PARAM_RE.exec(pathPart); m; m = PARAM_RE.exec(pathPart)) {
+    const before = pathPart.slice(cursor, m.index)
     cursor = m.index + m[0].length
     literalPath += before
     quasis[quasis.length - 1] += before
@@ -720,12 +733,21 @@ function resolveEndpointParts(
     quasis.push('')
   }
   if (bailed) return null
-  const tail = def.pathTemplate.slice(cursor)
+  // The `#fragment` is held back and appended AFTER the query below — the web's
+  // `buildUrl` order (path + query + fragment), so a `query` option never lands
+  // inside the fragment, where it would never be sent.
+  const hashAt = def.pathTemplate.indexOf('#')
+  const queryEnd = hashAt === -1 ? def.pathTemplate.length : hashAt
+  const fragment = pathTemplateTail(def.pathTemplate, queryEnd)
+  const tail = pathPart.slice(cursor) + pathTemplateTail(def.pathTemplate.slice(0, queryEnd), pathEnd)
   literalPath += tail
   quasis[quasis.length - 1] += tail
   const path = literalPath
-  let url = baseUrl + path
-  quasis[0] = baseUrl + (quasis[0] ?? '')
+  // The web's `joinUrl`, not a concatenation: exactly one `/` between base and
+  // path, and an absolute endpoint URL ignores the base.
+  const prefix = joinPrefix(baseUrl, def.pathTemplate)
+  let url = prefix + path
+  quasis[0] = prefix + (quasis[0] ?? '')
 
   // --- query -------------------------------------------------------------
   const queryEntries = readQueryEntries(readObjectProp(arg, 'query'), (key) => {
@@ -776,6 +798,8 @@ function resolveEndpointParts(
     url += joined
     quasis[quasis.length - 1] += joined
   }
+  url += fragment
+  quasis[quasis.length - 1] += fragment
 
   // --- headers -----------------------------------------------------------
   // Mirrors the web's `mergeHeaders(declared, call)`: with no per-call headers

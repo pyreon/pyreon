@@ -61,6 +61,9 @@
     "happy-dom": "^21.0.4",
     "rrule": "2.8.1"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

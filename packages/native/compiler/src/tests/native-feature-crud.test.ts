@@ -168,6 +168,21 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
     })
   })
 
+  describe('an api URL with a port, userinfo or query', () => {
+    const ids = (api: string) => `${feature(`api: '${api}'`)}
+export function A(props: { id: string }) { const one = Todo.useById(() => props.id); return <Text>{String(one.data()?.title)}</Text> }`
+    it('lowers (a colon outside the PATH is not a placeholder) and puts the id before the query', () => {
+      const r = swiftOf(ids('https://u:pw@api.example.com:8443/todos?tenant=t:1'))
+      expect(r.warnings).toEqual([])
+      expect(r.code).toContain('https://u:pw@api.example.com:8443/todos/\\(')
+      expect(r.code).toContain(')?tenant=t:1')
+      const k = kotlinOf(ids('https://api.example.com/todos?tenant=t1'))
+      expect(k.warnings).toEqual([])
+      expect(k.code).toContain('https://api.example.com/todos/${')
+      expect(k.code).toContain('}?tenant=t1')
+    })
+  })
+
   describe('named refusals', () => {
     const list = `export function A() { const list = Todo.useList(); return <Text>{String(list.data()?.length)}</Text> }`
     it.each([
@@ -175,7 +190,7 @@ describe('@pyreon/feature CRUD hooks — native lowering', () => {
       ['a non-literal api', feature("api: BASE + '/todos'") + list, '`api` is not a string literal'],
       ['a missing api', feature("initialValues: {}") + list, 'declares no `api`'],
       ['a custom fetcher', feature(`api: '${API}', fetcher: fetch`) + list, 'custom `fetcher`'],
-      ['a path token in api', feature("api: 'https://x.dev/:tenant/todos'") + list, '`:param` path token'],
+      ['a path token in api', feature("api: 'https://x.dev/:tenant/todos'") + list, '`:param` token in its PATH'],
     ])('%s drops the hook with the fix named', (_label, src, expected) => {
       for (const r of [swiftOf(src), kotlinOf(src)]) {
         expect(r.warnings.join('\n')).toContain('`Todo.useList()` does not lower to native')

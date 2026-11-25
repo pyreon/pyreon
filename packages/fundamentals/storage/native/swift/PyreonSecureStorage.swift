@@ -19,7 +19,7 @@
 //     let token = store.read(key: "auth")          // String?
 //     store.remove(key: "auth")
 //
-// KEY-FIRST (breaking, pre-1.0): the original `write(_ value:key:)` order
+// KEY-FIRST (a breaking change made in 0.x): the original `write(_ value:key:)` order
 // was a live hazard for the PMTC emit — both parameters are String, so a
 // positional lowering of the natural TS call `sec.write('auth', token)`
 // would have compiled with the arguments crossed. Key-first everywhere

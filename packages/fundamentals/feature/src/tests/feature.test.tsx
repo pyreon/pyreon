@@ -483,6 +483,27 @@ describe('useById', () => {
   })
 })
 
+describe('item URL when the api carries a query string', () => {
+  it('useById puts the id at the end of the PATH, before the query', async () => {
+    let capturedUrl = ''
+    const users = defineFeature<UserValues>({
+      name: 'users-by-id-query',
+      schema: userSchema,
+      api: '/api/users?tenant=t1',
+      fetcher: (async (url: string) => {
+        capturedUrl = url
+        return new Response('{}', { status: 200 })
+      }) as typeof fetch,
+    })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { unmount } = mountWith(client, () => users.useById(7))
+    await new Promise((r) => setTimeout(r, 50))
+    // Pre-fix: `/api/users?tenant=t1/:id` — the id landed in the query.
+    expect(capturedUrl).toContain('/api/users/7?tenant=t1')
+    unmount()
+  })
+})
+
 // ─── useCreate ──────────────────────────────────────────────────────────────────
 
 describe('useCreate', () => {
