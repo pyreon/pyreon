@@ -69,8 +69,9 @@ export function publishedManifestPaths(root: string = REPO_ROOT): string[] {
     for (const pkg of readdirSync(catDir)) dirs.push(join(catDir, pkg))
   }
   const binaries = join(packages, 'core', 'compiler', 'npm')
-  if (existsSync(binaries))
+  if (existsSync(binaries)) {
     for (const triple of readdirSync(binaries)) dirs.push(join(binaries, triple))
+  }
   for (const dir of dirs) {
     const f = join(dir, 'package.json')
     if (!existsSync(f)) continue
@@ -131,8 +132,9 @@ export function nativeFindings(path: string, text: string): Finding[] {
   const expect = (re: RegExp, want: string, what: string): void => {
     const all = [...text.matchAll(re)].map((m) => m[1] as string)
     if (all.length === 0) out.push({ path, detail: `no ${what} found (expected ${want})` })
-    for (const got of all)
+    for (const got of all) {
       if (got !== want) out.push({ path, detail: `${what} is ${got} (expected ${want})` })
+    }
   }
   if (path.endsWith('Package.swift')) {
     expect(/\.iOS\(\.v(\d+)\)/g, String(SUPPORT_MATRIX.ios), 'the SwiftPM iOS platform')
@@ -147,8 +149,9 @@ export function nativeFindings(path: string, text: string): Finding[] {
       `${SUPPORT_MATRIX.ios}.0`,
       'the target deployment target',
     )
-    if (path.endsWith('.ts'))
+    if (path.endsWith('.ts')) {
       expect(/\bminSdk\s*=\s*(\d+)/g, String(SUPPORT_MATRIX.androidMinSdk), 'minSdk')
+    }
   }
   return out
 }
@@ -224,14 +227,15 @@ export function runGate(
     }
     findings.push(finding)
   }
-  for (const f of nativeBuildFiles(root))
+  for (const f of nativeBuildFiles(root)) {
     findings.push(...nativeFindings(f, readFileSync(f, 'utf8')))
+  }
   const page = join(root, 'docs', 'src', 'content', 'docs', 'stability-and-direction.md')
   const pageText = readOrNull(page)
   const section = pageText === null ? null : supportSection(pageText)
-  if (pageText !== null && section === null)
+  if (pageText !== null && section === null) {
     findings.push({ path: page, detail: 'has no "## Support matrix" section' })
-  else findings.push(...docFindings(page, section))
+  } else findings.push(...docFindings(page, section))
   findings.push(...docFindings(join(root, 'SECURITY.md'), readOrNull(join(root, 'SECURITY.md'))))
   return { findings, packages: manifests.length }
 }
