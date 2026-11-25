@@ -77,7 +77,7 @@ const User = () => {
     'useTransition — reactive signal for route transition state',
     'useMiddlewareData — read data set by route middleware chain',
     'useLoaderData — access route loader results',
-    'View Transitions API — auto-enabled, awaits updateCallbackDone',
+    'View Transitions API — opt-in (`viewTransition: true` on the router or a route), awaits updateCallbackDone',
     'Named routes — typed navigation via { name, params }',
     'Nested routes — recursive matching with child RouterView',
     'Navigation guards — per-route and global beforeEnter/afterEach hooks',
@@ -700,8 +700,8 @@ parseQueryMulti('color=red&color=blue')          // { color: ['red', 'blue'] }`,
   ],
   gotchas: [
     {
-      label: 'View Transitions — what push() awaits',
-      note: '`await router.push()` resolves after `updateCallbackDone` (DOM commit), NOT after animation finishes. It does NOT wait for `.finished` (~200-300ms). `.ready` and `.finished` get empty `.catch()` handlers so `AbortError: Transition was skipped` rejections (from interrupted transitions) do not leak as unhandled promise rejections.',
+      label: 'View Transitions — opt-in, and what push() awaits',
+      note: 'Off by default: a transition defers the DOM swap to the next frame and leaves the page un-hit-testable while it animates. Turn on with `createRouter({ viewTransition: true })` or per route with `meta.viewTransition: true` (`false` opts a route out). With it on, `await router.push()` resolves after `updateCallbackDone` (DOM commit), NOT after animation finishes. It does NOT wait for `.finished` (~200-300ms). `.ready` and `.finished` get empty `.catch()` handlers so `AbortError: Transition was skipped` rejections (from interrupted transitions) do not leak as unhandled promise rejections.',
     },
     {
       label: 'Hash mode uses pushState',

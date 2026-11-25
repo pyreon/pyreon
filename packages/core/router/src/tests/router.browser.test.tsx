@@ -52,10 +52,10 @@ const User = (props: Record<string, unknown>) => {
   return h('div', { id: 'user' }, `User: ${params.id}`)
 }
 
-// View Transitions stay enabled (the Chromium default). `commitNavigation`
-// now awaits `vt.updateCallbackDone` so `await router.push()` resolves
-// AFTER the DOM swap — no more per-route opt-outs to keep tests
-// deterministic.
+// View Transitions are opt-in (`createRouter({ viewTransition: true })`); the
+// tests that exercise them opt in. `commitNavigation` awaits
+// `vt.updateCallbackDone`, so `await router.push()` resolves AFTER the DOM
+// swap either way.
 const routes = [
   { path: '/', component: Home },
   { path: '/about', component: About },
@@ -154,6 +154,35 @@ describe('router in real browser', () => {
     unmount()
   })
 
+  it('a default navigation runs no view transition: the swap is synchronous and the new page takes clicks at once', async () => {
+    // A view transition defers the swap to the browser's next frame, and while
+    // the cross-fade runs the document is not hit-testable — a click lands on
+    // the transition overlay, not on the page. That cost must be opted into
+    // (`viewTransition: true`), never paid by every navigation by default.
+    const router = createRouter({ routes, mode: 'hash' })
+    const { container, unmount } = mountInBrowser(
+      h(RouterProvider, { router }, h(RouterView, {})),
+    )
+    expect(
+      typeof (document as unknown as { startViewTransition?: unknown }).startViewTransition,
+    ).toBe('function')
+
+    const pushed = router.push('/about')
+    // Microtasks only — no task boundary, no frame. The pipeline's own awaits
+    // (guards, middleware, loaders) are microtasks, so a commit that does not
+    // wait for the browser has swapped the DOM by now; a transition has not.
+    for (let i = 0; i < 200; i++) await Promise.resolve()
+    const swappedAfterPush = container.querySelector('#about') !== null
+    await pushed
+    expect(swappedAfterPush).toBe(true)
+
+    const about = container.querySelector<HTMLElement>('#about')!
+    const r = about.getBoundingClientRect()
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+    expect(hit === about || about.contains(hit)).toBe(true)
+    unmount()
+  })
+
   it('View Transitions API — `await router.push()` resolves AFTER the DOM swap', async () => {
     // Regression for the bug fixed alongside this PR:
     //   commitNavigation() was sync, so when the browser ran `doCommit`
@@ -164,7 +193,7 @@ describe('router in real browser', () => {
     // After the fix, commitNavigation awaits `vt.updateCallbackDone`;
     // `await router.push()` resolves once the DOM state is live (but
     // before the animation finishes, which would block 200-300ms).
-    const router = createRouter({ routes, mode: 'hash' })
+    const router = createRouter({ routes, mode: 'hash', viewTransition: true })
     const { container, unmount } = mountInBrowser(
       h(RouterProvider, { router }, h(RouterView, {})),
     )
@@ -434,7 +463,7 @@ describe('router in real browser', () => {
     // rejections don't escape. This test asserts both contracts:
     //   1. Final destination resolves correctly.
     //   2. `window.onunhandledrejection` fires zero times.
-    const router = createRouter({ routes, mode: 'hash' })
+    const router = createRouter({ routes, mode: 'hash', viewTransition: true })
     const { container, unmount } = mountInBrowser(
       h(RouterProvider, { router }, h(RouterView, {})),
     )
@@ -463,7 +492,7 @@ describe('router in real browser', () => {
     // contract holds for replace() too — so a future refactor that
     // splits their code paths can't silently regress one without the
     // other.
-    const router = createRouter({ routes, mode: 'hash' })
+    const router = createRouter({ routes, mode: 'hash', viewTransition: true })
     const { container, unmount } = mountInBrowser(
       h(RouterProvider, { router }, h(RouterView, {})),
     )

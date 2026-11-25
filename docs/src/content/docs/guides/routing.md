@@ -72,7 +72,7 @@ function Logout() {
 }
 ```
 
-`await router.push(...)` resolves once the new route's DOM commit is done (it awaits `updateCallbackDone`, not the full View-Transition animation) — so you can inspect the new route immediately after.
+`await router.push(...)` resolves once the new route's DOM commit is done (with View Transitions on — `createRouter({ viewTransition: true })` — it awaits `updateCallbackDone`, not the full animation) — so you can inspect the new route immediately after.
 
 ## Loaders, guards, and boundaries
 

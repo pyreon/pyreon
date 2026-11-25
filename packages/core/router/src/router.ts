@@ -646,6 +646,7 @@ export function createRouter<TNames extends string = string>(
     onError,
     maxCacheSize = 100,
     trailingSlash = 'strip',
+    viewTransition = false,
   } = opts
 
   // Base path only applies to history mode — hash-based routing already namespaces via #
@@ -1469,13 +1470,18 @@ export function createRouter<TNames extends string = string>(
       }
     }
 
-    // Use View Transitions API when available and not explicitly disabled.
-    // Route meta can opt out: meta: { viewTransition: false }. We ALSO skip
-    // the animation when the user has asked for reduced motion (WCAG 2.3.3
-    // "Animation from Interactions") — the DOM still swaps synchronously via
-    // the non-VT `else` path below; only the fade/slide is suppressed. This is
-    // read per-navigation (not cached) so a user toggling the OS preference
-    // mid-session is respected on the next route change.
+    // View Transitions are OPT-IN: the router's `viewTransition` option, which
+    // the matched route's `meta.viewTransition` overrides either way. Opt-in
+    // because a transition costs every navigation: the swap waits a frame for
+    // the browser to capture the old page, and the page is not hit-testable
+    // while the cross-fade runs (see `RouterOptions.viewTransition`).
+    // We ALSO skip the animation when the user has asked for reduced motion
+    // (WCAG 2.3.3 "Animation from Interactions") — the DOM still swaps
+    // synchronously via the non-VT `else` path below; only the fade/slide is
+    // suppressed. This is read per-navigation (not cached) so a user toggling
+    // the OS preference mid-session is respected on the next route change —
+    // and only for a navigation that wants a transition, so the default path
+    // makes no `matchMedia` call.
     // The early-return `typeof` guard makes the whole helper SSR-safe and is
     // the form `@pyreon/lint`'s `no-window-in-ssr` recognises (an inline
     // `typeof matchMedia === 'function' && matchMedia(...)` is NOT — the rule
@@ -1484,14 +1490,13 @@ export function createRouter<TNames extends string = string>(
       if (typeof matchMedia === 'undefined') return false
       return matchMedia('(prefers-reduced-motion: reduce)').matches
     }
-    const reducedMotion = isClient && prefersReducedMotion()
     // Not in memory mode: a view transition snapshots the WHOLE document and
     // skips any other transition in flight — the page router's included.
     const useVT =
       ownsPage &&
-      !reducedMotion &&
-      to.meta.viewTransition !== false &&
-      typeof (document as any).startViewTransition === 'function'
+      (to.meta.viewTransition ?? viewTransition) === true &&
+      typeof (document as any).startViewTransition === 'function' &&
+      !prefersReducedMotion()
 
     if (useVT) {
       // `startViewTransition(cb)` runs `cb` inside an async transition. Its

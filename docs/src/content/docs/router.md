@@ -2658,11 +2658,21 @@ For focus management on route change (moving keyboard focus to the new content),
 
 ## View Transitions API
 
-Route navigations are automatically wrapped in `document.startViewTransition()` when the browser supports the View Transitions API. This provides smooth CSS-driven transitions between pages with zero configuration.
+View Transitions are **opt-in**. Turn them on for the whole router, or for one route (and its children, since `meta` merges down the matched chain):
+
+```ts
+const router = createRouter({ routes, viewTransition: true })
+
+{ path: '/gallery', component: Gallery, meta: { viewTransition: true } }
+```
+
+With it on, a navigation runs inside `document.startViewTransition()` where the browser has the API, and CSS-driven transitions between pages work with no further code.
+
+They are off by default because a transition costs every navigation that runs one. The DOM swap waits for the browser to capture the old page, which happens on the next frame: the new route is in the DOM about 16 ms after the click instead of well under a millisecond. While the cross-fade runs (250 ms by default) the page is not hit-testable, so a click in that window reaches the transition overlay instead of the page. Measured in Chromium on the catalogue app (`examples/real-bench/app`): with transitions on, each route change took 14–17 ms from click to the new DOM; with them off, 0.2–1.6 ms.
 
 **Reduced motion is respected automatically.** When the user's OS is set to *reduce motion* (`@media (prefers-reduced-motion: reduce)`), the router skips the View Transition and swaps the DOM synchronously instead — the navigation still happens, only the fade/slide animation is suppressed. This satisfies [WCAG 2.3.3 "Animation from Interactions"](https://www.w3.org/WAI/WCAG21/Understanding/animation-from-interactions.html) with no configuration. The preference is read per-navigation, so toggling it mid-session takes effect on the next route change.
 
-To opt out for a specific route, set `meta.viewTransition: false`:
+To opt one route out of a router that has them on, set `meta.viewTransition: false`:
 
 ```ts
 {
