@@ -1,5 +1,5 @@
 {
-  "description": "Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable). An ordinary PR does not edit this file; `bun scripts/check-readable-ratchet.ts --update` only tightens. Raising needs `--allow-raise` and is for a file that predates the ratchet. The file is generated: never edit or merge it by hand.",
+  "description": "Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). Fix new findings with `bun packages/tools/lint/bin/pyreon-lint.js --fix <file>` (the spacing rules are autofixable). An ordinary PR does not edit this file; `bun scripts/check-readable-ratchet.ts --update` only tightens. Raising needs `--allow-raise` and is for a file that predates the ratchet. The file is generated: never edit or merge it by hand.",
   "files": {
     "packages/core/compiler/src/charts-migration.ts": {"pyreon/padding-before-return":2},
     "packages/core/compiler/src/content-audit.ts": {"pyreon/padding-before-return":13},

@@ -7891,7 +7891,7 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 - Reading \`NodeComponentProps.data\` / \`.selected\` / \`.dragging\` as plain values — all three are REACTIVE ACCESSORS: \`props.data()\`, \`props.selected()\`, \`props.dragging()\`
 - Calling \`props.data()\` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, \`effect\`, or \`computed\`
 - Adding \`[key: string]: unknown\` index signature to your node data interface — no longer needed now that \`createFlow\` is generic. Pass \`createFlow<MyData>(...)\` instead
-- Setting \`LayoutOptions.direction\` (or \`layerSpacing\`, or \`edgeRouting\`) on a force / stress / radial / box / rectpacking layout and expecting a directional result — these options are namespaced under ELK's layered / tree pipelines and silently ignored by the geometric algorithms. Dev-mode \`console.warn\` fires when this happens
+- Setting \`LayoutOptions.direction\` (or \`layerSpacing\`, or \`edgeRouting\`) on a force / stress / radial / box / rectpacking layout and expecting a directional result — these options are grouped by layout algorithm (layered / tree) and silently ignored by the geometric algorithms. Dev-mode \`console.warn\` fires when this happens
 - Missing \`<Flow nodeTypes={{ key: Component }}>\` registration — \`node.type\` strings dispatch to that map, unregistered types fall through to the default renderer
 - Using \`createFlow\` inside a component body without \`onUnmount(() => flow.dispose())\` — prefer \`useFlow\` which auto-disposes
 - Using \`direction: 'row'\` on flow's containing Element layout — Pyreon \`Element\` accepts \`'inline'\` / \`'rows'\` / \`'reverseInline'\` / \`'reverseRows'\`, not CSS flex-direction values like \`'row'\` or \`'column'\`
@@ -8142,7 +8142,7 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })`,
     notes: 'Auto-layout from the built-in engine. Runs `algorithm` (default `layered`) over the graph and returns a NEW array of `{ id, position }` pairs (positions only). The engine is PURE and synchronous — the same graph always produces the same positions — but the function stays `async` because that is the published signature, and it leaves room to move heavy layouts to a worker later without another breaking change. See also: createFlow, useFlow.',
     mistakes: `- Forgetting to \`await\` it — \`computeLayout\` returns a Promise even though the engine underneath is synchronous.
 - Expecting it to move your nodes — it does NOT mutate \`nodes\`; it returns only \`{ id, position }\` pairs (no width/height/data). Map the positions back onto your node objects (e.g. via \`updateNode\`).
-- Passing \`direction\` / \`layerSpacing\` / \`edgeRouting\` to a non-\`layered\` algorithm — those apply only to \`layered\` (and \`direction\` to \`tree\`); ELK silently ignores them (a dev-mode warning fires).`,
+- Passing \`direction\` / \`layerSpacing\` / \`edgeRouting\` to a non-\`layered\` algorithm — those apply only to \`layered\` (and \`direction\` to \`tree\`); the layout engine silently ignores them (a dev-mode warning fires).`,
   },
   // <gen-docs:api-reference:end @pyreon/flow>
 
