@@ -197,9 +197,9 @@
   "items": [
    {
     "stat": "2.7×",
-    "label": "faster than React 19 creating 10,000 rows (73.1 vs 195.9 ms)",
-    "condition": "real Chromium, 2026-11-24 refresh, run 1 table",
-    "source": "BENCHMARKS.md 2026-11-24 §1"
+    "label": "faster than React 19 creating 10,000 rows (73.0 vs 195.7 ms)",
+    "condition": "real Chromium, 2026-11-25 re-measurement, run 1 table",
+    "source": "BENCHMARKS.md 2026-11-25 §1"
    },
    {
     "stat": "18.5 KB",
@@ -208,10 +208,10 @@
     "source": "BENCHMARKS.md 2026-11-24 §7"
    },
    {
-    "stat": "1.12×",
-    "label": "faster clearing 1,000 rows than the fastest rival (125 vs 140 µs), the row board's outright win",
-    "condition": "both runs, 2026-11-24 refresh",
-    "source": "BENCHMARKS.md 2026-11-24 §1"
+    "stat": "1.49×",
+    "label": "faster selecting a row than Octane, batch-timed (1.22 vs 1.83 µs per cycle), the row board's one outright win",
+    "condition": "both runs (1.49–1.50×), 2026-11-25 re-measurement",
+    "source": "BENCHMARKS.md 2026-11-25 §1"
    },
    {
     "stat": "6.5×",
@@ -220,7 +220,7 @@
     "source": "00-brief/BENCHMARKS-2026-11-05.md §5"
    }
   ],
-  "footer": "Synthetic, author-run, Apple M3 Max, record refreshed 24 Nov 2026 (server rendering: 5 Nov). Every loss is on the same page, and so are the claims this record withdrew.",
+  "footer": "Synthetic, author-run, Apple M3 Max, record re-measured 25 Nov 2026 (bundle: 24 Nov; server rendering: 5 Nov). Every loss is on the same page, and so are the claims this record withdrew.",
   "link": {
    "label": "Don't trust us. Run it.",
    "href": "/docs/benchmarks"

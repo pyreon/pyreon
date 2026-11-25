@@ -55,22 +55,23 @@ every project.
 
 ## Performance, stated honestly
 
-**Restated against the benchmark record as refreshed on 2026-11-24** (row
-board and core scenarios re-measured on `fcccee261`, two runs each). The
+**Restated against the benchmark record as re-measured on 2026-11-25** (row
+board, core scenarios and keyed list re-measured on `dfbdecfc7`, two runs each). The
 authoritative record is `BENCHMARKS.md` at the repo root; the
 [benchmarks page](/docs/benchmarks) summarises it.
 
 On the krausest-style synthetic row-list benchmark (Chromium via Playwright,
-10 frameworks), compiled Pyreon **wins one of nine per-op rows outright** —
-clear rows, by 1.12× in both runs — plus a batch-timed select (1.58× over
-Octane), and is **statistically tied** with the Vue 3.6 Vapor release
-candidate, [Octane](https://octanejs.dev) and Vue 3 on create 1,000, replace,
-remove, create 10,000 and append; partial update and swap split between the two
-runs. Against hand-written Vanilla, Pyreon costs 0.98–1.10× on most ops.
+10 frameworks), compiled Pyreon **wins none of the nine per-op rows outright**;
+it wins a batch-timed select (1.49–1.50× over Octane) and loses a batch-timed
+clear cycle (Octane 1.02×), both in both runs. It is **statistically tied** with
+the Vue 3.6 Vapor release candidate, [Octane](https://octanejs.dev) and Vue 3
+on create 1,000, replace, partial update, remove, create 10,000 and append;
+clear rows and swap split between the two runs. Against hand-written Vanilla,
+Pyreon costs 0.98–1.09× on most ops.
 Important caveats, stated as the project's record:
 
 - It is **not** "fastest on all benchmarks." A mounted 2,047-component tree
-  retains 1.30× Solid 2.0's heap and about 2.6× Solid 1.9's (mounting it ties
+  retains 1.72× Solid 1.9's heap (below Solid 2.0's; mounting it splits with
   Solid 1.9); Preact Signals creates signals about 5× faster and leads deep
   unobserved computed chains; and the same app ships 18.5KB gzipped against
   Solid's 7.7KB.
@@ -78,8 +79,9 @@ Important caveats, stated as the project's record:
   because samples from one page load are not independent.
 - Create, replace, remove and append are dominated by browser layout every
   framework pays identically, so small gaps there are mostly not framework
-  JavaScript. Preact has the lightest retained heap after the suite (3.14 MB
-  vs Pyreon's 3.21 MB).
+  JavaScript. After the suite Pyreon's retained heap is level with Preact's
+  (3.15–3.16 vs 3.15 MB, no confidence interval); neither is called the
+  lightest.
 - These are author-judged benchmarks, run on one machine in Chromium only,
   and no independent third-party run exists yet — treat cross-framework
   performance claims accordingly.

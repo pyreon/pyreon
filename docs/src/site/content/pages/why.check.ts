@@ -24,8 +24,8 @@ export const checked = {
           "stats": [
             {
               "stat": "2.7×",
-              "label": "faster than React 19 at creating 10,000 rows (73.1 ms vs 195.9 ms)",
-              "condition": "final pass, two runs · Apple M3 Max · real Chromium · synthetic, author-run",
+              "label": "faster than React 19 at creating 10,000 rows (73.0 ms vs 195.7 ms)",
+              "condition": "2026-11-25 re-measurement, two runs · Apple M3 Max · real Chromium · synthetic, author-run",
               "source": "BENCHMARKS.md §1"
             },
             {
@@ -205,7 +205,7 @@ export const checked = {
         },
         {
           "kind": "note",
-          "text": "We publish where we lose, so you can trust where we win: in the same record a mounted 2,047-component tree holds about 2.6× the memory it takes in Solid 1.9, creating a signal is about 5× slower than in Preact Signals, and the same keyed-table app is 18.5 KB gzip against Solid's 7.7 KB.",
+          "text": "We publish where we lose, so you can trust where we win: in the same record a mounted 2,047-component tree holds 1.72× the memory it takes in Solid 1.9, creating a signal is about 5× slower than in Preact Signals, and the same keyed-table app is 18.5 KB gzip against Solid's 7.7 KB.",
           "href": "/benchmarks"
         },
         {
@@ -275,8 +275,8 @@ export const checked = {
       },
       "sources": [
         {
-          "claim": "Create 10,000 rows: Pyreon 73.09 ms vs React 19 195.91 ms (2.68×; 2.70× in run 2), two runs",
-          "path": "BENCHMARKS.md §1 (refreshed 2026-11-24)"
+          "claim": "Create 10,000 rows: Pyreon 72.96 ms vs React 19 195.70 ms (2.68×; 2.71× in run 2), two runs",
+          "path": "BENCHMARKS.md §1 (re-measured 2026-11-25)"
         },
         {
           "claim": "TodoMVC toggle-1000 4.60 vs 11.41 ms (2.48×), clear-1000 3–4×, one run",
@@ -287,8 +287,8 @@ export const checked = {
           "path": "BENCHMARKS.md §8"
         },
         {
-          "claim": "Deep-tree retained heap 531.7 vs Solid 1.9 202–207 KB; bundle 18.5 vs Solid 7.7 KB",
-          "path": "BENCHMARKS.md §2b, §7, §13 (refreshed 2026-11-24)"
+          "claim": "Deep-tree retained heap 355.1 / 355.2 vs Solid 1.9 207.0 / 206.2 KB (1.72×); bundle 18.5 vs Solid 7.7 KB",
+          "path": "BENCHMARKS.md §2b, §13 (re-measured 2026-11-25), §7 (2026-11-24)"
         },
         {
           "claim": "Counter compiles to _tpl + _bindText(count, __t2)",
@@ -861,7 +861,7 @@ export const checked = {
       "hook": {
         "eyebrow": "Measured in public",
         "title": "2.7× faster than React. Don't trust us. Run it.",
-        "lede": "Ten frameworks, real Chromium, every arm on its own fast path. Pyreon builds 10,000 rows in 73.1 ms against React 19's 195.9. Every number on our board comes with its run count and the command that reproduces it.",
+        "lede": "Ten frameworks, real Chromium, every arm on its own fast path. Pyreon builds 10,000 rows in 73.0 ms against React 19's 195.7. Every number on our board comes with its run count and the command that reproduces it.",
         "cta": {
           "label": "See the full board",
           "href": "/benchmarks"
@@ -874,8 +874,8 @@ export const checked = {
           "stats": [
             {
               "stat": "2.7×",
-              "label": "faster than React 19 creating 10,000 rows (73.1 vs 195.9 ms); 3.9× faster than Preact",
-              "condition": "2026-11-24 refresh, two runs · Apple M3 Max · real Chromium · synthetic, author-run",
+              "label": "faster than React 19 creating 10,000 rows (73.0 vs 195.7 ms); 3.9× faster than Preact",
+              "condition": "2026-11-25 re-measurement, two runs · Apple M3 Max · real Chromium · synthetic, author-run",
               "source": "BENCHMARKS.md §1"
             },
             {
@@ -898,12 +898,12 @@ export const checked = {
           "title": "More from the same record.",
           "items": [
             {
-              "title": "Clear rows: the outright row-board win",
-              "text": "125 µs vs Octane and Vue 3.6 Vapor (RC) at 140 µs, 1.12×, with confidence intervals disjoint in both runs. A batch-timed select row is 1.58× faster than Octane, both runs too."
+              "title": "Batch-timed select: the one outright row-board win",
+              "text": "1.22 µs per select-and-restore cycle against Octane's 1.83 µs, 1.49–1.50×, with confidence intervals disjoint in both runs. Clear rows, a two-run win on 2026-11-24, split this time (a tie, then 1.12×), and the batch-timed clear cycle is a 1.02× loss to Octane in both runs."
             },
             {
-              "title": "Light, but not the lightest",
-              "text": "Retained heap after the suite: Preact 3.14 MB, Pyreon 3.21 MB, Solid 1.9 3.22, Svelte 3.32, Vue 3 3.36 and React 3.55. Every pass of both runs. Preact is lighter."
+              "title": "Level with Preact on memory, not lighter",
+              "text": "Retained heap after the suite: Preact 3.15 MB, Pyreon 3.15–3.16 MB, Solid 1.9 3.23, Svelte 3.33, Vue 3 3.36 and React 3.56, every pass of both runs. Pyreon and Preact are 0.00–0.01 MB apart with no confidence interval, so neither is the lightest."
             },
             {
               "title": "Hydration that leads",
@@ -998,7 +998,7 @@ export const checked = {
         },
         {
           "kind": "note",
-          "text": "The board also lists where we are not first: a mounted component tree holds more memory than in Solid, Solid, Preact and Svelte ship smaller bundles, signal creation is about 5× slower than Preact Signals, and five row-board ops are statistical ties with the fastest rivals.",
+          "text": "The board also lists where we are not first: a mounted component tree holds more memory than in Solid 1.9, Solid, Preact and Svelte ship smaller bundles, signal creation is about 5× slower than Preact Signals, six row-board ops are statistical ties with the fastest rivals, two more split between runs, and the batch-timed clear cycle is a 1.02× loss to Octane.",
           "href": "/benchmarks"
         },
         {
@@ -1036,8 +1036,8 @@ export const checked = {
       },
       "sources": [
         {
-          "claim": "Create 10k 73.09 vs React 195.91 vs Preact 283.66 ms; clear rows 1.12× vs Octane and Vapor; heap Pyreon 3.21 vs Preact 3.14 MB",
-          "path": "BENCHMARKS.md §1 (refreshed 2026-11-24)"
+          "claim": "Create 10k 72.96 vs React 195.70 vs Preact 286.52 ms; batch select 1.49–1.50× vs Octane; clear rows split; batch clear cycle Octane 1.02×; heap Pyreon 3.15–3.16 vs Preact 3.15 MB",
+          "path": "BENCHMARKS.md §1 (re-measured 2026-11-25)"
         },
         {
           "claim": "Bundle 18.5 vs 69.6 KB (3.76×)",
@@ -1080,7 +1080,7 @@ export const checked = {
           "path": "BENCHMARKS.md header \"Synthetic\""
         },
         {
-          "claim": "Losses: memory per component, a keyed list with conditional cells, bundle vs Solid/Preact/Svelte, signal creation, row-board ties",
+          "claim": "Losses: memory per component, create and replace of a plain .map() list, the batch-timed clear cycle, bundle vs Solid/Preact/Svelte, signal creation, row-board ties and splits",
           "path": "BENCHMARKS.md §13"
         }
       ]
@@ -1382,7 +1382,7 @@ export const checked = {
       "handOff": "Diagram of the hand-off, not a capture of this page."
     },
     "sections": {
-      "proofCaveat": "synthetic · author-run · Apple M3 Max · record refreshed 2026-11-24",
+      "proofCaveat": "synthetic · author-run · Apple M3 Max · record re-measured 2026-11-25",
       "proofLink": {
         "label": "Every result, including where we lose →",
         "href": "/benchmarks"
