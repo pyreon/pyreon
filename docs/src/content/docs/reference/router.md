@@ -27,7 +27,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - useTransition — reactive signal for route transition state
 - useMiddlewareData — read data set by route middleware chain
 - useLoaderData — access route loader results
-- View Transitions API — auto-enabled, awaits updateCallbackDone
+- View Transitions API — opt-in (`viewTransition: true` on the router or a route), awaits updateCallbackDone
 - Named routes — typed navigation via &#123; name, params &#125;
 - Nested routes — recursive matching with child RouterView
 - Navigation guards — per-route and global beforeEnter/afterEach hooks
@@ -1058,7 +1058,7 @@ parseQueryMulti('color=red&color=blue')          // { color: ['red', 'blue'] }
 
 ## Package-level notes
 
-> **View Transitions — what push() awaits:** `await router.push()` resolves after `updateCallbackDone` (DOM commit), NOT after animation finishes. It does NOT wait for `.finished` (~200-300ms). `.ready` and `.finished` get empty `.catch()` handlers so `AbortError: Transition was skipped` rejections (from interrupted transitions) do not leak as unhandled promise rejections.
+> **View Transitions — opt-in, and what push() awaits:** Off by default: a transition defers the DOM swap to the next frame and leaves the page un-hit-testable while it animates. Turn on with `createRouter({ viewTransition: true })` or per route with `meta.viewTransition: true` (`false` opts a route out). With it on, `await router.push()` resolves after `updateCallbackDone` (DOM commit), NOT after animation finishes. It does NOT wait for `.finished` (~200-300ms). `.ready` and `.finished` get empty `.catch()` handlers so `AbortError: Transition was skipped` rejections (from interrupted transitions) do not leak as unhandled promise rejections.
 
 > **Hash mode uses pushState:** Hash mode uses `history.pushState` — NOT `window.location.hash` assignment — to avoid double-update from the hashchange event. Reading `location.hash` directly will not reflect router state; use `useRoute()` instead.
 

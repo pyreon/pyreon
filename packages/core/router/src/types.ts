@@ -54,7 +54,12 @@ export interface RouteMeta {
   requiresAuth?: boolean
   /** Scroll behavior for this route */
   scrollBehavior?: 'top' | 'restore' | 'none'
-  /** Set to false to disable View Transitions API for this route. Default: true */
+  /**
+   * Run navigations TO this route inside `document.startViewTransition()`
+   * (`true`) or never (`false`). Default: the router's `viewTransition`
+   * option, which is `false`. Merged down the matched chain like any meta, so
+   * a layout route's `viewTransition: true` covers its children.
+   */
   viewTransition?: boolean
 }
 
@@ -202,9 +207,10 @@ export interface NavigateOptions {
    */
   scroll?: boolean
   /**
-   * Run the commit inside a View Transition (when the browser supports it and
-   * the route's `meta.viewTransition` is not `false`). `false` commits without
-   * one.
+   * `true` runs this commit inside a View Transition (when the browser
+   * supports it and the route's `meta.viewTransition` is not `false`), even
+   * if the router's transitions are off (they are opt-in). `false` commits
+   * without one. Unset: the route's meta, then the router's `viewTransition`.
    */
   viewTransition?: boolean
 }
@@ -504,6 +510,22 @@ export interface RouterOptions {
    * Default: "top"
    */
   scrollBehavior?: ScrollBehaviorFn | 'top' | 'restore' | 'none'
+  /**
+   * Run route changes inside `document.startViewTransition()` where the
+   * browser has it. Default: `false`. Per-route `meta.viewTransition` takes
+   * precedence (`true` opts one route in, `false` opts it out).
+   *
+   * Off by default because a transition has a cost on every navigation, in
+   * every browser that supports it: the DOM swap waits for the browser to
+   * capture the old page (the next frame, ~16 ms instead of well under 1 ms),
+   * and while the cross-fade runs (250 ms by default) the page is not
+   * hit-testable, so clicks land on the transition overlay instead of the new
+   * page. Turn it on when the animation is worth that.
+   *
+   * Skipped regardless under `prefers-reduced-motion: reduce` and in
+   * `mode: 'memory'`.
+   */
+  viewTransition?: boolean
   /**
    * Initial URL for SSR. On the server, window.location is unavailable;
    * pass the request URL here so the router resolves the correct route.

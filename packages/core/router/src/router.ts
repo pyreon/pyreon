@@ -48,7 +48,10 @@ const QUERY_EDIT: NavigateOptions = { scroll: false, viewTransition: false }
 /**
  * What a commit does besides moving the route. An explicit option wins;
  * otherwise an in-place replace (same page, only the query moved) neither
- * scrolls nor animates, and every other navigation does both.
+ * scrolls nor animates, and every other navigation scrolls. Whether it
+ * animates is then up to the route's `meta.viewTransition` and the router's
+ * `viewTransition` option (opt-in) — `undefined` here means "not decided by
+ * this navigation".
  */
 function navigationEffects(
   replace: boolean,
@@ -56,12 +59,27 @@ function navigationEffects(
   to: ResolvedRoute,
   from: ResolvedRoute,
   options: NavigateOptions | undefined,
-): { scroll: boolean; viewTransition: boolean } {
+): { scroll: boolean; viewTransition: boolean | undefined } {
   const inPlace = isInPlaceReplace(replace, fromBrowser, to, from)
   return {
     scroll: options?.scroll ?? !inPlace,
-    viewTransition: options?.viewTransition ?? !inPlace,
+    viewTransition: options?.viewTransition ?? (inPlace ? false : undefined),
   }
+}
+
+/**
+ * Whether a navigation asks for a View Transition (they are opt-in). An
+ * explicit `false` — the navigation's own option, or the route's meta — always
+ * wins; an explicit `true` on the navigation opts that one navigation in;
+ * otherwise the route's meta, then the router's `viewTransition` option.
+ */
+function wantsViewTransition(
+  navigation: boolean | undefined,
+  meta: boolean | undefined,
+  routerDefault: boolean,
+): boolean {
+  if (navigation === false || meta === false) return false
+  return navigation === true || (meta ?? routerDefault)
 }
 
 /** The trailing, rarely-set arguments of one `navigate()` call. */
@@ -688,6 +706,7 @@ export function createRouter<TNames extends string = string>(
     onError,
     maxCacheSize = 100,
     trailingSlash = 'strip',
+    viewTransition = false,
   } = opts
 
   // Base path only applies to history mode — hash-based routing already namespaces via #
@@ -1517,13 +1536,18 @@ export function createRouter<TNames extends string = string>(
       }
     }
 
-    // Use View Transitions API when available and not explicitly disabled.
-    // Route meta can opt out: meta: { viewTransition: false }. We ALSO skip
-    // the animation when the user has asked for reduced motion (WCAG 2.3.3
-    // "Animation from Interactions") — the DOM still swaps synchronously via
-    // the non-VT `else` path below; only the fade/slide is suppressed. This is
-    // read per-navigation (not cached) so a user toggling the OS preference
-    // mid-session is respected on the next route change.
+    // View Transitions are OPT-IN: the router's `viewTransition` option, which
+    // the matched route's `meta.viewTransition` overrides either way. Opt-in
+    // because a transition costs every navigation: the swap waits a frame for
+    // the browser to capture the old page, and the page is not hit-testable
+    // while the cross-fade runs (see `RouterOptions.viewTransition`).
+    // We ALSO skip the animation when the user has asked for reduced motion
+    // (WCAG 2.3.3 "Animation from Interactions") — the DOM still swaps
+    // synchronously via the non-VT `else` path below; only the fade/slide is
+    // suppressed. This is read per-navigation (not cached) so a user toggling
+    // the OS preference mid-session is respected on the next route change —
+    // and only for a navigation that wants a transition, so the default path
+    // makes no `matchMedia` call.
     // The early-return `typeof` guard makes the whole helper SSR-safe and is
     // the form `@pyreon/lint`'s `no-window-in-ssr` recognises (an inline
     // `typeof matchMedia === 'function' && matchMedia(...)` is NOT — the rule
@@ -1532,17 +1556,17 @@ export function createRouter<TNames extends string = string>(
       if (!isClient || typeof matchMedia === 'undefined') return false
       return matchMedia('(prefers-reduced-motion: reduce)').matches
     }
-    const reducedMotion = prefersReducedMotion()
     // Not in memory mode: a view transition snapshots the WHOLE document and
     // skips any other transition in flight — the page router's included.
     // An in-place edit keeps the page, so there is nothing to animate: a
-    // cross-fade per keystroke of a search box is a flicker.
+    // cross-fade per keystroke of a search box is a flicker. An explicit
+    // `false` (the navigation's option, or the route's meta) always wins; an
+    // explicit `true` on the navigation opts that one navigation in.
     const useVT =
       ownsPage &&
-      effects.viewTransition &&
-      !reducedMotion &&
-      to.meta.viewTransition !== false &&
-      typeof (document as any).startViewTransition === 'function'
+      wantsViewTransition(effects.viewTransition, to.meta.viewTransition, viewTransition) &&
+      typeof (document as any).startViewTransition === 'function' &&
+      !prefersReducedMotion()
 
     if (useVT) {
       // `startViewTransition(cb)` runs `cb` inside an async transition. Its
