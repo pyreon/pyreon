@@ -698,6 +698,51 @@ describe('runAuditLeakClassesGate', () => {
     expect(result.meta.skipReason).toContain('Pyreon monorepo')
     fs.rmSync(tmp, { recursive: true, force: true })
   })
+
+  // The subprocess seam, driven by a stand-in `bun` (a shell script) so the
+  // spec checks the gate's own contract — what it runs, how it reports the
+  // script's output, and what a crashed script becomes — without the real scan.
+  const leakRepo = (bunBody: string): { tmp: string; bun: string } => {
+    const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-leak-gate-')))
+    fs.mkdirSync(path.join(tmp, 'scripts'))
+    fs.writeFileSync(path.join(tmp, 'scripts', 'audit-leak-classes.ts'), '')
+    const bun = path.join(tmp, 'fake-bun')
+    fs.writeFileSync(bun, `#!/bin/sh\n${bunBody}\n`, { mode: 0o755 })
+
+    return { tmp, bun }
+  }
+
+  it('runs the script with --json and reports its findings as advisory info', async () => {
+    const out = JSON.stringify({
+      total: 12,
+      findings: [
+        { detector: 'unbounded-cache', file: 'ROOT/src/a.ts', line: 3, leakClass: 'C', message: 'Unbounded Map.', context: 'new Map()' },
+      ],
+    })
+    const { tmp, bun } = leakRepo(
+      `[ "$1" = run ] && [ "$2" = "$PWD/scripts/audit-leak-classes.ts" ] && [ "$3" = --json ] || exit 9\nprintf '%s' '${out.replace('ROOT', '\'"$PWD"\'')}'`,
+    )
+    const result = await runAuditLeakClassesGate({ cwd: tmp, bun })
+    assertGateResultShape(result, 'audit-leak-classes')
+    expect(result.meta.scanned).toBe(12)
+    expect(result.findings).toHaveLength(1)
+    expect(result.findings[0]!.code).toBe('audit-leak-classes/class-c-unbounded-cache')
+    expect(result.findings[0]!.severity).toBe('info')
+    expect(result.findings[0]!.location?.relPath).toBe(path.join('src', 'a.ts'))
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('turns a script that crashes into one gate-failed error finding', async () => {
+    const { tmp, bun } = leakRepo('echo boom >&2\nexit 3')
+    const result = await runAuditLeakClassesGate({ cwd: tmp, bun })
+    assertGateResultShape(result, 'audit-leak-classes')
+    expect(result.findings).toHaveLength(1)
+    expect(result.findings[0]!.code).toBe('audit-leak-classes/gate-failed')
+    expect(result.findings[0]!.severity).toBe('error')
+    expect(result.findings[0]!.message).toContain('audit-leak-classes gate failed to run')
+    expect(result.meta.scanned).toBe(0)
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
 })
 
 describe('runAuditTypesGate', () => {
