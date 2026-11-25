@@ -59,10 +59,10 @@ export function GraphChart(props: GraphChartProps): VNode {
       const r = node.radius + 3.0
       return { x: node.at.x - r, y: node.at.y - r, w: r * 2.0, h: r * 2.0 }
     },
-    a11y: (g) => ({
+    a11y: (g, m) => ({
       title: props.title,
       categories: g.layout.nodes.map((n) => n.name),
-      series: [{ label: props.title ?? 'Graph', values: g.layout.nodes.map((n) => n.value ?? 1), kind: 'bars' }],
+      series: [{ label: props.title ?? m?.graphLabel ?? 'Graph', values: g.layout.nodes.map((n) => n.value ?? 1), kind: 'bars' }],
     }),
   })
 }

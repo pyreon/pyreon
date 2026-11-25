@@ -71,13 +71,13 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
       const fmt = props.format ?? groupThousands
       return [g.categories[hitAt(g, px, py)] ?? '', `max ${fmt(r.max)}`, `q3 ${fmt(r.q3)}`, `median ${fmt(r.median)}`, `q1 ${fmt(r.q1)}`, `min ${fmt(r.min)}`]
     },
-    a11y: (g) => ({
+    a11y: (g, m) => ({
       title: props.title,
       categories: g.categories,
       series: [
-        { label: 'Median', values: g.rows.map((r) => r.median), kind: 'points' },
-        { label: 'Q1', values: g.rows.map((r) => r.q1), kind: 'points' },
-        { label: 'Q3', values: g.rows.map((r) => r.q3), kind: 'points' },
+        { label: m?.medianLabel ?? 'Median', values: g.rows.map((r) => r.median), kind: 'points' },
+        { label: m?.q1Label ?? 'Q1', values: g.rows.map((r) => r.q1), kind: 'points' },
+        { label: m?.q3Label ?? 'Q3', values: g.rows.map((r) => r.q3), kind: 'points' },
       ],
       format: props.format,
     }),

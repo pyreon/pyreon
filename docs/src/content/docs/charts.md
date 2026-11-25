@@ -848,7 +848,12 @@ view's close button and the gauge, candlestick and heatmap sentences. Each
 field is a template with `{slots}` that may be dropped or reordered; unset
 fields stay English. A chart's own `messages` prop wins over the pack field by
 field, and the family hosts and the `*ToSvg` functions that derive a
-description take it too.
+description take it too. The mark kind in the sentence (`kindBars`, `kindLine`,
+…), the series names a family chart gives itself (`valueLabel`, `openLabel`,
+`closeLabel`, `medianLabel`, `seriesLabel`, `funnelLabel`, …), the map
+legend's `noDataLabel` and the sign of a change (`percent`, `multiple`) are
+fields too. With `locale`, the figures a sentence writes itself (a change of
+`3,2×`, a count) use that locale's digits; family charts take `locale` as well.
 
 ```tsx
 import { Bar, Chart, registerLocale } from '@pyreon/charts'

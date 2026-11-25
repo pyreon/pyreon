@@ -55,12 +55,12 @@ export function SunburstChart(props: SunburstChartProps): VNode {
       props.onSelect?.(leaf)
       props.onSelectIndex?.(g.arcs.indexOf(leaf))
     },
-    a11y: (g) => {
+    a11y: (g, m) => {
       const leaves = g.arcs.filter((a) => a.leaf)
       return {
         title: props.title,
         categories: leaves.map((a) => a.name),
-        series: [{ label: props.title ?? 'Sunburst', values: leaves.map((a) => a.value), kind: 'bars' }],
+        series: [{ label: props.title ?? m?.sunburstLabel ?? 'Sunburst', values: leaves.map((a) => a.value), kind: 'bars' }],
       }
     },
   })

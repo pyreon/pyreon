@@ -47,12 +47,12 @@ export function TreemapChart(props: TreemapChartProps): VNode {
       props.onSelectIndex?.(cells.indexOf(leaf))
     },
     focusRect: (cells, i) => cells.filter((c) => c.leaf)[i]?.rect ?? null,
-    a11y: (cells) => {
+    a11y: (cells, m) => {
       const leaves = cells.filter((c) => c.leaf)
       return {
         title: props.title,
         categories: leaves.map((c) => c.name),
-        series: [{ label: props.title ?? 'Treemap', values: leaves.map((c) => c.value), kind: 'bars' }],
+        series: [{ label: props.title ?? m?.treemapLabel ?? 'Treemap', values: leaves.map((c) => c.value), kind: 'bars' }],
       }
     },
   })

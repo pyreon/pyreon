@@ -29,7 +29,7 @@ import { applySeriesSelection, categoryPoints, geometrySpec, layoutChart, render
 import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
-import { chartMessagesFor, dateFormatter, numberFormatter } from './locale'
+import { chartMessagesFor, dateFormatter, numberFormatter, plainNumberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView, Series } from './render'
 import { xPx } from './scale'
 import { bandFrame } from './bar-band'
@@ -982,9 +982,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // The number formatter every surface shares: the explicit `format`, else
   // the locale's Intl formatter (built once per tag), else the engine's
   // plain labels. `xFormat` gets the locale's DATE formatter under `xTime`.
-  let localeMemo: { tag: string; number: Formatter; date: Formatter } | null = null
-  const localeFmts = (tag: string): { number: Formatter; date: Formatter } => {
-    if (localeMemo === null || localeMemo.tag !== tag) localeMemo = { tag, number: numberFormatter(tag), date: dateFormatter(tag) }
+  let localeMemo: { tag: string; number: Formatter; plain: Formatter; date: Formatter } | null = null
+  const localeFmts = (tag: string): { number: Formatter; plain: Formatter; date: Formatter } => {
+    if (localeMemo === null || localeMemo.tag !== tag) localeMemo = { tag, number: numberFormatter(tag), plain: plainNumberFormatter(tag), date: dateFormatter(tag) }
     return localeMemo
   }
   const resolvedFormat = (): Formatter | undefined => props.format ?? (props.locale === undefined ? undefined : localeFmts(props.locale).number)
@@ -2106,6 +2106,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       format: fmtNow,
       // The words: the locale pack's, then the chart's own (`messages`).
       ...(messages !== undefined ? { messages } : {}),
+      // The figures the sentences say themselves (a change, a count), in the locale's digits.
+      ...(locale !== undefined ? { number: localeFmts(locale).plain } : {}),
       categories: full.categories,
       series: (paintOf()?.companions?.(resolved) ?? resolved).map((s, i) => ({
         // The mark's own label (`line(y, { label })`, `<Line label>`) — what the
@@ -2347,7 +2349,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // from the accessibility tree along with the visual layout.
   // A real table rather than a longer label (see `a11yTableNode`), capped and
   // updated in place.
-  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? a11yInput().messages?.untitled ?? 'Chart data', () => chartRowCount(a11yInput()), () => a11yInput().messages)
+  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? a11yInput().messages?.untitled ?? 'Chart data', () => chartRowCount(a11yInput()), () => a11yInput().messages, () => a11yInput().number)
   const table = (): VNode => tableNode
 
 

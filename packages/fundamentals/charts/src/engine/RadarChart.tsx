@@ -3,6 +3,7 @@
 import type { VNode } from '@pyreon/core'
 import { canvasHost } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
+import { fillMessage } from './a11y'
 import { plain } from './format'
 import { paletteAt } from './palette'
 import { hitRadarIndex, radarPolygon, renderRadar } from './radar'
@@ -89,10 +90,10 @@ export function RadarChart<T>(props: RadarChartProps<T>): VNode {
       const p = radarPolygon(first.values, g.axes, center, Math.max(0.0, r))[i]
       return p === undefined ? null : { x: p.x - 6.0, y: p.y - 6.0, w: 12.0, h: 12.0 }
     },
-    a11y: (g) => ({
+    a11y: (g, m) => ({
       title: props.title,
       categories: g.axes.map((a) => a.label),
-      series: g.series.map((s, i) => ({ label: g.labels[i] ?? `Series ${i + 1}`, values: s.values, kind: 'radar' })),
+      series: g.series.map((s, i) => ({ label: g.labels[i] ?? fillMessage(m?.seriesLabel ?? 'Series {n}', 'n', `${i + 1}`), values: s.values, kind: 'radar' })),
     }),
   })
 }

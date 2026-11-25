@@ -367,6 +367,16 @@ data view's headers and close button follow it, and an untitled family chart is
 named by `messages.untitled`. Plural forms beyond one and many: word
 `manySeries` so it reads for any count.
 
+The mark kind inside the sentence (`kindBars`, `kindLine`, `kindArea`,
+`kindPoints`, … default to the kind's own name), the series a family chart
+names itself (`valueLabel`, `openLabel` / `closeLabel`, `medianLabel`,
+`seriesLabel: 'Series {n}'`, the untitled family names such as `funnelLabel`,
+the map legend's `noDataLabel`) and the sign of a change (`percent: '{n}%'`,
+`multiple: '{n}×'`) are messages too. With `locale` the figures the sentences
+write themselves (a change of `3,2×`, the counts) come in that locale's digits,
+on the web and natively; the family charts take `locale` as well, for their
+pack's words and their numbers when no `format` is given.
+
 ### Families and coordinates
 
 Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `@pyreon/charts` ships twenty chart families as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`. Sankey, calendar and parallel coordinates take `orient="vertical"` — the horizontal layout reflected across the diagonal, on every target. Polar takes bar, line and scatter series (`kind: 'scatter'` draws the points alone, at `symbolSize / 2`).

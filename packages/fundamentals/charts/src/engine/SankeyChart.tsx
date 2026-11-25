@@ -70,10 +70,10 @@ export function SankeyChart(props: SankeyChartProps): VNode {
       props.onSelectIndex?.(hitSankeyIndex(layout, cx, cy))
     },
     focusRect: (layout, i) => layout.nodes[i]?.rect ?? null,
-    a11y: (layout) => ({
+    a11y: (layout, m) => ({
       title: props.title,
       categories: layout.nodes.map((n) => n.name),
-      series: [{ label: props.title ?? 'Flow', values: layout.nodes.map((n) => n.value), kind: 'bars' }],
+      series: [{ label: props.title ?? m?.flowLabel ?? 'Flow', values: layout.nodes.map((n) => n.value), kind: 'bars' }],
     }),
   })
 }

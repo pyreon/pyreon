@@ -24,12 +24,15 @@ import { Stack } from '@pyreon/primitives'
 interface Row { m: string; v: number }
 const ROWS: Row[] = [{ m: 'Led', v: 10 }, { m: 'Úno', v: 30 }]
 const CS: ChartMessages = { untitled: 'Graf', category: 'Kategorie', rising: 'roste', close: 'Zavřít', scaleNote: ' Osa {axis} je v měřítku {scale}.', valueAxis: 'hodnot' }
+// The mark kind and the change's sign in Czech; the digits come from locale (#4832 follow-up).
+const CS_KINDS: ChartMessages = { kindBars: 'sloupce', percent: '{n} %', multiple: '{n}×', valueLabel: 'Hodnota' }
 export function App() {
   return (
     <Stack>
       <PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v, { label: 'Prodej' })]} title="Prodej" yScale="log" toolbox={{ dataView: true }} messages={CS} height={200} />
       <PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v)]} messages={{ category: 'Den' }} height={200} />
       <PieChart data={ROWS} value={(d) => d.v} label={(d) => d.m} messages={CS} height={200} />
+      <PlotChart data={ROWS} x={(d) => d.m} marks={[bars((d) => d.v, { label: 'Prodej' })]} title="Kurz" locale="cs-CZ" messages={CS_KINDS} height={200} />
     </Stack>
   )
 }
@@ -49,6 +52,9 @@ describe('the `messages` prop crosses to Swift', () => {
   it('an untitled family chart is named by `messages.untitled`', () => {
     expect(r.code).toContain('.accessibilityLabel(((CS).untitled ?? "Pie chart"))')
   })
+  it('a chart with `locale` hands the engine the locale\'s digits for the change and the counts', () => {
+    expect(r.code).toMatch(/describeChart\(A11yInput\(title: "Kurz", [^\n]*, messages: pyreonChartMessages, number: pyreonLocaleNumberFormatter\(pyreonLocale\)\)\)/)
+  })
   it.skipIf(!isSwiftUIAvailable())('swiftc against real SwiftUI + canvas + engine accepts the emit', () => {
     const v = validateSwiftTypecheck(read(CANVAS_SWIFT) + '\n' + read(ENGINE_SWIFT) + '\n' + r.code)
     expect(v.ok, v.error ?? '').toBe(true)
@@ -67,6 +73,9 @@ describe('the `messages` prop crosses to Kotlin', () => {
   })
   it('an untitled family chart is named by `messages.untitled`', () => {
     expect(r.code).toContain('contentDescription = ((CS).untitled ?: "Pie chart")')
+  })
+  it('a chart with `locale` hands the engine the locale\'s digits for the change and the counts', () => {
+    expect(r.code).toMatch(/describeChart\(A11yInput\(title = "Kurz", [^\n]*, messages = pyreonChartMessages, number = pyreonLocaleNumberFormatter\(pyreonLocale\)\)\)/)
   })
   it.skipIf(!isKotlincAvailable())('kotlinc accepts the emit', () => {
     const v = validateKotlin(r.code)

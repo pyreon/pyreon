@@ -19,7 +19,7 @@
 
 import { signal, untrack } from '@pyreon/reactivity'
 import { describeChart, fillMessage } from './a11y'
-import type { A11yInput } from './a11y'
+import type { A11yInput, ChartMessages } from './a11y'
 import type { CanvasHostProps, CanvasHostSpec } from './canvas-host'
 import type { ChartTheme } from './render'
 import type { Double, DrawCmd, MeasureText } from './types'
@@ -99,11 +99,12 @@ export function withItemStates<L>(raw: StatefulHostSpec<L>): CanvasHostSpec<L> {
       return Reflect.get(target, key, receiver)
     },
   })
-  const withStateNames = (input: A11yInput): A11yInput => {
+  const withStateNames = (input: A11yInput, messages: ChartMessages | undefined): A11yInput => {
     const chosen = untrack(selection)
     if (chosen.length === 0) return input
+    const template = messages?.selectedItem ?? '{label} (selected)'
 
-    return { ...input, categories: input.categories.map((c, i) => (chosen.includes(i) ? `${c} (selected)` : c)) }
+    return { ...input, categories: input.categories.map((c, i) => (chosen.includes(i) ? fillMessage(template, 'label', c) : c)) }
   }
 
   return {
@@ -135,9 +136,10 @@ export function withItemStates<L>(raw: StatefulHostSpec<L>): CanvasHostSpec<L> {
       toggle(i, layout)
       raw.pick?.(layout, i)
     },
-    a11y: (layout) => withStateNames(raw.a11y(layout)),
-    describe: (layout, messages) => {
-      const base = raw.describe !== undefined ? raw.describe(layout, messages) : describeChart(messages === undefined ? raw.a11y(layout) : { ...raw.a11y(layout), messages })
+    a11y: (layout, messages, number) => withStateNames(raw.a11y(layout, messages, number), messages),
+    describe: (layout, messages, number) => {
+      const own = raw.a11y(layout, messages, number)
+      const base = raw.describe !== undefined ? raw.describe(layout, messages, number) : describeChart({ ...own, ...(messages !== undefined ? { messages } : {}), ...(number !== undefined ? { number } : {}), ...(own.format === undefined && number !== undefined ? { format: number } : {}) })
       const chosen = selection()
 
       return chosen.length === 0 ? base : base + fillMessage(messages?.selected ?? ' Selected: {list}.', 'list', chosen.map((i) => raw.states.label(layout, i)).join(', '))

@@ -705,7 +705,8 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
     : `${a11ySource}.mapIndexed { pyreonI, pyreonS -> A11ySeries(label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }, values = pyreonS.values, kind = pyreonS.kind, values2 = pyreonS.values2, errLow = pyreonS.errLow, errHigh = pyreonS.errHigh, rValues = pyreonS.rValues) }`
   const messagesAttr = chartAttrExprKotlin(e, 'messages')
   if (messagesAttr !== undefined) lets.push(`val pyreonChartMessages: ChartMessages = ${host.exprAs(CHART_MESSAGES_TYPE, messagesAttr, indent)}`)
-  const messagesArg = messagesAttr === undefined ? '' : ', messages = pyreonChartMessages'
+  // The chart locale's plain digits for the figures the sentence says itself (a change, a count): the web's `number`.
+  const messagesArg = (messagesAttr === undefined ? '' : ', messages = pyreonChartMessages') + (locale === undefined ? '' : ', number = pyreonLocaleNumberFormatter(pyreonLocale)')
   const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? kotlinStr(plotTitleRaw) : 'null'}, categories = ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series = ${a11ySeries}, format = ${yFormat ?? 'null'}${messagesArg}))${scaleNote(host.staticAttr(e, 'yScale'), scaleViewOf(chartAttrExprKotlin(e, 'yView')), scaleViewOf(chartAttrExprKotlin(e, 'xView')), messagesAttr === undefined ? undefined : 'pyreonChartMessages')}`
   let dataViewOverlay: string | undefined
   if (toolbox?.dataView === true) {

@@ -43,10 +43,10 @@ export function GanttChart(props: GanttChartProps): VNode {
       props.onSelectIndex?.(i)
     },
     focusRect: (layout, i) => layout.rows[i]?.rect ?? null,
-    a11y: (layout) => ({
+    a11y: (layout, m) => ({
       title: props.title,
       categories: layout.rows.map((r) => r.task.name),
-      series: [{ label: props.title ?? 'Duration (days)', values: layout.rows.map((r) => ganttDurationDays(r)), kind: 'bars' }],
+      series: [{ label: props.title ?? m?.durationLabel ?? 'Duration (days)', values: layout.rows.map((r) => ganttDurationDays(r)), kind: 'bars' }],
     }),
   })
 }

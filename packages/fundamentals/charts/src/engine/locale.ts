@@ -47,6 +47,17 @@ export function numberFormatter(tag: string): Formatter {
   return (v: Double): string => (Number.isFinite(v) ? nf.format(v) : '')
 }
 
+/**
+ * The PLAIN number format of `tag` (up to 2 decimals, grouped), for the
+ * figures an accessible sentence says itself: a change of `3,2×`, a count.
+ * Not the pack's `number` options, which style the axis (a currency, a unit)
+ * and would turn a ratio into money.
+ */
+export function plainNumberFormatter(tag: string): Formatter {
+  const nf = safeNumberFormat(tag, undefined)
+  return (v: Double): string => (Number.isFinite(v) ? nf.format(v) : '')
+}
+
 /** A date formatter over epoch milliseconds for `tag`; `monthNames` in a pack win over Intl. */
 export function dateFormatter(tag: string): Formatter {
   const pack = registry.get(tag)

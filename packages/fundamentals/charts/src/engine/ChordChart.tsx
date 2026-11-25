@@ -82,7 +82,7 @@ export function ChordChart(props: ChordChartProps): VNode {
       if (x0 === Infinity) return null
       return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
     },
-    a11y: () => {
+    a11y: (_g, m) => {
       // One row per node, valued by the total through it — which is what the
       // arc encodes, so the table and the picture say the same thing.
       const nodes = readNodes()
@@ -98,7 +98,7 @@ export function ChordChart(props: ChordChartProps): VNode {
       return {
         title: props.title,
         categories: nodes.map((n) => n.name),
-        series: [{ label: 'Total flow', values: totals, kind: 'bar' }],
+        series: [{ label: m?.totalFlowLabel ?? 'Total flow', values: totals, kind: 'bars' }],
       }
     },
   })

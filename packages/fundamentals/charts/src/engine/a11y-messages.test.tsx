@@ -15,7 +15,8 @@ import { gaugeToSvg } from './family-svg'
 import { Bar, Chart } from './grammar'
 import { HeatmapChart } from './HeatmapChart'
 import { registerLocale } from './locale'
-import { GaugeChart } from './PieChart'
+import { CandlestickChart } from './CandlestickChart'
+import { GaugeChart, PieChart } from './PieChart'
 import { chartToSvg } from './svg-chart'
 import { bars } from './marks'
 
@@ -126,6 +127,73 @@ describe('the chart components take the words from the locale pack or `messages`
     expect(g.querySelector('canvas')!.getAttribute('aria-label')).toBe('Rychlost: 72 z 100.')
     expect(hm.querySelector('canvas')!.getAttribute('aria-label')).toBe('Teplo: 2 sloupců a 2 řádků, hodnoty 1 až 4.')
     expect(hm.querySelector('table th')!.textContent).toBe('Kategorie')
+  })
+
+  // The rest of the English (#4832 follow-up): the mark kind inside the
+  // sentence, the series names the family charts give themselves, and the
+  // figures the sentence writes itself (a change of `3.2×`, the counts).
+  const CS_FULL: ChartMessages = {
+    ...CS,
+    trend: '{label}, {kind}: {direction}{change} z {first} na {last}, rozsah {low}{lowAt} až {high}{highAt}.',
+    percent: '{n} %',
+    multiple: '{n}×',
+    kindBars: 'sloupce',
+    kindLine: 'čára',
+    kindPie: 'výseče',
+    kindGauge: 'budík',
+    kindPoints: 'body',
+    valueLabel: 'Hodnota',
+    openLabel: 'Otevírací',
+    closeLabel: 'Zavírací',
+    gaugeLabel: 'Budík',
+    candlestick: '{title}: {count} období, rozsah {min} až {max}, poslední {close}.',
+  }
+  const NO_ENGLISH = /series|categories|rising|ranging|\bof\b|Category|\bbars\b|\bline\b|\bpie\b|\bgauge\b|\bpoints\b|Value|Open|Close|Gauge/
+
+  it('<Chart locale="cs-CZ">: no English word, the mark kind translated, the change in Czech digits (3,2×, 45 %)', async () => {
+    registerLocale('cs-CZ', { messages: CS_FULL })
+    const big = [{ day: 'po', n: 1.5 }, { day: 'út', n: 4.8 }]
+    const small = [{ day: 'po', n: 2 }, { day: 'út', n: 2.9 }]
+    const a = mountIn(h(Chart<{ day: string; n: number }>, { data: big, x: 'day', title: 'Prodej', locale: 'cs-CZ' }, h(Bar<{ day: string; n: number }>, { y: 'n', label: 'Prodej' })))
+    const b = mountIn(h(Chart<{ day: string; n: number }>, { data: small, x: 'day', title: 'Prodej', locale: 'cs-CZ' }, h(Bar<{ day: string; n: number }>, { y: 'n', label: 'Prodej' })))
+    await new Promise((r) => setTimeout(r, 30))
+    const la = a.querySelector('canvas')!.getAttribute('aria-label')!
+    const lb = b.querySelector('canvas')!.getAttribute('aria-label')!
+    expect(la).not.toMatch(NO_ENGLISH)
+    expect(lb).not.toMatch(NO_ENGLISH)
+    expect(la).toContain('Prodej, sloupce: roste 3,2× z 1,5 na 4,8')
+    expect(lb).toContain('roste 45\u00a0%'.replace('\u00a0', ' '))
+    expect(la).not.toMatch(/\d\.\d/)
+  })
+
+  it('family charts: the series they name themselves and the counts follow `locale`', async () => {
+    registerLocale('cs-CZ', { messages: CS_FULL })
+    const pie = mountIn(h(PieChart<{ k: string; v: number }>, { data: [{ k: 'a', v: 1.5 }, { k: 'b', v: 2.25 }], value: (d: { v: number }) => d.v, label: (d: { k: string }) => d.k, locale: 'cs-CZ' }))
+    const gauge = mountIn(h(GaugeChart, { value: 72.5, max: 100, locale: 'cs-CZ' }))
+    const candles = mountIn(h(CandlestickChart<{ o: number; h: number; l: number; c: number }>, {
+      data: [{ o: 1.5, h: 2.5, l: 1.25, c: 2 }, { o: 2, h: 3.5, l: 1.75, c: 3.25 }],
+      open: (d: { o: number }) => d.o,
+      high: (d: { h: number }) => d.h,
+      low: (d: { l: number }) => d.l,
+      close: (d: { c: number }) => d.c,
+      title: 'Kurz',
+      locale: 'cs-CZ',
+    }))
+    await new Promise((r) => setTimeout(r, 30))
+    const pieLabel = pie.querySelector('canvas')!.getAttribute('aria-label')!
+    expect(pieLabel).not.toMatch(NO_ENGLISH)
+    expect(pieLabel).toContain('Hodnota, výseče:')
+    expect(pieLabel).toContain('1,5')
+    expect([...pie.querySelectorAll('table th')].map((t) => t.textContent).slice(0, 2)).toEqual(['Kategorie', 'Hodnota'])
+    expect(gauge.querySelector('canvas')!.getAttribute('aria-label')).toBe('Graf: 72,5 z 100.')
+    expect([...candles.querySelectorAll('table th')].map((t) => t.textContent).slice(0, 3)).toEqual(['Kategorie', 'Otevírací', 'Zavírací'])
+    expect(candles.querySelector('canvas')!.getAttribute('aria-label')).toBe('Kurz: 2 období, rozsah 1,25 až 3,5, poslední 3,25.')
+  })
+
+  it('without a locale or messages the English is unchanged (3.2×, bars)', () => {
+    expect(describeChart({ title: 'T', categories: ['a', 'b'], series: [{ label: 'S', values: [1.5, 4.8], kind: 'bars' }] })).toBe(
+      'T. 1 series over 2 categories from a to b. S, bars: rising 3.2× from 1.5 to 4.8, ranging 1.5 at a to 4.8 at b.',
+    )
   })
 
   it('the static SVG export derives its <desc> in the given words', () => {

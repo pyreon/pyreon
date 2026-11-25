@@ -141,9 +141,9 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
       const gap = props.gap ?? 1.0
       return { x: g.box.x + plot.x + cw * i + gap / 2.0, y: g.box.y + plot.y, w: Math.max(0.0, cw - gap), h: plot.h }
     },
-    describe: (g, m) => {
-      const fmt = props.format ?? String
-      return describeHeatmap({ title: props.title ?? m?.untitled ?? 'Heatmap', columns: g.grid.cols.length, rows: g.grid.rows.length, cells: g.grid.cells.length, min: fmt(g.grid.min), max: fmt(g.grid.max) }, m)
+    describe: (g, m, num) => {
+      const fmt = props.format ?? num ?? String
+      return describeHeatmap({ title: props.title ?? m?.untitled ?? 'Heatmap', columns: g.grid.cols.length, rows: g.grid.rows.length, cells: g.grid.cells.length, min: fmt(g.grid.min), max: fmt(g.grid.max) }, m, num)
     },
     a11y: (g) => ({
       title: props.title,

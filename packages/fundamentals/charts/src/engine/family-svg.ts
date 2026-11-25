@@ -203,7 +203,7 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
       title: options.title,
       messages: options.messages,
       categories: slices.map((s) => s.label),
-      series: [{ label: 'Value', values: slices.map((s) => s.value), kind: 'pie' }],
+      series: [{ label: options.messages?.valueLabel ?? 'Value', values: slices.map((s) => s.value), kind: 'pie' }],
     }),
   ))
 }

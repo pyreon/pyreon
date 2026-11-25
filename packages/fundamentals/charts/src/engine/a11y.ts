@@ -111,6 +111,8 @@ export interface ChartMessages {
   truncated?: string | undefined
   /** `{list}`: the selected items, appended to a family chart's description. Default ` Selected: {list}.` */
   selected?: string | undefined
+  /** `{label}`: a selected item's row in the accessible table. Default `{label} (selected)`. */
+  selectedItem?: string | undefined
   /** The data view's close button. Default `Close`. */
   close?: string | undefined
   /** `{title}`, `{value}`, `{max}`: `<GaugeChart>`'s description. Default `{title}: {value} of {max}.` */
@@ -119,6 +121,96 @@ export interface ChartMessages {
   candlestick?: string | undefined
   /** `{title}`, `{columns}`, `{rows}`, `{min}`, `{max}`: `<HeatmapChart>`'s description. Default `{title}: {columns} columns by {rows} rows, values {min} to {max}.` */
   heatmap?: string | undefined
+  /** `{n}`, already a number in the chart's locale: the change in `trend` below doubling. Default `{n}%` (French and Czech write `{n} %`). */
+  percent?: string | undefined
+  /** `{n}`: the change in `trend` from doubling up. Default `{n}×`. */
+  multiple?: string | undefined
+  // The mark kind, `trend`'s `{kind}`. Each defaults to the kind's own name.
+  /** Default `bars`. */
+  kindBars?: string | undefined
+  /** Default `line`. */
+  kindLine?: string | undefined
+  /** Default `area`. */
+  kindArea?: string | undefined
+  /** Default `points`. */
+  kindPoints?: string | undefined
+  /** Default `stacked`. */
+  kindStacked?: string | undefined
+  /** Default `grouped`. */
+  kindGrouped?: string | undefined
+  /** Default `waterfall`. */
+  kindWaterfall?: string | undefined
+  /** Default `band`. */
+  kindBand?: string | undefined
+  /** Default `stackedArea`. */
+  kindStackedArea?: string | undefined
+  /** Default `pie`. */
+  kindPie?: string | undefined
+  /** Default `gauge`. */
+  kindGauge?: string | undefined
+  /** Default `radar`. */
+  kindRadar?: string | undefined
+  // The names the family charts give a series (and a chart with no `title`) themselves.
+  /** A pie's, gauge's or single axis's one series. Default `Value`. */
+  valueLabel?: string | undefined
+  /** `<CandlestickChart>`'s opening prices. Default `Open`. */
+  openLabel?: string | undefined
+  /** `<CandlestickChart>`'s closing prices. Default `Close`. */
+  closeLabel?: string | undefined
+  /** `<BoxplotChart>`'s medians. Default `Median`. */
+  medianLabel?: string | undefined
+  /** `<BoxplotChart>`'s first quartiles. Default `Q1`. */
+  q1Label?: string | undefined
+  /** `<BoxplotChart>`'s third quartiles. Default `Q3`. */
+  q3Label?: string | undefined
+  /** `{n}`: a radar series with no name. Default `Series {n}`. */
+  seriesLabel?: string | undefined
+  /** `<ChordChart>`'s per-node totals. Default `Total flow`. */
+  totalFlowLabel?: string | undefined
+  /** `<GanttChart>`'s task lengths, with no `title`. Default `Duration (days)`. */
+  durationLabel?: string | undefined
+  /** An untitled `<GaugeChart>`. Default `Gauge`. */
+  gaugeLabel?: string | undefined
+  /** An untitled `<FunnelChart>`. Default `Funnel`. */
+  funnelLabel?: string | undefined
+  /** An untitled `<GraphChart>`. Default `Graph`. */
+  graphLabel?: string | undefined
+  /** An untitled `<SankeyChart>`. Default `Flow`. */
+  flowLabel?: string | undefined
+  /** An untitled `<SunburstChart>`. Default `Sunburst`. */
+  sunburstLabel?: string | undefined
+  /** An untitled `<TreeChart>`. Default `Tree`. */
+  treeLabel?: string | undefined
+  /** An untitled `<TreemapChart>`. Default `Treemap`. */
+  treemapLabel?: string | undefined
+  /** `{min}`, `{max}`: an untitled `<MapChart>`'s values. Default `Values from {min} to {max}`. */
+  valuesLabel?: string | undefined
+  /** `{start}`, `{end}`, `{min}`, `{max}`: an untitled `<CalendarChart>`'s days. Default `{start} to {end} ({min} to {max})`. */
+  daysLabel?: string | undefined
+  /** `<MapChart>`'s legend entry for a region with no value. Default `No data`. */
+  noDataLabel?: string | undefined
+}
+
+/**
+ * The word for a mark kind in `trend` (`bars`, `line`, …), in `messages`' words
+ * where they give one. An unknown kind reads as itself.
+ */
+export function kindWord(kind: string, m?: ChartMessages | undefined): string {
+  if (m === undefined) return kind
+  if (kind === 'bars') return m.kindBars ?? kind
+  if (kind === 'line') return m.kindLine ?? kind
+  if (kind === 'area') return m.kindArea ?? kind
+  if (kind === 'points') return m.kindPoints ?? kind
+  if (kind === 'stacked') return m.kindStacked ?? kind
+  if (kind === 'grouped') return m.kindGrouped ?? kind
+  if (kind === 'waterfall') return m.kindWaterfall ?? kind
+  if (kind === 'band') return m.kindBand ?? kind
+  if (kind === 'stackedArea') return m.kindStackedArea ?? kind
+  if (kind === 'pie') return m.kindPie ?? kind
+  if (kind === 'gauge') return m.kindGauge ?? kind
+  if (kind === 'radar') return m.kindRadar ?? kind
+
+  return kind
 }
 
 export interface A11yInput {
@@ -128,6 +220,12 @@ export interface A11yInput {
   format?: Formatter | undefined
   /** The words, when not English (`ChartMessages`). */
   messages?: ChartMessages | undefined
+  /**
+   * The chart locale's plain number format, for the numbers the sentences say
+   * themselves (a change of `3.2×`, the counts), where `format` is the AXIS's
+   * format (a currency, a unit). Unset: the English digits.
+   */
+  number?: Formatter | undefined
 }
 
 /** `template` with its `{key}` slot filled — the first one, which is the only one a message has. */
@@ -151,9 +249,9 @@ export interface CandleSummary {
 }
 
 /** `<CandlestickChart>`'s description: how many periods, the range, the last close. */
-export function describeCandles(s: CandleSummary, messages?: ChartMessages | undefined): string {
+export function describeCandles(s: CandleSummary, messages?: ChartMessages | undefined, number?: Formatter | undefined): string {
   if (s.count === 0) return fillMessage(messages?.noData ?? '{title}: no data.', 'title', s.title)
-  const c1 = fillMessage(fillMessage(messages?.candlestick ?? '{title}: {count} periods, range {min} to {max}, last close {close}.', 'title', s.title), 'count', `${s.count}`)
+  const c1 = fillMessage(fillMessage(messages?.candlestick ?? '{title}: {count} periods, range {min} to {max}, last close {close}.', 'title', s.title), 'count', countText(s.count, number))
   return fillMessage(fillMessage(fillMessage(c1, 'min', s.min), 'max', s.max), 'close', s.close)
 }
 
@@ -168,17 +266,17 @@ export interface HeatSummary {
 }
 
 /** `<HeatmapChart>`'s description: the grid's size and value range. */
-export function describeHeatmap(s: HeatSummary, messages?: ChartMessages | undefined): string {
+export function describeHeatmap(s: HeatSummary, messages?: ChartMessages | undefined, number?: Formatter | undefined): string {
   if (s.cells === 0) return fillMessage(messages?.noData ?? '{title}: no data.', 'title', s.title)
-  const h1 = fillMessage(fillMessage(messages?.heatmap ?? '{title}: {columns} columns by {rows} rows, values {min} to {max}.', 'title', s.title), 'columns', `${s.columns}`)
-  return fillMessage(fillMessage(fillMessage(h1, 'rows', `${s.rows}`), 'min', s.min), 'max', s.max)
+  const h1 = fillMessage(fillMessage(messages?.heatmap ?? '{title}: {columns} columns by {rows} rows, values {min} to {max}.', 'title', s.title), 'columns', countText(s.columns, number))
+  return fillMessage(fillMessage(fillMessage(h1, 'rows', countText(s.rows, number)), 'min', s.min), 'max', s.max)
 }
 
 /** The accessible table's caption: the title, and how many rows of how many when only the first rows are built. */
-export function tableCaption(title: string, shown: number, total: number, messages?: ChartMessages | undefined): string {
+export function tableCaption(title: string, shown: number, total: number, messages?: ChartMessages | undefined, number?: Formatter | undefined): string {
   if (shown >= total) return title
   const c1 = fillMessage(messages?.truncated ?? '{title} (first {shown} of {total} rows)', 'title', title)
-  return fillMessage(fillMessage(c1, 'shown', `${shown}`), 'total', `${total}`)
+  return fillMessage(fillMessage(c1, 'shown', countText(shown, number)), 'total', countText(total, number))
 }
 
 /** The ` The value axis is on a log scale.` note for each non-linear axis (`''` for a linear one), in `messages`' words. */
@@ -208,10 +306,10 @@ export function describeChart(input: A11yInput): string {
   }
 
   const n = input.series.length
-  const count = n === 1 ? m?.oneSeries ?? '1 series' : fillMessage(m?.manySeries ?? '{n} series', 'n', `${n}`)
+  const count = n === 1 ? m?.oneSeries ?? '1 series' : fillMessage(m?.manySeries ?? '{n} series', 'n', countText(n, input.number))
   if (input.categories.length > 0) {
     const o1 = fillMessage(m?.overview ?? '{title}. {series} over {count} categories from {first} to {last}.', 'title', title)
-    const o2 = fillMessage(fillMessage(o1, 'series', count), 'count', `${input.categories.length}`)
+    const o2 = fillMessage(fillMessage(o1, 'series', count), 'count', countText(input.categories.length, input.number))
     parts.push(fillMessage(fillMessage(o2, 'first', input.categories[0]!), 'last', input.categories[input.categories.length - 1]!))
   } else {
     parts.push(fillMessage(fillMessage(m?.overviewPlain ?? '{title}. {series}.', 'title', title), 'series', count))
@@ -264,7 +362,7 @@ export function describeChart(input: A11yInput): string {
     // climb identically. The change is stated relative to the first value,
     // and only where that is meaningful (a zero or negative start has no
     // honest percentage).
-    const pct = first > 0.0 && last !== first ? ` ${percentChange(first, last)}` : ''
+    const pct = first > 0.0 && last !== first ? ` ${percentChange(first, last, input.number, m)}` : ''
     const atText = m?.at ?? ' at {category}'
     const at = (i: number): string =>
       i < input.categories.length ? fillMessage(atText, 'category', input.categories[i]!) : ''
@@ -301,7 +399,7 @@ export function describeChart(input: A11yInput): string {
     }
     if (sentence === '') sentence = m?.trend ?? '{label}, {kind}: {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}.'
     sentence = fillMessage(sentence, 'label', s.label)
-    sentence = fillMessage(sentence, 'kind', s.kind)
+    sentence = fillMessage(sentence, 'kind', kindWord(s.kind, m))
     sentence = fillMessage(sentence, 'direction', dir)
     sentence = fillMessage(sentence, 'change', pct)
     sentence = fillMessage(sentence, 'first', fmt(first))
@@ -319,13 +417,26 @@ export function describeChart(input: A11yInput): string {
 /**
  * `45%`, `3.2×`: the size of a change from `first` to `last` (both positive
  * start). Past doubling a multiple reads better than a four-digit percentage.
+ * `number` writes the figure in the chart's locale (`3,2×` in Czech) and
+ * `messages` place the sign (`45 %`).
  */
-export function percentChange(first: Double, last: Double): string {
+export function percentChange(first: Double, last: Double, number?: Formatter | undefined, messages?: ChartMessages | undefined): string {
   const ratio = last / first
-  if (ratio >= 2.0) return `${Math.floor(ratio * 10.0 + 0.5) / 10.0}×`
+  if (ratio >= 2.0) {
+    const r = Math.floor(ratio * 10.0 + 0.5) / 10.0
+    return fillMessage(messages?.multiple ?? '{n}×', 'n', number === undefined ? `${r}` : number(r))
+  }
   const p = Math.floor(Math.abs(ratio - 1.0) * 100.0 + 0.5)
 
-  return `${p}%`
+  return fillMessage(messages?.percent ?? '{n}%', 'n', number === undefined ? `${p}` : number(p))
+}
+
+/** A count the sentences say (`12 categories`, `3 of 12`) in the chart's locale (`1 200` in Czech), or the English digits. */
+function countText(n: number, number?: Formatter | undefined): string {
+  if (number === undefined) return `${n}`
+  const v: Double = n * 1.0
+
+  return number(v)
 }
 
 /**
@@ -343,7 +454,7 @@ export function describeDatum(input: A11yInput, series: number, index: number): 
   const at = index < input.categories.length ? fillMessage(m?.at ?? ' at {category}', 'category', input.categories[index]!) : ''
   const d1 = fillMessage(fillMessage(m?.datum ?? '{label}: {value}{at}, {index} of {count}', 'label', s.label), 'value', value)
 
-  return fillMessage(fillMessage(fillMessage(d1, 'at', at), 'index', `${index + 1}`), 'count', `${s.values.length}`)
+  return fillMessage(fillMessage(fillMessage(d1, 'at', at), 'index', countText(index + 1, input.number)), 'count', countText(s.values.length, input.number))
 }
 
 export interface A11yTable {
@@ -430,7 +541,7 @@ export function chartTableRow(input: A11yInput, i: number): string[] {
   // Bounds-checked, not coalesced: a subscript past the end is a crash on
   // Swift, not an `undefined` — and a series may be longer than the
   // categories (or shorter than its siblings).
-  const row: string[] = [i < input.categories.length ? input.categories[i]! : `${i + 1}`]
+  const row: string[] = [i < input.categories.length ? input.categories[i]! : countText(i + 1, input.number)]
   for (const s of input.series) {
     const other: Double[] = s.values2 ?? []
     const rs: Double[] = s.rValues ?? []

@@ -388,9 +388,9 @@ data class ChartActionState(var zoom: ZoomWindow, var hover: Long, var selected:
 
 data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var rValues: List<Double>? = null)
 
-data class ChartMessages(var untitled: String? = null, var noData: String? = null, var overview: String? = null, var overviewPlain: String? = null, var oneSeries: String? = null, var manySeries: String? = null, var empty: String? = null, var rising: String? = null, var falling: String? = null, var flat: String? = null, var trend: String? = null, var bandTrend: String? = null, var at: String? = null, var category: String? = null, var upper: String? = null, var lower: String? = null, var size: String? = null, var withError: String? = null, var noValue: String? = null, var datum: String? = null, var scaleNote: String? = null, var valueAxis: String? = null, var xAxis: String? = null, var truncated: String? = null, var selected: String? = null, var close: String? = null, var gauge: String? = null, var candlestick: String? = null, var heatmap: String? = null)
+data class ChartMessages(var untitled: String? = null, var noData: String? = null, var overview: String? = null, var overviewPlain: String? = null, var oneSeries: String? = null, var manySeries: String? = null, var empty: String? = null, var rising: String? = null, var falling: String? = null, var flat: String? = null, var trend: String? = null, var bandTrend: String? = null, var at: String? = null, var category: String? = null, var upper: String? = null, var lower: String? = null, var size: String? = null, var withError: String? = null, var noValue: String? = null, var datum: String? = null, var scaleNote: String? = null, var valueAxis: String? = null, var xAxis: String? = null, var truncated: String? = null, var selected: String? = null, var selectedItem: String? = null, var close: String? = null, var gauge: String? = null, var candlestick: String? = null, var heatmap: String? = null, var percent: String? = null, var multiple: String? = null, var kindBars: String? = null, var kindLine: String? = null, var kindArea: String? = null, var kindPoints: String? = null, var kindStacked: String? = null, var kindGrouped: String? = null, var kindWaterfall: String? = null, var kindBand: String? = null, var kindStackedArea: String? = null, var kindPie: String? = null, var kindGauge: String? = null, var kindRadar: String? = null, var valueLabel: String? = null, var openLabel: String? = null, var closeLabel: String? = null, var medianLabel: String? = null, var q1Label: String? = null, var q3Label: String? = null, var seriesLabel: String? = null, var totalFlowLabel: String? = null, var durationLabel: String? = null, var gaugeLabel: String? = null, var funnelLabel: String? = null, var graphLabel: String? = null, var flowLabel: String? = null, var sunburstLabel: String? = null, var treeLabel: String? = null, var treemapLabel: String? = null, var valuesLabel: String? = null, var daysLabel: String? = null, var noDataLabel: String? = null)
 
-data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null, var messages: ChartMessages? = null)
+data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null, var messages: ChartMessages? = null, var number: ((Double) -> String)? = null)
 
 data class CandleSummary(var title: String, var count: Long, var min: String, var max: String, var close: String)
 
@@ -11683,6 +11683,49 @@ fun applyChartAction(s: ChartActionState, a: ChartActionInput): ChartActionState
     return s
   }
 
+fun kindWord(kind: String, m: ChartMessages?): String {
+    if (m == null) {
+      return kind
+    }
+    if (kind == "bars") {
+      return (m.kindBars ?: kind)
+    }
+    if (kind == "line") {
+      return (m.kindLine ?: kind)
+    }
+    if (kind == "area") {
+      return (m.kindArea ?: kind)
+    }
+    if (kind == "points") {
+      return (m.kindPoints ?: kind)
+    }
+    if (kind == "stacked") {
+      return (m.kindStacked ?: kind)
+    }
+    if (kind == "grouped") {
+      return (m.kindGrouped ?: kind)
+    }
+    if (kind == "waterfall") {
+      return (m.kindWaterfall ?: kind)
+    }
+    if (kind == "band") {
+      return (m.kindBand ?: kind)
+    }
+    if (kind == "stackedArea") {
+      return (m.kindStackedArea ?: kind)
+    }
+    if (kind == "pie") {
+      return (m.kindPie ?: kind)
+    }
+    if (kind == "gauge") {
+      return (m.kindGauge ?: kind)
+    }
+    if (kind == "radar") {
+      return (m.kindRadar ?: kind)
+    }
+    return kind
+  }
+
 fun fillMessage(template: String, key: String, value: String): String = template.replaceFirst("{${key}}", value)
 
 fun describeGauge(title: String, value: String, max: String, messages: ChartMessages?): String {
@@ -11690,28 +11733,28 @@ fun describeGauge(title: String, value: String, max: String, messages: ChartMess
     return fillMessage(fillMessage(g1, "value", value), "max", max)
   }
 
-fun describeCandles(s: CandleSummary, messages: ChartMessages?): String {
+fun describeCandles(s: CandleSummary, messages: ChartMessages?, number: ((Double) -> String)?): String {
     if (s.count == 0L) {
       return fillMessage((messages?.noData ?: "{title}: no data."), "title", s.title)
     }
-    val c1 = fillMessage(fillMessage((messages?.candlestick ?: "{title}: {count} periods, range {min} to {max}, last close {close}."), "title", s.title), "count", "${s.count}")
+    val c1 = fillMessage(fillMessage((messages?.candlestick ?: "{title}: {count} periods, range {min} to {max}, last close {close}."), "title", s.title), "count", countText(s.count, number))
     return fillMessage(fillMessage(fillMessage(c1, "min", s.min), "max", s.max), "close", s.close)
   }
 
-fun describeHeatmap(s: HeatSummary, messages: ChartMessages?): String {
+fun describeHeatmap(s: HeatSummary, messages: ChartMessages?, number: ((Double) -> String)?): String {
     if (s.cells == 0L) {
       return fillMessage((messages?.noData ?: "{title}: no data."), "title", s.title)
     }
-    val h1 = fillMessage(fillMessage((messages?.heatmap ?: "{title}: {columns} columns by {rows} rows, values {min} to {max}."), "title", s.title), "columns", "${s.columns}")
-    return fillMessage(fillMessage(fillMessage(h1, "rows", "${s.rows}"), "min", s.min), "max", s.max)
+    val h1 = fillMessage(fillMessage((messages?.heatmap ?: "{title}: {columns} columns by {rows} rows, values {min} to {max}."), "title", s.title), "columns", countText(s.columns, number))
+    return fillMessage(fillMessage(fillMessage(h1, "rows", countText(s.rows, number)), "min", s.min), "max", s.max)
   }
 
-fun tableCaption(title: String, shown: Long, total: Long, messages: ChartMessages?): String {
+fun tableCaption(title: String, shown: Long, total: Long, messages: ChartMessages?, number: ((Double) -> String)?): String {
     if (shown >= total) {
       return title
     }
     val c1 = fillMessage((messages?.truncated ?: "{title} (first {shown} of {total} rows)"), "title", title)
-    return fillMessage(fillMessage(c1, "shown", "${shown}"), "total", "${total}")
+    return fillMessage(fillMessage(c1, "shown", countText(shown, number)), "total", countText(total, number))
   }
 
 fun scaleNoteText(yScale: String, xScale: String, messages: ChartMessages?): String {
@@ -11730,10 +11773,10 @@ fun describeChart(input: A11yInput): String {
       return fillMessage((m?.noData ?: "{title}: no data."), "title", title)
     }
     val n = input.series.length
-    val count = if (n == 1L) (m?.oneSeries ?: "1 series") else fillMessage((m?.manySeries ?: "{n} series"), "n", "${n}")
+    val count = if (n == 1L) (m?.oneSeries ?: "1 series") else fillMessage((m?.manySeries ?: "{n} series"), "n", countText(n, input.number))
     if (input.categories.length > 0L) {
       val o1 = fillMessage((m?.overview ?: "{title}. {series} over {count} categories from {first} to {last}."), "title", title)
-      val o2 = fillMessage(fillMessage(o1, "series", count), "count", "${input.categories.length}")
+      val o2 = fillMessage(fillMessage(o1, "series", count), "count", countText(input.categories.length, input.number))
       parts.add(fillMessage(fillMessage(o2, "first", input.categories[0]), "last", input.categories[(pyreonSub(input.categories.length, 1L)).toInt()]))
     } else {
       parts.add(fillMessage(fillMessage((m?.overviewPlain ?: "{title}. {series}."), "title", title), "series", count))
@@ -11779,7 +11822,7 @@ fun describeChart(input: A11yInput): String {
         continue
       }
       val dir = if (last > first) (m?.rising ?: "rising") else if (last < first) (m?.falling ?: "falling") else (m?.flat ?: "flat")
-      val pct = if (first > 0.0 && last != first) " ${percentChange(first, last)}" else ""
+      val pct = if (first > 0.0 && last != first) " ${percentChange(first, last, input.number, m)}" else ""
       val atText = (m?.at ?: " at {category}")
       val at = { i: Long -> if (i < input.categories.length) fillMessage(atText, "category", input.categories[(i).toInt()]) else "" }
       var sentence = ""
@@ -11814,7 +11857,7 @@ fun describeChart(input: A11yInput): String {
         sentence = (m?.trend ?: "{label}, {kind}: {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}.")
       }
       sentence = fillMessage(sentence, "label", s.label)
-      sentence = fillMessage(sentence, "kind", s.kind)
+      sentence = fillMessage(sentence, "kind", kindWord(s.kind, m))
       sentence = fillMessage(sentence, "direction", dir)
       sentence = fillMessage(sentence, "change", pct)
       sentence = fillMessage(sentence, "first", fmt(first))
@@ -11828,13 +11871,22 @@ fun describeChart(input: A11yInput): String {
     return parts.joinToString(" ")
   }
 
-fun percentChange(first: Double, last: Double): String {
+fun percentChange(first: Double, last: Double, number: ((Double) -> String)?, messages: ChartMessages?): String {
     val ratio = last / first
     if (ratio >= 2.0) {
-      return "${pyreonNumberString(Math.floor(ratio * 10.0 + 0.5) / 10.0)}×"
+      val r = Math.floor(ratio * 10.0 + 0.5) / 10.0
+      return fillMessage((messages?.multiple ?: "{n}×"), "n", if (number == null) "${pyreonNumberString(r)}" else number(r))
     }
     val p = Math.floor(Math.abs(ratio - 1.0) * 100.0 + 0.5)
-    return "${pyreonNumberString(p)}%"
+    return fillMessage((messages?.percent ?: "{n}%"), "n", if (number == null) "${pyreonNumberString(p)}" else number(p))
+  }
+
+fun countText(n: Long, number: ((Double) -> String)?): String {
+    if (number == null) {
+      return "${n}"
+    }
+    val v = n * 1.0
+    return number(v)
   }
 
 fun describeDatum(input: A11yInput, series: Long, index: Long): String {
@@ -11851,7 +11903,7 @@ fun describeDatum(input: A11yInput, series: Long, index: Long): String {
     val value = if (v != v) (m?.noValue ?: "no value") else fmt(v)
     val at = if (index < input.categories.length) fillMessage((m?.at ?: " at {category}"), "category", input.categories[(index).toInt()]) else ""
     val d1 = fillMessage(fillMessage((m?.datum ?: "{label}: {value}{at}, {index} of {count}"), "label", s.label), "value", value)
-    return fillMessage(fillMessage(fillMessage(d1, "at", at), "index", "${pyreonAdd(index, 1L)}"), "count", "${s.values.length}")
+    return fillMessage(fillMessage(fillMessage(d1, "at", at), "index", countText(pyreonAdd(index, 1L), input.number)), "count", countText(s.values.length, input.number))
   }
 
 fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Long, template: String): String {
@@ -11906,7 +11958,7 @@ fun chartRowCount(input: A11yInput): Long {
 fun chartTableRow(input: A11yInput, i: Long): List<String> {
     val fmt = (input.format ?: ::groupThousands)
     val errText = (input.messages?.withError ?: "{value} ({low} to {high})")
-    val row = mutableListOf(if (i < input.categories.length) input.categories[(i).toInt()] else "${pyreonAdd(i, 1L)}")
+    val row = mutableListOf(if (i < input.categories.length) input.categories[(i).toInt()] else countText(pyreonAdd(i, 1L), input.number))
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
       val rs = (s.rValues ?: listOf())

@@ -88,10 +88,10 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
     },
-    a11y: (g) => ({
+    a11y: (g, m) => ({
       title: props.title,
       categories: g.slices.map((x) => x.label),
-      series: [{ label: 'Value', values: g.slices.map((x) => x.value), kind: 'pie' }],
+      series: [{ label: m?.valueLabel ?? 'Value', values: g.slices.map((x) => x.value), kind: 'pie' }],
     }),
   })
 }
@@ -183,11 +183,11 @@ export function GaugeChart(props: GaugeChartProps): VNode {
       px >= g.box.x && px <= g.box.x + g.box.w && py >= g.box.y && py <= g.box.y + g.box.h
         ? { seriesIndex: 0, dataIndex: 0, name: props.title ?? '', value: g.value, color: props.valueColor }
         : null,
-    describe: (g, m) => describeGauge(props.title ?? m?.untitled ?? 'Gauge', plain(g.value), plain(g.max), m),
-    a11y: (g) => ({
+    describe: (g, m, num) => describeGauge(props.title ?? m?.untitled ?? m?.gaugeLabel ?? 'Gauge', (num ?? plain)(g.value), (num ?? plain)(g.max), m),
+    a11y: (g, m) => ({
       title: props.title,
-      categories: [props.title ?? 'Gauge'],
-      series: [{ label: 'Value', values: [g.value], kind: 'gauge' }],
+      categories: [props.title ?? m?.gaugeLabel ?? 'Gauge'],
+      series: [{ label: m?.valueLabel ?? 'Value', values: [g.value], kind: 'gauge' }],
     }),
   })
 }

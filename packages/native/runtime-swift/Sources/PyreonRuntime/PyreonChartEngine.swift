@@ -3183,11 +3183,45 @@ public struct ChartMessages: Codable {
   public var xAxis: String? = nil
   public var truncated: String? = nil
   public var selected: String? = nil
+  public var selectedItem: String? = nil
   public var close: String? = nil
   public var gauge: String? = nil
   public var candlestick: String? = nil
   public var heatmap: String? = nil
-  public init(untitled: String? = nil, noData: String? = nil, overview: String? = nil, overviewPlain: String? = nil, oneSeries: String? = nil, manySeries: String? = nil, empty: String? = nil, rising: String? = nil, falling: String? = nil, flat: String? = nil, trend: String? = nil, bandTrend: String? = nil, at: String? = nil, category: String? = nil, upper: String? = nil, lower: String? = nil, size: String? = nil, withError: String? = nil, noValue: String? = nil, datum: String? = nil, scaleNote: String? = nil, valueAxis: String? = nil, xAxis: String? = nil, truncated: String? = nil, selected: String? = nil, close: String? = nil, gauge: String? = nil, candlestick: String? = nil, heatmap: String? = nil) {
+  public var percent: String? = nil
+  public var multiple: String? = nil
+  public var kindBars: String? = nil
+  public var kindLine: String? = nil
+  public var kindArea: String? = nil
+  public var kindPoints: String? = nil
+  public var kindStacked: String? = nil
+  public var kindGrouped: String? = nil
+  public var kindWaterfall: String? = nil
+  public var kindBand: String? = nil
+  public var kindStackedArea: String? = nil
+  public var kindPie: String? = nil
+  public var kindGauge: String? = nil
+  public var kindRadar: String? = nil
+  public var valueLabel: String? = nil
+  public var openLabel: String? = nil
+  public var closeLabel: String? = nil
+  public var medianLabel: String? = nil
+  public var q1Label: String? = nil
+  public var q3Label: String? = nil
+  public var seriesLabel: String? = nil
+  public var totalFlowLabel: String? = nil
+  public var durationLabel: String? = nil
+  public var gaugeLabel: String? = nil
+  public var funnelLabel: String? = nil
+  public var graphLabel: String? = nil
+  public var flowLabel: String? = nil
+  public var sunburstLabel: String? = nil
+  public var treeLabel: String? = nil
+  public var treemapLabel: String? = nil
+  public var valuesLabel: String? = nil
+  public var daysLabel: String? = nil
+  public var noDataLabel: String? = nil
+  public init(untitled: String? = nil, noData: String? = nil, overview: String? = nil, overviewPlain: String? = nil, oneSeries: String? = nil, manySeries: String? = nil, empty: String? = nil, rising: String? = nil, falling: String? = nil, flat: String? = nil, trend: String? = nil, bandTrend: String? = nil, at: String? = nil, category: String? = nil, upper: String? = nil, lower: String? = nil, size: String? = nil, withError: String? = nil, noValue: String? = nil, datum: String? = nil, scaleNote: String? = nil, valueAxis: String? = nil, xAxis: String? = nil, truncated: String? = nil, selected: String? = nil, selectedItem: String? = nil, close: String? = nil, gauge: String? = nil, candlestick: String? = nil, heatmap: String? = nil, percent: String? = nil, multiple: String? = nil, kindBars: String? = nil, kindLine: String? = nil, kindArea: String? = nil, kindPoints: String? = nil, kindStacked: String? = nil, kindGrouped: String? = nil, kindWaterfall: String? = nil, kindBand: String? = nil, kindStackedArea: String? = nil, kindPie: String? = nil, kindGauge: String? = nil, kindRadar: String? = nil, valueLabel: String? = nil, openLabel: String? = nil, closeLabel: String? = nil, medianLabel: String? = nil, q1Label: String? = nil, q3Label: String? = nil, seriesLabel: String? = nil, totalFlowLabel: String? = nil, durationLabel: String? = nil, gaugeLabel: String? = nil, funnelLabel: String? = nil, graphLabel: String? = nil, flowLabel: String? = nil, sunburstLabel: String? = nil, treeLabel: String? = nil, treemapLabel: String? = nil, valuesLabel: String? = nil, daysLabel: String? = nil, noDataLabel: String? = nil) {
     self.untitled = untitled
     self.noData = noData
     self.overview = overview
@@ -3213,10 +3247,44 @@ public struct ChartMessages: Codable {
     self.xAxis = xAxis
     self.truncated = truncated
     self.selected = selected
+    self.selectedItem = selectedItem
     self.close = close
     self.gauge = gauge
     self.candlestick = candlestick
     self.heatmap = heatmap
+    self.percent = percent
+    self.multiple = multiple
+    self.kindBars = kindBars
+    self.kindLine = kindLine
+    self.kindArea = kindArea
+    self.kindPoints = kindPoints
+    self.kindStacked = kindStacked
+    self.kindGrouped = kindGrouped
+    self.kindWaterfall = kindWaterfall
+    self.kindBand = kindBand
+    self.kindStackedArea = kindStackedArea
+    self.kindPie = kindPie
+    self.kindGauge = kindGauge
+    self.kindRadar = kindRadar
+    self.valueLabel = valueLabel
+    self.openLabel = openLabel
+    self.closeLabel = closeLabel
+    self.medianLabel = medianLabel
+    self.q1Label = q1Label
+    self.q3Label = q3Label
+    self.seriesLabel = seriesLabel
+    self.totalFlowLabel = totalFlowLabel
+    self.durationLabel = durationLabel
+    self.gaugeLabel = gaugeLabel
+    self.funnelLabel = funnelLabel
+    self.graphLabel = graphLabel
+    self.flowLabel = flowLabel
+    self.sunburstLabel = sunburstLabel
+    self.treeLabel = treeLabel
+    self.treemapLabel = treemapLabel
+    self.valuesLabel = valuesLabel
+    self.daysLabel = daysLabel
+    self.noDataLabel = noDataLabel
   }
 }
 
@@ -3226,12 +3294,14 @@ public struct A11yInput {
   public var series: [A11ySeries]
   public var format: ((Double) -> String)? = nil
   public var messages: ChartMessages? = nil
-  public init(title: String? = nil, categories: [String], series: [A11ySeries], format: ((Double) -> String)? = nil, messages: ChartMessages? = nil) {
+  public var number: ((Double) -> String)? = nil
+  public init(title: String? = nil, categories: [String], series: [A11ySeries], format: ((Double) -> String)? = nil, messages: ChartMessages? = nil, number: ((Double) -> String)? = nil) {
     self.title = title
     self.categories = categories
     self.series = series
     self.format = format
     self.messages = messages
+    self.number = number
   }
 }
 
@@ -14559,6 +14629,49 @@ public func applyChartAction(_ s: ChartActionState, _ a: ChartActionInput) -> Ch
     return s
   }
 
+public func kindWord(_ kind: String, _ m: ChartMessages?) -> String {
+    guard let m else {
+      return kind
+    }
+    if kind == "bars" {
+      return (m.kindBars ?? kind)
+    }
+    if kind == "line" {
+      return (m.kindLine ?? kind)
+    }
+    if kind == "area" {
+      return (m.kindArea ?? kind)
+    }
+    if kind == "points" {
+      return (m.kindPoints ?? kind)
+    }
+    if kind == "stacked" {
+      return (m.kindStacked ?? kind)
+    }
+    if kind == "grouped" {
+      return (m.kindGrouped ?? kind)
+    }
+    if kind == "waterfall" {
+      return (m.kindWaterfall ?? kind)
+    }
+    if kind == "band" {
+      return (m.kindBand ?? kind)
+    }
+    if kind == "stackedArea" {
+      return (m.kindStackedArea ?? kind)
+    }
+    if kind == "pie" {
+      return (m.kindPie ?? kind)
+    }
+    if kind == "gauge" {
+      return (m.kindGauge ?? kind)
+    }
+    if kind == "radar" {
+      return (m.kindRadar ?? kind)
+    }
+    return kind
+  }
+
 public func fillMessage(_ template: String, _ key: String, _ value: String) -> String { { (s: String, f: String, r: String) -> String in s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }(template, "{\(key)}", value) }
 
 public func describeGauge(_ title: String, _ value: String, _ max: String, _ messages: ChartMessages?) -> String {
@@ -14566,28 +14679,28 @@ public func describeGauge(_ title: String, _ value: String, _ max: String, _ mes
     return fillMessage(fillMessage(g1, "value", value), "max", max)
   }
 
-public func describeCandles(_ s: CandleSummary, _ messages: ChartMessages?) -> String {
+public func describeCandles(_ s: CandleSummary, _ messages: ChartMessages?, _ number: ((Double) -> String)?) -> String {
     if s.count == 0 {
       return fillMessage((messages?.noData ?? "{title}: no data."), "title", s.title)
     }
-    let c1 = fillMessage(fillMessage((messages?.candlestick ?? "{title}: {count} periods, range {min} to {max}, last close {close}."), "title", s.title), "count", "\(s.count)")
+    let c1 = fillMessage(fillMessage((messages?.candlestick ?? "{title}: {count} periods, range {min} to {max}, last close {close}."), "title", s.title), "count", countText(s.count, number))
     return fillMessage(fillMessage(fillMessage(c1, "min", s.min), "max", s.max), "close", s.close)
   }
 
-public func describeHeatmap(_ s: HeatSummary, _ messages: ChartMessages?) -> String {
+public func describeHeatmap(_ s: HeatSummary, _ messages: ChartMessages?, _ number: ((Double) -> String)?) -> String {
     if s.cells == 0 {
       return fillMessage((messages?.noData ?? "{title}: no data."), "title", s.title)
     }
-    let h1 = fillMessage(fillMessage((messages?.heatmap ?? "{title}: {columns} columns by {rows} rows, values {min} to {max}."), "title", s.title), "columns", "\(s.columns)")
-    return fillMessage(fillMessage(fillMessage(h1, "rows", "\(s.rows)"), "min", s.min), "max", s.max)
+    let h1 = fillMessage(fillMessage((messages?.heatmap ?? "{title}: {columns} columns by {rows} rows, values {min} to {max}."), "title", s.title), "columns", countText(s.columns, number))
+    return fillMessage(fillMessage(fillMessage(h1, "rows", countText(s.rows, number)), "min", s.min), "max", s.max)
   }
 
-public func tableCaption(_ title: String, _ shown: Int, _ total: Int, _ messages: ChartMessages?) -> String {
+public func tableCaption(_ title: String, _ shown: Int, _ total: Int, _ messages: ChartMessages?, _ number: ((Double) -> String)?) -> String {
     if shown >= total {
       return title
     }
     let c1 = fillMessage((messages?.truncated ?? "{title} (first {shown} of {total} rows)"), "title", title)
-    return fillMessage(fillMessage(c1, "shown", "\(shown)"), "total", "\(total)")
+    return fillMessage(fillMessage(c1, "shown", countText(shown, number)), "total", countText(total, number))
   }
 
 public func scaleNoteText(_ yScale: String, _ xScale: String, _ messages: ChartMessages?) -> String {
@@ -14606,10 +14719,10 @@ public func describeChart(_ input: A11yInput) -> String {
       return fillMessage((m?.noData ?? "{title}: no data."), "title", title)
     }
     let n = input.series.count
-    let count = n == 1 ? (m?.oneSeries ?? "1 series") : fillMessage((m?.manySeries ?? "{n} series"), "n", "\(n)")
+    let count = n == 1 ? (m?.oneSeries ?? "1 series") : fillMessage((m?.manySeries ?? "{n} series"), "n", countText(n, input.number))
     if input.categories.count > 0 {
       let o1 = fillMessage((m?.overview ?? "{title}. {series} over {count} categories from {first} to {last}."), "title", title)
-      let o2 = fillMessage(fillMessage(o1, "series", count), "count", "\(input.categories.count)")
+      let o2 = fillMessage(fillMessage(o1, "series", count), "count", countText(input.categories.count, input.number))
       parts.append(fillMessage(fillMessage(o2, "first", input.categories[0]), "last", input.categories[pyreonSub(input.categories.count, 1)]))
     } else {
       parts.append(fillMessage(fillMessage((m?.overviewPlain ?? "{title}. {series}."), "title", title), "series", count))
@@ -14655,7 +14768,7 @@ public func describeChart(_ input: A11yInput) -> String {
         continue
       }
       let dir = last > first ? (m?.rising ?? "rising") : last < first ? (m?.falling ?? "falling") : (m?.flat ?? "flat")
-      let pct = first > 0.0 && last != first ? " \(percentChange(first, last))" : ""
+      let pct = first > 0.0 && last != first ? " \(percentChange(first, last, input.number, m))" : ""
       let atText = (m?.at ?? " at {category}")
       let at = { (i: Int) in i < input.categories.count ? fillMessage(atText, "category", input.categories[i]) : "" }
       var sentence = ""
@@ -14690,7 +14803,7 @@ public func describeChart(_ input: A11yInput) -> String {
         sentence = (m?.trend ?? "{label}, {kind}: {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}.")
       }
       sentence = fillMessage(sentence, "label", s.label)
-      sentence = fillMessage(sentence, "kind", s.kind)
+      sentence = fillMessage(sentence, "kind", kindWord(s.kind, m))
       sentence = fillMessage(sentence, "direction", dir)
       sentence = fillMessage(sentence, "change", pct)
       sentence = fillMessage(sentence, "first", fmt(first))
@@ -14704,13 +14817,22 @@ public func describeChart(_ input: A11yInput) -> String {
     return parts.joined(separator: " ")
   }
 
-public func percentChange(_ first: Double, _ last: Double) -> String {
+public func percentChange(_ first: Double, _ last: Double, _ number: ((Double) -> String)?, _ messages: ChartMessages?) -> String {
     let ratio = last / first
     if ratio >= 2.0 {
-      return "\(pyreonNumberString(floor(Double(ratio * 10.0 + 0.5)) / 10.0))×"
+      let r = floor(Double(ratio * 10.0 + 0.5)) / 10.0
+      return fillMessage((messages?.multiple ?? "{n}×"), "n", (number.map { number in number(r) } ?? "\(pyreonNumberString(r))"))
     }
     let p = floor(Double(abs(ratio - 1.0) * 100.0 + 0.5))
-    return "\(pyreonNumberString(p))%"
+    return fillMessage((messages?.percent ?? "{n}%"), "n", (number.map { number in number(p) } ?? "\(pyreonNumberString(p))"))
+  }
+
+public func countText(_ n: Int, _ number: ((Double) -> String)?) -> String {
+    guard let number else {
+      return "\(n)"
+    }
+    let v = Double(n) * 1.0
+    return number(v)
   }
 
 public func describeDatum(_ input: A11yInput, _ series: Int, _ index: Int) -> String {
@@ -14727,7 +14849,7 @@ public func describeDatum(_ input: A11yInput, _ series: Int, _ index: Int) -> St
     let value = v != v ? (m?.noValue ?? "no value") : fmt(v)
     let at = index < input.categories.count ? fillMessage((m?.at ?? " at {category}"), "category", input.categories[index]) : ""
     let d1 = fillMessage(fillMessage((m?.datum ?? "{label}: {value}{at}, {index} of {count}"), "label", s.label), "value", value)
-    return fillMessage(fillMessage(fillMessage(d1, "at", at), "index", "\(pyreonAdd(index, 1))"), "count", "\(s.values.count)")
+    return fillMessage(fillMessage(fillMessage(d1, "at", at), "index", countText(pyreonAdd(index, 1), input.number)), "count", countText(s.values.count, input.number))
   }
 
 public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _ i: Int, _ template: String) -> String {
@@ -14782,7 +14904,7 @@ public func chartRowCount(_ input: A11yInput) -> Int {
 public func chartTableRow(_ input: A11yInput, _ i: Int) -> [String] {
     let fmt = (input.format ?? groupThousands)
     let errText = (input.messages?.withError ?? "{value} ({low} to {high})")
-    var row = [i < input.categories.count ? input.categories[i] : "\(pyreonAdd(i, 1))"]
+    var row = [i < input.categories.count ? input.categories[i] : countText(pyreonAdd(i, 1), input.number)]
     for s in input.series {
       let other = (s.values2 ?? [])
       let rs = (s.rValues ?? [])

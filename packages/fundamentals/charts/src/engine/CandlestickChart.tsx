@@ -215,20 +215,20 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       if (c === undefined) return null
       return { seriesIndex: 0, dataIndex: idx + g.offset, name: g.categories[idx] ?? '', value: [c.open, c.close, c.low, c.high] }
     },
-    describe: (g, m) => {
+    describe: (g, m, num) => {
       const title = props.title ?? m?.untitled ?? 'Candlestick chart'
-      if (g.candles.length === 0) return describeCandles({ title, count: 0, min: '', max: '', close: '' }, m)
+      if (g.candles.length === 0) return describeCandles({ title, count: 0, min: '', max: '', close: '' }, m, num)
       const ext = ohlcExtent(g.candles)
-      const fmt = props.format ?? String
-      return describeCandles({ title, count: g.candles.length, min: fmt(ext.min), max: fmt(ext.max), close: fmt(g.candles[g.candles.length - 1]!.close) }, m)
+      const fmt = props.format ?? num ?? String
+      return describeCandles({ title, count: g.candles.length, min: fmt(ext.min), max: fmt(ext.max), close: fmt(g.candles[g.candles.length - 1]!.close) }, m, num)
     },
-    a11y: (g) => {
+    a11y: (g, m) => {
       return {
         title: props.title,
         categories: g.categories.length > 0 ? g.categories : g.candles.map((_, i) => `#${i + 1}`),
         series: [
-          { label: 'Open', values: g.candles.map((c) => c.open), kind: 'points' },
-          { label: 'Close', values: g.candles.map((c) => c.close), kind: 'points' },
+          { label: m?.openLabel ?? 'Open', values: g.candles.map((c) => c.open), kind: 'points' },
+          { label: m?.closeLabel ?? 'Close', values: g.candles.map((c) => c.close), kind: 'points' },
         ],
         format: props.format,
       }

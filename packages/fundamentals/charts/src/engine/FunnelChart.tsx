@@ -55,10 +55,10 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
       props.onSelect?.(i)
       props.onSelectIndex?.(i)
     },
-    a11y: (g) => ({
+    a11y: (g, m) => ({
       title: props.title,
       categories: g.stages.map((x) => x.label),
-      series: [{ label: props.title ?? 'Funnel', values: g.stages.map((x) => x.value), kind: 'bars' }],
+      series: [{ label: props.title ?? m?.funnelLabel ?? 'Funnel', values: g.stages.map((x) => x.value), kind: 'bars' }],
     }),
   })
 }

@@ -37,10 +37,10 @@ export function SingleAxisChart(props: SingleAxisChartProps): VNode {
       const point = layout.points[index]
       return point === undefined ? null : { x: point.at.x - point.radius, y: point.at.y - point.radius, w: point.radius * 2, h: point.radius * 2 }
     },
-    a11y: () => ({
+    a11y: (_l, m) => ({
       title: props.title,
       categories: readPoints().map((point, index) => point.name ?? String(index + 1)),
-      series: [{ label: props.axis.name ?? 'Value', values: readPoints().map((point) => point.x), kind: 'points' }],
+      series: [{ label: props.axis.name ?? m?.valueLabel ?? 'Value', values: readPoints().map((point) => point.x), kind: 'points' }],
     }),
   })
 }
