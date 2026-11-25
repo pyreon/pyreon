@@ -2990,7 +2990,7 @@ gridMove('2026-11-18', { key: 'ArrowRight' }, { rtl: true })   // => '2026-11-17
   'calendar/slotMove': {
     signature: '(cursor, key, options) => SlotCursor | null',
     example: `slotMove({ date: '2026-11-18', minute: 540 }, { key: 'ArrowDown' }, { from: 0, to: 1440, slot: 30, dates: ['2026-11-18'] })   // => { date: '2026-11-18', minute: 570 }`,
-    notes: '[EXPERIMENTAL] Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in right-to-left), Home and End to the first and last slot, PageUp and PageDown by a week of columns. It stays inside the grid. Added in v0.53.0.',
+    notes: '[EXPERIMENTAL] Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in right-to-left), Home and End to the first and last slot, PageUp and PageDown by a week of columns (seven slots in a one-day view). It stays inside the grid. Added in v0.53.0.',
   },
 
   'calendar/applyEventChange': {
@@ -4738,7 +4738,7 @@ errorFromStatus(422).retryable   // => false`,
   'upload/tusTransport': {
     signature: '(options: { endpoint, chunkSize?, metadata?, headers?, withCredentials?, timeout? }) => Transport',
     example: `typeof tusTransport({ endpoint: '/files' }).upload   // => 'function'`,
-    notes: `[EXPERIMENTAL] The tus 1.0 resumable upload protocol with the creation and termination extensions: \`POST\` to create (with \`Upload-Length\` and \`Upload-Metadata\`), \`PATCH\` at the right \`Upload-Offset\`, \`HEAD\` to ask the offset on a resume, \`DELETE\` when the file is cancelled or removed. The upload URL is saved after creation, so a retry, a pause or a reload continues where the server is; a 404 or 410 for a saved URL, or a different length, starts a new upload. Retries are the queue's, not the transport's. Added in v0.53.0.`,
+    notes: `[EXPERIMENTAL] The tus 1.0 resumable upload protocol with the creation and termination extensions: \`POST\` to create (with \`Upload-Length\` and \`Upload-Metadata\`), \`PATCH\` at the right \`Upload-Offset\`, \`HEAD\` to ask the offset on a resume, \`DELETE\` when the file is cancelled or removed. The upload URL is saved after creation, so a retry, a pause or a reload continues where the server is; a 404 or 410 for a saved URL, or a different length, starts a new upload. A \`PATCH\` answered 409 (offset conflict) re-reads the offset with \`HEAD\` and continues from it, up to three conflicts in a row. Retries are the queue's, not the transport's. Added in v0.53.0.`,
   },
 
   'upload/createResumeStore': {
@@ -15993,18 +15993,19 @@ setMode('dark') // reactive re-style — same element, new classes`,
   },
 
   'testing/renderWithRouter': {
-    signature: `renderWithRouter(ui: VNodeChild | null, options: { routes?: RouteRecord[]; route?: string; mode?: 'hash' | 'history'; router?: Router; wrapper?; container?; baseElement? }) => Promise<RenderResult & { router: Router; navigate(path): Promise<NavigationResult> }> (from '@pyreon/testing/router')`,
+    signature: `renderWithRouter(ui: VNodeChild | null, options: { routes?: RouteRecord[]; route?: string; mode?: 'memory' | 'hash' | 'history'; router?: Router; wrapper?; container?; baseElement? }) => Promise<RenderResult & { router: Router; navigate(path): Promise<NavigationResult> }> (from '@pyreon/testing/router')`,
     example: `const { router, navigate, getByText } = await renderWithRouter(null, {
   routes: [{ path: '/posts/:id', component: Post, loader: fetchPost }],
   route: '/posts/1',
 })
 expectRouter(router).toBeAt('/posts/:id')
 await navigate('/posts/2')`,
-    notes: `ASYNC render harness for \`@pyreon/router\`. Creates a router pinned to \`route\` (default \`'/'\`), then \`await preloadRoute(router, route)\` — the SSR-handler contract: lazy route components resolved into the cache AND the matched chain's loaders run — so the FIRST render shows final content (\`useLoaderData()\` populated, no loading fallbacks). Mounts \`ui\` inside \`<RouterProvider>\` (pass \`null\` for a bare \`<RouterView/>\`); \`unmount()\` destroys the router. \`navigate(path)\` = \`router.push\` — resolves with \`NavigationResult\` AFTER guards + loaders + DOM commit. See also: expectRouter, render.`,
+    notes: `ASYNC render harness for \`@pyreon/router\`. Creates a router pinned to \`route\` (default \`'/'\`) — in \`'memory'\` mode by default, so the router keeps its own entry stack and never reads or writes the page URL (no navigation leaks between tests through \`location\`; pass \`mode: 'hash' | 'history'\` to test code that reads the URL) — then \`await preloadRoute(router, route)\` — the SSR-handler contract: lazy route components resolved into the cache AND the matched chain's loaders run — so the FIRST render shows final content (\`useLoaderData()\` populated, no loading fallbacks). Mounts \`ui\` inside \`<RouterProvider>\` (pass \`null\` for a bare \`<RouterView/>\`); \`unmount()\` destroys the router. \`navigate(path)\` = \`router.push\` — resolves with \`NavigationResult\` AFTER guards + loaders + DOM commit. See also: expectRouter, render.`,
     mistakes: `- Not awaiting \`renderWithRouter\` itself — it is ASYNC (initial lazy components + loaders resolve before mount); an un-awaited call hands you a Promise, not a render result.
 - Not awaiting \`navigate()\` — assertions race the guards/loaders pipeline; the promise resolves only after the DOM committed.
 - Ignoring the \`NavigationResult\` — \`'cancelled'\` (guard/blocker refused) and \`'superseded'\` (a newer navigation won) resolve WITHOUT an error; assert the result when the test depends on the navigation landing.
 - Passing both \`routes\` and \`router\` — \`router\` wins and \`routes\` is ignored; a pre-built router must already carry its route table.
+- Asserting \`window.location\` after \`navigate()\` with the default mode — the default is \`'memory'\`, which never touches the page URL; assert \`router.currentRoute()\` / \`expectRouter\`, or pass \`mode: 'hash'\` or \`'history'\` when the code under test reads the URL.
 - Reusing one router across tests — RouterProvider \`destroy()\`s it on unmount; create per test (the default path does).`,
   },
 

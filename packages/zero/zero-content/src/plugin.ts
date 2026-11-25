@@ -144,6 +144,17 @@ export interface ContentPluginOptions {
    */
   searchBodyMax?: number
   /**
+   * Bytes over which one collection's search index (`search-index-<collection>.json`) logs a build warning. Default
+   * `300 * 1024` (300 KiB). An index this size is downloaded on the first query, so the warning is the cue to split the
+   * collection, mark it `searchable: false`, or lower `searchBodyMax`.
+   */
+  searchChunkWarnBytes?: number
+  /**
+   * Bytes over which one collection's search index fails the build. Default `1024 * 1024` (1 MiB). Raise it for a large
+   * site that accepts the download; `Infinity` turns the failure off.
+   */
+  searchChunkErrorBytes?: number
+  /**
    * PR-L audit M19 — SEO + build output emission. When configured,
    * `closeBundle` writes a sitemap.xml / RSS feed / llms.txt into
    * `dist/` after the search index. Each output is opt-in; omitting
@@ -1113,6 +1124,8 @@ export {}
           // the runtime's `fetch('/search-index-docs.json')` escapes
           // the subpath and 404s on GitHub Pages preview deploys.
           base: resolvedConfig.base,
+          ...(options.searchChunkWarnBytes === undefined ? {} : { chunkWarnBytes: options.searchChunkWarnBytes }),
+          ...(options.searchChunkErrorBytes === undefined ? {} : { chunkErrorBytes: options.searchChunkErrorBytes }),
         })
         for (const w of result.warnings) {
           this.warn(w)

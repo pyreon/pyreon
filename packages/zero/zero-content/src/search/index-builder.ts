@@ -66,7 +66,7 @@ export interface BuildIndexArgs {
   root: string
   /** Output directory (default `<root>/dist`). */
   outDir?: string
-  /** Chunk threshold in bytes. Default 300 KB; fail-loud at 1 MB. */
+  /** Per-collection index size that warns (default 300 KiB) and fails (default 1 MiB): the plugin's `searchChunkWarnBytes` / `searchChunkErrorBytes`. */
   chunkWarnBytes?: number
   chunkErrorBytes?: number
   /**
@@ -204,12 +204,12 @@ export async function buildSearchIndex(
     const byteSize = Buffer.byteLength(json, 'utf8')
     if (byteSize > chunkError) {
       throw new Error(
-        `[@pyreon/zero-content] search index for collection "${name}" is ${humanBytes(byteSize)} (exceeds chunkErrorBytes=${humanBytes(chunkError)}). Reduce collection size or raise the limit.`,
+        `[@pyreon/zero-content] search index for collection "${name}" is ${humanBytes(byteSize)} (exceeds searchChunkErrorBytes=${humanBytes(chunkError)}). Reduce the collection size (or \`searchBodyMax\`), or raise \`searchChunkErrorBytes\` in the content() plugin options.`,
       )
     }
     if (byteSize > chunkWarn) {
       warnings.push(
-        `[@pyreon/zero-content] search index for collection "${name}" is ${humanBytes(byteSize)} (over chunkWarnBytes=${humanBytes(chunkWarn)}). Consider splitting the collection or excluding fields.`,
+        `[@pyreon/zero-content] search index for collection "${name}" is ${humanBytes(byteSize)} (over searchChunkWarnBytes=${humanBytes(chunkWarn)}). Consider splitting the collection or excluding fields, or raise \`searchChunkWarnBytes\` in the content() plugin options.`,
       )
     }
     const filename = `search-index-${name}.json`

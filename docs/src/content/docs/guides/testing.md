@@ -143,7 +143,7 @@ expectRouter(router).toBeAt('/posts/:id') // pattern OR concrete path
 await navigate('/posts/2')              // resolves AFTER guards+loaders+DOM commit
 ```
 
-`renderWithRouter` is **async**: it pre-resolves the initial route's lazy components *and* loaders (`preloadRoute` — the SSR-handler contract), so `useLoaderData()` is populated on first render with no loading fallbacks. Pass `null` for a bare `<RouterView/>`, or your app shell as `ui`.
+`renderWithRouter` is **async**: it pre-resolves the initial route's lazy components *and* loaders (`preloadRoute` — the SSR-handler contract), so `useLoaderData()` is populated on first render with no loading fallbacks. Pass `null` for a bare `<RouterView/>`, or your app shell as `ui`. The router is in `'memory'` mode by default: it keeps its own entry stack started at `route` and never reads or writes the page URL, so one test's navigation cannot leak into the next. Pass `mode: 'hash'` or `'history'` when the code under test reads the URL itself.
 
 ### `/ui` — theme + mode without provider plumbing
 

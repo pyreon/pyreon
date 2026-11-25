@@ -14,7 +14,7 @@
  */
 import type { VNodeChild } from '@pyreon/core'
 import { h } from '@pyreon/core'
-import type { NavigationResult, RouteRecord, Router } from '@pyreon/router'
+import type { NavigationResult, RouteRecord, Router, RouterOptions } from '@pyreon/router'
 import { createRouter, preloadRoute, RouterProvider, RouterView } from '@pyreon/router'
 import type { RenderOptions, RenderResult } from '@pyreon/testing'
 import { render } from '@pyreon/testing'
@@ -24,8 +24,12 @@ export interface RenderWithRouterOptions extends RenderOptions {
   routes?: RouteRecord[]
   /** Initial route the router starts (and settles) at. Default `'/'`. */
   route?: string
-  /** History mode. Default `'hash'` (side-effect-light in test DOMs). */
-  mode?: 'hash' | 'history'
+  /**
+   * The router's mode (`createRouter`'s own `mode` type). Default `'memory'`: the router keeps its own entry stack, started at
+   * `route`, and never reads or writes the page URL, so one test's navigation cannot leak into the next through `location`.
+   * Pass `'hash'` or `'history'` to test code that reads the URL itself. Ignored when `router` is passed.
+   */
+  mode?: RouterOptions['mode']
   /** Bring your own router (created via `createRouter`) instead of `routes`. */
   router?: Router
   /** Compose an OUTER wrapper around the provider tree (e.g. a theme provider). */
@@ -65,8 +69,15 @@ export async function renderWithRouter(
   if (givenRouter === undefined && routes === undefined) {
     throw new Error('[Pyreon] renderWithRouter: pass `routes` (or a pre-built `router`).')
   }
+  const routerMode = mode ?? 'memory'
   const router =
-    givenRouter ?? createRouter({ routes: routes as RouteRecord[], url: route, ...(mode ? { mode } : {}) })
+    givenRouter ??
+    createRouter({
+      routes: routes as RouteRecord[],
+      url: route,
+      mode: routerMode,
+      ...(routerMode === 'memory' ? { initialEntries: [route] } : {}),
+    })
 
   // The SSR-handler contract: resolve lazy components into the cache AND run
   // the matched chain's loaders BEFORE the synchronous mount — so the first

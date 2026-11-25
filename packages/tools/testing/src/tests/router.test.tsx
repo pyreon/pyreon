@@ -99,6 +99,30 @@ describe('renderWithRouter', () => {
     unmount()
   })
 
+  it('defaults to a memory router started at `route`: navigating never touches the page URL', async () => {
+    const before = window.location.href
+    const { router, navigate, unmount } = await renderWithRouter(null, { routes, route: '/posts/7' })
+    expect(router.mode).toBe('memory')
+    expectRouter(router).toBeAt('/posts/7')
+    await navigate('/about')
+    expectRouter(router).toBeAt('/about')
+    expect(window.location.href).toBe(before)
+    unmount()
+    const explicit = await renderWithRouter(null, { routes, route: '/about', mode: 'memory' })
+    expect(explicit.router.mode).toBe('memory')
+    expect(explicit.container.textContent).toContain('About Page')
+    explicit.unmount()
+  })
+
+  it('an explicit hash mode drives the page URL', async () => {
+    const { router, navigate, unmount } = await renderWithRouter(null, { routes, route: '/', mode: 'hash' })
+    expect(router.mode).toBe('hash')
+    await navigate('/about')
+    expect(window.location.hash).toBe('#/about')
+    unmount()
+    window.location.hash = ''
+  })
+
   it('throws an actionable error when neither routes nor router is given', async () => {
     await expect(renderWithRouter(null, {} as never)).rejects.toThrow(
       /pass `routes` \(or a pre-built `router`\)/,

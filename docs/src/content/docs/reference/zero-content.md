@@ -30,7 +30,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Custom markdown blocks: ::&#58;tip / ::&#58;warning / ::&#58;note / ::&#58;danger / ::&#58;info / ::&#58;code-group via remark-directive
 - Build-time validation: frontmatter (zod) + component props (TS) + unknown component name (with "did you mean...?")
 - HMR for src/mdx/ changes + content.config.ts edits — invalidates virtual modules, re-renders dependent .md pages without reload
-- Built-in search — minisearch-backed `<Search>` component with Cmd+K + debounced query + SPA navigation + lazy index loading
+- Built-in search — minisearch-backed `<Search>` component with Cmd+K + debounced query + SPA navigation + lazy index loading; a collection index over `searchChunkWarnBytes` (300 KiB) warns and over `searchChunkErrorBytes` (1 MiB) fails the build — both `content()` options
 - Built-in layout components — `<Sidebar>` with groups + active highlighting, `<Toc>` with scroll-spy via IntersectionObserver
 - Frontmatter JSON Schema + .vscode-settings emission — autocomplete + validation in any .md file via the YAML extension
 - Inherits zero's perf stack — image/font auto-wire, script defer default, resource hints

@@ -65,18 +65,38 @@ async function create(endpoint: string, file: TransportFile, options: TusTranspo
   return new URL(location, new URL(endpoint, globalThis.location?.href)).href
 }
 
-/** Send the file from `offset` in PATCH requests, each at the offset the server last confirmed. */
+/** How many offset conflicts (409) in a row `patchAll` re-reads the offset for before it gives up. */
+const CONFLICT_REREADS = 3
+
+/**
+ * Send the file from `offset` in PATCH requests, each at the offset the server last confirmed. A 409 means the server's offset
+ * is not the one sent (another tab or an earlier request that did land moved it): ask it again with HEAD and continue from
+ * there, up to `CONFLICT_REREADS` conflicts in a row.
+ */
 async function patchAll(url: string, file: TransportFile, from: { offset: number; chunk: number }, wire: Wire, onProgress: (loaded: number) => void): Promise<void> {
   const { chunk } = from
   let offset = from.offset
+  let conflicts = 0
 
   while (offset < file.size) {
     const start = offset
     const end = chunk === Infinity ? file.size : Math.min(file.size, start + chunk)
-    const response = await sendPart({ url, method: 'PATCH', headers: { ...wire.headers, 'content-type': 'application/offset+octet-stream', 'upload-offset': String(start) }, body: file.file.slice(start, end), size: end - start, onProgress: (n) => onProgress(start + n), ...wire.common }, (s) => s === 204)
+    const response = await sendPart({ url, method: 'PATCH', headers: { ...wire.headers, 'content-type': 'application/offset+octet-stream', 'upload-offset': String(start) }, body: file.file.slice(start, end), size: end - start, onProgress: (n) => onProgress(start + n), ...wire.common }, (s) => s === 204 || s === 409)
+
+    if (response.status === 409) {
+      conflicts++
+      if (conflicts > CONFLICT_REREADS) throw uploadError('server', `[Pyreon] tusTransport: the server answered 409 (offset conflict) to ${conflicts} PATCH requests in a row, even after asking its offset with HEAD each time. Make sure only one client sends this upload.`, { status: 409, retryable: false })
+      const reread = await resumeOffset(url, file.size, wire)
+
+      if (reread === null) throw uploadError('server', '[Pyreon] tusTransport: after an offset conflict (409) the server no longer has this upload; a retry starts a new one.', { status: 409, retryable: true })
+      offset = reread
+      onProgress(offset)
+      continue
+    }
     const next = number(response.headers, 'upload-offset')
 
     if (next === null || next <= start) throw uploadError('server', '[Pyreon] tusTransport: the server did not answer a new Upload-Offset to a PATCH.', { retryable: false })
+    conflicts = 0
     offset = next
     onProgress(offset)
   }
@@ -88,6 +108,7 @@ async function patchAll(url: string, file: TransportFile, from: { offset: number
  * `Location`; data goes in `PATCH` requests with `Upload-Offset`; a resume asks the offset with `HEAD`; cancelling or removing
  * a file sends `DELETE`. The upload URL is saved with `saveResumeState`, so after a failure, a pause or a reload (with the state
  * persisted) the transport asks the server how far it got and continues from there; a 404 or 410 for a saved URL starts over.
+ * A PATCH answered 409 (offset conflict) re-reads the offset with HEAD and continues from it, up to three conflicts in a row.
  * Retries are the queue's (`retry`), not the transport's.
  *
  * @example typeof tusTransport({ endpoint: '/files' }).upload // => 'function'
