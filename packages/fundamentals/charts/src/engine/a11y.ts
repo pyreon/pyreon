@@ -47,11 +47,127 @@ export interface A11ySeries {
   rValues?: Double[] | undefined
 }
 
+/**
+ * The words the accessible surfaces are built from, for an app that is not in
+ * English. Every field is a template: `{name}` slots are filled in, and a
+ * template may drop or reorder them (a language that does not name the mark
+ * kind leaves `{kind}` out of `trend`). Unset fields keep the English below.
+ *
+ * Plural forms: `oneSeries` / `manySeries` cover languages with two forms;
+ * for more, word `manySeries` so it reads for any count (`řady: {n}`).
+ *
+ * A plain struct of strings so the same value lowers to Swift and Kotlin: the
+ * native chart hosts take the `messages` prop and their VoiceOver / TalkBack
+ * description, data view and per-datum nodes read it through this engine.
+ */
+export interface ChartMessages {
+  /** The name of a chart with no `title`. Default `Chart`. */
+  untitled?: string | undefined
+  /** `{title}`. Default `{title}: no data.` */
+  noData?: string | undefined
+  /** `{title}`, `{series}`, `{count}` categories, `{first}`, `{last}`. Default `{title}. {series} over {count} categories from {first} to {last}.` */
+  overview?: string | undefined
+  /** `{title}`, `{series}`: the overview of a chart with no categories. Default `{title}. {series}.` */
+  overviewPlain?: string | undefined
+  /** Default `1 series`. */
+  oneSeries?: string | undefined
+  /** `{n}`. Default `{n} series`. */
+  manySeries?: string | undefined
+  /** `{label}`. Default `{label}: empty.` */
+  empty?: string | undefined
+  /** Default `rising`. */
+  rising?: string | undefined
+  /** Default `falling`. */
+  falling?: string | undefined
+  /** Default `flat`. */
+  flat?: string | undefined
+  /** `{label}`, `{kind}`, `{direction}`, `{change}` (a leading space and `45%`, or empty), `{first}`, `{last}`, `{low}`, `{lowAt}`, `{high}`, `{highAt}`. Default `{label}, {kind}: {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}.` */
+  trend?: string | undefined
+  /** `trend`'s slots plus `{low2}` and `{high2}`, the lower edge's range: a band. Default `{label}, {kind}: upper bound {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}; lower bound ranging {low2} to {high2}.` */
+  bandTrend?: string | undefined
+  /** `{category}`: where a value sits, filling `{lowAt}` / `{highAt}` and `datum`'s `{at}`. Default ` at {category}`. */
+  at?: string | undefined
+  /** The accessible table's first header. Default `Category`. */
+  category?: string | undefined
+  /** `{label}`: a band's upper-edge column. Default `{label} (upper)`. */
+  upper?: string | undefined
+  /** `{label}`: a band's lower-edge column. Default `{label} (lower)`. */
+  lower?: string | undefined
+  /** `{label}`: a bubble series' size column. Default `{label} (size)`. */
+  size?: string | undefined
+  /** `{value}`, `{low}`, `{high}`: a value with its error bar. Default `{value} ({low} to {high})`. */
+  withError?: string | undefined
+  /** A gap, read by the keyboard walk. Default `no value`. */
+  noValue?: string | undefined
+  /** `{label}`, `{value}`, `{at}`, `{index}`, `{count}`: the datum the keyboard focus is on. Default `{label}: {value}{at}, {index} of {count}`. */
+  datum?: string | undefined
+  /** `{axis}`, `{scale}`: a non-linear axis, appended to the description. Default ` The {axis} axis is on a {scale} scale.` */
+  scaleNote?: string | undefined
+  /** The value axis's name in `scaleNote`. Default `value`. */
+  valueAxis?: string | undefined
+  /** The x axis's name in `scaleNote`. Default `x`. */
+  xAxis?: string | undefined
+  /** `{title}`, `{shown}`, `{total}`: the table caption when only the first rows are built. Default `{title} (first {shown} of {total} rows)`. */
+  truncated?: string | undefined
+  /** `{list}`: the selected items, appended to a family chart's description. Default ` Selected: {list}.` */
+  selected?: string | undefined
+  /** The data view's close button. Default `Close`. */
+  close?: string | undefined
+  /** `{title}`, `{value}`, `{max}`: `<GaugeChart>`'s description. Default `{title}: {value} of {max}.` */
+  gauge?: string | undefined
+  /** `{title}`, `{count}`, `{min}`, `{max}`, `{close}`: `<CandlestickChart>`'s description. Default `{title}: {count} periods, range {min} to {max}, last close {close}.` */
+  candlestick?: string | undefined
+  /** `{title}`, `{columns}`, `{rows}`, `{min}`, `{max}`: `<HeatmapChart>`'s description. Default `{title}: {columns} columns by {rows} rows, values {min} to {max}.` */
+  heatmap?: string | undefined
+}
+
 export interface A11yInput {
   title?: string | undefined
   categories: readonly string[]
   series: A11ySeries[]
   format?: Formatter | undefined
+  /** The words, when not English (`ChartMessages`). */
+  messages?: ChartMessages | undefined
+}
+
+/** `template` with its `{key}` slot filled — the first one, which is the only one a message has. */
+export function fillMessage(template: string, key: string, value: string): string {
+  return template.replace(`{${key}}`, value)
+}
+
+/** `<GaugeChart>`'s description: `Speed: 72 of 100.` */
+export function describeGauge(title: string, value: string, max: string, messages?: ChartMessages | undefined): string {
+  const g1 = fillMessage(messages?.gauge ?? '{title}: {value} of {max}.', 'title', title)
+  return fillMessage(fillMessage(g1, 'value', value), 'max', max)
+}
+
+/** `<CandlestickChart>`'s description: how many periods, the range, the last close. */
+export function describeCandles(title: string, count: number, min: string, max: string, close: string, messages?: ChartMessages | undefined): string {
+  if (count === 0) return fillMessage(messages?.noData ?? '{title}: no data.', 'title', title)
+  const c1 = fillMessage(fillMessage(messages?.candlestick ?? '{title}: {count} periods, range {min} to {max}, last close {close}.', 'title', title), 'count', `${count}`)
+  return fillMessage(fillMessage(fillMessage(c1, 'min', min), 'max', max), 'close', close)
+}
+
+/** `<HeatmapChart>`'s description: the grid's size and value range. */
+export function describeHeatmap(title: string, columns: number, rows: number, cells: number, min: string, max: string, messages?: ChartMessages | undefined): string {
+  if (cells === 0) return fillMessage(messages?.noData ?? '{title}: no data.', 'title', title)
+  const h1 = fillMessage(fillMessage(messages?.heatmap ?? '{title}: {columns} columns by {rows} rows, values {min} to {max}.', 'title', title), 'columns', `${columns}`)
+  return fillMessage(fillMessage(fillMessage(h1, 'rows', `${rows}`), 'min', min), 'max', max)
+}
+
+/** The accessible table's caption: the title, and how many rows of how many when only the first rows are built. */
+export function tableCaption(title: string, shown: number, total: number, messages?: ChartMessages | undefined): string {
+  if (shown >= total) return title
+  const c1 = fillMessage(messages?.truncated ?? '{title} (first {shown} of {total} rows)', 'title', title)
+  return fillMessage(fillMessage(c1, 'shown', `${shown}`), 'total', `${total}`)
+}
+
+/** The ` The value axis is on a log scale.` note for each non-linear axis (`''` for a linear one), in `messages`' words. */
+export function scaleNoteText(yScale: string, xScale: string, messages?: ChartMessages | undefined): string {
+  const template = messages?.scaleNote ?? ' The {axis} axis is on a {scale} scale.'
+  const y = yScale === '' || yScale === 'linear' ? '' : fillMessage(fillMessage(template, 'axis', messages?.valueAxis ?? 'value'), 'scale', yScale)
+  const x = xScale === '' || xScale === 'linear' ? '' : fillMessage(fillMessage(template, 'axis', messages?.xAxis ?? 'x'), 'scale', xScale)
+  return y + x
 }
 
 /**
@@ -63,25 +179,28 @@ export interface A11yInput {
  */
 export function describeChart(input: A11yInput): string {
   const fmt = input.format ?? groupThousands
+  const m = input.messages
   const parts: string[] = []
-  const title = input.title ?? 'Chart'
+  const title = input.title ?? m?.untitled ?? 'Chart'
 
   if (input.series.length === 0) {
-    return `${title}: no data.`
+    return fillMessage(m?.noData ?? '{title}: no data.', 'title', title)
   }
 
-  parts.push(`${title}.`)
   const n = input.series.length
-  parts.push(n === 1 ? '1 series' : `${n} series`)
+  const count = n === 1 ? m?.oneSeries ?? '1 series' : fillMessage(m?.manySeries ?? '{n} series', 'n', `${n}`)
   if (input.categories.length > 0) {
-    parts.push(`over ${input.categories.length} categories from ${input.categories[0]!} to ${input.categories[input.categories.length - 1]!}.`)
+    const o1 = fillMessage(m?.overview ?? '{title}. {series} over {count} categories from {first} to {last}.', 'title', title)
+    const o2 = fillMessage(fillMessage(o1, 'series', count), 'count', `${input.categories.length}`)
+    parts.push(fillMessage(fillMessage(o2, 'first', input.categories[0]!), 'last', input.categories[input.categories.length - 1]!))
   } else {
-    parts.push('.')
+    parts.push(fillMessage(fillMessage(m?.overviewPlain ?? '{title}. {series}.', 'title', title), 'series', count))
   }
+  const emptyText = m?.empty ?? '{label}: empty.'
 
   for (const s of input.series) {
     if (s.values.length === 0) {
-      parts.push(`${s.label}: empty.`)
+      parts.push(fillMessage(emptyText, 'label', s.label))
       continue
     }
     // GAPS are skipped, not narrated. The scan used to start at `values[0]`
@@ -117,17 +236,20 @@ export function describeChart(input: A11yInput): string {
       // Present but entirely gaps — a rolling window shorter than its own
       // period, say. "Empty" is the honest word and it is already this
       // function's word for nothing to describe.
-      parts.push(`${s.label}: empty.`)
+      parts.push(fillMessage(emptyText, 'label', s.label))
       continue
     }
-    const dir = last > first ? 'rising' : last < first ? 'falling' : 'flat'
+    const dir = last > first ? m?.rising ?? 'rising' : last < first ? m?.falling ?? 'falling' : m?.flat ?? 'flat'
     // How much, not just which way: "rising" describes a 2% drift and a 3×
     // climb identically. The change is stated relative to the first value,
     // and only where that is meaningful (a zero or negative start has no
     // honest percentage).
-    const pct = first > 0.0 && dir !== 'flat' ? ` ${percentChange(first, last)}` : ''
+    const pct = first > 0.0 && last !== first ? ` ${percentChange(first, last)}` : ''
+    const atText = m?.at ?? ' at {category}'
     const at = (i: number): string =>
-      i < input.categories.length ? ` at ${input.categories[i]!}` : ''
+      i < input.categories.length ? fillMessage(atText, 'category', input.categories[i]!) : ''
+    // The slots every trend sentence shares; a band adds its lower edge's range.
+    let sentence = ''
     // A two-channel series names the channel it is describing and adds the
     // other one's span, so the interval is stated rather than implied.
     // `?? []` rather than an `!== undefined` guard: PMTC does not carry that
@@ -153,20 +275,24 @@ export function describeChart(input: A11yInput): string {
         oseen = oseen + 1
       }
       if (oseen > 0) {
-        parts.push(
-          `${s.label}, ${s.kind}: upper bound ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, ` +
-            `ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; ` +
-            `lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.`,
-        )
-        continue
+        sentence = fillMessage(m?.bandTrend ?? '{label}, {kind}: upper bound {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}; lower bound ranging {low2} to {high2}.', 'low2', fmt(olo))
+        sentence = fillMessage(sentence, 'high2', fmt(ohi))
       }
     }
-    parts.push(
-      `${s.label}, ${s.kind}: ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, ` +
-        `ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}.`,
-    )
+    if (sentence === '') sentence = m?.trend ?? '{label}, {kind}: {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}.'
+    sentence = fillMessage(sentence, 'label', s.label)
+    sentence = fillMessage(sentence, 'kind', s.kind)
+    sentence = fillMessage(sentence, 'direction', dir)
+    sentence = fillMessage(sentence, 'change', pct)
+    sentence = fillMessage(sentence, 'first', fmt(first))
+    sentence = fillMessage(sentence, 'last', fmt(last))
+    sentence = fillMessage(sentence, 'lowAt', at(loAt))
+    sentence = fillMessage(sentence, 'low', fmt(lo))
+    sentence = fillMessage(sentence, 'highAt', at(hiAt))
+    sentence = fillMessage(sentence, 'high', fmt(hi))
+    parts.push(sentence)
   }
-  return parts.join(' ').replace(' .', '.')
+  return parts.join(' ')
 }
 
 /**
@@ -189,10 +315,12 @@ export function describeDatum(input: A11yInput, series: number, index: number): 
   const s = input.series[series]!
   if (index < 0 || index >= s.values.length) return ''
   const fmt = input.format ?? groupThousands
+  const m = input.messages
   const v = s.values[index]!
-  const value = v !== v ? 'no value' : fmt(v)
-  const at = index < input.categories.length ? ` at ${input.categories[index]!}` : ''
-  return `${s.label}: ${value}${at}, ${index + 1} of ${s.values.length}`
+  const value = v !== v ? m?.noValue ?? 'no value' : fmt(v)
+  const at = index < input.categories.length ? fillMessage(m?.at ?? ' at {category}', 'category', input.categories[index]!) : ''
+  const d1 = fillMessage(fillMessage(m?.datum ?? '{label}: {value}{at}, {index} of {count}', 'label', s.label), 'value', value)
+  return fillMessage(fillMessage(fillMessage(d1, 'at', at), 'index', `${index + 1}`), 'count', `${s.values.length}`)
 }
 
 export interface A11yTable {
@@ -216,7 +344,7 @@ export interface A11yTable {
  * value, so splitting it out would suggest three independent series where
  * there is one. A band is the opposite case and does get two columns.
  */
-function withError(fmt: Formatter, v: Double, s: A11ySeries, i: number): string {
+function withError(fmt: Formatter, v: Double, s: A11ySeries, i: number, template: string): string {
   const lo: Double[] = s.errLow ?? []
   const hi: Double[] = s.errHigh ?? []
   if (i >= lo.length || i >= hi.length) return fmt(v)
@@ -224,7 +352,7 @@ function withError(fmt: Formatter, v: Double, s: A11ySeries, i: number): string 
   const h = hi[i]!
   // Infinities are gaps too, matching the cell rule beside it (#3390).
   if (!isFiniteNumber(l) || !isFiniteNumber(h)) return fmt(v)
-  return `${fmt(v)} (${fmt(l)} to ${fmt(h)})`
+  return fillMessage(fillMessage(fillMessage(template, 'value', fmt(v)), 'low', fmt(l)), 'high', fmt(h))
 }
 
 export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
@@ -232,7 +360,8 @@ export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
   // edge would hand the reader half a band and no way to tell that is what
   // happened; the table exists for the reader who wants the numbers, and a
   // band's numbers come in pairs.
-  const headers = ['Category']
+  const m = input.messages
+  const headers = [m?.category ?? 'Category']
   for (const s of input.series) {
     const other: Double[] = s.values2 ?? []
     const rs: Double[] = s.rValues ?? []
@@ -240,12 +369,12 @@ export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
     // bound and a size channel must contribute both, and an `else if` here
     // silently dropped the size for any series that also had bounds.
     if (other.length > 0) {
-      headers.push(`${s.label} (upper)`)
-      headers.push(`${s.label} (lower)`)
+      headers.push(fillMessage(m?.upper ?? '{label} (upper)', 'label', s.label))
+      headers.push(fillMessage(m?.lower ?? '{label} (lower)', 'label', s.label))
     } else {
       headers.push(s.label)
     }
-    if (rs.length > 0) headers.push(`${s.label} (size)`)
+    if (rs.length > 0) headers.push(fillMessage(m?.size ?? '{label} (size)', 'label', s.label))
   }
 
   const n = chartRowCount(input)
@@ -272,6 +401,7 @@ export function chartRowCount(input: A11yInput): number {
  */
 export function chartTableRow(input: A11yInput, i: number): string[] {
   const fmt = input.format ?? groupThousands
+  const errText = input.messages?.withError ?? '{value} ({low} to {high})'
   // Bounds-checked, not coalesced: a subscript past the end is a crash on
   // Swift, not an `undefined` — and a series may be longer than the
   // categories (or shorter than its siblings).
@@ -290,7 +420,7 @@ export function chartTableRow(input: A11yInput, i: number): string[] {
     const v = s.values[i]!
     // A gap is an empty cell, not the word NaN — and an infinity is a gap
     // too, because the geometry drops it (`isFiniteNumber`).
-    row.push(isFiniteNumber(v) ? withError(fmt, v, s, i) : '')
+    row.push(isFiniteNumber(v) ? withError(fmt, v, s, i, errText) : '')
     if (two) {
       if (i >= other.length) row.push('')
       else {

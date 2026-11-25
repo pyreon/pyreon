@@ -18,7 +18,7 @@
 // sankey (nodes) can do the same; none does yet.
 
 import { signal, untrack } from '@pyreon/reactivity'
-import { describeChart } from './a11y'
+import { describeChart, fillMessage } from './a11y'
 import type { A11yInput } from './a11y'
 import type { CanvasHostProps, CanvasHostSpec } from './canvas-host'
 import type { ChartTheme } from './render'
@@ -136,11 +136,11 @@ export function withItemStates<L>(raw: StatefulHostSpec<L>): CanvasHostSpec<L> {
       raw.pick?.(layout, i)
     },
     a11y: (layout) => withStateNames(raw.a11y(layout)),
-    describe: (layout) => {
-      const base = raw.describe !== undefined ? raw.describe(layout) : describeChart(raw.a11y(layout))
+    describe: (layout, messages) => {
+      const base = raw.describe !== undefined ? raw.describe(layout, messages) : describeChart(messages === undefined ? raw.a11y(layout) : { ...raw.a11y(layout), messages })
       const chosen = selection()
 
-      return chosen.length === 0 ? base : `${base} Selected: ${chosen.map((i) => raw.states.label(layout, i)).join(', ')}.`
+      return chosen.length === 0 ? base : base + fillMessage(messages?.selected ?? ' Selected: {list}.', 'list', chosen.map((i) => raw.states.label(layout, i)).join(', '))
     },
   }
 }

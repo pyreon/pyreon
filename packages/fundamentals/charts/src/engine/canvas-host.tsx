@@ -18,8 +18,8 @@
 import { createUniqueId, h, onUnmount } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
 import { batch, computed, effect, isClient, isServer, signal, untrack } from '@pyreon/reactivity'
-import { chartRowCount, chartTable, chartTableRow, describeChart } from './a11y'
-import type { A11yInput, A11yTable } from './a11y'
+import { chartRowCount, chartTable, chartTableRow, describeChart, tableCaption } from './a11y'
+import type { A11yInput, A11yTable, ChartMessages } from './a11y'
 import { canvasSizeAttrs, paint, prepareCanvas, sharedCanvasMeasure, trackChartImages } from './canvas-web'
 import { cmdsEqual, sameCmdShape, tweenCmds, universalTweenCmds } from './cmd-tween'
 import { placeLegend } from './legend'
@@ -74,7 +74,7 @@ function setCell(el: Element, text: string): void {
  * The clip styles go on a WRAPPER, not the table: a `<table>` uses auto layout
  * and expands to its content regardless of `width: 1px`.
  */
-export function a11yTableNode(read: () => A11yTable, id: string, title: () => string, rowCount?: () => number): VNode {
+export function a11yTableNode(read: () => A11yTable, id: string, title: () => string, rowCount?: () => number, messages?: () => ChartMessages | undefined): VNode {
   const host = signal<HTMLTableElement | null>(null)
   // A LARGE table is filled after the chart's first paint, not before it. At
   // 1k rows its layout was ~9ms of a ~10.5ms first frame — the reason a plain
@@ -130,7 +130,7 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
     const doc = el.ownerDocument
     let caption = el.caption
     if (caption === null) caption = el.createCaption()
-    setCell(caption, title() + (t.rows.length < t.total ? ` (first ${t.rows.length} of ${t.total} rows)` : ''))
+    setCell(caption, tableCaption(title(), t.rows.length, t.total, messages?.()))
     let head = el.tHead
     if (head === null) head = el.createTHead()
     const headRow = ensureChildren(head, 'tr', 1)[0]!
@@ -189,7 +189,7 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
   // `dangerouslySetInnerHTML` element's server children are trusted, never
   // re-parsed) and the effect above keeps it current from there. On a pure
   // client mount the payload is empty and the effect builds it, as before.
-  const html = isServer ? tableHtml(read(), title()) : ''
+  const html = isServer ? tableHtml(read(), title(), messages?.()) : ''
   return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', dangerouslySetInnerHTML: { __html: html }, ref: (el: HTMLTableElement | null) => {
     host.set(el)
     if (el !== null && !ready.peek()) afterPaint(() => ready.set(true))
@@ -208,8 +208,8 @@ export function afterPaint(fn: () => void): void {
 const escHtml = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 /** The accessible table as markup, in the same caption / thead / chunked-tbody shape the client builds, so hydration adopts it cell for cell. */
-export function tableHtml(t: A11yTable, title: string): string {
-  const caption = title + (t.rows.length < t.total ? ` (first ${t.rows.length} of ${t.total} rows)` : '')
+export function tableHtml(t: A11yTable, title: string, messages?: ChartMessages | undefined): string {
+  const caption = tableCaption(title, t.rows.length, t.total, messages)
   let out = `<caption>${escHtml(caption)}</caption><thead><tr>${t.headers.map((x) => `<th scope="col">${escHtml(x)}</th>`).join('')}</tr></thead>`
   for (let k = 0; k * TABLE_CHUNK < t.rows.length; k++) {
     out += '<tbody>'
@@ -329,6 +329,19 @@ export interface CanvasHostProps {
   theme?: Partial<ChartTheme>
   /** Names the chart for assistive tech and the accessible table's caption; drawn when `showTitle` is on. */
   title?: string
+  /**
+   * The words of the canvas description, the accessible table and the
+   * keyboard announcements, for an app that is not in English
+   * (`ChartMessages`: every field a template, unset fields stay English).
+   * `getLocale(tag)?.messages` reads a pack registered with `registerLocale`.
+   */
+  messages?: ChartMessages
+  /**
+   * Replaces the canvas's spoken description outright: a string, or a
+   * function of the chart's accessible data (`A11yInput`, `messages`
+   * included) that returns one.
+   */
+  description?: string | ((input: A11yInput) => string)
   /** A second line under the title, at the label size. */
   subtitle?: string
   /** Draw the title block above the chart (the title is otherwise only announced). */
@@ -479,8 +492,8 @@ export interface CanvasHostSpec<L> {
   leave?: (() => void) | undefined
   /** The accessible description + table input. */
   a11y: (layout: L) => A11yInput
-  /** A family-specific `aria-label` sentence, when the generic `describeChart` reads worse than the family's own (range and last close, grid dimensions). */
-  describe?: ((layout: L) => string) | undefined
+  /** A family-specific `aria-label` sentence, when the generic `describeChart` reads worse than the family's own (range and last close, grid dimensions), in the chart's `messages` where they name it. */
+  describe?: ((layout: L, messages?: ChartMessages | undefined) => string) | undefined
   /** Caption when `title` is absent. */
   caption: string
   /** Whether `render` honours `progress` — only then does the entrance tween run. */
@@ -602,7 +615,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   let lastFamily: DrawCmd[] | null = null
   // A version the a11y readers key their memo on; bumped by the draw effect.
   const a11yVersion = signal(0)
-  let a11yMemo: { version: number; w: Double; input: A11yInput } | null = null
+  let a11yMemo: { version: number; w: Double; messages: ChartMessages | undefined; input: A11yInput } | null = null
   // Keyboard focus item (an index into the accessible table's rows); -1 = none.
   const focusIdx = signal(-1)
   const announce = signal('')
@@ -988,10 +1001,14 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   const a11yNow = (): A11yInput => {
     const version = a11yVersion()
     const w = canvas === null ? (props.width ?? 300) : drawWidth(canvas, props.width)
+    const messages = props.messages
     const m = a11yMemo
-    if (m !== null && m.version === version && m.w === w) return m.input
-    const input = spec.a11y(layoutForA11y())
-    a11yMemo = { version, w, input }
+    if (m !== null && m.version === version && m.w === w && m.messages === messages) return m.input
+    const raw = spec.a11y(layoutForA11y())
+    // The words travel WITH the input, so the description, the table and the
+    // keyboard announcements (all engine functions of it) read the same ones.
+    const input = messages === undefined ? raw : { ...raw, messages }
+    a11yMemo = { version, w, messages, input }
     return input
   }
 
@@ -1134,7 +1151,9 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     role: 'img',
     'aria-label': () => {
       a11yVersion()
-      return spec.describe === undefined ? describeChart(a11yNow()) : spec.describe(layoutForA11y())
+      const own = props.description
+      if (own !== undefined) return typeof own === 'string' ? own : own(a11yNow())
+      return spec.describe === undefined ? describeChart(a11yNow()) : spec.describe(layoutForA11y(), props.messages)
     },
     'aria-describedby': () => tableOn() ? tableId : undefined,
     // The SSR box (see `canvasSizeAttrs`): without it a hydrated chart shifts
@@ -1243,7 +1262,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
 
   // Derived booleans keep these children mounted across data-only updates.
   // The table owns its effects in a component scope, so disabling it disposes them.
-  const AccessibleTable = (): VNode => a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? spec.caption, () => chartRowCount(a11yNow()))
+  const AccessibleTable = (): VNode => a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? props.messages?.untitled ?? spec.caption, () => chartRowCount(a11yNow()), () => props.messages)
   const extras: (VNode | (() => VNode | null))[] = [ssrFrameNode, tipNode, liveNode, () => tableOn() ? h(AccessibleTable, null) : null]
   return h('div', { style: 'position:relative' }, canvasNode, ...extras)
 }

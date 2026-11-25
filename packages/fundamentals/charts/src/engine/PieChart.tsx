@@ -6,6 +6,7 @@
 // pie carried the axis layout it never uses. Two components keep both
 // tree-shakeable.
 
+import { describeGauge } from './a11y'
 import { canvasHost, orNull } from './canvas-host'
 import { pieHitWith, pieLegend, pieTipAt } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
@@ -182,7 +183,7 @@ export function GaugeChart(props: GaugeChartProps): VNode {
       px >= g.box.x && px <= g.box.x + g.box.w && py >= g.box.y && py <= g.box.y + g.box.h
         ? { seriesIndex: 0, dataIndex: 0, name: props.title ?? '', value: g.value, color: props.valueColor }
         : null,
-    describe: (g) => `${props.title ?? 'Gauge'}: ${plain(g.value)} of ${plain(g.max)}`,
+    describe: (g, m) => describeGauge(props.title ?? m?.untitled ?? 'Gauge', plain(g.value), plain(g.max), m),
     a11y: (g) => ({
       title: props.title,
       categories: [props.title ?? 'Gauge'],

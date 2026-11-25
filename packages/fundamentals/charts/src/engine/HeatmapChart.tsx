@@ -1,5 +1,6 @@
 // `<HeatmapChart>` — a category×category value grid on a canvas, over the shared canvas host.
 
+import { describeHeatmap } from './a11y'
 import type { VNode } from '@pyreon/core'
 import { canvasHost, shiftCmds } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
@@ -140,10 +141,9 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
       const gap = props.gap ?? 1.0
       return { x: g.box.x + plot.x + cw * i + gap / 2.0, y: g.box.y + plot.y, w: Math.max(0.0, cw - gap), h: plot.h }
     },
-    describe: (g) => {
-      const title = props.title ?? 'Heatmap'
-      if (g.grid.cells.length === 0) return `${title}: no data.`
-      return `${title}: ${g.grid.cols.length} columns by ${g.grid.rows.length} rows, values ${g.grid.min} to ${g.grid.max}.`
+    describe: (g, m) => {
+      const fmt = props.format ?? String
+      return describeHeatmap(props.title ?? m?.untitled ?? 'Heatmap', g.grid.cols.length, g.grid.rows.length, g.grid.cells.length, fmt(g.grid.min), fmt(g.grid.max), m)
     },
     a11y: (g) => ({
       title: props.title,

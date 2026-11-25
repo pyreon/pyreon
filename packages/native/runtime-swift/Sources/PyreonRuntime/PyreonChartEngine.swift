@@ -3157,16 +3157,75 @@ public struct A11ySeries: Codable {
   }
 }
 
+public struct ChartMessages: Codable {
+  public var untitled: String? = nil
+  public var noData: String? = nil
+  public var overview: String? = nil
+  public var overviewPlain: String? = nil
+  public var oneSeries: String? = nil
+  public var manySeries: String? = nil
+  public var empty: String? = nil
+  public var rising: String? = nil
+  public var falling: String? = nil
+  public var flat: String? = nil
+  public var trend: String? = nil
+  public var bandTrend: String? = nil
+  public var at: String? = nil
+  public var category: String? = nil
+  public var upper: String? = nil
+  public var lower: String? = nil
+  public var size: String? = nil
+  public var withError: String? = nil
+  public var noValue: String? = nil
+  public var datum: String? = nil
+  public var scaleNote: String? = nil
+  public var valueAxis: String? = nil
+  public var xAxis: String? = nil
+  public var truncated: String? = nil
+  public var selected: String? = nil
+  public var close: String? = nil
+  public init(untitled: String? = nil, noData: String? = nil, overview: String? = nil, overviewPlain: String? = nil, oneSeries: String? = nil, manySeries: String? = nil, empty: String? = nil, rising: String? = nil, falling: String? = nil, flat: String? = nil, trend: String? = nil, bandTrend: String? = nil, at: String? = nil, category: String? = nil, upper: String? = nil, lower: String? = nil, size: String? = nil, withError: String? = nil, noValue: String? = nil, datum: String? = nil, scaleNote: String? = nil, valueAxis: String? = nil, xAxis: String? = nil, truncated: String? = nil, selected: String? = nil, close: String? = nil) {
+    self.untitled = untitled
+    self.noData = noData
+    self.overview = overview
+    self.overviewPlain = overviewPlain
+    self.oneSeries = oneSeries
+    self.manySeries = manySeries
+    self.empty = empty
+    self.rising = rising
+    self.falling = falling
+    self.flat = flat
+    self.trend = trend
+    self.bandTrend = bandTrend
+    self.at = at
+    self.category = category
+    self.upper = upper
+    self.lower = lower
+    self.size = size
+    self.withError = withError
+    self.noValue = noValue
+    self.datum = datum
+    self.scaleNote = scaleNote
+    self.valueAxis = valueAxis
+    self.xAxis = xAxis
+    self.truncated = truncated
+    self.selected = selected
+    self.close = close
+  }
+}
+
 public struct A11yInput {
   public var title: String? = nil
   public var categories: [String]
   public var series: [A11ySeries]
   public var format: ((Double) -> String)? = nil
-  public init(title: String? = nil, categories: [String], series: [A11ySeries], format: ((Double) -> String)? = nil) {
+  public var messages: ChartMessages? = nil
+  public init(title: String? = nil, categories: [String], series: [A11ySeries], format: ((Double) -> String)? = nil, messages: ChartMessages? = nil) {
     self.title = title
     self.categories = categories
     self.series = series
     self.format = format
+    self.messages = messages
   }
 }
 
@@ -14462,24 +14521,36 @@ public func applyChartAction(_ s: ChartActionState, _ a: ChartActionInput) -> Ch
     return s
   }
 
+public func fillMessage(_ template: String, _ key: String, _ value: String) -> String { { (s: String, f: String, r: String) -> String in s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }(template, "{\(key)}", value) }
+
+public func scaleNoteText(_ yScale: String, _ xScale: String, _ messages: ChartMessages?) -> String {
+    let template = (messages?.scaleNote ?? " The {axis} axis is on a {scale} scale.")
+    let y = yScale == "" || yScale == "linear" ? "" : fillMessage(fillMessage(template, "axis", (messages?.valueAxis ?? "value")), "scale", yScale)
+    let x = xScale == "" || xScale == "linear" ? "" : fillMessage(fillMessage(template, "axis", (messages?.xAxis ?? "x")), "scale", xScale)
+    return y + x
+  }
+
 public func describeChart(_ input: A11yInput) -> String {
     let fmt = (input.format ?? groupThousands)
+    let m = input.messages
     var parts: [String] = []
-    let title = (input.title ?? "Chart")
+    let title = ((input.title ?? m?.untitled) ?? "Chart")
     if input.series.count == 0 {
-      return "\(title): no data."
+      return fillMessage((m?.noData ?? "{title}: no data."), "title", title)
     }
-    parts.append("\(title).")
     let n = input.series.count
-    parts.append(n == 1 ? "1 series" : "\(n) series")
+    let count = n == 1 ? (m?.oneSeries ?? "1 series") : fillMessage((m?.manySeries ?? "{n} series"), "n", "\(n)")
     if input.categories.count > 0 {
-      parts.append("over \(input.categories.count) categories from \(input.categories[0]) to \(input.categories[pyreonSub(input.categories.count, 1)]).")
+      let o1 = fillMessage((m?.overview ?? "{title}. {series} over {count} categories from {first} to {last}."), "title", title)
+      let o2 = fillMessage(fillMessage(o1, "series", count), "count", "\(input.categories.count)")
+      parts.append(fillMessage(fillMessage(o2, "first", input.categories[0]), "last", input.categories[pyreonSub(input.categories.count, 1)]))
     } else {
-      parts.append(".")
+      parts.append(fillMessage(fillMessage((m?.overviewPlain ?? "{title}. {series}."), "title", title), "series", count))
     }
+    let emptyText = (m?.empty ?? "{label}: empty.")
     for s in input.series {
       if s.values.count == 0 {
-        parts.append("\(s.label): empty.")
+        parts.append(fillMessage(emptyText, "label", s.label))
         continue
       }
       var lo = 0.0
@@ -14513,12 +14584,14 @@ public func describeChart(_ input: A11yInput) -> String {
         seen = pyreonAdd(seen, 1)
       }
       if seen == 0 {
-        parts.append("\(s.label): empty.")
+        parts.append(fillMessage(emptyText, "label", s.label))
         continue
       }
-      let dir = last > first ? "rising" : last < first ? "falling" : "flat"
-      let pct = first > 0.0 && dir != "flat" ? " \(percentChange(first, last))" : ""
-      let at = { (i: Int) in i < input.categories.count ? " at \(input.categories[i])" : "" }
+      let dir = last > first ? (m?.rising ?? "rising") : last < first ? (m?.falling ?? "falling") : (m?.flat ?? "flat")
+      let pct = first > 0.0 && last != first ? " \(percentChange(first, last))" : ""
+      let atText = (m?.at ?? " at {category}")
+      let at = { (i: Int) in i < input.categories.count ? fillMessage(atText, "category", input.categories[i]) : "" }
+      var sentence = ""
       let other = (s.values2 ?? [])
       if other.count > 0 {
         var olo = 0.0
@@ -14542,13 +14615,26 @@ public func describeChart(_ input: A11yInput) -> String {
           oseen = pyreonAdd(oseen, 1)
         }
         if oseen > 0 {
-          parts.append("\(s.label), \(s.kind): upper bound \(dir)\(pct) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)); " + "lower bound ranging \(fmt(olo)) to \(fmt(ohi)).")
-          continue
+          sentence = fillMessage((m?.bandTrend ?? "{label}, {kind}: upper bound {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}; lower bound ranging {low2} to {high2}."), "low2", fmt(olo))
+          sentence = fillMessage(sentence, "high2", fmt(ohi))
         }
       }
-      parts.append("\(s.label), \(s.kind): \(dir)\(pct) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)).")
+      if sentence == "" {
+        sentence = (m?.trend ?? "{label}, {kind}: {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}.")
+      }
+      sentence = fillMessage(sentence, "label", s.label)
+      sentence = fillMessage(sentence, "kind", s.kind)
+      sentence = fillMessage(sentence, "direction", dir)
+      sentence = fillMessage(sentence, "change", pct)
+      sentence = fillMessage(sentence, "first", fmt(first))
+      sentence = fillMessage(sentence, "last", fmt(last))
+      sentence = fillMessage(sentence, "lowAt", at(loAt))
+      sentence = fillMessage(sentence, "low", fmt(lo))
+      sentence = fillMessage(sentence, "highAt", at(hiAt))
+      sentence = fillMessage(sentence, "high", fmt(hi))
+      parts.append(sentence)
     }
-    return { (s: String, f: String, r: String) -> String in s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }(parts.joined(separator: " "), " .", ".")
+    return parts.joined(separator: " ")
   }
 
 public func percentChange(_ first: Double, _ last: Double) -> String {
@@ -14569,13 +14655,15 @@ public func describeDatum(_ input: A11yInput, _ series: Int, _ index: Int) -> St
       return ""
     }
     let fmt = (input.format ?? groupThousands)
+    let m = input.messages
     let v = s.values[index]
-    let value = v != v ? "no value" : fmt(v)
-    let at = index < input.categories.count ? " at \(input.categories[index])" : ""
-    return "\(s.label): \(value)\(at), \(pyreonAdd(index, 1)) of \(s.values.count)"
+    let value = v != v ? (m?.noValue ?? "no value") : fmt(v)
+    let at = index < input.categories.count ? fillMessage((m?.at ?? " at {category}"), "category", input.categories[index]) : ""
+    let d1 = fillMessage(fillMessage((m?.datum ?? "{label}: {value}{at}, {index} of {count}"), "label", s.label), "value", value)
+    return fillMessage(fillMessage(fillMessage(d1, "at", at), "index", "\(pyreonAdd(index, 1))"), "count", "\(s.values.count)")
   }
 
-public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _ i: Int) -> String {
+public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _ i: Int, _ template: String) -> String {
     let lo = (s.errLow ?? [])
     let hi = (s.errHigh ?? [])
     if i >= lo.count || i >= hi.count {
@@ -14586,22 +14674,23 @@ public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _
     if !isFiniteNumber(l) || !isFiniteNumber(h) {
       return fmt(v)
     }
-    return "\(fmt(v)) (\(fmt(l)) to \(fmt(h)))"
+    return fillMessage(fillMessage(fillMessage(template, "value", fmt(v)), "low", fmt(l)), "high", fmt(h))
   }
 
 public func chartTable(_ input: A11yInput, _ limit: Int = -1) -> A11yTable {
-    var headers = ["Category"]
+    let m = input.messages
+    var headers = [(m?.category ?? "Category")]
     for s in input.series {
       let other = (s.values2 ?? [])
       let rs = (s.rValues ?? [])
       if other.count > 0 {
-        headers.append("\(s.label) (upper)")
-        headers.append("\(s.label) (lower)")
+        headers.append(fillMessage((m?.upper ?? "{label} (upper)"), "label", s.label))
+        headers.append(fillMessage((m?.lower ?? "{label} (lower)"), "label", s.label))
       } else {
         headers.append(s.label)
       }
       if rs.count > 0 {
-        headers.append("\(s.label) (size)")
+        headers.append(fillMessage((m?.size ?? "{label} (size)"), "label", s.label))
       }
     }
     let n = chartRowCount(input)
@@ -14625,6 +14714,7 @@ public func chartRowCount(_ input: A11yInput) -> Int {
 
 public func chartTableRow(_ input: A11yInput, _ i: Int) -> [String] {
     let fmt = (input.format ?? groupThousands)
+    let errText = (input.messages?.withError ?? "{value} ({low} to {high})")
     var row = [i < input.categories.count ? input.categories[i] : "\(pyreonAdd(i, 1))"]
     for s in input.series {
       let other = (s.values2 ?? [])
@@ -14642,7 +14732,7 @@ public func chartTableRow(_ input: A11yInput, _ i: Int) -> [String] {
         continue
       }
       let v = s.values[i]
-      row.append(isFiniteNumber(v) ? withError(fmt, v, s, i) : "")
+      row.append(isFiniteNumber(v) ? withError(fmt, v, s, i, errText) : "")
       if two {
         if i >= other.count {
           row.append("")

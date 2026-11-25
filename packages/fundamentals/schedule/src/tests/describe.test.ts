@@ -31,6 +31,33 @@ describe('describeRule', () => {
     expect(describeRule({ every: 'year', start: '2026-11-18', on: { weeks: [3] } }, { messages: cs })).toBe('Vlastní plán')
   })
 
+  it('weekday and month names can be given in the case form a language needs (#4845)', () => {
+    const rule = { every: 'week', on: { weekdays: [3] }, start: '2026-11-25T19:00', count: 4 } as const
+    const cs = {
+      everyWeek: 'Každý týden', onWeekdays: 've {list}', atTimes: 'v {list}', times: '{n}krát', nthWeekday: '{nth} {weekday}', last: 'poslední', everyMonth: 'každý měsíc', everyYear: 'každý rok', inMonths: 'v {list}', onMonthDays: '{list}.',
+      weekdays: ['pondělí', 'úterý', 'středu', 'čtvrtek', 'pátek', 'sobotu', 'neděli'],
+      nthWeekdays: ['pondělí', 'úterý', 'středa', 'čtvrtek', 'pátek', 'sobota', 'neděle'],
+      months: ['lednu', 'únoru', 'březnu', 'dubnu', 'květnu', 'červnu', 'červenci', 'srpnu', 'září', 'říjnu', 'listopadu', 'prosinci'],
+    }
+
+    expect(describeRule(rule, { locale: 'cs', messages: cs })).toBe('Každý týden ve středu v 19:00, 4krát')
+    expect(describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, start: '2026-11-27' }, { locale: 'cs', messages: cs })).toBe('Každý měsíc ve poslední pátek')
+    expect(describeRule({ every: 'year', start: '2026-11-18' }, { locale: 'cs', messages: cs })).toBe('Každý rok v listopadu 18.')
+    // nthWeekdays falls back to weekdays, then to Intl
+    expect(describeRule({ every: 'month', on: { weekdays: [{ weekday: 3, nth: 1 }] }, start: '2026-11-04' }, { messages: { weekdays: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] } })).toBe('Every month on the first c')
+  })
+
+  it("times follow the locale's hour cycle (#4845)", () => {
+    const rule = { every: 'week', on: { weekdays: [3] }, start: '2026-11-25T19:00', count: 4 } as const
+
+    expect(describeRule(rule, { locale: 'en-US' })).toMatch(/^Every week on Wednesday at 7:00\sPM, 4 times$/)
+    expect(describeRule(rule, { locale: 'en-GB' })).toBe('Every week on Wednesday at 19:00, 4 times')
+    expect(describeRule(rule, { locale: 'cs' })).toContain('19:00')
+    // no locale: the locale-neutral HH:mm form
+    expect(describeRule(rule)).toBe('Every week on Wednesday at 19:00, 4 times')
+    expect(describeRule({ ...rule, start: '2026-11-25T09:05' }, { formatTime: ({ hour, minute }) => `${hour}h${minute}` })).toBe('Every week on Wednesday at 9h5, 4 times')
+  })
+
   it('rules with no natural sentence say "Custom schedule" instead of nonsense', () => {
     expect(describeRule({ every: 'month', on: { weekdays: [1, 2, 3, 4, 5], position: [-1] }, start: '2026-11-30' })).toBe('Custom schedule')
     expect(describeRule({ every: 'year', on: { weeks: [20], weekdays: [1] }, start: '2026-05-11' })).toBe('Custom schedule')

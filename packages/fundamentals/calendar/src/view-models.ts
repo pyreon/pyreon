@@ -6,7 +6,7 @@ import type { AgendaDay } from './agenda'
 import type { CalState } from './state'
 import { assignToRows, layoutTimelineRow } from './timeline'
 import type { Resource, TimelineRow } from './timeline'
-import { Memo, memoLayout, signatureOf } from './models'
+import { Memo, businessFor, memoLayout, signatureOf } from './models'
 import { nowOffset, visibleMinutes } from './timegrid'
 import type { EventOccurrence, PlainDate } from './types'
 
@@ -30,6 +30,8 @@ export interface TimelineModel {
   to: number
   /** Where "now" is along the whole axis (0 to 1), or `null` when today is not shown or its hours are not. */
   now: number | null
+  /** Each shown day's opening hours as fractions of its visible hours (`{ top, height }`, as the time grid has them), or `null` when no `businessHours` are given. */
+  business: readonly (readonly { top: number; height: number }[] | null)[]
 }
 
 export const createAgendaModel = <Meta>(s: CalState<Meta>): Computed<AgendaDay[]> => computed(() => layoutAgenda(s.occurrences(), s.shown().dates))
@@ -99,7 +101,9 @@ export function createTimelineModel<Meta>(s: CalState<Meta>, resources: () => re
       if (offset !== null) now = (i + offset) / dates.length
     })
 
-    return { rows: rows.filter((r) => r.resource.id !== UNASSIGNED || r.blocks.length > 0), dates, from, to, now }
+    const business = dates.map((d) => businessFor(s.options.businessHours, d, { from, to }))
+
+    return { rows: rows.filter((r) => r.resource.id !== UNASSIGNED || r.blocks.length > 0), dates, from, to, now, business }
   })
 }
 

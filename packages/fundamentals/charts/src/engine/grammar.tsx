@@ -557,6 +557,10 @@ export interface ChartProps<T> {
   onSaveImage?: PlotChartProps<T>['onSaveImage']
   /** A BCP 47 tag formatting numbers and dates through Intl — see `<PlotChart locale>`. */
   locale?: string
+  /** The words of the accessible description, table and announcements — see `<PlotChart messages>`. */
+  messages?: PlotChartProps<T>['messages']
+  /** Replaces the spoken description outright — see `<PlotChart description>`. */
+  description?: PlotChartProps<T>['description']
   /**
    * Small multiples: one panel per distinct value of this channel, in a
    * grid, every panel sharing the y domain (a facet whose axis differs from
@@ -971,7 +975,7 @@ export function Chart<T>(props: ChartProps<T>): VNodeChild {
       : reactiveProp(() => (props as unknown as Record<string, unknown>)[key] ?? (resolved().props as Record<string, unknown>)[key])
   }
   // Every other `<PlotChart>` prop, the events/actions model included — the grammar reaches the whole host.
-  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale', 'barWidth', 'barGap', 'barCategoryGap', 'barSpan'] as const) {
+  for (const key of ['width', 'height', 'theme', 'title', 'subtitle', 'showTitle', 'showGrid', 'horizontal', 'animate', 'updateAnimation', 'updateDuration', 'universalTransition', 'maxPoints', 'density', 'keyboard', 'accessibleTable', 'class', 'handle', 'selectedMode', 'onSelectChange', 'onHighlight', 'onLegendChange', 'onZoom', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'seriesLabels', 'onSaveImage', 'locale', 'messages', 'description', 'barWidth', 'barGap', 'barCategoryGap', 'barSpan'] as const) {
     plotProps[key] = reactiveProp(() => (props as unknown as Record<string, unknown>)[key])
   }
   plotProps.onSelect = reactiveProp(() => props.onSelect)

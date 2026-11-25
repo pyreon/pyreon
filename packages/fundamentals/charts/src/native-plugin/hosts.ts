@@ -24,7 +24,7 @@ import { DEFAULT_PALETTE } from '../engine/palette'
 import { palettes } from '../engine/palettes'
 import { visualMap, visualStripOf } from '../engine/visual-map'
 import type { VisualMapOptions, VisualMapSpec } from '../engine/visual-map'
-import type { AttrIR, ExprIR } from '@pyreon/native-compiler/plugin-api'
+import type { AttrIR, ExprIR, TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { CHART_ENGINE_STRUCTS } from './engine-structs'
 
 /** Per-target expression helpers the host specs build their draw list with. */
@@ -907,12 +907,21 @@ export function describeInput(describe: string): string {
  * linear chart): the web's `scaleNote` — the picture's spacing is not the data's,
  * and a listener should know. Read from the compile-time literals.
  */
-export function scaleNote(yScale: unknown, yView: { kind: string } | undefined, xView: { kind: string } | undefined): string {
+export function scaleNote(yScale: unknown, yView: { kind: string } | undefined, xView: { kind: string } | undefined, messages?: string): string {
   const y = yView !== undefined ? yView.kind : typeof yScale === 'string' && yScale !== 'linear' ? yScale : ''
-  const text = (y === '' ? '' : ` The value axis is on a ${y} scale.`) + (xView === undefined ? '' : ` The x axis is on a ${xView.kind} scale.`)
+  const x = xView === undefined ? '' : xView.kind
+  if (y === '' && x === '') return ''
+  // With the chart's `messages` the note is built at run time by the engine's
+  // `scaleNoteText`, in the chart's words; without, the English literal (what
+  // `scaleNoteText` returns for no messages) is written in place.
+  if (messages !== undefined) return ` + /*scale-note*/scaleNoteText("${y}", "${x}", ${messages})`
+  const text = (y === '' ? '' : ` The value axis is on a ${y} scale.`) + (x === '' ? '' : ` The x axis is on a ${x} scale.`)
 
-  return text === '' ? '' : ` + /*scale-note*/"${text}"`
+  return ` + /*scale-note*/"${text}"`
 }
+
+/** The chart's `messages` prop as the engine's `ChartMessages` struct type, for `exprAs`. */
+export const CHART_MESSAGES_TYPE: TypeIR = { kind: 'typeRef', name: 'ChartMessages', args: [] }
 
 /** The `{ kind, param }` literal `scaleAttr` made, or undefined. */
 export function scaleViewOf(v: ExprIR | undefined): { kind: string; param: number } | undefined {
@@ -2261,6 +2270,7 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   accessibleTable: 'it renders a hidden DOM `<table>`; the native canvas carries `describeChart`\'s sentence instead',
   facet: 'it renders a GRID of sub-plots rather than a chart setting; compose the panels yourself',
   facetColumns: 'it sizes the `facet` grid, which is web-only',
+  description: 'it may be a function of the web host\'s accessible data; on native name the canvas with `accessibilityLabel` (a string), or translate the derived sentence with `messages`, which does cross',
   // ── Emit work, not an obstacle ─────────────────────────────────────────
   // Each of these names what is MISSING, because "not lowered" without that
   // reads as impossible when it is merely unbuilt.
@@ -2287,7 +2297,7 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['density', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['density', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns', 'description']
 
 /**
  * A host's `visualMap` at COMPILE time — the web `VisualMapSpec` literal, or a

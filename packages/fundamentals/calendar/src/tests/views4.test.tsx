@@ -576,10 +576,13 @@ describe('the resource timeline', () => {
     expect(onEventChange.mock.calls[0]![0]).toMatchObject({ start: '2026-11-18T09:30', end: '2026-11-18T12:00', resourceId: 'b', fromResourceId: 'a' })
   })
 
-  it('keyboard in right to left: Left moves later; keys of a bar that is not grabbed go to the event keyboard', () => {
+  it('keyboard in right to left: Left moves later; the arrows of a bar that is not grabbed move the grid focus from its cell', () => {
     const { root, calendar } = timeline({}, {}, 'rtl')
     const talk = (): HTMLElement => root.querySelector<HTMLElement>('.pcal-tl-block[data-key^="talk:"]')!
-    expect(key(talk(), 'ArrowLeft')).toBe(false)
+    expect(key(talk(), 'ArrowLeft')).toBe(true)
+    // right to left: Left is the next day
+    expect((document.activeElement as HTMLElement).dataset.date).toBe('2026-11-19')
+    expect(calendar.editing()).toBeNull()
     key(talk(), ' ')
     key(talk(), 'ArrowLeft')
     expect(calendar.editing()!.target.start).toBe('2026-11-18T09:30')
@@ -641,7 +644,8 @@ describe('sizes and edges', () => {
     Object.defineProperty(region, 'clientHeight', { configurable: true, value: 92 * 20 })
     for (const cb of callbacks) cb()
     expect(days()).toBeGreaterThan(before)
-    const lots = Array.from({ length: 100 }, (_, i) => ({ id: `r${i}`, title: `R${i}` }))
+    // above the default threshold (100 resources), so the timeline is windowed
+    const lots = Array.from({ length: 150 }, (_, i) => ({ id: `r${i}`, title: `R${i}` }))
     const tl = make({ view: 'timeline', resources: () => lots, events: () => [] })
     const grid = tl.root.querySelector<HTMLElement>('[role=grid]')!
     const rows = (): number => tl.root.querySelectorAll('.pcal-tl-row').length

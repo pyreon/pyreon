@@ -1,5 +1,6 @@
 // `<CandlestickChart>` — OHLC candles on a canvas, over the shared canvas host.
 
+import { describeCandles } from './a11y'
 import type { VNode } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { canvasHost, shiftCmds } from './canvas-host'
@@ -214,12 +215,12 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       if (c === undefined) return null
       return { seriesIndex: 0, dataIndex: idx + g.offset, name: g.categories[idx] ?? '', value: [c.open, c.close, c.low, c.high] }
     },
-    describe: (g) => {
-      const title = props.title ?? 'Candlestick chart'
-      if (g.candles.length === 0) return `${title}: no data.`
+    describe: (g, m) => {
+      const title = props.title ?? m?.untitled ?? 'Candlestick chart'
+      if (g.candles.length === 0) return describeCandles(title, 0, '', '', '', m)
       const ext = ohlcExtent(g.candles)
-      const last = g.candles[g.candles.length - 1]!
-      return `${title}: ${g.candles.length} periods, range ${ext.min} to ${ext.max}, last close ${last.close}.`
+      const fmt = props.format ?? String
+      return describeCandles(title, g.candles.length, fmt(ext.min), fmt(ext.max), fmt(g.candles[g.candles.length - 1]!.close), m)
     },
     a11y: (g) => {
       return {

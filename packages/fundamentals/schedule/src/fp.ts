@@ -1,6 +1,6 @@
 /** Value-last forms: configure first, apply to the value last, so they compose in `pipe`. */
 import { addBusinessDays as coreAddBusinessDays, addBusinessTime as coreAddBusinessTime, businessDaysBetween as coreBusinessDaysBetween, isBusinessDay as coreIsBusinessDay, isOpen as coreIsOpen, nextBusinessDay as coreNextBusinessDay, nextClosing as coreNextClosing, nextOpening as coreNextOpening, openingWindows as coreOpeningWindows, previousBusinessDay as corePreviousBusinessDay } from './business'
-import { describeRule as coreDescribeRule, type RuleMessages } from './describe'
+import { describeRule as coreDescribeRule, type DescribeRuleOptions } from './describe'
 import { expandEvents as coreExpandEvents, type CalendarEvent, type EventInstance } from './events'
 import { intersection as coreIntersection, overlaps as coreOverlaps, subtractIntervals as coreSubtractIntervals } from './intervals'
 import { nextOccurrence as coreNextOccurrence, occurrencesBetween as coreOccurrencesBetween, occursOn as coreOccursOn, previousOccurrence as corePreviousOccurrence } from './recurrence'
@@ -41,7 +41,7 @@ export const occursOn = (date: PlainDate) => (rule: Recurrence): boolean => core
  *
  * @example describeRule()({ every: 'day', start: '2026-11-18' }) // => 'Every day'
  */
-export const describeRule = (options?: { locale?: string; messages?: Partial<RuleMessages> }) => (rule: Recurrence): string => coreDescribeRule(rule, options)
+export const describeRule = (options?: DescribeRuleOptions) => (rule: Recurrence): string => coreDescribeRule(rule, options)
 
 /**
  * `isBusinessDay` with the date last.

@@ -56,7 +56,8 @@ import { niceDomain } from './scale'
 import { defaultTheme } from './render'
 import type { ChartTheme } from './render'
 import { renderLegend } from './legend'
-import { describeChart } from './a11y'
+import { describeCandles, describeChart, describeGauge, describeHeatmap } from './a11y'
+import type { ChartMessages } from './a11y'
 import { groupThousands } from './format'
 import type { Formatter } from './format'
 import { measureApprox, renderSvg } from './svg'
@@ -147,6 +148,8 @@ export interface PieToSvgOptions<T> {
   title?: string
   /** Explicit long description; derived from the data when a title is given. */
   description?: string
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
   /** ECharts' pie layout — start angle, direction, min/pad angles, rose, outside labels — as `<PieChart pie>`. */
   pie?: { arcs: ArcConfig; labels: PieLabelOptions | undefined; empty?: string | undefined } | undefined
@@ -198,6 +201,7 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () =>
     describeChart({
       title: options.title,
+      messages: options.messages,
       categories: slices.map((s) => s.label),
       series: [{ label: 'Value', values: slices.map((s) => s.value), kind: 'pie' }],
     }),
@@ -220,6 +224,8 @@ export interface GaugeToSvgOptions {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
   /** A full dial (`gaugeDial()`), as `<GaugeChart dial>`; the half-circle track without it. */
   dial?: DialSpec | undefined
@@ -267,7 +273,7 @@ export function gaugeToSvg(options: GaugeToSvgOptions): string {
      `svgTail` only calls this deriver when `title` is defined. They are
      kept as a guard rather than removed, but an UNTITLED chart derives no
      description at all today, which is worth closing on its own.  */
-    `${options.title ?? 'Gauge'}: ${fmt(options.value)} of ${fmt(max)}.`,
+    describeGauge(options.title ?? options.messages?.untitled ?? 'Gauge', fmt(options.value), fmt(max), options.messages),
   ))
 }
 
@@ -292,6 +298,8 @@ export interface RadarToSvgOptions<T> {
   theme?: Partial<ChartTheme>
   title?: string
   description?: string
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -337,6 +345,7 @@ export function radarToSvg<T>(options: RadarToSvgOptions<T>): string {
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () =>
     describeChart({
       title: options.title,
+      messages: options.messages,
       categories: options.axes.map((a) => a.label),
       series: options.data.map((d, i) => ({
         label: options.label(d, i),
@@ -363,6 +372,8 @@ export interface CandlestickToSvgOptions<T> {
   measure?: MeasureText
   title?: string
   description?: string
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -435,10 +446,10 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
        `svgTail` only calls this deriver when `title` is defined. Kept as a
        guard; that an UNTITLED chart derives no description at all is a
        separate a11y gap worth closing on its own. */
-    if (candles.length === 0) return `${options.title ?? 'Candlestick chart'}: no data.`
+    const title = options.title ?? options.messages?.untitled ?? 'Candlestick chart'
+    if (candles.length === 0) return describeCandles(title, 0, '', '', '', options.messages)
     const ext = ohlcExtent(candles)
-    const last = candles[candles.length - 1]!
-    return `${options.title ?? 'Candlestick chart'}: ${candles.length} periods, range ${fmt(ext.min)} to ${fmt(ext.max)}, last close ${fmt(last.close)}.`
+    return describeCandles(title, candles.length, fmt(ext.min), fmt(ext.max), fmt(candles[candles.length - 1]!.close), options.messages)
   }))
 }
 
@@ -461,6 +472,8 @@ export interface HeatmapToSvgOptions<T> {
   measure?: MeasureText
   title?: string
   description?: string
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -554,8 +567,7 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
        `svgTail` only calls this deriver when `title` is defined. Kept as a
        guard; that an UNTITLED chart derives no description at all is a
        separate a11y gap worth closing on its own. */
-    if (grid.cells.length === 0) return `${options.title ?? 'Heatmap'}: no data.`
-    return `${options.title ?? 'Heatmap'}: ${nc} columns by ${nr} rows, values ${grid.min} to ${grid.max}.`
+    return describeHeatmap(options.title ?? options.messages?.untitled ?? 'Heatmap', nc, nr, grid.cells.length, String(grid.min), String(grid.max), options.messages)
   }))
 }
 

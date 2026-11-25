@@ -730,10 +730,10 @@ export const Year = () => <YearView calendar={calendar} onDayClick={(date) => ca
 ### `TimelineView` `component` — **experimental**
 
 ```ts
-(props: ViewProps) => VNode
+(props: TimelineViewProps) => VNode
 ```
 
-Resources by time: a row per resource (`resources` option), the shown days side by side, each event a bar in the row of its `resourceId` (an event with several resources is in each row; overlaps stack in lanes). Rows are windowed, so 200 resources cost the rows on screen; the resource column and header stay in place. Drag a bar to another row to change its resource.
+Resources by time: a row per resource (`resources` option), the shown days side by side, each event a bar in the row of its `resourceId` (an event with several resources is in each row; overlaps stack in lanes). A WAI-ARIA grid like the month and time grid: a row per resource numbered by `aria-rowindex`, one gridcell per day under the day headers (a bar sits in the cell of the day it starts on), `businessHours` marked (`data-business` on the cells, the open hours drawn light), one tab stop with arrows by day and resource, Home/End, Ctrl+Home/End, PageUp/PageDown, Enter into a day (or selecting it when empty), Escape back. More than `windowed` resources (default 100) are windowed, so 200 resources cost the rows on screen; `windowed: false` draws every row for a screen reader's reading cursor. The resource column and header stay in place. Drag a bar to another row to change its resource.
 
 **Example**
 

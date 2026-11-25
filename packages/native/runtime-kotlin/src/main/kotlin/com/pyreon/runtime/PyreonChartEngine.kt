@@ -388,7 +388,9 @@ data class ChartActionState(var zoom: ZoomWindow, var hover: Long, var selected:
 
 data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var rValues: List<Double>? = null)
 
-data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null)
+data class ChartMessages(var untitled: String? = null, var noData: String? = null, var overview: String? = null, var overviewPlain: String? = null, var oneSeries: String? = null, var manySeries: String? = null, var empty: String? = null, var rising: String? = null, var falling: String? = null, var flat: String? = null, var trend: String? = null, var bandTrend: String? = null, var at: String? = null, var category: String? = null, var upper: String? = null, var lower: String? = null, var size: String? = null, var withError: String? = null, var noValue: String? = null, var datum: String? = null, var scaleNote: String? = null, var valueAxis: String? = null, var xAxis: String? = null, var truncated: String? = null, var selected: String? = null, var close: String? = null)
+
+data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null, var messages: ChartMessages? = null)
 
 data class A11yTable(var headers: List<String>, var rows: List<List<String>>, var total: Long)
 
@@ -11677,24 +11679,36 @@ fun applyChartAction(s: ChartActionState, a: ChartActionInput): ChartActionState
     return s
   }
 
+fun fillMessage(template: String, key: String, value: String): String = template.replaceFirst("{${key}}", value)
+
+fun scaleNoteText(yScale: String, xScale: String, messages: ChartMessages?): String {
+    val template = (messages?.scaleNote ?: " The {axis} axis is on a {scale} scale.")
+    val y = if (yScale == "" || yScale == "linear") "" else fillMessage(fillMessage(template, "axis", (messages?.valueAxis ?: "value")), "scale", yScale)
+    val x = if (xScale == "" || xScale == "linear") "" else fillMessage(fillMessage(template, "axis", (messages?.xAxis ?: "x")), "scale", xScale)
+    return y + x
+  }
+
 fun describeChart(input: A11yInput): String {
     val fmt = (input.format ?: ::groupThousands)
+    val m = input.messages
     val parts: MutableList<String> = mutableListOf()
-    val title = (input.title ?: "Chart")
+    val title = ((input.title ?: m?.untitled) ?: "Chart")
     if (input.series.length == 0L) {
-      return "${title}: no data."
+      return fillMessage((m?.noData ?: "{title}: no data."), "title", title)
     }
-    parts.add("${title}.")
     val n = input.series.length
-    parts.add(if (n == 1L) "1 series" else "${n} series")
+    val count = if (n == 1L) (m?.oneSeries ?: "1 series") else fillMessage((m?.manySeries ?: "{n} series"), "n", "${n}")
     if (input.categories.length > 0L) {
-      parts.add("over ${input.categories.length} categories from ${input.categories[0]} to ${input.categories[(pyreonSub(input.categories.length, 1L)).toInt()]}.")
+      val o1 = fillMessage((m?.overview ?: "{title}. {series} over {count} categories from {first} to {last}."), "title", title)
+      val o2 = fillMessage(fillMessage(o1, "series", count), "count", "${input.categories.length}")
+      parts.add(fillMessage(fillMessage(o2, "first", input.categories[0]), "last", input.categories[(pyreonSub(input.categories.length, 1L)).toInt()]))
     } else {
-      parts.add(".")
+      parts.add(fillMessage(fillMessage((m?.overviewPlain ?: "{title}. {series}."), "title", title), "series", count))
     }
+    val emptyText = (m?.empty ?: "{label}: empty.")
     for (s in input.series) {
       if (s.values.length == 0L) {
-        parts.add("${s.label}: empty.")
+        parts.add(fillMessage(emptyText, "label", s.label))
         continue
       }
       var lo = 0.0
@@ -11728,12 +11742,14 @@ fun describeChart(input: A11yInput): String {
         seen = pyreonAdd(seen, 1L)
       }
       if (seen == 0L) {
-        parts.add("${s.label}: empty.")
+        parts.add(fillMessage(emptyText, "label", s.label))
         continue
       }
-      val dir = if (last > first) "rising" else if (last < first) "falling" else "flat"
-      val pct = if (first > 0.0 && dir != "flat") " ${percentChange(first, last)}" else ""
-      val at = { i: Long -> if (i < input.categories.length) " at ${input.categories[(i).toInt()]}" else "" }
+      val dir = if (last > first) (m?.rising ?: "rising") else if (last < first) (m?.falling ?: "falling") else (m?.flat ?: "flat")
+      val pct = if (first > 0.0 && last != first) " ${percentChange(first, last)}" else ""
+      val atText = (m?.at ?: " at {category}")
+      val at = { i: Long -> if (i < input.categories.length) fillMessage(atText, "category", input.categories[(i).toInt()]) else "" }
+      var sentence = ""
       val other = (s.values2 ?: listOf())
       if (other.length > 0L) {
         var olo = 0.0
@@ -11757,13 +11773,26 @@ fun describeChart(input: A11yInput): String {
           oseen = pyreonAdd(oseen, 1L)
         }
         if (oseen > 0L) {
-          parts.add("${s.label}, ${s.kind}: upper bound ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; " + "lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.")
-          continue
+          sentence = fillMessage((m?.bandTrend ?: "{label}, {kind}: upper bound {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}; lower bound ranging {low2} to {high2}."), "low2", fmt(olo))
+          sentence = fillMessage(sentence, "high2", fmt(ohi))
         }
       }
-      parts.add("${s.label}, ${s.kind}: ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}.")
+      if (sentence == "") {
+        sentence = (m?.trend ?: "{label}, {kind}: {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}.")
+      }
+      sentence = fillMessage(sentence, "label", s.label)
+      sentence = fillMessage(sentence, "kind", s.kind)
+      sentence = fillMessage(sentence, "direction", dir)
+      sentence = fillMessage(sentence, "change", pct)
+      sentence = fillMessage(sentence, "first", fmt(first))
+      sentence = fillMessage(sentence, "last", fmt(last))
+      sentence = fillMessage(sentence, "lowAt", at(loAt))
+      sentence = fillMessage(sentence, "low", fmt(lo))
+      sentence = fillMessage(sentence, "highAt", at(hiAt))
+      sentence = fillMessage(sentence, "high", fmt(hi))
+      parts.add(sentence)
     }
-    return parts.joinToString(" ").replaceFirst(" .", ".")
+    return parts.joinToString(" ")
   }
 
 fun percentChange(first: Double, last: Double): String {
@@ -11784,13 +11813,15 @@ fun describeDatum(input: A11yInput, series: Long, index: Long): String {
       return ""
     }
     val fmt = (input.format ?: ::groupThousands)
+    val m = input.messages
     val v = s.values[(index).toInt()]
-    val value = if (v != v) "no value" else fmt(v)
-    val at = if (index < input.categories.length) " at ${input.categories[(index).toInt()]}" else ""
-    return "${s.label}: ${value}${at}, ${pyreonAdd(index, 1L)} of ${s.values.length}"
+    val value = if (v != v) (m?.noValue ?: "no value") else fmt(v)
+    val at = if (index < input.categories.length) fillMessage((m?.at ?: " at {category}"), "category", input.categories[(index).toInt()]) else ""
+    val d1 = fillMessage(fillMessage((m?.datum ?: "{label}: {value}{at}, {index} of {count}"), "label", s.label), "value", value)
+    return fillMessage(fillMessage(fillMessage(d1, "at", at), "index", "${pyreonAdd(index, 1L)}"), "count", "${s.values.length}")
   }
 
-fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Long): String {
+fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Long, template: String): String {
     val lo = (s.errLow ?: listOf())
     val hi = (s.errHigh ?: listOf())
     if (i >= lo.length || i >= hi.length) {
@@ -11801,22 +11832,23 @@ fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Long): Strin
     if (!isFiniteNumber(l) || !isFiniteNumber(h)) {
       return fmt(v)
     }
-    return "${fmt(v)} (${fmt(l)} to ${fmt(h)})"
+    return fillMessage(fillMessage(fillMessage(template, "value", fmt(v)), "low", fmt(l)), "high", fmt(h))
   }
 
 fun chartTable(input: A11yInput, limit: Long = -1L): A11yTable {
-    val headers = mutableListOf("Category")
+    val m = input.messages
+    val headers = mutableListOf((m?.category ?: "Category"))
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
       val rs = (s.rValues ?: listOf())
       if (other.length > 0L) {
-        headers.add("${s.label} (upper)")
-        headers.add("${s.label} (lower)")
+        headers.add(fillMessage((m?.upper ?: "{label} (upper)"), "label", s.label))
+        headers.add(fillMessage((m?.lower ?: "{label} (lower)"), "label", s.label))
       } else {
         headers.add(s.label)
       }
       if (rs.length > 0L) {
-        headers.add("${s.label} (size)")
+        headers.add(fillMessage((m?.size ?: "{label} (size)"), "label", s.label))
       }
     }
     val n = chartRowCount(input)
@@ -11840,6 +11872,7 @@ fun chartRowCount(input: A11yInput): Long {
 
 fun chartTableRow(input: A11yInput, i: Long): List<String> {
     val fmt = (input.format ?: ::groupThousands)
+    val errText = (input.messages?.withError ?: "{value} ({low} to {high})")
     val row = mutableListOf(if (i < input.categories.length) input.categories[(i).toInt()] else "${pyreonAdd(i, 1L)}")
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
@@ -11857,7 +11890,7 @@ fun chartTableRow(input: A11yInput, i: Long): List<String> {
         continue
       }
       val v = s.values[(i).toInt()]
-      row.add(if (isFiniteNumber(v)) withError(fmt, v, s, i) else "")
+      row.add(if (isFiniteNumber(v)) withError(fmt, v, s, i, errText) else "")
       if (two) {
         if (i >= other.length) {
           row.add("")

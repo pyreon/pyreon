@@ -29,15 +29,15 @@ import { applySeriesSelection, categoryPoints, geometrySpec, layoutChart, render
 import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
-import { dateFormatter, numberFormatter } from './locale'
+import { chartMessagesFor, dateFormatter, numberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView, Series } from './render'
 import { xPx } from './scale'
 import { bandFrame } from './bar-band'
 import { columnLength, isColumnMark, markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
-import { chartRowCount, chartTable, chartTableRow, describeChart, describeDatum } from './a11y'
-import type { A11yInput } from './a11y'
+import { chartRowCount, chartTable, chartTableRow, describeChart, describeDatum, scaleNoteText } from './a11y'
+import type { A11yInput, ChartMessages } from './a11y'
 import type { BrushArea } from './brush-area'
 import { hideHiddenSeries, legendEntriesGrouped, legendHitIndex, legendToggleGroup, pagerHit, pinSelection } from './legend-toggle'
 import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, windowOfRows, zoomWindow } from './zoom'
@@ -443,9 +443,24 @@ export interface PlotChartProps<T> {
    * reads `1.234,5` and `12. Mär.`. An explicit `format` / `xFormat` wins;
    * a registered locale pack (`registerLocale`) refines what Intl produces.
    * Web only: Intl has no native lowering, so a native host keeps the
-   * engine's plain labels.
+   * engine's plain labels. A pack's `messages` also supply the words of the
+   * accessible description and table (see `messages`).
    */
   locale?: string
+  /**
+   * The words of the spoken description, the accessible table, the keyboard
+   * announcements and the data view, for an app that is not in English
+   * (`ChartMessages`: every field a template, unset fields stay English).
+   * Merged over the `locale` pack's `messages` field by field. Lowers to the
+   * native hosts too: VoiceOver / TalkBack read the same words.
+   */
+  messages?: ChartMessages
+  /**
+   * Replaces the canvas's spoken description outright: a string, or a
+   * function of the chart's accessible data (`A11yInput`, with `messages`)
+   * that returns one. Web only; a native host takes `accessibilityLabel`.
+   */
+  description?: string | ((input: A11yInput) => string)
 }
 
 /**
@@ -1344,10 +1359,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
 
   /** The sentence that names a non-linear scale for the spoken description: the picture's spacing is not the data's, and a listener should know. */
   const scaleNote = (): string => {
-    const note = (axis: string, scale: 'linear' | 'log' | ScaleView | undefined): string =>
-      scale === undefined || scale === 'linear' ? '' : ` The ${axis} axis is on a ${typeof scale === 'string' ? scale : scale.kind} scale.`
+    const kind = (scale: 'linear' | 'log' | ScaleView | undefined): string => (scale === undefined ? '' : typeof scale === 'string' ? scale : scale.kind)
 
-    return note('value', props.yScale) + note('x', props.xScale)
+    return scaleNoteText(kind(props.yScale), kind(props.xScale), a11yInput().messages)
   }
 
   /** An x pixel mirrored about the plot's centre when the x axis is reversed — the pointer's place on the plot as it reads in DATA order. */
@@ -2043,12 +2057,15 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     lastFull = next
     return next
   }
-  let a11yMemo: { rows: readonly T[]; marks: readonly Mark<T>[]; labels: readonly string[] | undefined; format: Formatter | undefined; title: string | undefined; input: A11yInput } | null = null
+  let a11yMemo: { rows: readonly T[]; marks: readonly Mark<T>[]; labels: readonly string[] | undefined; format: Formatter | undefined; title: string | undefined; locale: string | undefined; messages: ChartMessages | undefined; input: A11yInput } | null = null
   const a11yInput = (): A11yInput => {
     const rows = readData()
     const m = a11yMemo
     const fmtNow = resolvedFormat()
-    if (m !== null && m.rows === rows && m.marks === props.marks && m.labels === props.seriesLabels && m.format === fmtNow && m.title === props.title) return m.input
+    const locale = props.locale
+    const own = props.messages
+    if (m !== null && m.rows === rows && m.marks === props.marks && m.labels === props.seriesLabels && m.format === fmtNow && m.title === props.title && m.locale === locale && m.messages === own) return m.input
+    const messages = chartMessagesFor(locale, own)
     const full = resolveFull(rows)
     const resolved = full.series
     const input: A11yInput = {
@@ -2057,6 +2074,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       // whose axis reads "$3.2K" and whose description reads "3204.55" is one
       // chart to a sighted reader and another to a screen-reader user.
       format: fmtNow,
+      // The words: the locale pack's, then the chart's own (`messages`).
+      ...(messages !== undefined ? { messages } : {}),
       categories: full.categories,
       series: (paintOf()?.companions?.(resolved) ?? resolved).map((s, i) => ({
         // The mark's own label (`line(y, { label })`, `<Line label>`) — what the
@@ -2073,7 +2092,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         ...(s.rValues !== undefined ? { rValues: s.rValues } : {}),
       })),
     }
-    a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }
+    a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, locale, messages: own, input }
     return input
   }
 
@@ -2127,7 +2146,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     // full — `labelReady` starts true there.
     'aria-label': () => {
       const input = a11yInput()
-      if (!labelReady() && chartRowCount(input) > DEFER_ROWS) return props.title ?? 'Chart'
+      const own = props.description
+      if (own !== undefined) return typeof own === 'string' ? own : own(input)
+      if (!labelReady() && chartRowCount(input) > DEFER_ROWS) return props.title ?? input.messages?.untitled ?? 'Chart'
       return describeChart(input) + scaleNote()
     },
     ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
@@ -2274,7 +2295,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         'data-pyreon-dataview': '',
         style: 'position:absolute;inset:0;overflow:auto;background:#ffffff;color:#1f2937;font:12px system-ui,sans-serif;padding:8px;box-sizing:border-box',
       },
-      h('button', { type: 'button', style: 'float:right', onClick: () => dataView.set(false) }, 'Close'),
+      h('button', { type: 'button', style: 'float:right', onClick: () => dataView.set(false) }, a11yInput().messages?.close ?? 'Close'),
       h(
         'table',
         { style: 'border-collapse:collapse' },
@@ -2292,7 +2313,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // from the accessibility tree along with the visual layout.
   // A real table rather than a longer label (see `a11yTableNode`), capped and
   // updated in place.
-  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? 'Chart data', () => chartRowCount(a11yInput()))
+  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? a11yInput().messages?.untitled ?? 'Chart data', () => chartRowCount(a11yInput()), () => a11yInput().messages)
   const table = (): VNode => tableNode
 
 

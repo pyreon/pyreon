@@ -1,4 +1,4 @@
-import { plotFillAccessor, plotFillSpec, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
+import { CHART_MESSAGES_TYPE, plotFillAccessor, plotFillSpec, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
 import type { ChartHostTarget, ChartThemeText } from './hosts'
 import { kotlinIdent, kotlinStr, substituteIdentifier, type ExprIR, type TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './kotlin-facade'
@@ -135,7 +135,9 @@ export function kotlinChartSelectBody(handler: ExprIR, hitExpr: string, indent: 
 export function kotlinChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, describe: string | undefined): string {
   const explicit = host.stringAttr(e, 'accessibilityLabel', 0)
   const titleRaw = host.staticAttr(e, 'title')
-  const label = explicit ?? describe ?? (typeof titleRaw === 'string' ? kotlinStr(titleRaw) : kotlinStr(chartDefaultLabel(e.tag)))
+  const messages = chartAttrExprKotlin(e, 'messages')
+  const family = messages === undefined ? kotlinStr(chartDefaultLabel(e.tag)) : `((${host.exprAs(CHART_MESSAGES_TYPE, messages, 0)}).untitled ?: ${kotlinStr(chartDefaultLabel(e.tag))})`
+  const label = explicit ?? describe ?? (typeof titleRaw === 'string' ? kotlinStr(titleRaw) : family)
   return `.semantics { contentDescription = ${label} }`
 }
 

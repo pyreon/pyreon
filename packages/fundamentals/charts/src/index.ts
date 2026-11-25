@@ -126,8 +126,9 @@ export { smooth, step } from './engine/curve'
 // Formatters: one value feeds the axis, the tooltip and the accessible table.
 export { compact, currency, date, fixed, formatDate, percent, plain } from './engine/format'
 export type { Formatter } from './engine/format'
-export { registerLocale } from './engine/locale'
+export { getLocale, registerLocale } from './engine/locale'
 export type { LocalePack } from './engine/locale'
+export type { A11yInput, ChartMessages } from './engine/a11y'
 
 // Theme.
 export { ChartThemeProvider, chartThemes, useChartTheme } from './engine/theme'

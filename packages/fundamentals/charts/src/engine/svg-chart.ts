@@ -6,6 +6,7 @@
 // text is wired by default instead of by remembering to.
 
 import { describeChart } from './a11y'
+import type { ChartMessages } from './a11y'
 import type { ItemFill } from './item-colors'
 import type { Mark } from './marks'
 import { resolveCategories, resolveMarks } from './marks'
@@ -99,6 +100,8 @@ export interface ChartToSvgOptions<T> {
    * what it shows. Pass an empty string to opt out.
    */
   description?: string
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -190,6 +193,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
           categories: spec.categories,
           title: options.title,
           format: options.format,
+          messages: options.messages,
         })
       : undefined)
 
