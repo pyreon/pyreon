@@ -2307,6 +2307,7 @@ class TasksAppInstrumentedTest {
     @Test
     fun webHostDownloadReachesOnDownloadAndTheSavePicker() {
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val pkg = composeRule.activity.packageName
         composeRule.onNodeWithTag("login-username").performTextInput("abcde")
         composeRule.onNodeWithTag("login-submit").performClick()
         assertTagDisplayed("tasks-page", "after login-submit")
@@ -2316,13 +2317,9 @@ class TasksAppInstrumentedTest {
         waitForWebResult("the page never loaded", 120_000) { it.startsWith("size:") }
 
         clickInPage(device, "Download CSV")
-        try {
-            composeRule.waitUntil(timeoutMillis = 20_000) { textOf("webhost-download").startsWith("pyreon-tasks.csv|") }
-        } catch (e: Throwable) {
-            throw AssertionError("onDownload never reported the download — webhost-download is '${textOf("webhost-download")}'", e)
-        }
-        android.util.Log.i("PyreonWebHostTest", "onDownload reported: ${textOf("webhost-download")}")
-
+        // onDownload fires once the blob is fully read, which is also when the
+        // system picker opens and covers the app: the app's Compose tree is not
+        // reachable until the picker closes, so the callback is checked after.
         val picker = java.util.regex.Pattern.compile(".*documentsui.*")
         assertTrue(
             "the page's blob download opened no save picker; visible: ${webTexts(device)}",
@@ -2343,6 +2340,13 @@ class TasksAppInstrumentedTest {
             }
         }
         assertTrue("the save picker did not close", closed)
+        assertTrue("did not return to the app", device.wait(Until.hasObject(By.pkg(pkg).depth(0)), 20_000))
         assertTagDisplayed("webhost-page", "the hosted page must survive the save picker")
+        try {
+            composeRule.waitUntil(timeoutMillis = 20_000) { textOf("webhost-download").startsWith("pyreon-tasks.csv|") }
+        } catch (e: Throwable) {
+            throw AssertionError("onDownload never reported the download — webhost-download is '${textOf("webhost-download")}'", e)
+        }
+        android.util.Log.i("PyreonWebHostTest", "onDownload reported: ${textOf("webhost-download")}")
     }
 }
