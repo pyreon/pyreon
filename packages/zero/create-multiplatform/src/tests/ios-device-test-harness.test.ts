@@ -15,7 +15,9 @@
 // before the tap made the field first responder, a slow simulator dropped some
 // of them, and the login form submitted a short username. Every UITests target
 // carries the same `KeyboardInput.swift` (`tapAndType` / `typeWhenFocused`: wait
-// for keyboard focus, type, verify, re-type once), and no suite types straight
+// for keyboard focus, type, and fail on a wrong value, never re-typing over
+// it; `waitForKeyboard` for a coordinate tap into a web editor), and no suite
+// calls `typeText` as the statement straight
 // after tapping.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
@@ -46,9 +48,14 @@ const uiTests = uiTestsUnder(join(repo, 'examples')).map((path) => ({
   src: code(readFileSync(path, 'utf8')),
 }))
 
-/** `X.tap()` whose next statement is `X.typeText(` — typing before focus (#4753). */
+/**
+ * Any `.tap()` whose next statement is a `.typeText(` call, on the same
+ * receiver or another one (`view.coordinate(…).tap()` then `app.typeText`) —
+ * typing before focus (#4753). Going through `tapAndType`, or waiting for
+ * focus / the keyboard in between, is the way out.
+ */
 function typesRightAfterTap(src: string): boolean {
-  return /\b([A-Za-z_][\w.]*)\.tap\(\)[ \t]*\n\s*\1\.typeText\(/.test(code(src))
+  return /\.tap\(\)[ \t]*\n\s*[A-Za-z_][\w.]*\.typeText\(/.test(code(src))
 }
 
 const KEYBOARD_INPUT = 'KeyboardInput.swift'
@@ -66,12 +73,19 @@ describe('iOS device-test harness', () => {
     expect(slowWait, `${path}: use waitToExist(timeout:), which checks at once`).toBe(false)
   })
 
-  it('typesRightAfterTap flags a tap-then-type on the same element only', () => {
+  it('typesRightAfterTap flags any tap followed directly by typeText', () => {
     expect(typesRightAfterTap('field.tap()\nfield.typeText("ab")')).toBe(true)
     expect(typesRightAfterTap('a.b.tap()\n    // a comment\n    a.b.typeText("x")')).toBe(true)
+    // A different receiver: the coordinate tap into a web editor, then app-level typing.
+    expect(typesRightAfterTap('view.tap()\napp.typeText("QQ")')).toBe(true)
+    expect(
+      typesRightAfterTap('codeView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()\n        app.typeText("QQ")'),
+    ).toBe(true)
     expect(typesRightAfterTap('field.tapAndType("ab", in: app)')).toBe(false)
+    expect(
+      typesRightAfterTap('view.tap()\nXCTAssertTrue(app.waitForKeyboard(timeout: 10))\napp.typeText("QQ")'),
+    ).toBe(false)
     expect(typesRightAfterTap('field.tap()\nbeat()\nfield.typeText("ab")')).toBe(false)
-    expect(typesRightAfterTap('view.tap()\napp.typeText("QQ")')).toBe(false)
   })
 
   it.each(uiTests)('$path waits for keyboard focus before typing', ({ path, src }) => {
@@ -87,6 +101,9 @@ describe('iOS device-test harness', () => {
     const src = code(readFileSync(reference, 'utf8'))
     const waitsThenTypes = /func typeWhenFocused[\s\S]*?waitForKeyboardFocus[\s\S]*?typeText\(text\)/.test(src)
     expect(waitsThenTypes, 'typeWhenFocused must wait for keyboard focus before typeText').toBe(true)
+    // Once focus is confirmed a wrong value is a finding: exactly one typeText, no re-type.
+    const body = /func typeWhenFocused[\s\S]*?(?=func tapAndType)/.exec(src)?.[0] ?? ''
+    expect(body.match(/typeText\(/g)?.length, 'typeWhenFocused types once and never re-types').toBe(1)
   })
 
   it.each(uiTests)('$path declares the wait it uses', ({ path, src }) => {

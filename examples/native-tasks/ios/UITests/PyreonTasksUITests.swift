@@ -1076,6 +1076,7 @@ final class PyreonTasksUITests: XCTestCase {
         let edits = app.staticTexts["gal-code-edits"].firstMatch
         let editsBefore = Int(edits.label) ?? 0
         codeView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.waitForKeyboard(timeout: 10), "tapping CodeMirror raised no keyboard, so typed keys would go nowhere")
         app.typeText("QQ")
         XCTAssertTrue(waitForLabelContaining(codeValue, "QQ", timeout: 15), "typing in CodeMirror never reached the native signal (value label: \(codeValue.label))")
         XCTAssertGreaterThan(Int(edits.label) ?? 0, editsBefore, "the edit counter did not move")

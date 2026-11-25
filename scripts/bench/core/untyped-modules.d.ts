@@ -1,6 +1,6 @@
 // Declarations for the two bench-only third-party modules that ship no types
 // and have no `@types/*` package. Only the surface the benches call is
-// declared, so a bench that reaches past it fails `check-script-imports`.
+// declared, so a bench that reaches past it fails `check-scripts-typecheck`.
 
 declare module 'babel-preset-solid' {
   import type { ConfigAPI, PluginItem } from '@babel/core'
