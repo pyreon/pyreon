@@ -752,7 +752,11 @@ function report(args: Args, version: string, cells: Cell[], failures: StepError[
     }
   }
   if (process.env.GITHUB_STEP_SUMMARY) {
-    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`)
+    // The summary FILE gets only text this script controls: the resolved
+    // version comes from the registry response, so it stays in the log above
+    // (CodeQL js/http-to-file-access) and the file header names just the tag.
+    const summary = [`## Post-publish smoke — dist-tag \`${args.tag}\``, ...lines.slice(1)]
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary.join('\n')}\n`)
   }
   if (failures.length > 0) {
     console.error(`\npost-publish smoke FAILED: ${failures.length} failing cell(s).`)
