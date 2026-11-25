@@ -55,6 +55,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isPrerelease, isPreModeVersion, readPreState, type PreState } from './release-channel'
 
 // `dirname(fileURLToPath(...))`, not Bun's `import.meta.dir` — the pure
 // functions are imported by vitest under Node, where `.dir` is undefined.
@@ -114,7 +115,29 @@ export interface PublishResult {
   incomplete: string[]
 }
 
-export function parsePublishResult(text: string | null): PublishResult | null {
+/** The checkout's pre mode; a malformed pre.json reads as none (publish.ts refuses to run on one). */
+function checkoutPreState(): PreState | null {
+  try {
+    return readPreState(REPO_ROOT)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Is the umbrella chain (tag, GitHub Release, native binaries) defined for
+ * `version`? Stable versions, and release candidates of changesets pre mode
+ * (`1.0.0-rc.2` while `.changeset/pre.json` says `rc`). NOT `release/**`
+ * snapshots (`0.51.1-alpha-20260810`), which have no umbrella release.
+ */
+export function chainDefinedFor(version: string, pre: PreState | null): boolean {
+  return !isPrerelease(version) || isPreModeVersion(version, pre)
+}
+
+export function parsePublishResult(
+  text: string | null,
+  pre: PreState | null = checkoutPreState(),
+): PublishResult | null {
   if (text === null) return null
   let raw: unknown
   try {
@@ -125,13 +148,14 @@ export function parsePublishResult(text: string | null): PublishResult | null {
   const obj = raw as { version?: unknown; published?: unknown }
   const version = validateReleaseVersion(obj.version)
   if (version === null) return null
-  // STABLE versions only. The prerelease job (`release/**` snapshots) runs
-  // publish.ts too, and the umbrella chain is DEFINED only for stable cuts —
-  // release-native's tag trigger is literally `v[0-9]+.[0-9]+.[0-9]+`, so a
-  // snapshot finalize would mint a tag that triggers nothing plus a GitHub
-  // Release for an alpha. Refusing here makes that impossible regardless of
-  // which job ever runs this script.
-  if (version.includes('-')) return null
+  // Stable versions and pre-mode release candidates only. The prerelease job
+  // (`release/**` snapshots) runs publish.ts too, and a snapshot has no
+  // umbrella release: finalizing one would mint a `v…-alpha-…` tag plus a
+  // GitHub Release for an alpha. Refusing here makes that impossible
+  // regardless of which job ever runs this script. A release candidate IS a
+  // cut (it is what users test before 1.0.0), so it gets its tag, a GitHub
+  // Release marked prerelease, and its native binaries on the same dist-tag.
+  if (!chainDefinedFor(version, pre)) return null
   if (!Array.isArray(obj.published) || obj.published.length === 0) return null
   if (!obj.published.every((p) => typeof p === 'string')) return null
   const strings = (v: unknown): string[] =>
@@ -359,16 +383,24 @@ async function ensureNativeRun(tag: string): Promise<void> {
   }
 }
 
+/** `gh release create` argv. A release candidate is marked `--prerelease`, so GitHub never shows it as Latest. */
+export function githubReleaseArgs(tag: string, version: string, notes: string): string[] {
+  const args = ['gh', 'release', 'create', tag, '--title', tag, '--notes', notes, '--verify-tag']
+  if (isPrerelease(version)) args.push('--prerelease')
+  return args
+}
+
 function createGithubRelease(tag: string, version: string): void {
+  const preTag = checkoutPreState()?.tag
   const notes = [
     `All packages in the \`@pyreon/*\` suite at **${version}**.`,
     '',
+    ...(isPrerelease(version) && preTag
+      ? [`Release candidate on the npm \`${preTag}\` dist-tag: \`bun add @pyreon/core@${preTag}\`. \`latest\` still points at the last stable release.`, '']
+      : []),
     'Per-package detail: see each `packages/*/CHANGELOG.md` for the entry generated from the changesets that bumped it.',
   ].join('\n')
-  const r = sh(
-    ['gh', 'release', 'create', tag, '--title', tag, '--notes', notes, '--verify-tag'],
-    { allowFail: true },
-  )
+  const r = sh(githubReleaseArgs(tag, version, notes), { allowFail: true })
   if (!r.ok) console.warn(`[heal-release-chain] release create: ${r.out} (already exists?)`)
 }
 
@@ -473,6 +505,12 @@ async function reconcile(): Promise<void> {
       `[heal-release-chain] ${ANCHOR_PATH} carries a non-semver version — refusing to build tags from it`,
     )
     process.exit(1)
+  }
+  if (!chainDefinedFor(version, checkoutPreState())) {
+    console.log(
+      `[heal-release-chain] phase 2: ${ANCHOR_PKG}@${version} is a prerelease outside changesets pre mode — no umbrella release is defined for it. Nothing to reconcile.`,
+    )
+    return
   }
   const tag = `v${version}`
   console.log(`[heal-release-chain] phase 2: anchor ${ANCHOR_PKG}@${version} → umbrella tag ${tag}`)

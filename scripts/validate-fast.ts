@@ -11,7 +11,7 @@
  *   - check-multiplatform-matrix (matrix headline drifted from its own table)
  *   - gen-native-crossing-table (per-package native crossing table drifted from the coverage registry)
  *   - check-changeset-required (no changeset for published-pkg source change)
- *   - check-no-major-changesets (a `major` bump is illegal while Pyreon is 0.x)
+ *   - check-no-major-changesets (a `major` bump needs APPROVED_MAJOR in scripts/major-release.ts)
  *   - check-bundle-budgets   (local mode: a package that fails to bundle or has no
  *                             ceiling; over-ceiling sizes are printed, CI judges them)
  *   - check-distribution    (sideEffects / source-map invariants)

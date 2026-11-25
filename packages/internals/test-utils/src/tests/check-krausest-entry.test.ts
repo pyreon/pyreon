@@ -48,6 +48,7 @@ describe('check-krausest-entry', () => {
 
   it('the committed entry passes every rule', () => {
     expect(checkEntry(files)).toEqual([])
+    // A stable release only — acceptablePins never offers a release candidate.
     expect(pinnedPyreonVersion(files.pkg)).toMatch(/^\d+\.\d+\.\d+$/)
   })
 
@@ -123,6 +124,12 @@ describe('check-krausest-entry', () => {
 
     it('accepts the previous release when the workspace version has no changelog entry yet', () => {
       expect(acceptablePins('0.10.0', changelog)).toEqual(['0.10.0', '0.9.0'])
+    })
+
+    it('never pins a release candidate: during an rc series the last stable release stays the pin', () => {
+      const rcLog = '# @pyreon/core\n\n## 1.0.0-rc.1\n\n- x\n\n## 1.0.0-rc.0\n\n- x\n\n## 0.9.0\n\n- x\n'
+      expect(acceptablePins('1.0.0-rc.2', rcLog)).toEqual(['0.9.0'])
+      expect(acceptablePins('1.0.0', rcLog.replace('# @pyreon/core\n', '# @pyreon/core\n\n## 1.0.0\n\n- x\n'))).toEqual(['1.0.0', '0.9.0'])
     })
   })
 

@@ -32,6 +32,8 @@ function fixture(run: (root: string, manifests: string[]) => void, repository: s
       'strip-bun-condition.ts',
       'release-repository.ts',
       'changeset-patterns.ts',
+      'release-channel.ts',
+      'publish-ranges.ts',
     ]) {
       if (existsSync(join(SCRIPTS, name)))
         copyFileSync(join(SCRIPTS, name), join(root, 'scripts', name))

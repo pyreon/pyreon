@@ -1,14 +1,22 @@
 /**
  * Publish all @pyreon/* packages via `npm publish --provenance`.
- * Resolves workspace:^ → ^X.Y.Z before publish, restores after.
+ * Resolves `workspace:` ranges before publish, restores after. A stable
+ * version keeps the range each manifest asks for (`workspace:^` → `^X.Y.Z`);
+ * a release candidate (changesets pre mode) publishes an edge between two
+ * fixed-group members EXACT (scripts/publish-ranges.ts).
  * Skips already-published versions.
  *
  * Usage: bun run scripts/publish.ts [--dry-run] [--tag <tag>] [--otp=<code>] [--only=<pkg>]
  *
- *   --tag <tag>   npm dist-tag for the published version. Defaults to
- *                 `latest`. Used by the prerelease workflow to publish
- *                 snapshot builds (e.g. 0.15.1-alpha-XXXX) under the
- *                 `next` tag so consumers can opt in via `@pkg@next`.
+ *   --tag <tag>   npm dist-tag for the published version. Without it the
+ *                 tag follows the version (scripts/release-channel.ts):
+ *                 a stable version goes to `latest`, a pre-mode version
+ *                 (`1.0.0-rc.2`) to the tag in `.changeset/pre.json` (`rc`),
+ *                 so `npm i @pyreon/core` keeps resolving to the last
+ *                 stable release during a release-candidate series. Any
+ *                 other prerelease is refused. The `release/**` snapshot
+ *                 job passes `--tag next`; `--tag latest` with a
+ *                 prerelease version is refused.
  */
 
 import { writeFileSync } from 'node:fs'
@@ -19,6 +27,8 @@ import { topoSortByWorkspaceDeps } from './publish-order'
 import { runPool } from './run-pool'
 import { classifyPublishFailure } from './publish-classify'
 import { isReleaseRepository, RELEASE_REPOSITORY_URL } from './release-repository'
+import { readPreState, resolvePublishTag, type PreState } from './release-channel'
+import { publishedRange, type DepField } from './publish-ranges'
 import {
   packageBuildsToLib,
   stripBunCondition,
@@ -53,7 +63,10 @@ const otp = otpArg?.split('=')[1]
 const onlyArg = process.argv.find((a) => a.startsWith('--only='))
 const only = onlyArg?.slice('--only='.length)
 const tagFlagIndex = process.argv.indexOf('--tag')
-const tag = tagFlagIndex >= 0 ? process.argv[tagFlagIndex + 1] : undefined
+const explicitTag = tagFlagIndex >= 0 ? process.argv[tagFlagIndex + 1] : undefined
+// Read once. A malformed pre.json throws here, before any manifest is touched:
+// a release must not guess which dist-tag it ships on.
+const preState: PreState | null = readPreState(join(import.meta.dirname, '..'))
 
 // Per-platform npm stub packages — published exclusively by
 // .github/workflows/release-native.yml on tag push (the workflow downloads
@@ -126,10 +139,22 @@ try {
 // below resolves the whole set first and aborts as a batch before any
 // `npm publish`, so a pre-detectable manifest problem can never leave a
 // partial release.
+// The lockstep set: members of the changesets `fixed` group. In a release
+// candidate an edge between two of them is published exact — see
+// scripts/publish-ranges.ts.
+const fixedGroup = new Set<string>(
+  (
+    JSON.parse(await readFile(join(import.meta.dirname, '..', '.changeset', 'config.json'), 'utf-8')) as {
+      fixed?: string[][]
+    }
+  ).fixed?.[0] ?? [],
+)
+
 function resolveWorkspaceDeps(
   deps: Record<string, string> | undefined,
   pkgName: string,
   errors: string[],
+  field: DepField,
 ): Record<string, string> | undefined {
   if (!deps) return deps
   const resolved = { ...deps }
@@ -143,8 +168,11 @@ function resolveWorkspaceDeps(
         )
         continue
       }
-      const prefix = range.replace('workspace:', '')
-      resolved[name] = prefix === '*' ? version : `${prefix}${version}`
+      resolved[name] = publishedRange(range, version, {
+        field,
+        lockstep: fixedGroup.has(pkgName) && fixedGroup.has(name),
+        pre: preState,
+      })
     }
   }
   return resolved
@@ -237,6 +265,8 @@ type PlanEntry = {
   raw: string
   pkg: { name: string; version: string }
   resolved: Record<string, unknown>
+  /** npm dist-tag this version ships on — see scripts/release-channel.ts. */
+  distTag: string
 }
 const plan: PlanEntry[] = []
 const resolveErrors: string[] = []
@@ -349,6 +379,16 @@ for (const dir of packageDirs) {
     )
   }
 
+  // The dist-tag is decided per version in Phase 1, so a prerelease with no
+  // channel (or `--tag latest` on a prerelease) aborts the whole plan before
+  // anything publishes — never 75 identical npm errors mid-release.
+  let distTag = 'latest'
+  try {
+    distTag = resolvePublishTag(pkg.version, explicitTag, preState)
+  } catch (err) {
+    resolveErrors.push(`${pkg.name}@${pkg.version}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
   const resolved = {
     ...pkg,
     // Strip the `bun` condition from `exports` AND `src` from `files`
@@ -362,13 +402,13 @@ for (const dir of packageDirs) {
     // `packageBuildsToLib`.
     ...(pkg.exports ? { exports: stripBunCondition(pkg.exports) } : {}),
     ...(pkg.files && packageBuildsToLib(pkg) ? { files: stripSrcFromFiles(pkg.files) } : {}),
-    dependencies: resolveWorkspaceDeps(pkg.dependencies, pkg.name, resolveErrors),
-    peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies, pkg.name, resolveErrors),
-    devDependencies: resolveWorkspaceDeps(pkg.devDependencies, pkg.name, resolveErrors),
+    dependencies: resolveWorkspaceDeps(pkg.dependencies, pkg.name, resolveErrors, 'dependencies'),
+    peerDependencies: resolveWorkspaceDeps(pkg.peerDependencies, pkg.name, resolveErrors, 'peerDependencies'),
+    devDependencies: resolveWorkspaceDeps(pkg.devDependencies, pkg.name, resolveErrors, 'devDependencies'),
     // `optionalDependencies` is the field that broke the 0.18.0 compiler
     // release (shipped as literal `"workspace:^"` → `npm i` hard-fails
     // with `EUNSUPPORTEDPROTOCOL`). Must be resolved too.
-    optionalDependencies: resolveWorkspaceDeps(pkg.optionalDependencies, pkg.name, resolveErrors),
+    optionalDependencies: resolveWorkspaceDeps(pkg.optionalDependencies, pkg.name, resolveErrors, 'optionalDependencies'),
   }
 
   // Defense-in-depth: a `workspace:` range surviving into ANY dep field
@@ -394,7 +434,7 @@ for (const dir of packageDirs) {
     }
   }
 
-  plan.push({ dirPath: dir.path, pkgPath, raw, pkg, resolved })
+  plan.push({ dirPath: dir.path, pkgPath, raw, pkg, resolved, distTag })
 }
 
 if (resolveErrors.length > 0) {
@@ -408,6 +448,15 @@ if (resolveErrors.length > 0) {
       `versions, so a re-run resumes cleanly.`,
   )
   process.exit(1)
+}
+
+{
+  const tags = [...new Set(plan.map((e) => e.distTag))]
+  const versions = [...new Set(plan.map((e) => e.pkg.version))]
+  console.log(
+    `🏷️  ${plan.length} package(s) at ${versions.join(', ') || '(none)'} → npm dist-tag ${tags.join(', ') || '(none)'}` +
+      (preState ? ` (changesets pre mode "${preState.tag}", ${preState.mode})` : ''),
+  )
 }
 
 // ── Phase 2 — publish the fully-validated plan LEAF-FIRST. A package is
@@ -447,7 +496,7 @@ const blocked: string[] = []
 // Local manifest-resolution and repository-identity errors have already been
 // rejected. Remaining registry/authorization failures are reported via
 // `failed[]` + exit 1; a re-run resumes (skip-if-published).
-for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
+for (const { dirPath, pkgPath, raw, pkg, resolved, distTag } of publishOrder) {
   // Dangling-constraint guard. Topo order guarantees every workspace dep was
   // PROCESSED before this package — so if a dep landed in `failed` /
   // `needsBootstrap` / `blocked`, it is NOT (yet) on npm. Publishing this
@@ -466,7 +515,7 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
     blocked.push(pkg.name)
     continue
   }
-  console.log(`📦 ${pkg.name}@${pkg.version}`)
+  console.log(`📦 ${pkg.name}@${pkg.version} (${distTag})`)
   // Registered BEFORE the write: a kill between the two would otherwise leave
   // a rewritten manifest nothing knows to put back.
   openManifests.set(pkgPath, raw)
@@ -482,7 +531,9 @@ for (const { dirPath, pkgPath, raw, pkg, resolved } of publishOrder) {
     if (isCI && !dryRun) args.push('--provenance')
     if (otp) args.push(`--otp=${otp}`)
     if (dryRun) args.push('--dry-run')
-    if (tag) args.push('--tag', tag)
+    // Always explicit: npm's default is `latest`, which is right only for a
+    // stable version, and npm 11 rejects a prerelease without `--tag`.
+    args.push('--tag', distTag)
     // `pipe` (not `inherit`) so we can categorize npm errors as
     // "first-publish needs bootstrap" vs real failures. The captured
     // stderr is forwarded verbatim so the user still sees npm's full
