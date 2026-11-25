@@ -59,9 +59,6 @@ enum PyreonOidcInstances {
         live[key] = refs.isEmpty ? nil : refs
         return refs.compactMap(\.auth).filter { $0 !== a }
     }
-
-    /// Forget every instance (tests: instances left over from an earlier case share the key).
-    static func reset() { live = [:] }
 }
 
 @available(iOS 17.0, macOS 14.0, *)
@@ -407,7 +404,9 @@ public final class PyreonOidcAuth {
             take(r["accessToken"] as? String, r["refreshToken"] as? String)
             if hint == nil { hint = r["idToken"] as? String }
         }
-        let others = PyreonOidcInstances.others(of: self).filter { $0.currentAccessToken != nil || $0.refreshToken != nil }
+        let others = PyreonOidcInstances.others(of: self).filter {
+            ($0.currentAccessToken != nil || $0.refreshToken != nil) && $0.sharesStore(with: self)
+        }
         for o in others {
             take(o.currentAccessToken, o.refreshToken)
             if hint == nil { hint = o.idToken }
@@ -415,6 +414,16 @@ public final class PyreonOidcAuth {
         signOutLocally()
         for o in others { o.signOutLocally() }
         return (access, refresh, hint)
+    }
+
+    /// Whether `other` keeps its session where this one does — a session is defined by where it is
+    /// persisted: the same backend object, or two backends with the same non-nil `location` (two
+    /// `KeychainSecureBackend`s with one service). Instances over different stores are different
+    /// sessions and never sign each other out.
+    private func sharesStore(with other: PyreonOidcAuth) -> Bool {
+        if (store as AnyObject) === (other.store as AnyObject) { return true }
+        guard let here = store.location else { return false }
+        return here == other.store.location
     }
 
     private func signOutLocally() {

@@ -158,6 +158,13 @@ class FakeBrowser(private val provider: FakeProvider) : PyreonAuthBrowser {
     }
 }
 
+/** A store with a [location]: two of these over one map are one persisted store, as two Keystore backends with one alias are. */
+class LocatedStore(override val location: String, private val entries: HashMap<String, String>) : PyreonSecureBackend {
+    override fun write(key: String, value: String): Boolean { entries[key] = value; return true }
+    override fun read(key: String): String? = entries[key]
+    override fun remove(key: String): Boolean = entries.remove(key) != null
+}
+
 class MemStore : PyreonSecureBackend {
     val entries = HashMap<String, String>()
     override fun write(key: String, value: String): Boolean { entries[key] = value; return true }
@@ -167,7 +174,7 @@ class MemStore : PyreonSecureBackend {
 
 private val INLINE = Executor { it.run() }
 
-private fun make(p: FakeProvider, s: MemStore, b: FakeBrowser) = PyreonOidcAuth(
+private fun make(p: FakeProvider, s: PyreonSecureBackend, b: FakeBrowser) = PyreonOidcAuth(
     issuer = ISS, clientId = "app", redirectUri = "com.example.app:/oauth", postLogoutRedirectUri = "com.example.app:/bye",
     store = s, browser = b, transport = p, executor = INLINE,
 )
@@ -615,7 +622,6 @@ fun testTokenEndpointHttpsAtUse() {
 }
 
 fun testSignOutRevokesTokens() {
-    PyreonOidcInstances.reset() // instances of earlier cases share the session key
     val p = FakeProvider()
     p.revocationStatus = 200
     val auth = make(p, MemStore(), FakeBrowser(p))
@@ -642,7 +648,6 @@ fun testSignOutRevokesTokens() {
 }
 
 fun testSignOutRevokesEveryInstancesTokens() {
-    PyreonOidcInstances.reset() // instances of earlier cases share the session key
     // A sibling refreshed (and rotated) the session: the instance signing out holds only the spent
     // tokens; the live ones are in the sibling and the store, and must be revoked too.
     val p = FakeProvider()
@@ -673,7 +678,6 @@ fun testSignOutRevokesEveryInstancesTokens() {
 }
 
 fun testTokensLandingAfterSignOutAreRevoked() {
-    PyreonOidcInstances.reset() // instances of earlier cases share the session key
     // A code exchange still in flight when the user signs out: its tokens are revoked, not dropped.
     val p = FakeProvider()
     p.revocationStatus = 200
@@ -695,8 +699,40 @@ fun testTokensLandingAfterSignOutAreRevoked() {
     check(r.revoked.map { it["token"] }.toSet() == setOf("rt-0", "at-0", "rt-1", "at-1")) { "held and late tokens revoked: ${r.revoked}" }
 }
 
+fun testSignOutStaysInItsStore() {
+    // A session is defined by where it is persisted: the same client and issuer over two different
+    // stores are two sessions, and a sign-out in one neither signs out nor revokes the other.
+    val p = FakeProvider()
+    p.revocationStatus = 200
+    p.uniqueRefreshTokens = true
+    val b = FakeBrowser(p)
+    val mine = make(p, MemStore(), b)
+    val theirs = make(p, MemStore(), b)
+    mine.signIn() // rt-c1
+    theirs.signIn() // rt-c2
+    mine.signOutNow()
+    check(theirs.status.value == PyreonOidcStatus.SIGNED_IN && theirs.accessToken.value != null) {
+        "the other store's session stays signed in: ${theirs.status.value}"
+    }
+    val revoked = p.revoked.mapNotNull { it["token"] }
+    check("rt-c1" in revoked) { "this store's refresh token is revoked: $revoked" }
+    check("rt-c2" !in revoked) { "the other store's refresh token is not revoked: $revoked" }
+    theirs.signOutNow()
+
+    // Two backend OBJECTS over one location are one store: a sibling there still signs out.
+    val shared = HashMap<String, String>()
+    val q = FakeProvider()
+    q.revocationStatus = 200
+    val qb = FakeBrowser(q)
+    val one = make(q, LocatedStore("test:shared", shared), qb)
+    one.signIn()
+    val two = make(q, LocatedStore("test:shared", shared), qb)
+    check(two.status.value == PyreonOidcStatus.SIGNED_IN) { "restored through the second backend object" }
+    one.signOutNow()
+    check(two.status.value == PyreonOidcStatus.SIGNED_OUT && two.accessToken.value == null) { "the sibling over the same location signed out" }
+}
+
 fun testSignOutReachesOtherInstances() {
-    PyreonOidcInstances.reset() // instances of earlier cases share the session key
     // Two containers over one stored session (an Activity recreated, two useOidc calls): a sign-out
     // in one removes the record both read, so the other signs out too — it must not keep serving
     // a token the user signed out of, nor refresh it back.
@@ -756,5 +792,6 @@ fun main() {
     testSignOutReachesOtherInstances()
     testSignOutRevokesEveryInstancesTokens()
     testTokensLandingAfterSignOutAreRevoked()
+    testSignOutStaysInItsStore()
     println("[PyreonOidcAuthTest] all smoke tests passed")
 }

@@ -67,6 +67,9 @@ public class KeystoreSecureBackend(
     private val prefs =
         context.applicationContext.getSharedPreferences("pyreon_secure", Context.MODE_PRIVATE)
 
+    // The app-private preferences file and the Keystore key that encrypts its entries.
+    override val location: String get() = "android-keystore:pyreon_secure:$keyAlias"
+
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (ks.getKey(keyAlias, null) as? SecretKey)?.let { return it }

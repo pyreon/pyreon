@@ -80,6 +80,14 @@ public interface PyreonSecureBackend {
     /** Delete the secret at [key]. Returns true on success OR if the key
      * was already absent (idempotent delete). */
     public fun remove(key: String): Boolean
+
+    /**
+     * Where this backend persists, when two backend OBJECTS can share it: backends with the same
+     * non-null location read and write the same entries (a session stored through one is the
+     * session stored through the other). Null — the default — means only this object holds its
+     * entries (an in-memory store).
+     */
+    public val location: String? get() = null
 }
 
 /**

@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The live containers, by stored-session key (client and issuer), so a sign-out reaches every
- * instance over the session it removes. Weak: an instance the app drops is not kept alive, and a
+ * instance over the session it removes (filtered further by store: see `sharesStoreWith`). Weak: an instance the app drops is not kept alive, and a
  * collected one is pruned on every access to its key (a key with none left is removed), so the
  * map is bounded by the live instances.
  */
@@ -44,9 +44,6 @@ internal object PyreonOidcInstances {
         if (list.isEmpty()) live.remove(key)
         list.mapNotNull { it.get() }.filter { it !== auth }
     }
-
-    /** Forget every instance (tests: instances left over from an earlier case share the key). */
-    fun reset(): Unit = synchronized(this) { live.clear() }
 }
 
 /**
@@ -428,7 +425,7 @@ public class PyreonOidcAuth(
             take(stored["accessToken"] as? String, stored["refreshToken"] as? String)
             if (hint == null) hint = stored["idToken"] as? String
         }
-        val others = PyreonOidcInstances.others(sessionKey, this).filter { it.holdsSession }
+        val others = PyreonOidcInstances.others(sessionKey, this).filter { it.holdsSession && it.sharesStoreWith(this) }
         for (o in others) {
             take(o.rawAccessToken.value, o.refreshToken)
             if (hint == null) hint = o.idToken
@@ -439,6 +436,20 @@ public class PyreonOidcAuth(
     }
 
     private val holdsSession: Boolean get() = rawAccessToken.value != null || refreshToken != null
+
+    /**
+     * Whether [other] keeps its session where this one does — a session is defined by where it is
+     * persisted: the same backend object, or two backends with the same non-null
+     * [PyreonSecureBackend.location] (on Android every `rememberPyreonOidcAuth` builds its own
+     * `KeystoreSecureBackend` over the one preferences file and key). Instances over different
+     * stores are different sessions and never sign each other out.
+     */
+    private fun sharesStoreWith(other: PyreonOidcAuth): Boolean {
+        if (store === other.store) return true
+        val here = store.location
+
+        return here != null && here == other.store.location
+    }
 
     private fun signOutLocally() {
         signedOutExplicitly = true
