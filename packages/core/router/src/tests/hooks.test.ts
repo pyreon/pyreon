@@ -1,4 +1,4 @@
-import { h } from '@pyreon/core'
+import { ErrorBoundary, h } from '@pyreon/core'
 import { runWithHooks } from '@pyreon/core/internal'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
@@ -255,27 +255,26 @@ describe('NotFoundBoundary', () => {
     expect(container.querySelector('span[data-fb="static"]')?.textContent).toBe('static-fallback')
   })
 
-  it('re-throws non-notFound errors so they do NOT render the fallback (line 64)', () => {
-    // The NotFoundBoundary's fallback is invoked for EVERY thrown error,
-    // not just notFound() errors. The `if (!isNotFoundError(err)) throw err`
-    // re-throw on line 64 ensures regular errors continue propagating to
-    // an outer boundary — they must NOT render the NotFoundBoundary's
-    // 404 fallback (otherwise real bugs get silently masked as 404s).
+  it('re-throws non-notFound errors to the OUTER boundary, never as a 404', () => {
+    // The NotFoundBoundary's fallback is invoked for EVERY thrown error and
+    // rethrows anything that is not a notFound() — a real bug must not be
+    // masked as a 404, and it must reach the boundary outside (it used to end
+    // as an "Unhandled effect error" and a blank page).
     const Inner = () => {
       throw new Error('regular error, not notFound')
     }
     const Fallback = () => h('span', { 'data-fb': 'nf' }, 'nf-fallback')
-    const tree = h(NotFoundBoundary, { fallback: Fallback }, h(Inner, null))
+    const tree = h(
+      ErrorBoundary,
+      { fallback: (err: unknown) => h('p', { 'data-fb': 'outer' }, String(err)) },
+      h(NotFoundBoundary, { fallback: Fallback }, h(Inner, null)),
+    )
 
     const container = document.createElement('div')
-    // Mount may or may not throw depending on the runtime's error handling;
-    // the assertion that matters is "the notFound fallback was NOT rendered"
-    // because a regular error must not be treated as a 404.
-    try {
-      mount(tree, container)
-    } catch {
-      /* runtime caught and logged the re-throw — that's expected */
-    }
+    mount(tree, container)
     expect(container.querySelector('[data-fb="nf"]')).toBeNull()
+    expect(container.querySelector('[data-fb="outer"]')?.textContent).toBe(
+      'Error: regular error, not notFound',
+    )
   })
 })

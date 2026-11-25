@@ -5,12 +5,13 @@ import { mountOwned } from './mount'
 
 export interface KeepAliveProps extends Props {
   /**
-   * Accessor that returns true when this slot's children should be visible.
-   * When false, children are CSS-hidden but remain mounted — effects and
-   * signals stay alive.
-   * Defaults to true (always visible / always mounted).
+   * True when this slot's children should be visible: a value or an accessor
+   * (`active={() => route() === '/a'}`), like `<Show when>`. The compiler turns
+   * `active={isA}` / `active={isA()}` into a reactive prop that already reads
+   * the value. When false, children are CSS-hidden but remain mounted —
+   * effects and signals stay alive. Defaults to true.
    */
-  active?: () => boolean
+  active?: boolean | (() => boolean)
   children?: VNodeChild
 }
 
@@ -48,7 +49,8 @@ function KeepAlive(props: KeepAliveProps): VNodeChild {
     if (!container) return
 
     const e = effect(() => {
-      const isActive = props.active?.() ?? true
+      const active = props.active
+      const isActive = (typeof active === 'function' ? active() : active) ?? true
 
       if (!childMounted) {
         // Mount children UNTRACKED — child setup must not subscribe this effect.

@@ -20,11 +20,13 @@ export interface TransitionGroupProps<T = unknown> {
   /** Class applied during FLIP move animation. Default: "{name}-move" */
   moveClass?: string
   /**
-   * Reactive list source (full-animation API). When provided, `keyFn` +
+   * List source (full-animation API): an accessor or an array. The compiler
+   * turns `items={list}` / `items={list()}` into a reactive prop that already
+   * reads the array, so both shapes stay reactive. When provided, `keyFn` +
    * `render` drive the per-item enter/leave/FLIP animation. Omit it (and pass
    * `children` instead) for the plain-container shape — see `children`.
    */
-  items?: () => T[]
+  items?: readonly T[] | (() => readonly T[])
   /** Stable key extractor (required with `items`) */
   keyFn?: (item: T, index: number) => string | number
   /**
@@ -99,10 +101,18 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
   // container around whatever keyed list it wraps (e.g. a `<For>`), which owns
   // reconciliation. This is the shape PMTC lowers on native, so the SAME .tsx
   // renders on web + iOS + Android. Per-item enter/leave CSS is a no-op here.
-  if (typeof props.items !== 'function') {
+  // The mode is decided by whether `items` was PASSED, not by its first value:
+  // `items={query.data()?.rows}` is undefined until the data loads, and must
+  // still animate the rows once it does.
+  if (!('items' in props)) {
     return h(tag, {}, props.children)
   }
-  const itemsFn = props.items
+  // Read through `props` on every run: a compiler-wrapped prop is a getter, so
+  // reading it here tracks the source exactly like calling an accessor.
+  const itemsFn = (): readonly T[] => {
+    const items = props.items
+    return (typeof items === 'function' ? items() : items) ?? []
+  }
   const keyFn = props.keyFn
   const render = props.render
   if (!keyFn || !render) {
@@ -227,7 +237,7 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
   }
 
   /** Mount new items and return the list of newly created entries. */
-  const mountNewItems = (items: T[], container: HTMLElement): ItemEntry[] => {
+  const mountNewItems = (items: readonly T[], container: HTMLElement): ItemEntry[] => {
     const newEntries: ItemEntry[] = []
     for (let i = 0; i < items.length; i++) {
       const item = items[i] as T
@@ -319,7 +329,7 @@ function TransitionGroup<T = unknown>(props: TransitionGroupProps<T>): VNodeChil
     return oldPositions
   }
 
-  const reorderEntries = (items: T[], container: HTMLElement) => {
+  const reorderEntries = (items: readonly T[], container: HTMLElement) => {
     for (let i = 0; i < items.length; i++) {
       const key = keyFn(items[i] as T, i)
       const entry = entries.get(key)

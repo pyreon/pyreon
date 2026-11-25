@@ -315,6 +315,18 @@ export interface PyreonHTMLAttributes<E extends Element = HTMLElement> {
   popoverTarget?: string | undefined
   popoverTargetAction?: 'toggle' | 'show' | 'hide' | undefined
   inert?: boolean | undefined
+  /** Keyboard shortcut hint for the element (`accesskey`). */
+  accessKey?: string | undefined
+  /** Focus the element when the page or dialog opens. A global attribute in HTML. */
+  autoFocus?: boolean | undefined
+  /** Cryptographic nonce matched against a CSP `script-src`/`style-src` source. */
+  nonce?: string | undefined
+  // Microdata
+  itemScope?: boolean | undefined
+  itemType?: string | undefined
+  itemProp?: string | undefined
+  itemId?: string | undefined
+  itemRef?: string | undefined
   // ARIA
   'aria-label'?: string | (() => string | undefined) | undefined
   'aria-hidden'?: Booleanish | (() => Booleanish | undefined) | undefined
@@ -469,7 +481,13 @@ export interface InputAttributes extends PyreonHTMLAttributes<HTMLInputElement> 
   autoFocus?: boolean | undefined
   capture?: 'user' | 'environment' | string | undefined
   form?: string | undefined
+  formAction?: string | undefined
+  formEncType?: string | undefined
+  formMethod?: string | undefined
   formNoValidate?: boolean | undefined
+  formTarget?: string | undefined
+  /** Submits the text direction under this name alongside the value. */
+  dirName?: string | undefined
   list?: string | undefined
   size?: number | undefined
   src?: string | (() => string) | undefined
@@ -501,6 +519,10 @@ export interface ButtonAttributes extends PyreonHTMLAttributes<HTMLButtonElement
   formEncType?: string | undefined
   formNoValidate?: boolean | undefined
   formTarget?: string | undefined
+  /** Invoker command run on the `commandFor` target (`show-modal`, `close`, `toggle-popover`, `--custom`…). */
+  command?: string | undefined
+  /** Id of the element the `command` acts on. */
+  commandFor?: string | undefined
 }
 
 export interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaElement> {
@@ -522,6 +544,9 @@ export interface TextareaAttributes extends PyreonHTMLAttributes<HTMLTextAreaEle
   autoFocus?: boolean | undefined
   form?: string | undefined
   wrap?: 'hard' | 'soft' | undefined
+  autoComplete?: string | undefined
+  /** Submits the text direction under this name alongside the value. */
+  dirName?: string | undefined
 }
 
 export interface SelectAttributes extends PyreonHTMLAttributes<HTMLSelectElement> {
@@ -534,6 +559,28 @@ export interface SelectAttributes extends PyreonHTMLAttributes<HTMLSelectElement
   size?: number | undefined
   form?: string | undefined
   autoFocus?: boolean | undefined
+  autoComplete?: string | undefined
+}
+
+/** `<optgroup>` — a labelled group of options; `disabled` disables every option in it. */
+interface OptgroupAttributes extends PyreonHTMLAttributes<HTMLOptGroupElement> {
+  label?: string | (() => string) | undefined
+  disabled?: boolean | (() => boolean) | undefined
+}
+
+/** `<fieldset>` — a `disabled` fieldset disables every form control inside it. */
+interface FieldsetAttributes extends PyreonHTMLAttributes<HTMLFieldSetElement> {
+  disabled?: boolean | (() => boolean) | undefined
+  form?: string | undefined
+  name?: string | undefined
+}
+
+/** `<output>` — the result of a calculation over the controls named in `for`. */
+interface OutputAttributes extends PyreonHTMLAttributes<HTMLOutputElement> {
+  for?: string | undefined
+  htmlFor?: string | undefined
+  form?: string | undefined
+  name?: string | undefined
 }
 
 interface OptionAttributes extends PyreonHTMLAttributes<HTMLOptionElement> {
@@ -567,6 +614,8 @@ export interface ImgAttributes extends PyreonHTMLAttributes<HTMLImageElement> {
   srcSet?: string | (() => string) | undefined
   sizes?: string | (() => string) | undefined
   fetchPriority?: 'high' | 'low' | 'auto' | undefined
+  isMap?: boolean | undefined
+  useMap?: string | undefined
 }
 
 interface VideoAttributes extends PyreonHTMLAttributes<HTMLVideoElement> {
@@ -615,8 +664,14 @@ interface TdAttributes extends PyreonHTMLAttributes<HTMLTableCellElement> {
   headers?: string | undefined
 }
 
+/** `<col>` and `<colgroup>` — the number of columns the element spans. */
 interface ColAttributes extends PyreonHTMLAttributes<HTMLTableColElement> {
   span?: number | undefined
+}
+
+/** `<li value>` — the ordinal of the item in an `<ol>`. */
+interface LiAttributes extends PyreonHTMLAttributes<HTMLLIElement> {
+  value?: number | (() => number) | undefined
 }
 
 interface IframeAttributes extends PyreonHTMLAttributes<HTMLIFrameElement> {
@@ -643,6 +698,13 @@ interface LinkAttributes extends PyreonHTMLAttributes<HTMLLinkElement> {
   crossOrigin?: 'anonymous' | 'use-credentials' | undefined
   integrity?: string | undefined
   referrerPolicy?: string | undefined
+  hreflang?: string | undefined
+  sizes?: string | undefined
+  imageSrcSet?: string | undefined
+  imageSizes?: string | undefined
+  fetchPriority?: 'high' | 'low' | 'auto' | undefined
+  blocking?: string | undefined
+  disabled?: boolean | undefined
 }
 
 interface MetaAttributes extends PyreonHTMLAttributes<HTMLMetaElement> {
@@ -651,6 +713,19 @@ interface MetaAttributes extends PyreonHTMLAttributes<HTMLMetaElement> {
   httpEquiv?: string | undefined
   charset?: string | undefined
   property?: string | undefined
+  media?: string | undefined
+}
+
+/** `<base>` — the document's base URL and default navigation target. */
+interface BaseAttributes extends PyreonHTMLAttributes<HTMLBaseElement> {
+  href?: string | undefined
+  target?: '_blank' | '_self' | '_parent' | '_top' | string | undefined
+}
+
+/** `<style>` — the media the rules apply to, and render-blocking. */
+interface StyleAttributes extends PyreonHTMLAttributes<HTMLStyleElement> {
+  media?: string | undefined
+  blocking?: string | undefined
 }
 
 interface ScriptAttributes extends PyreonHTMLAttributes<HTMLScriptElement> {
@@ -662,6 +737,8 @@ interface ScriptAttributes extends PyreonHTMLAttributes<HTMLScriptElement> {
   integrity?: string | undefined
   noModule?: boolean | undefined
   referrerPolicy?: string | undefined
+  fetchPriority?: 'high' | 'low' | 'auto' | undefined
+  blocking?: string | undefined
 }
 
 interface SourceAttributes extends PyreonHTMLAttributes<HTMLSourceElement> {
@@ -670,6 +747,72 @@ interface SourceAttributes extends PyreonHTMLAttributes<HTMLSourceElement> {
   srcSet?: string | (() => string) | undefined
   sizes?: string | (() => string) | undefined
   media?: string | undefined
+  width?: number | string | undefined
+  height?: number | string | undefined
+}
+
+/** `<track>` — a timed text track for `<video>` / `<audio>`. */
+interface TrackAttributes extends PyreonHTMLAttributes<HTMLTrackElement> {
+  kind?: 'subtitles' | 'captions' | 'descriptions' | 'chapters' | 'metadata' | undefined
+  src?: string | (() => string) | undefined
+  srclang?: string | undefined
+  label?: string | undefined
+  default?: boolean | undefined
+}
+
+/** `<embed>` — an external resource handled by a plugin or the browser. */
+interface EmbedAttributes extends PyreonHTMLAttributes<HTMLEmbedElement> {
+  src?: string | (() => string) | undefined
+  type?: string | undefined
+  width?: number | string | undefined
+  height?: number | string | undefined
+}
+
+/** `<object>` — an external resource (an image, a nested browsing context). */
+interface ObjectAttributes extends PyreonHTMLAttributes<HTMLObjectElement> {
+  data?: string | (() => string) | undefined
+  type?: string | undefined
+  name?: string | undefined
+  form?: string | undefined
+  width?: number | string | undefined
+  height?: number | string | undefined
+}
+
+/** `<param>` — a parameter for an enclosing `<object>` (obsolete, still parsed). */
+interface ParamAttributes extends PyreonHTMLAttributes<HTMLParamElement> {
+  name?: string | undefined
+  value?: string | undefined
+}
+
+/** `<map>` — a named image map, referenced by `<img usemap="#name">`. */
+interface MapAttributes extends PyreonHTMLAttributes<HTMLMapElement> {
+  name?: string | undefined
+}
+
+/** `<area>` — a clickable region of an image map. */
+interface AreaAttributes extends PyreonHTMLAttributes<HTMLAreaElement> {
+  alt?: string | undefined
+  coords?: string | undefined
+  shape?: 'rect' | 'circle' | 'poly' | 'default' | undefined
+  href?: string | (() => string) | undefined
+  target?: '_blank' | '_self' | '_parent' | '_top' | string | undefined
+  download?: string | boolean | undefined
+  ping?: string | undefined
+  rel?: string | undefined
+  referrerPolicy?: string | undefined
+}
+
+/** `<slot name>` — a named slot in a shadow tree. */
+interface SlotAttributes extends PyreonHTMLAttributes<HTMLSlotElement> {
+  name?: string | undefined
+}
+
+/** `<template>` — declarative shadow DOM attributes. */
+interface TemplateAttributes extends PyreonHTMLAttributes<HTMLTemplateElement> {
+  shadowRootMode?: 'open' | 'closed' | undefined
+  shadowRootDelegatesFocus?: boolean | undefined
+  shadowRootClonable?: boolean | undefined
+  shadowRootSerializable?: boolean | undefined
 }
 
 interface ProgressAttributes extends PyreonHTMLAttributes<HTMLProgressElement> {
@@ -688,10 +831,14 @@ interface MeterAttributes extends PyreonHTMLAttributes<HTMLMeterElement> {
 
 interface DetailsAttributes extends PyreonHTMLAttributes<HTMLDetailsElement> {
   open?: boolean | (() => boolean) | undefined
+  /** Groups `<details>` elements into an exclusive accordion: opening one closes the others. */
+  name?: string | undefined
 }
 
 interface DialogAttributes extends PyreonHTMLAttributes<HTMLDialogElement> {
   open?: boolean | (() => boolean) | undefined
+  /** Which user actions close the dialog: `any` (light dismiss), `closerequest` (Escape) or `none`. */
+  closedBy?: 'any' | 'closerequest' | 'none' | undefined
   /** Fired after the dialog closes, by `close()`, a form with `method="dialog"` or Escape. */
   onClose?: ((e: TargetedEvent<HTMLDialogElement>) => void) | undefined
   /** Fired when the user asks to dismiss it (Escape). `preventDefault()` keeps it open. */
@@ -919,11 +1066,11 @@ declare global {
       head: PyreonHTMLAttributes
       body: PyreonHTMLAttributes
       title: PyreonHTMLAttributes
-      base: PyreonHTMLAttributes
+      base: BaseAttributes
       meta: MetaAttributes
       link: LinkAttributes
       script: ScriptAttributes
-      style: PyreonHTMLAttributes
+      style: StyleAttributes
       noscript: PyreonHTMLAttributes
       // Sections
       main: PyreonHTMLAttributes
@@ -934,6 +1081,7 @@ declare global {
       section: PyreonHTMLAttributes
       article: PyreonHTMLAttributes
       address: PyreonHTMLAttributes
+      search: PyreonHTMLAttributes
       h1: PyreonHTMLAttributes
       h2: PyreonHTMLAttributes
       h3: PyreonHTMLAttributes
@@ -959,6 +1107,7 @@ declare global {
       cite: PyreonHTMLAttributes
       q: QuoteAttributes
       abbr: PyreonHTMLAttributes
+      dfn: PyreonHTMLAttributes
       time: TimeAttributes
       code: PyreonHTMLAttributes
       var: PyreonHTMLAttributes
@@ -984,7 +1133,7 @@ declare global {
       // Lists
       ul: PyreonHTMLAttributes
       ol: OlAttributes
-      li: PyreonHTMLAttributes
+      li: LiAttributes
       dl: PyreonHTMLAttributes
       dt: PyreonHTMLAttributes
       dd: PyreonHTMLAttributes
@@ -995,18 +1144,18 @@ declare global {
       button: ButtonAttributes
       select: SelectAttributes
       datalist: PyreonHTMLAttributes
-      optgroup: PyreonHTMLAttributes
+      optgroup: OptgroupAttributes
       option: OptionAttributes
       textarea: TextareaAttributes
-      output: PyreonHTMLAttributes
+      output: OutputAttributes
       progress: ProgressAttributes
       meter: MeterAttributes
-      fieldset: PyreonHTMLAttributes
+      fieldset: FieldsetAttributes
       legend: PyreonHTMLAttributes
       // Tables
       table: PyreonHTMLAttributes
       caption: PyreonHTMLAttributes
-      colgroup: PyreonHTMLAttributes
+      colgroup: ColAttributes
       col: ColAttributes
       thead: PyreonHTMLAttributes
       tbody: PyreonHTMLAttributes
@@ -1019,9 +1168,11 @@ declare global {
       video: VideoAttributes
       audio: AudioAttributes
       source: SourceAttributes
-      track: PyreonHTMLAttributes
+      track: TrackAttributes
       picture: PyreonHTMLAttributes
       canvas: CanvasAttributes
+      map: MapAttributes
+      area: AreaAttributes
       svg: SvgAttributes
       path: SvgAttributes
       circle: SvgAttributes
@@ -1086,14 +1237,14 @@ declare global {
       summary: PyreonHTMLAttributes
       dialog: DialogAttributes
       iframe: IframeAttributes
-      embed: PyreonHTMLAttributes
-      object: PyreonHTMLAttributes
-      param: PyreonHTMLAttributes
+      embed: EmbedAttributes
+      object: ObjectAttributes
+      param: ParamAttributes
       // Semantic / misc
       menu: PyreonHTMLAttributes
       menuitem: PyreonHTMLAttributes
-      template: PyreonHTMLAttributes
-      slot: PyreonHTMLAttributes
+      template: TemplateAttributes
+      slot: SlotAttributes
       portal: PyreonHTMLAttributes
       // Catch-all for custom elements and data-* attrs
       [tagName: string]: PyreonHTMLAttributes<any>

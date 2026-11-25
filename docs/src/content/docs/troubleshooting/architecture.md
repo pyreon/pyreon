@@ -493,7 +493,7 @@ When migrating a dev gate, bundle with esbuild (`define: { 'process.env.NODE_ENV
 
 ### Framework APIs that accept only the accessor form of a prop
 
-The compiler auto-calls bare signals (`when={sig}` → `when={sig()}`), so an API typed `() => X` receives a value. Accept `X | (() => X)` and normalize with `typeof === 'function'` (`packages/core/core/src/show.ts:callWhen`). Reactive cases still need the accessor form. Apply to every control-flow component and signal-shaped prop.
+The compiler auto-calls bare signals (`when={sig}` → `when={sig()}`), so an API typed `() => X` receives a value. Accept `X | (() => X)` and normalize with `typeof === 'function'` (`packages/core/core/src/show.ts:callWhen`), reading `props.x` INSIDE the effect or accessor so a compiler getter still tracks. Apply to every control-flow component and signal-shaped prop. `<Defer when>`, `<Transition show>`, `<KeepAlive active>` and `<TransitionGroup items>` had missed it (#4830: `props.when is not a function`, chunk never loaded); locked through both compiler backends by `runtime-dom/src/tests/compiled-value-or-accessor-props.test.tsx`. Related trap: a component declared inside a call-argument callback (`test('…', () => { function Page() {…} })`) used to skip signal tracking, so a test passed where the app failed. A capitalized component now starts its own tracking frame in both backends (`compiler/src/tests/component-in-callback-tracking.test.ts`).
 
 ---
 

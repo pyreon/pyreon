@@ -1002,7 +1002,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
 >
   <App />
 </ErrorBoundary>`,
-    notes: 'Catches render errors thrown by descendant components. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`. See also: Suspense, registerErrorHandler.',
+    notes: 'Catches render errors thrown by descendant components — the boundary that ENCLOSES the component in the tree (resolved through the context owner chain), never a sibling. Also receives a `<Defer>` chunk that fails to load and an async component that rejects, whenever that happens. An error thrown while the boundary already shows its fallback (the fallback threw) goes to the next boundary out. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`. See also: Suspense, registerErrorHandler.',
     mistakes: `- Passing an \`onCatch\` prop — it does not exist. \`fallback\` is the only prop (besides children); log the error inside it or via \`registerErrorHandler\`
 - Reading \`err.message\` directly — \`err\` is typed \`unknown\`; narrow it (\`err instanceof Error ? err.message : String(err)\`) or \`String(err)\``,
   },
@@ -1195,7 +1195,7 @@ export const RouterView = nativeCompat(function RouterView(props) {
   },
 
   'core/Defer': {
-    signature: `<Defer chunk={() => import('./X')} when={() => boolean} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>`,
+    signature: `<Defer chunk={() => import('./X')} when={boolean | (() => boolean)} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>`,
     example: `// Signal-driven (modal) — explicit form:
 <Defer chunk={() => import('./ConfirmDeleteModal')} when={open} fallback={<Spinner/>}>
   {Modal => <Modal onClose={() => setOpen(false)} />}
@@ -1205,7 +1205,7 @@ export const RouterView = nativeCompat(function RouterView(props) {
 <Defer on="visible">
   <Comments postId={id} />
 </Defer>`,
-    notes: `Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): \`when={accessor}\` loads once the accessor becomes truthy (the modal-open pattern); \`on="visible"\` loads when the wrapper scrolls into the viewport (\`IntersectionObserver\`, \`rootMargin\` default \`'200px'\` so it's typically ready before the user scrolls to it); \`on="idle"\` loads during browser idle time (\`requestIdleCallback\`, falling back to \`setTimeout(1)\`). The chunk fetch fires EXACTLY ONCE per \`Defer\` instance — a \`when\` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (\`<Defer when={x}><Modal/></Defer>\`) that \`@pyreon/compiler\`'s \`transformDeferInline\` rewrites into the explicit form at BUILD time — the inline form requires \`@pyreon/vite-plugin\`; without it, \`Defer\` throws a clear dev-mode error naming the fix. \`fallback\` renders while the chunk loads (default \`null\`); a chunk-load failure is caught, dev-warned, and re-thrown into the nearest \`ErrorBoundary\` on render. See also: lazy, Suspense, ErrorBoundary.`,
+    notes: `Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): \`when\` loads once the condition becomes truthy (the modal-open pattern) and, like \`<Show when>\`, takes a value or an accessor — \`when={open}\` with a component-local signal/computed, \`when={open()}\` and \`when={() => open()}\` are all reactive; \`on="visible"\` loads when the wrapper scrolls into the viewport (\`IntersectionObserver\`, \`rootMargin\` default \`'200px'\` so it's typically ready before the user scrolls to it); \`on="idle"\` loads during browser idle time (\`requestIdleCallback\`, falling back to \`setTimeout(1)\`). The chunk fetch fires EXACTLY ONCE per \`Defer\` instance — a \`when\` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (\`<Defer when={x}><Modal/></Defer>\`) that \`@pyreon/compiler\`'s \`transformDeferInline\` rewrites into the explicit form at BUILD time — the inline form requires \`@pyreon/vite-plugin\`; without it, \`Defer\` throws a clear dev-mode error naming the fix. \`fallback\` renders while the chunk loads (default \`null\`). A chunk-load failure (offline, a deploy replaced the hashed file) goes to the enclosing \`<ErrorBoundary>\` like any other render error — on mount or on a later load — so its fallback and \`reset()\` (which remounts the \`Defer\` and retries) handle it; with no boundary it is reported to \`registerErrorHandler\`, dev-logged, and the slot renders nothing. See also: lazy, Suspense, ErrorBoundary.`,
     mistakes: `- Using the inline JSX form WITHOUT \`@pyreon/vite-plugin\` enabled — the compiler pass that rewrites \`<Defer on="visible"><Comments/></Defer>\` into the chunk-prop form never runs, so \`Defer\` throws a clear "\`<Defer>\` has no \`chunk\` prop" error the moment the trigger fires; use the explicit render-prop form instead in a non-Vite build
 - Expecting the chunk to re-fetch when a \`when\` accessor flips false then true again — it loads exactly once per mounted \`Defer\`; unmount and remount the \`<Defer>\` itself if you need a fresh fetch
 - Forgetting the module needs a \`default\` export — \`Defer\` accepts either \`{ default: Component }\` or a bare \`ComponentFn\`, matching \`lazy()\`'s contract; a module with neither dev-warns and renders nothing`,
@@ -3418,7 +3418,7 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
   },
 
   'runtime-dom/Transition': {
-    signature: '<Transition name={name} show={() => boolean} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>',
+    signature: '<Transition name={name} show={boolean | (() => boolean)} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>',
     example: `const visible = signal(true)
 
 <Transition name="fade" show={() => visible()}>
@@ -3429,15 +3429,15 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s }
 .fade-enter-from, .fade-leave-to { opacity: 0 }
 */`,
-    notes: 'CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show: () => boolean` accessor — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles. See also: TransitionGroup, @pyreon/kinetic.',
-    mistakes: `- Omitting \`show\` — it is REQUIRED (\`() => boolean\`); Transition drives visibility itself, so a plain child with no \`show\` will not animate
+    notes: 'CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show` prop — a value or an accessor, like `<Show when>` (`show={open}` with a component-local signal, `show={open()}` and `show={() => open()}` are all reactive) — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles. See also: TransitionGroup, @pyreon/kinetic.',
+    mistakes: `- Omitting \`show\` — it is REQUIRED; Transition drives visibility itself, so a plain child with no \`show\` will not animate
 - Wrapping the child in a \`<Show>\` — \`show\` already toggles visibility; a nested \`<Show>\` double-gates it
 - Missing CSS classes — \`<Transition name="fade">\` does nothing without \`.fade-enter-active\` / \`.fade-leave-active\` CSS
 - Passing a \`mode\` prop — Transition has no \`mode\`; for sequenced list moves use TransitionGroup`,
   },
 
   'runtime-dom/TransitionGroup': {
-    signature: '<TransitionGroup items={() => T[]} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />',
+    signature: '<TransitionGroup items={T[] | (() => T[])} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />',
     example: `const items = signal([{ id: 1, name: "a" }, { id: 2, name: "b" }])
 
 <TransitionGroup
@@ -3453,19 +3453,18 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
 .list-enter-from, .list-leave-to { opacity: 0; transform: translateY(10px) }
 .list-move { transition: transform 0.3s }
 */`,
-    notes: 'Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (a reactive accessor), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`). See also: Transition, For.',
+    notes: 'Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (an accessor or an array — `items={list}` with a component-local signal stays reactive), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`). See also: Transition, For.',
     mistakes: `- Passing a \`<For>\` as children — TransitionGroup owns iteration via \`items\`/\`keyFn\`/\`render\`, it is not a \`<For>\` wrapper
 - A \`render\` that returns a component or fragment — it must return a single DOM-element VNode (string \`type\`) so the group can inject a ref`,
   },
 
   'runtime-dom/KeepAlive': {
-    signature: '<KeepAlive active={() => boolean}>{children}</KeepAlive>',
+    signature: '<KeepAlive active={boolean | (() => boolean)}>{children}</KeepAlive>',
     example: `// One KeepAlive per route — each keeps its own subtree mounted + hidden.
 <KeepAlive active={() => route() === "/a"}><RouteA /></KeepAlive>
 <KeepAlive active={() => route() === "/b"}><RouteB /></KeepAlive>`,
-    notes: 'Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab). See also: Transition, Show.',
-    mistakes: `- \`active\` MUST be a thunk — write \`active={() => cond()}\`, not \`active={cond}\`; the runtime calls \`props.active?.()\`, so any non-function value (a boolean, or a bare signal the compiler auto-calls to a value) THROWS \`TypeError: props.active is not a function\` at mount — there is no \`<Show when>\`-style value-form normalization; only omitting \`active\` entirely defaults to visible
-- KeepAlive CSS-HIDES when inactive, it does NOT unmount — the hidden component's effects, timers, subscriptions, and signals keep RUNNING (memory + side-effect cost); use it ONLY for expensive-to-recreate state, not as a default wrapper
+    notes: 'Mount children ONCE and keep them alive when hidden — when `active` is false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab). See also: Transition, Show.',
+    mistakes: `- KeepAlive CSS-HIDES when inactive, it does NOT unmount — the hidden component's effects, timers, subscriptions, and signals keep RUNNING (memory + side-effect cost); use it ONLY for expensive-to-recreate state, not as a default wrapper
 - It is the OPPOSITE of \`<Show>\`/ternary — those DESTROY + recreate state on toggle; reach for KeepAlive precisely when you need state PRESERVED across hide/show (form drafts, scroll, heavy trees)
 - Each KeepAlive slot keeps its OWN children mounted — wrapping N routes in N KeepAlives keeps ALL N subtrees mounted + their effects live simultaneously, not just the active one
 - There is NO \`include\`/\`exclude\`/\`max\`/name-based cache or LRU eviction (that is Vue's KeepAlive) — visibility is driven solely by the \`active\` accessor`,
