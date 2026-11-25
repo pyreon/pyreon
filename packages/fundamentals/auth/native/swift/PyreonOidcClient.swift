@@ -86,15 +86,18 @@ public struct PyreonOidcMetadata: Equatable, Sendable {
     public let endSessionEndpoint: String?
     /// RFC 9207 — the provider sends `iss` on the redirect.
     public let issParameterSupported: Bool
+    /// RFC 7009 token revocation; `signOut()` revokes the session's tokens there when present.
+    public let revocationEndpoint: String?
 
     public init(issuer: String, authorizationEndpoint: String, tokenEndpoint: String, jwksUri: String? = nil,
-                endSessionEndpoint: String? = nil, issParameterSupported: Bool = false) {
+                endSessionEndpoint: String? = nil, issParameterSupported: Bool = false, revocationEndpoint: String? = nil) {
         self.issuer = issuer
         self.authorizationEndpoint = authorizationEndpoint
         self.tokenEndpoint = tokenEndpoint
         self.jwksUri = jwksUri
         self.endSessionEndpoint = endSessionEndpoint
         self.issParameterSupported = issParameterSupported
+        self.revocationEndpoint = revocationEndpoint
     }
 }
 
@@ -149,7 +152,7 @@ public enum PyreonOidcClient {
         }
         _ = try PyreonAuthURL.assertHttps(auth)
         _ = try PyreonAuthURL.assertHttps(token)
-        for k in ["jwks_uri", "userinfo_endpoint", "end_session_endpoint"] {
+        for k in ["jwks_uri", "userinfo_endpoint", "end_session_endpoint", "revocation_endpoint"] {
             if let v = m[k], !(v is NSNull) {
                 guard let s = v as? String else { throw PyreonAuthError("insecure_url", "\(k) is not a URL") }
                 _ = try PyreonAuthURL.assertHttps(s)
@@ -158,23 +161,49 @@ public enum PyreonOidcClient {
         return PyreonOidcMetadata(
             issuer: got, authorizationEndpoint: auth, tokenEndpoint: token,
             jwksUri: m["jwks_uri"] as? String, endSessionEndpoint: m["end_session_endpoint"] as? String,
-            issParameterSupported: (m["authorization_response_iss_parameter_supported"] as? Bool) == true)
+            issParameterSupported: (m["authorization_response_iss_parameter_supported"] as? Bool) == true,
+            revocationEndpoint: m["revocation_endpoint"] as? String)
+    }
+
+    /// An `application/x-www-form-urlencoded` body.
+    static func formBody(_ form: [(String, String)]) -> Data {
+        var comps = URLComponents()
+        comps.queryItems = form.map { URLQueryItem(name: $0.0, value: $0.1) }
+        // URLComponents leaves `+` literal; form encoding must escape it or it reads as a space.
+        return Data((comps.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B").utf8)
+    }
+
+    /// Revoke a token at the provider (RFC 7009; public client: `client_id`, no secret) — the web
+    /// `revokeToken`, with its error codes: `no_revocation_endpoint`, `provider_unavailable` (429 /
+    /// 5xx), `revocation_failed` (any other refusal), `network_error`.
+    public static func revoke(_ meta: PyreonOidcMetadata, clientId: String, token: String, tokenTypeHint: String?,
+                              transport: PyreonAuthTransport) async throws {
+        guard let endpoint = meta.revocationEndpoint else {
+            throw PyreonAuthError("no_revocation_endpoint", "the provider advertises no revocation_endpoint")
+        }
+        // The POST carries a live token: never over cleartext.
+        _ = try PyreonAuthURL.assertHttps(endpoint)
+        var form = [("token", token), ("client_id", clientId)]
+        if let tokenTypeHint { form.append(("token_type_hint", tokenTypeHint)) }
+        let res = try await send(transport, PyreonAuthRequest(
+            method: .post, url: endpoint,
+            headers: ["content-type": "application/x-www-form-urlencoded", "accept": "application/json"],
+            body: formBody(form)))
+        if res.status == 429 || res.status >= 500 { throw PyreonAuthError("provider_unavailable", "revocation endpoint returned \(res.status)") }
+        if !res.isOK { throw PyreonAuthError("revocation_failed", "revocation endpoint returned \(res.status)") }
     }
 
     /// POST to the token endpoint and validate the response (JSON object, a non-empty
     /// `access_token`, `token_type` Bearer) — the same rules as the web `postToken`.
     static func postToken(_ meta: PyreonOidcMetadata, _ form: [(String, String)], transport: PyreonAuthTransport) async throws -> PyreonTokenSet {
-        var comps = URLComponents()
-        comps.queryItems = form.map { URLQueryItem(name: $0.0, value: $0.1) }
-        // URLComponents leaves `+` literal; form encoding must escape it or it reads as a space.
-        let body = (comps.percentEncodedQuery ?? "").replacingOccurrences(of: "+", with: "%2B")
+        let body = formBody(form)
         // The POST carries the code + verifier (or a refresh token): https at USE, like
         // the web, because metadata built directly never went through discovery.
         _ = try PyreonAuthURL.assertHttps(meta.tokenEndpoint)
         let req = PyreonAuthRequest(
             method: .post, url: meta.tokenEndpoint,
             headers: ["content-type": "application/x-www-form-urlencoded", "accept": "application/json"],
-            body: Data(body.utf8))
+            body: body)
         let res = try await send(transport, req)
         // 429 and 5xx are the provider being unavailable (retry later); anything else is a refusal.
         if res.status == 429 || res.status >= 500 { throw PyreonAuthError("provider_unavailable", "token endpoint returned \(res.status)") }

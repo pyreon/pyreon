@@ -26,6 +26,9 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
     var jwksFetches = 0
     var requests: [String] = []
     var endSession = true
+    /// Advertise an RFC 7009 revocation_endpoint answering with this status.
+    var revocationStatus: Int?
+    var revoked: [[String: String]] = []
     private var codes: [String: (challenge: String, nonce: String)] = [:]
     private var refreshCount = 0
 
@@ -39,6 +42,7 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
                                     "token_endpoint": "\(issuer)/token", "jwks_uri": "\(issuer)/jwks"]
             if endSession { m["end_session_endpoint"] = "\(issuer)/logout" }
             if advertiseIss { m["authorization_response_iss_parameter_supported"] = true }
+            if revocationStatus != nil { m["revocation_endpoint"] = "\(issuer)/revoke" }
             return ok(m)
         }
         if r.url.hasSuffix("/jwks") {
@@ -50,6 +54,10 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
         }
         let form = Dictionary(uniqueKeysWithValues: (URLComponents(string: "?" + String(decoding: r.body ?? Data(), as: UTF8.self))?
             .queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        if r.url.hasSuffix("/revoke") {
+            revoked.append(form)
+            return PyreonAuthResponse(status: revocationStatus ?? 404)
+        }
         if form["grant_type"] == "authorization_code" {
             guard let grant = codes.removeValue(forKey: form["code"] ?? ""),
                   PyreonPKCE.challengeS256(form["code_verifier"] ?? "") == grant.challenge
@@ -241,6 +249,44 @@ enum PyreonOidcFlowTests {
         restored.signOut(endProviderSession: true)
         for _ in 0..<500 where lob.opened.count == openedBefore { await _Concurrency.Task.yield() }
         expect(lob.opened.count == openedBefore + 1 && lob.opened.last?.path == "/logout", "provider logout opened after a relaunch")
+
+        // Sign-out revokes the refresh and then the access token when the provider advertises
+        // revocation (RFC 7009); a refused revocation still signs out; none without the endpoint.
+        let rvp = FakeProvider(), rvb = FakeBrowser(rvp)
+        rvp.revocationStatus = 200
+        let rv = make(rvp, CountingStore(), rvb)
+        await rv.signInNow()
+        await rv.signOutNow()
+        expect(rv.status == PyreonOidcStatus.signedOut && rv.accessToken == nil, "signed out locally")
+        expect(rvp.revoked == [["token": "rt-0", "client_id": "app", "token_type_hint": "refresh_token"],
+                               ["token": "at-0", "client_id": "app", "token_type_hint": "access_token"]],
+               "refresh then access token revoked: \(rvp.revoked)")
+        let rfp = FakeProvider(), rfb = FakeBrowser(rfp)
+        rfp.revocationStatus = 400
+        let rf = make(rfp, CountingStore(), rfb)
+        await rf.signInNow()
+        await rf.signOutNow()
+        expect(rf.status == PyreonOidcStatus.signedOut && rfp.revoked.count == 2, "a refused revocation still signs out")
+        let nrp = FakeProvider(), nrb = FakeBrowser(nrp)
+        let nr = make(nrp, CountingStore(), nrb)
+        await nr.signInNow()
+        await nr.signOutNow()
+        expect(!nrp.requests.contains { $0.hasSuffix("/revoke") }, "no revocation without an advertised endpoint")
+
+        // Two containers over one stored session: a sign-out in one removes the record both read,
+        // so the other signs out too and cannot refresh back.
+        let shp = FakeProvider(), shb = FakeBrowser(shp), shs = CountingStore()
+        let first = make(shp, shs, shb)
+        await first.signInNow()
+        let second = make(shp, shs, shb)
+        expect(second.status == PyreonOidcStatus.signedIn, "the second instance restored the session")
+        first.signOut()
+        expect(second.status == PyreonOidcStatus.signedOut && second.accessToken == nil && second.subject == nil,
+               "the other instance signed out (\(second.status))")
+        let soTokenPosts = shp.requests.filter { $0.hasSuffix("/token") }.count
+        await second.refreshNow()
+        expect(second.status != PyreonOidcStatus.signedIn && shp.requests.filter { $0.hasSuffix("/token") }.count == soTokenPosts,
+               "and cannot refresh back")
 
         // Concurrent refreshes share one request (rotating refresh tokens + reuse detection).
         let concP = FakeProvider(), concB = FakeBrowser(concP)

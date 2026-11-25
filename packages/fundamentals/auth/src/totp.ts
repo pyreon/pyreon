@@ -130,3 +130,24 @@ export async function verifyTotp(
 
   return { ok: true, step: hit }
 }
+
+/**
+ * Sign-in with an existing TOTP enrolment that may predate the 128-bit rule, and the way off it.
+ * Verifies `code` against `secret` with 80-bit secrets allowed (as `verifyTotp` with
+ * `allowShortSecret: true`), and when the secret is under 128 bits returns `reEnrol`: a fresh
+ * 160-bit secret to enrol the user's authenticator with. Keep the old secret until the user proves
+ * the new one — show it as a setup key / QR, check a code with `verifyTotp(reEnrol, code)`, and only
+ * then replace the stored secret — or a user who abandons re-enrolment is locked out. A secret that
+ * is already 128 bits or more gets `reEnrol: null`, so this can replace `verifyTotp` for every user
+ * while legacy enrolments drain.
+ */
+export async function verifyTotpWithMigration(
+  secret: string,
+  code: string,
+  opts: Omit<TotpOptions, 'allowShortSecret'> & { now?: number | undefined; window?: number | undefined; lastUsedStep?: number | undefined } = {},
+): Promise<{ ok: true; step: number; reEnrol: string | null } | { ok: false }> {
+  const r = await verifyTotp(secret, code, { ...opts, allowShortSecret: true })
+  if (!r.ok) return r
+
+  return { ok: true, step: r.step, reEnrol: base32Decode(secret).length < MIN_SECRET_BYTES ? generateTotpSecret() : null }
+}

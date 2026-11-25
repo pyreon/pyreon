@@ -38,6 +38,29 @@ public protocol PyreonAuthBrowser: AnyObject {
     func authorize(url: URL, redirectUri: String) async throws -> URL
 }
 
+/// The live containers, by stored-session key (client and issuer), so a sign-out reaches every
+/// instance over the session it removes. Weak: an instance the app drops is not kept alive, and a
+/// released one is pruned on every access (a key with none left is removed), so the table is
+/// bounded by the live instances.
+@available(iOS 17.0, macOS 14.0, *)
+@MainActor
+enum PyreonOidcInstances {
+    final class Ref { weak var auth: PyreonOidcAuth?; init(_ a: PyreonOidcAuth) { auth = a } }
+    private static var live: [String: [Ref]] = [:]
+
+    static func add(_ a: PyreonOidcAuth) {
+        live[a.storedSessionKey, default: []].removeAll { $0.auth == nil }
+        live[a.storedSessionKey, default: []].append(Ref(a))
+    }
+
+    static func others(of a: PyreonOidcAuth) -> [PyreonOidcAuth] {
+        let key = a.storedSessionKey
+        let refs = (live[key] ?? []).filter { $0.auth != nil }
+        live[key] = refs.isEmpty ? nil : refs
+        return refs.compactMap(\.auth).filter { $0 !== a }
+    }
+}
+
 @available(iOS 17.0, macOS 14.0, *)
 @MainActor
 @Observable
@@ -101,6 +124,7 @@ public final class PyreonOidcAuth {
     /// Per client AND issuer: another instance with the same client id at another provider must
     /// not read, overwrite or delete this one's stored session.
     private var sessionKey: String { "pyreon.auth.session.\(clientId)|\(issuer)" }
+    var storedSessionKey: String { sessionKey }
     /// This instance's claim on its redirect target (see `PyreonRedirectClaims`); released on
     /// `dispose()` or deinit.
     @ObservationIgnored private let redirectClaim: PyreonRedirectToken
@@ -143,6 +167,7 @@ public final class PyreonOidcAuth {
         self.clock = clock
         self.redirectClaim = PyreonRedirectClaims.shared.claim(redirectUri: redirectUri, issuer: issuer)
         self.redirectUriValid = PyreonRedirect.target(redirectUri) != nil
+        PyreonOidcInstances.add(self)
         if !redirectUriValid {
             // A misconfiguration fails at construction, visibly, not at every sign-in.
             status = PyreonOidcStatus.error
@@ -309,26 +334,57 @@ public final class PyreonOidcAuth {
 
     deinit { redirectClaim.release() }
 
-    /// Clear the session. With `endProviderSession`, also end it AT THE PROVIDER (RP-initiated
-    /// logout) — otherwise the next sign-in completes without a prompt.
+    /// Clear the session — here and in every other live instance over the same stored session
+    /// (same client and issuer), which shares the record this removes. Then revoke its tokens at the
+    /// provider when it advertises a `revocation_endpoint` (RFC 7009), and with `endProviderSession`
+    /// also end the session AT THE PROVIDER (RP-initiated logout) — otherwise the next sign-in
+    /// completes without a prompt.
     public func signOut(endProviderSession: Bool = false) {
+        let held = beginSignOut()
+        guard held.access != nil || held.refresh != nil || endProviderSession else { return }
+        _Concurrency.Task { await finishSignOut(held, endProviderSession: endProviderSession) }
+    }
+
+    /// `signOut`, awaiting the provider work (tests).
+    public func signOutNow(endProviderSession: Bool = false) async {
+        await finishSignOut(beginSignOut(), endProviderSession: endProviderSession)
+    }
+
+    private func beginSignOut() -> (access: String?, refresh: String?, idToken: String?) {
+        let held = (access: currentAccessToken, refresh: refreshToken, idToken: idToken)
+        signOutLocally()
+        for other in PyreonOidcInstances.others(of: self) where other.currentAccessToken != nil || other.refreshToken != nil {
+            other.signOutLocally()
+        }
+        return held
+    }
+
+    private func signOutLocally() {
         signedOutExplicitly = true
         epoch += 1
-        let hint = idToken
         clear()
         status = PyreonOidcStatus.signedOut
         error = nil
-        guard endProviderSession, let browser else { return }
-        let back = postLogoutRedirectUri ?? redirectUri
-        _Concurrency.Task {
-            // A session restored on relaunch was never discovered, so look the provider up now:
-            // skipping the logout there would leave the provider session alive.
-            guard let m = try? await self.metadata(),
-                  let url = try? PyreonOidcClient.endSessionURL(m, idTokenHint: hint, clientId: self.clientId,
-                                                               postLogoutRedirectUri: self.postLogoutRedirectUri)
-            else { return }
-            _ = try? await browser.authorize(url: url, redirectUri: back)
+    }
+
+    private func finishSignOut(_ held: (access: String?, refresh: String?, idToken: String?), endProviderSession: Bool) async {
+        // A session restored on relaunch was never discovered, so look the provider up now:
+        // skipping the revocation or the logout there would leave them undone.
+        guard let m = try? await metadata() else { return }
+        if m.revocationEndpoint != nil {
+            // The refresh token first: at most providers that also ends its grant's access tokens.
+            if let t = held.refresh {
+                try? await PyreonOidcClient.revoke(m, clientId: clientId, token: t, tokenTypeHint: "refresh_token", transport: transport)
+            }
+            if let t = held.access {
+                try? await PyreonOidcClient.revoke(m, clientId: clientId, token: t, tokenTypeHint: "access_token", transport: transport)
+            }
         }
+        guard endProviderSession, let browser,
+              let url = try? PyreonOidcClient.endSessionURL(m, idTokenHint: held.idToken, clientId: clientId,
+                                                           postLogoutRedirectUri: postLogoutRedirectUri)
+        else { return }
+        _ = try? await browser.authorize(url: url, redirectUri: postLogoutRedirectUri ?? redirectUri)
     }
 
     // MARK: - internals

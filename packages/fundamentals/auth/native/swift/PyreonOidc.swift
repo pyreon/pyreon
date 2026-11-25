@@ -55,6 +55,27 @@ public enum PyreonRedirect {
     }
 }
 
+/// The query of a callback URL, read by the web rule (`new URL(url).searchParams.get(name)`), held to
+/// the shared vectors in `native/tests/callback-vectors.json`: the part between the first `?` and the
+/// first `#`, split on `&`, `+` read as a space, percent-decoded, and the FIRST value of a repeated
+/// name wins — on every target. A malformed query (a bad `%` escape) reads as empty, so the callback
+/// fails as `unknownFlow`, the same as Kotlin.
+public enum PyreonCallbackQuery {
+    public static func parse(_ url: String) -> [String: String] {
+        let head = url.prefix { $0 != "#" }
+        guard let q = head.firstIndex(of: "?") else { return [:] }
+        var out: [String: String] = [:]
+        for part in head[head.index(after: q)...].split(separator: "&", omittingEmptySubsequences: true) {
+            let eq = part.firstIndex(of: "=")
+            func decode(_ s: Substring) -> String? { s.replacingOccurrences(of: "+", with: " ").removingPercentEncoding }
+            guard let k = decode(eq.map { part[..<$0] } ?? part[...]),
+                  let v = eq.map({ decode(part[part.index(after: $0)...]) }) ?? "" else { return [:] }
+            if out[k] == nil { out[k] = v }
+        }
+        return out
+    }
+}
+
 /// Which issuers have a live `PyreonOidcAuth` on which redirect target — process-wide, the same rule
 /// as the web `claimRedirect` (RFC 9700 §4.4 mix-up). A target is SHARED while two or more issuers
 /// hold it; on a shared target a provider must send RFC 9207 `iss` (sign-in refuses one that does not
@@ -262,8 +283,8 @@ public final class PyreonAuthCore {
     /// Validate the redirect. The flow is read-and-deleted: a callback URL can never be replayed.
     public func complete(callback: URL, issuer: String, issuerParamSupported: Bool = false,
                          now: Date = Date()) throws -> (code: String, flow: PyreonAuthFlow) {
-        let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        func q(_ n: String) -> String? { items.first { $0.name == n }?.value }
+        let items = PyreonCallbackQuery.parse(callback.absoluteString)
+        func q(_ n: String) -> String? { items[n] }
         let state = q("state") ?? ""
         guard let raw = backend.read(key: key(state)) else { throw PyreonAuthError.unknownFlow }
         // Read-and-delete, including an entry that fails to decode.

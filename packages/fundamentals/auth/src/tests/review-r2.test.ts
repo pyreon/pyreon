@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { beginAuthorization, createAuth, memoryFlowStore, parseCallback, safeReturnTo, totp, verifyTotp } from '../index'
+import { beginAuthorization, createAuth, generateTotpSecret, memoryFlowStore, parseCallback, safeReturnTo, totp, verifyTotp, verifyTotpWithMigration } from '../index'
 import type { FetchLike, FlowStore, OidcMetadata, PendingFlow } from '../index'
 import { redirectTarget } from '../oidc'
 import { _resetRedirectClaims } from '../redirects'
@@ -153,6 +153,24 @@ describe('TOTP secret length', () => {
     expect(await verifyTotp(legacy, code, { allowShortSecret: true, now: 0 })).toMatchObject({ ok: true })
     await expect(verifyTotp('AA', '123456', { allowShortSecret: true })).rejects.toThrow(/at least 80/)
   })
+
+  it('verifyTotpWithMigration signs a legacy enrolment in and hands back a 160-bit replacement', async () => {
+    const legacy = 'JBSWY3DPEHPK3PXP' // 80 bits
+    const code = await totp(legacy, { allowShortSecret: true, now: 0 })
+    const r = await verifyTotpWithMigration(legacy, code, { now: 0 })
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.step).toBe(0)
+    expect(r.reEnrol).toMatch(/^[A-Z2-7]{32}$/) // 160 bits
+    // The replacement is a working secret on its own, without the legacy flag.
+    expect(await verifyTotp(r.reEnrol!, await totp(r.reEnrol!, { now: 0 }), { now: 0 })).toMatchObject({ ok: true })
+    // A wrong code, or a replayed step, is still refused.
+    expect(await verifyTotpWithMigration(legacy, code === '000000' ? '111111' : '000000', { now: 0 })).toEqual({ ok: false })
+    expect(await verifyTotpWithMigration(legacy, code, { now: 0, lastUsedStep: 0 })).toEqual({ ok: false })
+    // A strong secret verifies as usual and needs no re-enrolment.
+    const strong = generateTotpSecret()
+    expect(await verifyTotpWithMigration(strong, await totp(strong, { now: 0 }), { now: 0 })).toEqual({ ok: true, step: 0, reEnrol: null })
+    await expect(verifyTotpWithMigration('AA', '123456')).rejects.toThrow(/at least 80/)
+  })
 })
 
 describe('safeReturnTo — depth and path parameters', () => {
@@ -174,6 +192,22 @@ describe('redirect matching — one rule on web, iOS and Android', () => {
     for (const f of ['PyreonOidcTests.swift', 'PyreonOidcTest.kt']) {
       const src = readFileSync(join(root, 'native', 'tests', f), 'utf8')
       const region = src.slice(src.indexOf('// <redirect-vectors:begin>'), src.indexOf('// <redirect-vectors:end>'))
+      expect(region, f).toContain(one)
+    }
+  })
+})
+
+describe('callback query — one rule on web, iOS and Android', () => {
+  const root = join(import.meta.dirname, '..', '..')
+  const vectors = JSON.parse(readFileSync(join(root, 'native', 'tests', 'callback-vectors.json'), 'utf8')) as [string, string, string | null][]
+  it('the web rule (URLSearchParams, first value wins) produces every vector', () => {
+    for (const [url, name, want] of vectors) expect(new URL(url).searchParams.get(name), `${url} ${name}`).toBe(want)
+  })
+  it('the Swift and Kotlin tests embed the same vectors', () => {
+    const one = JSON.stringify(vectors)
+    for (const f of ['PyreonOidcTests.swift', 'PyreonOidcTest.kt']) {
+      const src = readFileSync(join(root, 'native', 'tests', f), 'utf8')
+      const region = src.slice(src.indexOf('// <callback-vectors:begin>'), src.indexOf('// <callback-vectors:end>'))
       expect(region, f).toContain(one)
     }
   })

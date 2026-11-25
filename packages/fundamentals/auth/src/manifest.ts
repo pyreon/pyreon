@@ -13,7 +13,7 @@ export default defineManifest({
     'One redirect URI per provider (RFC 9700 §4.4), web and native: a shared one is allowed only between providers that send RFC 9207 `iss`, and a callback there must carry it',
     'Discovery refuses a non-https issuer, a non-https endpoint, or an issuer that does not equal the fetched URL',
     'Guard `returnTo` only round-trips same-origin relative paths',
-    'Refresh can never switch users; signOut can end the session at the provider',
+    'Refresh can never switch users; signOut revokes the tokens (RFC 7009) when the provider advertises it, and can end the session at the provider',
   ],
   api: [
     {
@@ -39,6 +39,7 @@ export default defineManifest({
         'Reading `auth.status` without calling it — every member is a call on the web',
         'Expecting a refresh token without `offline_access` in `scope` (and, for Google, `authorizationParams: { access_type: "offline", prompt: "consent" }`)',
         'Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app',
+        'Relying on a custom scheme on Android — another app can register it and receive the redirect; use a verified App Link (https nativeRedirectUri, `android:autoVerify="true"`, assetlinks.json)',
         'Reading `auth.tokens()?.access_token` from the lower-level `createAuth` for a request — that is the raw response; `useOidc().accessToken()` (and native `accessToken`) return null once the token has expired',
         'Expecting the web session to survive a reload like native does — web tokens live in memory only; re-run `signIn()` on load or keep the session server-side behind an HttpOnly cookie, never in `localStorage`',
       ],
@@ -111,7 +112,7 @@ const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirect
       kind: 'function',
       signature: '(opts: AuthOptions) => Auth',
       summary:
-        'Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens`, `claims`, `expiresAt` and `error` as signals plus `signIn`, `handleCallback`, `refresh` and `signOut`. Keys come from a cached JWKS that is re-fetched (throttled) when a token names an unknown `kid`, so provider key rotation needs no restart. `refresh()` keeps the old refresh token when the provider does not rotate it and refuses a refreshed ID token with a different `sub`. `signOut({ endProviderSession: true })` also redirects to the `end_session_endpoint` of the provider with an `id_token_hint`; plain `signOut()` clears local state only. When the provider returns an ID token, `handleCallback` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow\'s nonce) BEFORE reporting `signedIn`, and exposes the verified payload as `claims`; a provider that returns an ID token but publishes no `jwks_uri` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are stored under a key derived from the state, issuer, client id, redirect URI and browser `binding`, and read-and-deleted, so a callback URL cannot be replayed, another provider\'s or client\'s instance never reads the flow, and a callback from another browser finds nothing (login CSRF). One redirect URI per provider (OAuth mix-up, RFC 9700 §4.4): instances are registered process-wide by redirect URI; two providers may share one only if both send RFC 9207 `iss` — a provider known not to is refused at construction (explicit metadata) or at sign-in (`redirect_shared`, after discovery), and every callback on a shared URI must carry `iss`. `dispose()` releases the claim (`useOidc` does it with its scope); a disposed instance that signs in again registers again. `handleCallback` takes an absolute URL or the request path and query (resolved against the configured redirect origin — what a server behind a TLS-terminating proxy must pass). A redirect URI the matcher refuses (non-ASCII host — use punycode —, `%2e`, backslash, whitespace) throws at construction. A refresh that fails because the provider is unreachable or unavailable (`network_error`, `provider_unavailable`, `discovery_failed`, `jwks_failed`) keeps the session for a retry with `status` `error`; any other failure ends it. Concurrent `refresh()` calls for one session share one request (a call after a sign-out and new sign-in starts its own), and a refresh never discards a sign-in in flight nor overwrites a newer session. `memoryFlowStore` drops abandoned flows after the 10-minute flow lifetime.',
+        'Reactive auth state machine over the OIDC primitives. Exposes `status` (signedOut | signingIn | signedIn | error), `tokens`, `claims`, `expiresAt` and `error` as signals plus `signIn`, `handleCallback`, `refresh` and `signOut`. Keys come from a cached JWKS that is re-fetched (throttled) when a token names an unknown `kid`, so provider key rotation needs no restart. `refresh()` keeps the old refresh token when the provider does not rotate it and refuses a refreshed ID token with a different `sub`. `signOut()` clears the local session at once and, when the provider advertises a `revocation_endpoint`, revokes the refresh and access tokens there (RFC 7009; `revokeTokens: false` skips it); it resolves to `{ revoked, error }`, and a failed revocation still signs out locally. `signOut({ endProviderSession: true })` also redirects to the `end_session_endpoint` of the provider with an `id_token_hint`, after the revocation (bounded to 5 s). When the provider returns an ID token, `handleCallback` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow\'s nonce) BEFORE reporting `signedIn`, and exposes the verified payload as `claims`; a provider that returns an ID token but publishes no `jwks_uri` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after `signOut()`; pending flows are stored under a key derived from the state, issuer, client id, redirect URI and browser `binding`, and read-and-deleted, so a callback URL cannot be replayed, another provider\'s or client\'s instance never reads the flow, and a callback from another browser finds nothing (login CSRF). One redirect URI per provider (OAuth mix-up, RFC 9700 §4.4): instances are registered process-wide by redirect URI; two providers may share one only if both send RFC 9207 `iss` — a provider known not to is refused at construction (explicit metadata) or at sign-in (`redirect_shared`, after discovery), and every callback on a shared URI must carry `iss`. `dispose()` releases the claim (`useOidc` does it with its scope); a disposed instance that signs in again registers again. `handleCallback` takes an absolute URL or the request path and query (resolved against the configured redirect origin — what a server behind a TLS-terminating proxy must pass). A redirect URI the matcher refuses (non-ASCII host — use punycode —, `%2e`, backslash, whitespace) throws at construction. A refresh that fails because the provider is unreachable or unavailable (`network_error`, `provider_unavailable`, `discovery_failed`, `jwks_failed`) keeps the session for a retry with `status` `error`; any other failure ends it. Concurrent `refresh()` calls for one session share one request (a call after a sign-out and new sign-in starts its own), and a refresh never discards a sign-in in flight nor overwrites a newer session. `memoryFlowStore` drops abandoned flows after the 10-minute flow lifetime.',
       example: `// a server (backend-for-frontend): one shared store, one createAuth per request
 const binding = createFlowBinding(req.headers.get('cookie')) // send binding.setCookie with the redirect
 const auth = createAuth({ issuer: google.issuer, client, flows, binding: binding.value, redirect: (u) => respond(u) })
@@ -128,6 +129,7 @@ await back.handleCallback(req.url)`,
         'Reading identity from `auth.tokens()?.id_token` — that is the raw token; use the verified `auth.claims()`',
         'Expecting a refresh token without asking for one — request `offline_access`, and pass provider params via `client.authorizationParams` (Google: `access_type: offline`)',
         'Calling `signOut()` and expecting the next sign-in to prompt — the provider session survives; use `signOut({ endProviderSession: true })`',
+        'Treating a resolved `signOut()` as proof the tokens are dead — check `revoked`: a provider without a `revocation_endpoint`, or a refused revocation, leaves them valid until they expire',
         'Using `memoryFlowStore` behind a load balancer — a callback landing on another instance fails with `unknown_flow`; back `FlowStore` with a shared store',
       ],
       seeAlso: ['beginAuthorization', 'google', 'keycloak'],
@@ -356,8 +358,18 @@ session.refreshToken = t.refresh_token ?? session.refreshToken`,
         'The RP-initiated logout URL (OpenID Connect RP-Initiated Logout 1.0), or null when the provider advertises no `end_session_endpoint`. Navigate there to end the session AT THE PROVIDER; clearing local state alone leaves the provider session alive. It does not revoke tokens (RFC 7009) — an access or refresh token already issued stays valid until it expires.',
       example: `const url = endSessionUrl(meta, { idTokenHint: tokens.id_token, postLogoutRedirectUri: 'https://app.example/' })
 if (url) location.assign(url)`,
-      mistakes: ['Expecting it to revoke tokens — it ends the provider session; revoke refresh tokens at the provider if it supports RFC 7009'],
-      seeAlso: ['createAuth'],
+      mistakes: ['Expecting it to revoke tokens — it ends the provider session; `createAuth().signOut()` revokes them (RFC 7009) when the provider advertises a revocation_endpoint, or call `revokeToken`'],
+      seeAlso: ['createAuth', 'revokeToken'],
+    },
+    {
+      name: 'revokeToken',
+      kind: 'function',
+      signature: "(meta: OidcMetadata, client: { clientId: string }, token: string, opts?: { tokenTypeHint?: 'refresh_token' | 'access_token'; fetch?: FetchLike; signal?: AbortSignal }) => Promise<void>",
+      summary:
+        'Revoke a token at the provider (RFC 7009) as a public client (`client_id`, no secret), over https only. Revoking the refresh token also ends the access tokens of its grant at most providers. The provider answers 200 for a token it does not know, so success means "no longer usable". Throws `no_revocation_endpoint` when discovery advertised none, `provider_unavailable` on 429 / 5xx, `revocation_failed` on any other refusal, `network_error` when unreachable. `createAuth().signOut()` calls it for you.',
+      example: `if (meta.revocation_endpoint) await revokeToken(meta, { clientId: 'app' }, tokens.refresh_token, { tokenTypeHint: 'refresh_token' })`,
+      mistakes: ['Revoking only the access token — the refresh token keeps minting new ones; revoke the refresh token'],
+      seeAlso: ['createAuth', 'endSessionUrl'],
     },
     {
       name: 'createJwksCache',
@@ -417,6 +429,17 @@ const auth = createAuth({ issuer: kc.issuer, client: withPreset(kc, client), flo
       summary: 'Endpoints for any plain OAuth2 provider (no discovery, no ID token). The endpoints must be https (loopback http for development) — checked where they are used.',
       example: `const meta = oauth2('https://git.example', 'https://git.example/oauth/authorize', 'https://git.example/oauth/token')`,
       seeAlso: ['github', 'facebook'],
+    },
+    {
+      name: 'verifyTotpWithMigration',
+      kind: 'function',
+      signature: '(secret: string, code: string, opts?: { period?: number; digits?: number; now?: number; window?: number; lastUsedStep?: number }) => Promise<{ ok: true; step: number; reEnrol: string | null } | { ok: false }>',
+      summary:
+        'The way off legacy 80-bit TOTP enrolments: `verifyTotp` with 80-bit secrets allowed, returning `reEnrol` — a fresh 160-bit secret — when the stored secret is under 128 bits (null otherwise), so it can replace `verifyTotp` for every user while old enrolments drain. Show `reEnrol` as a new setup key, confirm a code with `verifyTotp(reEnrol, code)`, and only then replace the stored secret.',
+      example: `const r = await verifyTotpWithMigration(user.totpSecret, input, { lastUsedStep: user.lastTotpStep })
+if (r.ok && r.reEnrol) await offerReEnrolment(r.reEnrol) // swap the secret only after the user proves it`,
+      mistakes: ['Replacing the stored secret as soon as `reEnrol` is returned — a user who never scans it is locked out; swap only after a code from the new secret verifies'],
+      seeAlso: ['verifyTotp', 'generateTotpSecret'],
     },
     {
       name: 'totp',

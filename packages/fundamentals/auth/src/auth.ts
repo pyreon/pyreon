@@ -12,6 +12,7 @@ import {
   redirectTarget,
   redirectUriProblem,
   refreshTokens,
+  revokeToken,
 } from './oidc'
 import type { ClientConfig, FetchLike, OidcMetadata, PendingFlow, TokenResponse } from './oidc'
 import { createJwksCache, verifyIdToken } from './jwt'
@@ -71,6 +72,25 @@ export interface SignOutOptions {
   endProviderSession?: boolean
   /** Where the provider sends the user afterwards (must be registered with it). */
   postLogoutRedirectUri?: string
+  /**
+   * Revoke the session's refresh and access tokens at the provider (RFC 7009) when it advertises a
+   * `revocation_endpoint`. Default true. Without it, a copied token stays usable until it expires
+   * (a refresh token often for weeks). The local session is cleared at once either way; the
+   * provider-logout redirect waits for the revocation (at most 5 s).
+   */
+  revokeTokens?: boolean
+}
+
+/** What `signOut()` did at the provider. The local session is always cleared. */
+export interface SignOutResult {
+  /**
+   * True when every token the session held was revoked at the provider. False when nothing was
+   * revoked: no session, `revokeTokens: false`, no advertised `revocation_endpoint`, or a failure
+   * (`error`).
+   */
+  revoked: boolean
+  /** Why a revocation failed (`network_error`, `provider_unavailable`, `revocation_failed`), or null. */
+  error: AuthError | null
 }
 
 export interface Auth {
@@ -101,7 +121,12 @@ export interface Auth {
    * provider refuses it; the user must sign in again.
    */
   refresh(): Promise<void>
-  signOut(opts?: SignOutOptions): void
+  /**
+   * Clear the session (synchronously), revoke its tokens at the provider when it advertises a
+   * `revocation_endpoint` (RFC 7009), and with `endProviderSession` end the provider session too.
+   * Resolves when the provider work is done; local sign-out never fails.
+   */
+  signOut(opts?: SignOutOptions): Promise<SignOutResult>
   /**
    * Release this instance's claim on its redirect URI (see "one redirect URI per provider").
    * `useOidc` calls it when its scope is disposed; call it yourself for a `createAuth` you
@@ -272,6 +297,28 @@ export function createAuth(opts: AuthOptions): Auth {
     }
   }
 
+  /**
+   * Revoke a signed-out session's tokens (RFC 7009): the refresh token first — at most providers that
+   * also ends the access tokens of its grant — then the access token. Bounded by a timeout, so a
+   * provider that never answers cannot hold up the logout redirect. Resolves to the first failure.
+   */
+  const revokeHeld = async (m: OidcMetadata, held: TokenResponse): Promise<AuthError | null> => {
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), REVOKE_TIMEOUT_MS)
+    try {
+      const results = await Promise.allSettled([
+        ...(held.refresh_token ? [revokeToken(m, opts.client, held.refresh_token, { tokenTypeHint: 'refresh_token', fetch: opts.fetch, signal: ctl.signal })] : []),
+        revokeToken(m, opts.client, held.access_token, { tokenTypeHint: 'access_token', fetch: opts.fetch, signal: ctl.signal }),
+      ])
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+      if (!failed) return null
+
+      return failed.reason instanceof AuthError ? failed.reason : new AuthError('unknown', String(failed.reason))
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   return {
     status,
     tokens,
@@ -352,21 +399,36 @@ export function createAuth(opts: AuthOptions): Auth {
       disposed = true
     },
     signOut(o) {
-      epoch++
-      const idToken = tokens.peek()?.id_token
+      const my = ++epoch
+      const held = tokens.peek()
+      const idToken = held?.id_token
       batch(() => {
         clear()
         error.set(null)
         status.set('signedOut')
       })
-      if (o?.endProviderSession && metaResolved) {
-        const url = endSessionUrl(metaResolved, {
+      const m = metaResolved
+      const endSession = () => {
+        // A sign-in started while the revocation ran owns the page now: do not navigate it away.
+        if (!o?.endProviderSession || !m || my !== epoch) return
+        const url = endSessionUrl(m, {
           ...(idToken ? { idTokenHint: idToken } : {}),
           clientId: opts.client.clientId,
           ...(o.postLogoutRedirectUri ? { postLogoutRedirectUri: o.postLogoutRedirectUri } : {}),
         })
         if (url) opts.redirect(url)
       }
+      if (!held || o?.revokeTokens === false || !m?.revocation_endpoint) {
+        endSession()
+
+        return Promise.resolve({ revoked: false, error: null })
+      }
+
+      return revokeHeld(m, held).then((e) => {
+        endSession()
+
+        return { revoked: e === null, error: e }
+      })
     },
   }
 }
@@ -388,6 +450,9 @@ function callbackHref(url: string, redirectUri: string): string {
 
 /** Refresh failures that keep the session for a retry: the provider could not be reached or was unavailable. */
 const TRANSIENT_REFRESH_ERRORS = new Set(['network_error', 'provider_unavailable', 'discovery_failed', 'jwks_failed'])
+
+/** How long `signOut()` waits for the provider to revoke the tokens before it moves on. */
+const REVOKE_TIMEOUT_MS = 5000
 
 /** Upper bound on pending flows a `memoryFlowStore` holds at once. */
 const MAX_PENDING_FLOWS = 1000

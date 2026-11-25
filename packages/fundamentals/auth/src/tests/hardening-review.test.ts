@@ -163,9 +163,9 @@ describe('export surface', () => {
       [
         'AuthError', 'beginAuthorization', 'codeChallengeS256', 'createAttemptLimiter', 'createAuth', 'createFlowBinding', 'createGuard',
         'createJwksCache', 'discover', 'endSessionUrl', 'exchangeCode', 'facebook', 'generateCodeVerifier', 'generateTotpSecret', 'github',
-        'google', 'keycloak', 'memoryFlowStore', 'oauth2', 'parseCallback', 'passkeyChallenge', 'readFlowBinding', 'refreshTokens',
+        'google', 'keycloak', 'memoryFlowStore', 'oauth2', 'parseCallback', 'passkeyChallenge', 'readFlowBinding', 'refreshTokens', 'revokeToken',
         'safeReturnTo', 'sessionCookie', 'sessionStorageFlowStore', 'signSession', 'totp', 'useOidc', 'verifyAssertion', 'verifyIdToken',
-        'verifyRegistration', 'verifySession', 'verifyTotp', 'withPreset',
+        'verifyRegistration', 'verifySession', 'verifyTotp', 'verifyTotpWithMigration', 'withPreset',
       ].sort(),
     )
   })

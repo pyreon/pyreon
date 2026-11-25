@@ -1,6 +1,6 @@
 import { computed, getCurrentScope, onScopeDispose } from '@pyreon/reactivity'
 import { createAuth, memoryFlowStore } from './auth'
-import type { AuthStatus, FlowStore, SignOutOptions } from './auth'
+import type { AuthStatus, FlowStore, SignOutOptions, SignOutResult } from './auth'
 import { FLOW_TTL_MS } from './oidc'
 import type { FetchLike, PendingFlow } from './oidc'
 import { randomToken } from './pkce'
@@ -64,7 +64,12 @@ export interface UseOidcResult {
   signIn(): Promise<void>
   /** Exchange the refresh token for fresh tokens. */
   refresh(): Promise<void>
-  signOut(opts?: SignOutOptions): void
+  /**
+   * Sign out: the session is cleared at once; the tokens are revoked at the provider when it
+   * advertises a `revocation_endpoint` (RFC 7009), and `endProviderSession` also ends the provider
+   * session. Resolves with what the provider did.
+   */
+  signOut(opts?: SignOutOptions): Promise<SignOutResult>
   /** Complete a sign-in from a callback URL. `useOidc` already does this on the redirect page. */
   handleCallback(url: string): Promise<void>
 }
