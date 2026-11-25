@@ -52,22 +52,23 @@ export function createFixtureProgram(
 ): ts.Program {
   const host = ts.createCompilerHost(options, true)
   const optionsKey = JSON.stringify(options)
-  let cache = stableFiles.get(optionsKey)
-  if (!cache) {
-    cache = new Map()
-    stableFiles.set(optionsKey, cache)
-  }
+  const files = stableFiles.get(optionsKey) ?? new Map<string, ts.SourceFile | undefined>()
+  stableFiles.set(optionsKey, files)
   const parse = host.getSourceFile.bind(host)
-  const files = cache
+
   host.getSourceFile = (fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile) => {
-    if (shouldCreateNewSourceFile || fileName.startsWith(GENERATED))
+    if (shouldCreateNewSourceFile || fileName.startsWith(GENERATED)) {
       return parse(fileName, languageVersionOrOptions, onError, shouldCreateNewSourceFile)
+    }
     const key = `${fileName}\0${JSON.stringify(languageVersionOrOptions)}`
+
     if (files.has(key)) return files.get(key)
     const file = parse(fileName, languageVersionOrOptions, onError)
     files.set(key, file)
+
     return file
   }
+
   return ts.createProgram(entries, options, host)
 }
 

@@ -12,6 +12,7 @@ import { createFixtureProgram, generatedDiagnostics } from './helpers/typecheck'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '.generated', 'fixture-program-cache')
 const ENTRY = join(ROOT, 'entry.ts')
+
 const OPTIONS: ts.CompilerOptions = {
   strict: true,
   noEmit: true,
@@ -25,6 +26,7 @@ function check(contents: string): { errors: string[]; program: ts.Program } {
   writeFileSync(ENTRY, contents)
   const program = createFixtureProgram([ENTRY], OPTIONS)
   const errors = generatedDiagnostics(program, [ENTRY]).map((d) => `TS${d.code}`)
+
   return { errors, program }
 }
 
@@ -42,6 +44,7 @@ describe('createFixtureProgram', () => {
       p.getSourceFiles().find((f) => f.fileName.endsWith('lib.es5.d.ts'))
     const a = lib(check('export {}\n').program)
     const b = lib(check('export {}\n').program)
+
     expect(a).toBeDefined()
     expect(b).toBe(a)
   })
