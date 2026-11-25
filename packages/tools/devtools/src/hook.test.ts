@@ -6,7 +6,7 @@
  * plain array.
  */
 import { h } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, effect, signal } from '@pyreon/reactivity'
 import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { _bindText, mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -157,10 +157,65 @@ describe('createHook', () => {
     h1.handle({ type: 'get-all' })
     const header = last('all-result').entries.find((e) => e.name === 'Header')!
     h1.handle({ type: 'inspect', id: header.id })
-    expect(last('component-detail').detail).toMatchObject({ hasElement: true, reads: [], cause: null })
+    expect(last('component-detail').detail).toMatchObject({ hasElement: true, props: {}, reads: [], owned: [], cause: null })
     const before = sent.length
     h1.handle({ type: 'inspect', id: 'no-such-id' })
     expect(sent).toHaveLength(before)
+  })
+
+  it('inspect reports the props preview and the nodes the component owns, with the cause from its own effect (#4446)', () => {
+    const external = signal(0, { name: 'external' })
+    keepAlive.push(external)
+    function Counter(props: { label: string; step: number }) {
+      const count = signal(props.step, { name: 'count' })
+      const doubled = computed(() => count() * 2, { name: 'doubled' })
+      // An effect that reads a signal from outside: the component renders it
+      // nowhere as text, so only the owned list explains this update.
+      effect(() => {
+        external()
+        doubled()
+      })
+      return h('section', { class: 'counter' }, props.label)
+    }
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const h1 = start()
+    h1.handle({ type: 'reactive-activate' })
+    disposeApp = mount(h(Counter, { label: 'Clicks', step: 3 }), container)
+    external.set(1)
+    h1.handle({ type: 'get-all' })
+    const counter = last('all-result').entries.find((e) => e.name === 'Counter')!
+    h1.handle({ type: 'inspect', id: counter.id })
+    const { detail } = last('component-detail')
+    expect(detail.props).toEqual({ label: '"Clicks"', step: '3' })
+    expect(detail.reads).toEqual([])
+    expect(detail.owned.map((r) => [r.name, r.kind])).toEqual([
+      ['count', 'signal'],
+      ['doubled', 'derived'],
+      [expect.stringMatching(/^effect/), 'effect'],
+    ])
+    expect(detail.owned[0]).toMatchObject({ value: '3' })
+    expect(detail.owned[2]!.fires).toBeGreaterThanOrEqual(1)
+    // No text binding fired, so the cause comes from the owned effect, and
+    // it names the outside write.
+    expect(detail.cause?.target.kind).toBe('effect')
+    expect(detail.cause?.chain.map((l) => l.name)).toEqual(['external'])
+    // Plain data only.
+    expect(JSON.parse(JSON.stringify(detail))).toEqual(detail)
+  })
+
+  it('inspect without the reactive bridge still reports props', () => {
+    mountApp()
+    // A framework without the reactive bridge (older runtime-dom).
+    const noBridge: PyreonDevtools = { ...devtools() }
+    delete noBridge.reactive
+    const h1 = createHook(noBridge, { emit: (m) => sent.push(structuredClone(m)), host: 'x' })
+    hook = h1
+    sent = []
+    h1.handle({ type: 'get-all' })
+    const header = last('all-result').entries.find((e) => e.name === 'Header')!
+    h1.handle({ type: 'inspect', id: header.id })
+    expect(last('component-detail').detail).toMatchObject({ props: {}, reads: [], owned: [], cause: null })
   })
 
   it('reactive-poll returns the page clock with the graph, or fires only', () => {

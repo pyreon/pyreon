@@ -108,6 +108,12 @@ export interface ReactiveDevtools {
   getUpdateCause(nodeId: number): UpdateCause | null
   formatUpdateCause(cause: UpdateCause): string
   nodesForElement?(el: Element): BoundReactiveNodeLike[]
+  /**
+   * The signals, computeds and effects a component created in its setup and
+   * onMount hooks. Optional: frameworks before the owned-node bridge do not
+   * ship it; the inspector then lists none.
+   */
+  nodesForComponent?(id: string): BoundReactiveNodeLike[]
 }
 
 export interface PyreonDevtools {
@@ -187,9 +193,19 @@ export interface ComponentDetail {
   id: string
   /** The component's first DOM element still exists. */
   hasElement: boolean
+  /**
+   * The framework's bounded props preview (`getComponentProps`): prop name →
+   * value preview. `null` when the framework does not expose props.
+   */
+  props: Record<string, string> | null
   /** Signals/computeds whose values are text inside the component's DOM. */
   reads: ComponentRead[]
-  /** Cause of the most recent update among `reads`, or null when none fired. */
+  /** Signals, computeds and effects the component created (setup and onMount), in creation order. */
+  owned: ComponentRead[]
+  /**
+   * Cause of the most recent update among `reads` (or, when none of them
+   * fired, among `owned`); null when none fired.
+   */
   cause: UpdateCause | null
   /** The page's `performance.now()` when the detail was read. */
   now: number

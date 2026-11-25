@@ -24,6 +24,7 @@ import {
 import { ancestorIds, flattenTree, indexTree, ownerPath, type TreeIndex, type TreeRow } from './tree'
 import type {
   ComponentDetail,
+  ComponentRead,
   ConsoleEntry,
   HookMessage,
   PanelMessage,
@@ -547,6 +548,12 @@ export function createPanelApp(
     return dl
   }
 
+  /** `computed · 3 writes · "Ship it"` (an effect has no value; its count is runs). */
+  function nodeSummary(r: ComponentRead): string {
+    if (r.kind === 'effect') return `effect · ${plural(r.fires, 'run')}`
+    return `${r.kind === 'derived' ? 'computed' : r.kind} · ${plural(r.fires, 'write')} · ${r.value}`
+  }
+
   function renderInspector(): void {
     const entry = selectedId === null ? undefined : index.map.get(selectedId)
     if (!entry) {
@@ -572,8 +579,32 @@ export function createPanelApp(
         ['id', entry.id],
         ['children', kids.length === 0 ? 'none' : plural(kids.length, 'component')],
       ]),
-      el('div', { class: 'sec-h', text: 'reactive reads' }),
+      el('div', { class: 'sec-h', text: 'props' }),
     ]
+    const here = detail && detail.id === entry.id ? detail : null
+    if (!here) {
+      nodes.push(el('p', { class: 'note', text: 'Reading…' }))
+    } else if (here.props === null) {
+      nodes.push(el('p', { class: 'note', text: 'Needs a framework build that exposes component props.' }))
+    } else {
+      const props = Object.entries(here.props)
+      nodes.push(
+        props.length === 0
+          ? el('p', { class: 'note', text: 'No props.' })
+          : kv(props.map(([k, v]) => [k, v])),
+      )
+    }
+    nodes.push(el('div', { class: 'sec-h', text: 'owns' }))
+    if (!reactiveAvailable) {
+      nodes.push(el('p', { class: 'note', text: 'Needs a framework build with the reactive devtools bridge.' }))
+    } else if (!here) {
+      nodes.push(el('p', { class: 'note', text: 'Reading…' }))
+    } else if (here.owned.length === 0) {
+      nodes.push(el('p', { class: 'note', text: 'Created no signal, computed or effect in its setup.' }))
+    } else {
+      nodes.push(kv(here.owned.map((r) => [displayName(r.name, r.loc), nodeSummary(r)])))
+    }
+    nodes.push(el('div', { class: 'sec-h', text: 'reactive reads' }))
     if (!reactiveAvailable) {
       nodes.push(el('p', { class: 'note', text: 'Needs a framework build with the reactive devtools bridge.' }))
     } else if (!detail || detail.id !== entry.id) {
@@ -586,10 +617,7 @@ export function createPanelApp(
       nodes.push(
         el('p', { class: 'note', text: 'Signals and computeds rendered as text inside this component (attribute bindings are not traced).' }),
         kv(
-          detail.reads.map((r) => [
-            displayName(r.name, r.loc),
-            `${r.kind === 'derived' ? 'computed' : r.kind} · ${plural(r.fires, 'write')} · ${r.value}`,
-          ]),
+          detail.reads.map((r) => [displayName(r.name, r.loc), nodeSummary(r)]),
         ),
       )
     }
@@ -603,7 +631,7 @@ export function createPanelApp(
         why.append(el('b', { text: s.name }), ` ${s.kind === 'derived' ? 'computed' : s.kind} ${s.verb}`)
         if (s.where) why.append(el('span', { class: 'dim', text: ` (${s.where})` }))
       })
-      const lastFire = detail.reads.reduce<number | null>(
+      const lastFire = [...detail.reads, ...detail.owned].reduce<number | null>(
         (m, r) => (r.lastFire !== null && (m === null || r.lastFire > m) ? r.lastFire : m),
         null,
       )
@@ -659,8 +687,10 @@ export function createPanelApp(
     if (selectedNode !== null && nodeInfo.has(selectedNode)) {
       return { ids: [selectedNode], label: nodeInfo.get(selectedNode)?.name ?? '' }
     }
-    if (selectedId !== null && detail && detail.id === selectedId && detail.reads.length > 0) {
-      return { ids: detail.reads.map((r) => r.id), label: index.map.get(selectedId)?.name ?? '' }
+    if (selectedId !== null && detail && detail.id === selectedId) {
+      // The component's reads and the nodes it owns, each once.
+      const ids = Array.from(new Set([...detail.reads, ...detail.owned].map((r) => r.id)))
+      if (ids.length > 0) return { ids, label: index.map.get(selectedId)?.name ?? '' }
     }
     const last = Array.from(lastCascadeIds(fires))
     if (last.length > 0) return { ids: last, label: 'the last write' }

@@ -68,8 +68,11 @@ function MessageList() {
   )
 }
 function Composer() {
+  // Owned by Composer (created in its setup), never rendered as text: only the
+  // inspector's "owns" list shows it (#4446).
+  const touched = signal(false)
   return (
-    <form class="composer">
+    <form class="composer" onFocusIn={() => touched.set(true)}>
       <input class="draft" value={store.draft()} onInput={(e) => store.draft.set((e.currentTarget as HTMLInputElement).value)} />
       <p class="echo">{store.draft()}</p>
       <p class="validity">{store.validity()}</p>
@@ -299,6 +302,35 @@ describe('panel against a real Pyreon app', () => {
     expect(why.textContent).toMatch(
       /draft signal changed \(panel\.browser\.test\.tsx:\d+\) → validity computed recomputed \(panel\.browser\.test\.tsx:\d+\)/,
     )
+  })
+
+  it('the inspector shows a component\'s props and the nodes it owns (#4446)', async () => {
+    // Composer is still selected: it owns `touched` (named by the vite plugin).
+    const ownsHeading = await waitFor(() => $$('#pd-view-components .sec-h').find((h) => h.textContent === 'owns'))
+    const ownsList = ownsHeading.nextElementSibling as HTMLElement
+    expect(ownsList.tagName).toBe('DL')
+    expect(ownsList.querySelector('dt')?.textContent).toBe('touched')
+    expect(ownsList.querySelector('dd')?.textContent).toBe('signal · 0 writes · false')
+
+    const tree = $('[role="tree"]') as HTMLElement
+    tree.focus()
+    const key = (k: string) => tree.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }))
+    key('Home')
+    for (let i = 0; i < 4; i++) key('ArrowDown') // App > Header > MessageList > For > MessageRow
+    await tick()
+    expect($('#pd-view-components .pane-h .ins-name')?.textContent).toBe('MessageRow')
+    const propsList = await waitFor(() => {
+      const heading = $$('#pd-view-components .sec-h').find((x) => x.textContent === 'props')
+      const dl = heading?.nextElementSibling
+      return dl?.tagName === 'DL' ? dl : null
+    })
+    expect(Array.from(propsList.querySelectorAll('dt'), (d) => d.textContent)).toEqual(['text'])
+    expect(propsList.querySelector('dd')?.textContent).toBe('"Standup moved"')
+    const owns = $$('#pd-view-components .sec-h').find((x) => x.textContent === 'owns')
+    expect(owns?.nextElementSibling?.textContent).toBe('Created no signal, computed or effect in its setup.')
+
+    key('End') // back to Composer for the tests below
+    await tick()
   })
 
   it('tabs are a keyboard tablist', async () => {
