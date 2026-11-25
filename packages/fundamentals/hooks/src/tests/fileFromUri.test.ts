@@ -32,6 +32,7 @@ async function pick(file: File): Promise<string> {
   const uri = await pending
   owner.dispose()
   expect(uri).not.toBeNull()
+
   return uri as string
 }
 
@@ -66,6 +67,16 @@ describe('fileFromUri', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(new Blob(['x'])))
     expect((await fileFromUri('data:,x')).name).toBe('blob')
     expect((await fileFromUri('blob:https://app.test/1234')).name).toBe('blob')
+  })
+
+  it('a URI ending in a slash, or with a malformed escape, still gets a name', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(new Blob(['x'])))
+    // No last segment → "blob", like an anonymous Blob.
+    expect((await fileFromUri('https://cdn.test/exports/')).name).toBe('blob')
+    // `%E0%A4%A` is a truncated escape: decodeURIComponent throws, the raw segment is kept.
+    expect((await fileFromUri('https://cdn.test/a%E0%A4%A')).name).toBe('a%E0%A4%A')
+    // …and an empty raw segment after a throw is still "blob".
+    expect((await fileFromUri('https://cdn.test/x/?y=%')).name).toBe('blob')
   })
 
   it('rejects when the URI cannot be read', async () => {

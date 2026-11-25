@@ -1,0 +1,11 @@
+{
+  // Typechecks the repo's own scripts (gates, benches, generators). They are
+  // not a package, so `bun run typecheck` (per-package) never saw them: a
+  // script importing a workspace export that was renamed or removed failed
+  // only when someone ran it (#4751 review: `bench:loom` died on the removed
+  // `detectPeerMismatch`). `scripts/check-script-imports.ts` (in validate-fast)
+  // typechecks with it and fails on broken imports.
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "noEmit": true, "types": ["node", "bun"] },
+  "include": ["./**/*.ts"]
+}

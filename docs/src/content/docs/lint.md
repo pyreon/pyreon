@@ -1125,7 +1125,7 @@ import { startLspServer } from '@pyreon/lint'
 startLspServer() // speaks JSON-RPC over stdin/stdout
 ```
 
-The server lints each document with the config that governs its directory — the nearest `.pyreonlintrc.json`, re-read when the file changes — so the editor shows exactly what the CLI reports.
+The server lints each document with the config that governs its directory — the nearest `.pyreonlintrc.json`, re-read when the file changes — so the editor shows exactly what the CLI reports. A document with no `.pyreonlintrc.json` above it is linted with the preset the client sends as `initializationOptions.preset` (a preset name or a list of them; an unknown name falls back to `recommended`). The VS Code extension sends its `pyreonLint.preset` setting (`recommended`, `strict`, `app`, `lib`, `best-practices`, `readable`, `readable-strict`) that way; a project's own config always wins.
 
 It advertises `codeActionProvider` with a **quick fix** for every auto-fixable finding (plus "fix all of this rule in this file") and a **`source.fixAll.pyreon`** action that applies every non-overlapping fix in the document — the same edits `--fix` makes. Run it on save in VS Code:
 

@@ -31,7 +31,7 @@ import {
 const count = signal(0)
 const doubled = computed(() => count() * 2)
 
-const dispose = effect(() => {
+const e = effect(() => {
   console.log('doubled:', doubled())
   onCleanup(() => console.log('cleaning up'))
 })
@@ -64,7 +64,7 @@ x.peek() // read without subscribing
 
 Signals are **callable functions**, not `.value` getters (Vue) and not `[state, setState]` tuples (React). Calling the signal as a function is the read; `signal(5)` does NOT set the value — it reads and discards the argument. Dev mode warns; the `@pyreon/lint` rule `signal-write-as-call` flags it statically.
 
-Optional `name` for debugging: `signal(0, { name: 'count' })` — the `@pyreon/vite-plugin` injects names automatically in dev.
+Optional `name` for debugging: `signal(0, { name: 'count' })`, and the same option on `computed(fn, { name })` and `effect(fn, { name })` — the `@pyreon/vite-plugin` injects it automatically in dev for `const x = signal|computed|effect(…)`, and devtools shows it instead of `derived#N` / `effect#N`.
 
 ## Computed
 
@@ -92,14 +92,14 @@ A writable derived value (Angular `linkedSignal`): lazy like `computed`, writabl
 ## Effects
 
 ```ts
-const dispose = effect(() => {
+const e = effect(() => {
   console.log(count())
   onCleanup(() => console.log('before next run / on dispose'))
-})
-dispose()
+}, { name: 'logCount' }) // optional dev-only devtools name; the vite plugin injects it for `const x = effect(…)`
+e.dispose()
 ```
 
-`effect()` re-runs on tracked-signal change; the returned function disposes. Returning a cleanup function from the effect body is supported; `onCleanup(fn)` is the explicit form. `renderEffect()` is a lighter DOM-targeted variant that does NOT support `onCleanup` (it does register its disposer with the surrounding `EffectScope`, like `effect()`) — used internally by `@pyreon/runtime-dom`.
+`effect()` re-runs on tracked-signal change and returns an `Effect`; `e.dispose()` stops it. Returning a cleanup function from the effect body is supported; `onCleanup(fn)` is the explicit form. `renderEffect()` is a lighter DOM-targeted variant that does NOT support `onCleanup` (it does register its disposer with the surrounding `EffectScope`, like `effect()`) — used internally by `@pyreon/runtime-dom`.
 
 Dependency tracking is exact per run and reuses subscriptions across re-runs: a steady-state re-run (same signals, same order) verifies the previous dependency list instead of tearing it down and rebuilding it — zero allocations, zero Set operations. A conditional-branch flip re-tracks that run and drops stale-branch subscriptions.
 

@@ -357,7 +357,7 @@ const SUITES: Suite[] = [
   {
     name: 'ssg-subpath',
     script: 'test:e2e:ssg-subpath',
-    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssg-subpath'],
+    triggers: [...ROUTER_CORE, 'examples/fixtures/ssr-showcase/', 'e2e/ssg-subpath', 'e2e/ssg-cdn-base'],
   },
   {
     name: 'ssg-i18n',

@@ -164,86 +164,31 @@ describe('zero vite-plugin config', () => {
     })
   })
 
-  // Same precedence model as port: CLI > user vite.config > zero({base}) > '/'.
-  // Pre-fix, the plugin unconditionally returned `base: config.base`, which
-  // empirically beat the CLI `--base=/X/` flag in Vite's merge — every
-  // asset on a subpath deploy 404'd. Surfaced by the docs site preview
-  // deploy at /pyreon/ shipping a white screen.
-  describe('base defaults', () => {
-    afterEach(() => {
-      process.argv = ['/usr/bin/bun', 'vite']
-    })
-
-    it('defaults to "/" when no zero({base}) and no CLI flag', async () => {
-      process.argv = ['/usr/bin/bun', 'vite']
+  // Precedence: zero({ base }) > Vite's base (CLI flag, inline build({ base }),
+  // vite.config.base) > '/'. A plugin's config() return is merged OVER the
+  // user config, so returning the default '/' swallowed every Vite-level base
+  // (#4269: `vite build --base /x/` on an SSG app; #4391: loom's programmatic
+  // build({ base })). The plugin returns a base only when zero was given one.
+  describe('base precedence', () => {
+    it('returns NO base when zero({ base }) is unset (Vite default / CLI / vite.config stand)', async () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugin = getMainPlugin(zeroPlugin())
-      const config = plugin.config({ root: process.cwd() })
-      expect(config.base).toBe('/')
+      const config = plugin.config({ root: process.cwd(), base: '/from-vite/' })
+      expect(config.base).toBeUndefined()
     })
 
-    it('honours zero({ base: "/sub/" }) override', async () => {
-      process.argv = ['/usr/bin/bun', 'vite']
+    it('honours zero({ base: "/sub/" })', async () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugin = getMainPlugin(zeroPlugin({ base: '/sub/' }))
       const config = plugin.config({ root: process.cwd() })
       expect(config.base).toBe('/sub/')
     })
 
-    it('OMITS base when CLI passes --base (so CLI value wins)', async () => {
-      // The carve-out: when --base is in argv AND user didn't set zero({base}),
-      // the plugin must omit `base` from its config() return so Vite's
-      // CLI-derived userConfig.base survives the merge.
-      process.argv = ['/usr/bin/bun', 'vite', '--base', '/cli-wins/']
-      const { zeroPlugin } = await vitePluginModulePromise
-      const plugin = getMainPlugin(zeroPlugin())
-      const config = plugin.config({ root: process.cwd() })
-      expect(config.base).toBeUndefined()
-    })
-
-    it('OMITS base for --base=PATH form', async () => {
-      process.argv = ['/usr/bin/bun', 'vite', '--base=/cli-wins/']
-      const { zeroPlugin } = await vitePluginModulePromise
-      const plugin = getMainPlugin(zeroPlugin())
-      const config = plugin.config({ root: process.cwd() })
-      expect(config.base).toBeUndefined()
-    })
-
-    it('explicit zero({ base }) still applies even when CLI has --base', async () => {
-      // Same shape as the equivalent port test: the plugin's OWN return
-      // carries the explicit zero({}) value; the final merged config
-      // may still be overridden by vite.config.ts top-level OR CLI,
-      // depending on Vite's merge semantics — this only locks plugin
-      // behaviour.
-      process.argv = ['/usr/bin/bun', 'vite', '--base', '/cli/']
+    it('an explicit zero({ base }) wins over a Vite-level base', async () => {
       const { zeroPlugin } = await vitePluginModulePromise
       const plugin = getMainPlugin(zeroPlugin({ base: '/zero/' }))
-      const config = plugin.config({ root: process.cwd() })
+      const config = plugin.config({ root: process.cwd(), base: '/cli/' })
       expect(config.base).toBe('/zero/')
-    })
-  })
-
-  describe('argvHasBaseFlag helper', () => {
-    it('detects --base flag', async () => {
-      const { argvHasBaseFlag } = await vitePluginModulePromise
-      expect(argvHasBaseFlag(['node', 'vite', '--base', '/sub/'])).toBe(true)
-    })
-
-    it('detects --base=PATH form', async () => {
-      const { argvHasBaseFlag } = await vitePluginModulePromise
-      expect(argvHasBaseFlag(['node', 'vite', '--base=/sub/'])).toBe(true)
-    })
-
-    it('returns false when no base flag present', async () => {
-      const { argvHasBaseFlag } = await vitePluginModulePromise
-      expect(argvHasBaseFlag(['node', 'vite', '--mode', 'development'])).toBe(false)
-    })
-
-    it('does not match unrelated flags starting with "base"', async () => {
-      // Defensive: ensure we don't accidentally match `--baseline` or
-      // similar long-form flags that share a prefix.
-      const { argvHasBaseFlag } = await vitePluginModulePromise
-      expect(argvHasBaseFlag(['node', 'vite', '--baseline'])).toBe(false)
     })
   })
 
@@ -264,6 +209,23 @@ describe('zero vite-plugin config', () => {
       }
       plugin.configResolved(resolved)
       expect(resolved.define.__ZERO_BASE__).toBe(JSON.stringify('/cli-applied/'))
+    })
+
+    it('rewrites __ZERO_SERVER_CONFIG__ so the production server routes under the resolved base', async () => {
+      // The server strips/prefixes with the base from this define. Before the
+      // sync it kept zero's default '/' while Vite emitted assets under the
+      // CLI base, so the server routed `/sub/about` as an unknown page.
+      const { zeroPlugin } = await vitePluginModulePromise
+      const plugin = getMainPlugin(zeroPlugin({ mode: 'ssr' }))
+      const config = plugin.config({ root: process.cwd() }, { command: 'build', mode: 'production' })
+      const resolved = {
+        root: process.cwd(),
+        base: '/sub/',
+        command: 'build',
+        define: { ...config.define },
+      }
+      plugin.configResolved(resolved)
+      expect(JSON.parse(resolved.define.__ZERO_SERVER_CONFIG__).base).toBe('/sub/')
     })
   })
 

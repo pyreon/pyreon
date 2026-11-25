@@ -14,6 +14,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { matchesPathGlob } from './imports'
+import { retiredCodeMessage } from './retired-codes'
 import type { DeclaredDep, DepField, WorkspaceModel, WorkspacePackage, WorkspaceRoot } from './types'
 
 const DEP_FIELDS: DepField[] = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
@@ -247,6 +248,8 @@ export function scanWorkspace(rootDir: string): WorkspaceModel {
           `[Pyreon] loom: every \`loom.ignore\` entry needs a non-empty \`reason\` — an unexplained suppression is a lie waiting to age (offending entry: ${JSON.stringify(entry)}).`,
         )
       }
+      const retired = retiredCodeMessage(e.code)
+      if (retired) throw new Error(`[Pyreon] loom: a root \`loom.ignore\` entry names a retired code. ${retired}`)
       ignores.push({
         ...(typeof e.pkg === 'string' ? { pkg: e.pkg } : {}),
         ...(typeof e.dep === 'string' ? { dep: e.dep } : {}),

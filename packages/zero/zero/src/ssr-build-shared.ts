@@ -30,6 +30,7 @@ import type { PyreonPluginOptions } from '@pyreon/vite-plugin'
 import type { BuildOptions, Plugin } from 'vite'
 import { _enterInnerBuild, _exitInnerBuild } from './build-flags'
 import { innerPyreonOptions } from './inner-pyreon-options'
+import { isRoutePath } from './route-path'
 
 /**
  * zero's optional native peers — every `peerDependenciesMeta[*].optional`
@@ -457,8 +458,12 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
     // we must inject the base via `zeroPlugin(userConfig)` not via the
     // top-level build call. Defaulting back to `userConfig` when no
     // base was forwarded (e.g. older callers).
+    //
+    // Only a PATH base is a route base too (see `routeBaseOf`). A `./` or CDN
+    // asset base goes to Vite alone (top-level `base` below); giving it to
+    // zero would make the inner router's base `/.` or `/https://…`.
     const innerZeroConfig: ZeroConfig =
-      options.base !== undefined && options.base !== '/'
+      options.base !== undefined && options.base !== '/' && isRoutePath(options.base)
         ? { ...options.userConfig, base: options.base }
         : options.userConfig
 

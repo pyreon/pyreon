@@ -732,6 +732,16 @@ useFocusTrap(() => modalRef(), {
 useFocusTrap(() => modalRef(), () => isOpen())
 ```
 
+Initial focus is placed one microtask after activation, so content the same write reveals (`hidden={!open()}`, a `<Show>`) is focusable by then. With focus already inside the container, `initialFocus: true` never moves it. A named target (selector, element, getter) moves it only on the first activation, or when the activation ran inside a user event (click, key) at the focused element — so a menu button that sits inside the trapped header, focused by its own click, still sends focus to the menu on every open, while a trap that re-arms after `saving()` clears leaves the field the user is typing in alone. It never moves focus that is already inside the target:
+
+```ts
+// The toggle lives inside `headerEl`; the sheet renders on the same click.
+useFocusTrap(() => headerEl, {
+  active: () => sheetOpen(),
+  initialFocus: () => headerEl?.querySelector<HTMLElement>('#sheet a') ?? null,
+})
+```
+
 ### Accessible Modal Example
 
 ```tsx

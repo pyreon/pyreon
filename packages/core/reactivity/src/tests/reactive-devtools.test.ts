@@ -119,6 +119,22 @@ describe('reactive-devtools — node registry', () => {
     expect(g.nodes.some((n) => n.kind === 'effect' && /^effect#\d+$/.test(n.name))).toBe(true)
   })
 
+  // #4446 — `@pyreon/vite-plugin` injects `{ name: "doubled", __sourceLocation }`
+  // into `const doubled = computed(…)` and `const stop = effect(…)`, but only
+  // `signal()` read the name; computeds and effects showed `derived#N`.
+  it('uses the injected name for computed and effect nodes', () => {
+    activateReactiveDevtools()
+    const s = signal(1)
+    const loc = { file: '/src/Counter.tsx', line: 3, col: 7 }
+    const doubled = computed(() => s() * 2, { name: 'doubled', __sourceLocation: loc })
+    void doubled()
+    const stop = effect(() => void s(), { name: 'logCount', __sourceLocation: loc })
+    const g = getReactiveGraph()
+    expect(g.nodes.find((n) => n.name === 'doubled')?.kind).toBe('derived')
+    expect(g.nodes.find((n) => n.name === 'logCount')?.kind).toBe('effect')
+    stop.dispose()
+  })
+
   it('previews non-primitive signal values without throwing', () => {
     activateReactiveDevtools()
     const obj = signal({ a: 1, b: 2 }, { name: 'o' })

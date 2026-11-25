@@ -42,10 +42,7 @@ exports[`loom scan, themed > 16 colours 1`] = `
      ␛[90m↳␛[39m ␛[4m␛[36mpackages/app/package.json␛[39m␛[24m ␛[90m(^2.0.0)␛[39m
      ␛[90m↳␛[39m ␛[4m␛[36mpackages/util/package.json␛[39m␛[24m ␛[90m(^3.0.0)␛[39m
 
-  ␛[33m␛[1m! 3 warnings␛[22m␛[39m
-  ␛[33m!␛[39m ␛[1mpeer-mismatch␛[22m ␛[90m·␛[39m \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ␛[90m↳␛[39m ␛[4m␛[36mpackages/plugin/package.json␛[39m␛[24m
+  ␛[33m␛[1m! 2 warnings␛[22m␛[39m
   ␛[33m!␛[39m ␛[1mprod-import-of-dev-dep␛[22m ␛[90m·␛[39m \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ␛[90m↳␛[39m ␛[4m␛[36mpackages/app/src/index.ts␛[39m␛[24m
@@ -62,7 +59,7 @@ exports[`loom scan, themed > 16 colours 1`] = `
      ␛[90m↳␛[39m ␛[4m␛[36mpackages/app/package.json␛[39m␛[24m
   ␛[31m✗␛[39m ␛[1minternal-range␛[22m ␛[90m·␛[39m \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ␛[90m↳␛[39m ␛[4m␛[36mpackages/plugin/package.json␛[39m␛[24m
   ␛[31m✗␛[39m ␛[1mphantom-dep␛[22m ␛[90m·␛[39m \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -74,7 +71,7 @@ exports[`loom scan, themed > 16 colours 1`] = `
 
   ␛[90mreport␛[39m  ␛[36mloom-report.json␛[39m
 
-␛[31m✗␛[39m ␛[31m5 errors␛[39m, ␛[33m3 warnings␛[39m, ␛[36m8 info␛[39m ␛[90m· 5 packages · 412 ms␛[39m
+␛[31m✗␛[39m ␛[31m5 errors␛[39m, ␛[33m2 warnings␛[39m, ␛[36m8 info␛[39m ␛[90m· 5 packages · 412 ms␛[39m
 "
 `;
 
@@ -120,10 +117,7 @@ exports[`loom scan, themed > 256 dark 1`] = `
      ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/package.json␛[39m␛[24m ␛[38;5;103m(^2.0.0)␛[39m
      ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/util/package.json␛[39m␛[24m ␛[38;5;103m(^3.0.0)␛[39m
 
-  ␛[38;5;220m␛[1m! 3 warnings␛[22m␛[39m
-  ␛[38;5;220m!␛[39m ␛[1mpeer-mismatch␛[22m ␛[38;5;103m·␛[39m \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/plugin/package.json␛[39m␛[24m
+  ␛[38;5;220m␛[1m! 2 warnings␛[22m␛[39m
   ␛[38;5;220m!␛[39m ␛[1mprod-import-of-dev-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/src/index.ts␛[39m␛[24m
@@ -140,7 +134,7 @@ exports[`loom scan, themed > 256 dark 1`] = `
      ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/app/package.json␛[39m␛[24m
   ␛[38;5;203m✗␛[39m ␛[1minternal-range␛[22m ␛[38;5;103m·␛[39m \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ␛[38;5;103m↳␛[39m ␛[4m␛[38;5;45mpackages/plugin/package.json␛[39m␛[24m
   ␛[38;5;203m✗␛[39m ␛[1mphantom-dep␛[22m ␛[38;5;103m·␛[39m \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -152,7 +146,7 @@ exports[`loom scan, themed > 256 dark 1`] = `
 
   ␛[38;5;103mreport␛[39m  ␛[38;5;45mloom-report.json␛[39m
 
-␛[38;5;203m✗␛[39m ␛[38;5;203m5 errors␛[39m, ␛[38;5;220m3 warnings␛[39m, ␛[38;5;45m8 info␛[39m ␛[38;5;103m· 5 packages · 412 ms␛[39m
+␛[38;5;203m✗␛[39m ␛[38;5;203m5 errors␛[39m, ␛[38;5;220m2 warnings␛[39m, ␛[38;5;45m8 info␛[39m ␛[38;5;103m· 5 packages · 412 ms␛[39m
 "
 `;
 
@@ -198,10 +192,7 @@ exports[`loom scan, themed > 256 light 1`] = `
      ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/package.json␛[39m␛[24m ␛[38;5;59m(^2.0.0)␛[39m
      ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/util/package.json␛[39m␛[24m ␛[38;5;59m(^3.0.0)␛[39m
 
-  ␛[38;5;94m␛[1m! 3 warnings␛[22m␛[39m
-  ␛[38;5;94m!␛[39m ␛[1mpeer-mismatch␛[22m ␛[38;5;59m·␛[39m \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/plugin/package.json␛[39m␛[24m
+  ␛[38;5;94m␛[1m! 2 warnings␛[22m␛[39m
   ␛[38;5;94m!␛[39m ␛[1mprod-import-of-dev-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/src/index.ts␛[39m␛[24m
@@ -218,7 +209,7 @@ exports[`loom scan, themed > 256 light 1`] = `
      ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/app/package.json␛[39m␛[24m
   ␛[38;5;124m✗␛[39m ␛[1minternal-range␛[22m ␛[38;5;59m·␛[39m \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ␛[38;5;59m↳␛[39m ␛[4m␛[38;5;24mpackages/plugin/package.json␛[39m␛[24m
   ␛[38;5;124m✗␛[39m ␛[1mphantom-dep␛[22m ␛[38;5;59m·␛[39m \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -230,7 +221,7 @@ exports[`loom scan, themed > 256 light 1`] = `
 
   ␛[38;5;59mreport␛[39m  ␛[38;5;24mloom-report.json␛[39m
 
-␛[38;5;124m✗␛[39m ␛[38;5;124m5 errors␛[39m, ␛[38;5;94m3 warnings␛[39m, ␛[38;5;24m8 info␛[39m ␛[38;5;59m· 5 packages · 412 ms␛[39m
+␛[38;5;124m✗␛[39m ␛[38;5;124m5 errors␛[39m, ␛[38;5;94m2 warnings␛[39m, ␛[38;5;24m8 info␛[39m ␛[38;5;59m· 5 packages · 412 ms␛[39m
 "
 `;
 
@@ -276,10 +267,7 @@ exports[`loom scan, themed > ascii 1`] = `
      -> packages/app/package.json (^2.0.0)
      -> packages/util/package.json (^3.0.0)
 
-  ! 3 warnings
-  ! peer-mismatch - \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     -> packages/plugin/package.json
+  ! 2 warnings
   ! prod-import-of-dev-dep - \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      -> packages/app/src/index.ts
@@ -296,7 +284,7 @@ exports[`loom scan, themed > ascii 1`] = `
      -> packages/app/package.json
   x internal-range - \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      -> packages/plugin/package.json
   x phantom-dep - \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -308,7 +296,7 @@ exports[`loom scan, themed > ascii 1`] = `
 
   report  loom-report.json
 
-x 5 errors, 3 warnings, 8 info - 5 packages - 412 ms
+x 5 errors, 2 warnings, 8 info - 5 packages - 412 ms
 "
 `;
 
@@ -354,10 +342,7 @@ exports[`loom scan, themed > plain 1`] = `
      ↳ packages/app/package.json (^2.0.0)
      ↳ packages/util/package.json (^3.0.0)
 
-  ! 3 warnings
-  ! peer-mismatch · \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ↳ packages/plugin/package.json
+  ! 2 warnings
   ! prod-import-of-dev-dep · \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ↳ packages/app/src/index.ts
@@ -374,7 +359,7 @@ exports[`loom scan, themed > plain 1`] = `
      ↳ packages/app/package.json
   ✗ internal-range · \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ↳ packages/plugin/package.json
   ✗ phantom-dep · \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -386,7 +371,7 @@ exports[`loom scan, themed > plain 1`] = `
 
   report  loom-report.json
 
-✗ 5 errors, 3 warnings, 8 info · 5 packages · 412 ms
+✗ 5 errors, 2 warnings, 8 info · 5 packages · 412 ms
 "
 `;
 
@@ -432,10 +417,7 @@ exports[`loom scan, themed > truecolor dark 1`] = `
      ␛[38;2;138;134;150m↳␛[39m ␛[4m␛[38;2;34;211;238mpackages/app/package.json␛[39m␛[24m ␛[38;2;138;134;150m(^2.0.0)␛[39m
      ␛[38;2;138;134;150m↳␛[39m ␛[4m␛[38;2;34;211;238mpackages/util/package.json␛[39m␛[24m ␛[38;2;138;134;150m(^3.0.0)␛[39m
 
-  ␛[38;2;250;204;21m␛[1m! 3 warnings␛[22m␛[39m
-  ␛[38;2;250;204;21m!␛[39m ␛[1mpeer-mismatch␛[22m ␛[38;2;138;134;150m·␛[39m \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ␛[38;2;138;134;150m↳␛[39m ␛[4m␛[38;2;34;211;238mpackages/plugin/package.json␛[39m␛[24m
+  ␛[38;2;250;204;21m␛[1m! 2 warnings␛[22m␛[39m
   ␛[38;2;250;204;21m!␛[39m ␛[1mprod-import-of-dev-dep␛[22m ␛[38;2;138;134;150m·␛[39m \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ␛[38;2;138;134;150m↳␛[39m ␛[4m␛[38;2;34;211;238mpackages/app/src/index.ts␛[39m␛[24m
@@ -452,7 +434,7 @@ exports[`loom scan, themed > truecolor dark 1`] = `
      ␛[38;2;138;134;150m↳␛[39m ␛[4m␛[38;2;34;211;238mpackages/app/package.json␛[39m␛[24m
   ␛[38;2;248;113;113m✗␛[39m ␛[1minternal-range␛[22m ␛[38;2;138;134;150m·␛[39m \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ␛[38;2;138;134;150m↳␛[39m ␛[4m␛[38;2;34;211;238mpackages/plugin/package.json␛[39m␛[24m
   ␛[38;2;248;113;113m✗␛[39m ␛[1mphantom-dep␛[22m ␛[38;2;138;134;150m·␛[39m \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -464,7 +446,7 @@ exports[`loom scan, themed > truecolor dark 1`] = `
 
   ␛[38;2;138;134;150mreport␛[39m  ␛[38;2;34;211;238mloom-report.json␛[39m
 
-␛[38;2;248;113;113m✗␛[39m ␛[38;2;248;113;113m5 errors␛[39m, ␛[38;2;250;204;21m3 warnings␛[39m, ␛[38;2;34;211;238m8 info␛[39m ␛[38;2;138;134;150m· 5 packages · 412 ms␛[39m
+␛[38;2;248;113;113m✗␛[39m ␛[38;2;248;113;113m5 errors␛[39m, ␛[38;2;250;204;21m2 warnings␛[39m, ␛[38;2;34;211;238m8 info␛[39m ␛[38;2;138;134;150m· 5 packages · 412 ms␛[39m
 "
 `;
 
@@ -510,10 +492,7 @@ exports[`loom scan, themed > truecolor light 1`] = `
      ␛[38;2;94;90;105m↳␛[39m ␛[4m␛[38;2;10;110;137mpackages/app/package.json␛[39m␛[24m ␛[38;2;94;90;105m(^2.0.0)␛[39m
      ␛[38;2;94;90;105m↳␛[39m ␛[4m␛[38;2;10;110;137mpackages/util/package.json␛[39m␛[24m ␛[38;2;94;90;105m(^3.0.0)␛[39m
 
-  ␛[38;2;138;90;0m␛[1m! 3 warnings␛[22m␛[39m
-  ␛[38;2;138;90;0m!␛[39m ␛[1mpeer-mismatch␛[22m ␛[38;2;94;90;105m·␛[39m \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ␛[38;2;94;90;105m↳␛[39m ␛[4m␛[38;2;10;110;137mpackages/plugin/package.json␛[39m␛[24m
+  ␛[38;2;138;90;0m␛[1m! 2 warnings␛[22m␛[39m
   ␛[38;2;138;90;0m!␛[39m ␛[1mprod-import-of-dev-dep␛[22m ␛[38;2;94;90;105m·␛[39m \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ␛[38;2;94;90;105m↳␛[39m ␛[4m␛[38;2;10;110;137mpackages/app/src/index.ts␛[39m␛[24m
@@ -530,7 +509,7 @@ exports[`loom scan, themed > truecolor light 1`] = `
      ␛[38;2;94;90;105m↳␛[39m ␛[4m␛[38;2;10;110;137mpackages/app/package.json␛[39m␛[24m
   ␛[38;2;185;28;28m✗␛[39m ␛[1minternal-range␛[22m ␛[38;2;94;90;105m·␛[39m \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ␛[38;2;94;90;105m↳␛[39m ␛[4m␛[38;2;10;110;137mpackages/plugin/package.json␛[39m␛[24m
   ␛[38;2;185;28;28m✗␛[39m ␛[1mphantom-dep␛[22m ␛[38;2;94;90;105m·␛[39m \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -542,6 +521,6 @@ exports[`loom scan, themed > truecolor light 1`] = `
 
   ␛[38;2;94;90;105mreport␛[39m  ␛[38;2;10;110;137mloom-report.json␛[39m
 
-␛[38;2;185;28;28m✗␛[39m ␛[38;2;185;28;28m5 errors␛[39m, ␛[38;2;138;90;0m3 warnings␛[39m, ␛[38;2;10;110;137m8 info␛[39m ␛[38;2;94;90;105m· 5 packages · 412 ms␛[39m
+␛[38;2;185;28;28m✗␛[39m ␛[38;2;185;28;28m5 errors␛[39m, ␛[38;2;138;90;0m2 warnings␛[39m, ␛[38;2;10;110;137m8 info␛[39m ␛[38;2;94;90;105m· 5 packages · 412 ms␛[39m
 "
 `;

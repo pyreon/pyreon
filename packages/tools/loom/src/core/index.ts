@@ -7,7 +7,7 @@ export { scanWorkspace, readWorkspaceGlobs } from './workspace'
 export { analyzeGraph, externalUsage } from './graph'
 export {
   majorOf, detectVersionDrift, detectInternalRange, detectCycles,
-  detectPhantoms, detectUnused, detectPeerMismatch,
+  detectPhantoms, detectUnused,
 } from './detect'
 export { specifierToPackage, isDevSurfacePath, matchesPathGlob, scanPackageImports, scanImports } from './imports'
 export type { ImportScan } from './imports'

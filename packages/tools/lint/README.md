@@ -157,6 +157,8 @@ import { startLspServer } from '@pyreon/lint'
 startLspServer()   // stdin/stdout JSON-RPC; publishes diagnostics + inlay hints
 ```
 
+Each document is linted with its nearest `.pyreonlintrc.json`. A document with no `.pyreonlintrc.json` above it is linted with the preset the client sends as `initializationOptions.preset` (a preset name or a list of them; an unknown name falls back to `recommended`). The VS Code extension sends its `pyreonLint.preset` setting (`recommended`, `strict`, `app`, `lib`, `best-practices`, `readable`, `readable-strict`) that way; a project's own config always wins.
+
 ## CLI subpath
 
 ```ts

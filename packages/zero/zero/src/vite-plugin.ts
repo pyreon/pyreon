@@ -12,7 +12,9 @@ import type { ConfigEnv, Plugin, ViteDevServer } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApiRouteEntry } from './api-routes'
 import { generateApiRouteModule } from './api-routes'
-import { resolveConfig } from './config'
+import { adoptRouteBase } from './adopt-route-base'
+import { isRelativeBase, resolveConfig } from './config'
+import { isRoutePath } from './route-path'
 import { assertPublicEnv, loadPublicEnvVars } from './public-env'
 // Used in the dev-mode SSR catch handler to convert loader-thrown
 // `redirect()` errors into real HTTP redirects (302/307/308).
@@ -182,31 +184,21 @@ export function argvHasPortFlag(argv: readonly string[] = process.argv): boolean
 }
 
 /**
- * Detects `--base` / `--base=PATH` in `process.argv`. Same shape as
- * `argvHasPortFlag` — the plugin's `config()` hook returns `base:
- * config.base` (default `/`) which empirically beats Vite's `--base`
- * CLI flag in the merge order, silently swallowing it. When the CLI
- * was invoked with `--base=X`, the plugin must skip its default so
- * the CLI flag wins (see the comment at the base-handling block in
- * `zeroPlugin()` for the full precedence model).
+ * A relative Vite base (`./`) makes every asset URL relative to the HTML file.
+ * That only works when every HTML file sits in the output root — a SPA's one
+ * `index.html`. Prerendered or server-rendered pages live at any depth
+ * (`about/index.html`, `/blog/post`), where `./assets/…` resolves to
+ * `/about/assets/…` and 404s. Reject it there with the fix, rather than
+ * shipping pages that load nothing below the root.
  *
- * The same bug class was already fixed for `--port`; this is the
- * `base` counterpart. Bisect-verified: removing the
- * `argvHasBaseFlag() && !zeroBaseExplicit` guard at the call site
- * causes `vite build --base=/sub/` to emit assets at root paths
- * instead of `/sub/assets/…`.
- *
- * Exported for testing only (the plugin uses it internally).
- *
- * @internal
+ * @internal Exported for testing.
  */
-export function argvHasBaseFlag(argv: readonly string[] = process.argv): boolean {
-	for (let i = 0; i < argv.length; i++) {
-		const a = argv[i];
-		if (a === "--base") return true;
-		if (a !== undefined && a.startsWith("--base=")) return true;
-	}
-	return false;
+export function assertSupportedBase(assetBase: string | undefined, mode: string | undefined, isBuild: boolean): void {
+	if (!isBuild || assetBase === undefined || !isRelativeBase(assetBase) || mode === "spa") return;
+	throw new Error(
+		`[Pyreon] A relative base (\`${assetBase || "''"}\`) is not supported with zero mode "${mode}": its pages are written at every depth (about/index.html), where relative asset URLs resolve under the page and 404. ` +
+			"Use an absolute path for a sub-path deploy (`zero({ base: '/docs/' })` or `vite build --base /docs/`), a full URL for assets on a CDN (`base: 'https://cdn.example.com/app/'`), or mode: 'spa' for a single relative index.html.",
+	);
 }
 
 /**
@@ -424,19 +416,19 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 			isBuild = resolvedConfig.command === "build";
 			routesDir = `${root}/src/routes`;
 			proxyContexts = Object.keys(resolvedConfig.server?.proxy ?? {});
-			// Sync `__ZERO_BASE__` to the FINAL resolved base. The config()
-			// hook above seeds it with `config.base` (the zero({base})
-			// value), but when `vite --base=/X/` wins precedence (because
-			// argvHasBaseFlag fires and userConfig.base was undefined), the
-			// resolved base differs. Without this sync, `startClient` and
-			// the SSG entry would set the router base to '/' while Vite
-			// serves assets at /X/ — RouterLink hrefs would resolve to the
-			// wrong paths and 404 on navigation. configResolved runs before
-			// any transform sees the define values, so mutating it here is
-			// the supported way to keep the build-time constant aligned.
-			if (resolvedConfig.define && resolvedConfig.base !== undefined) {
-				resolvedConfig.define.__ZERO_BASE__ = JSON.stringify(
-					resolvedConfig.base,
+			// Two bases (see `routeBaseOf` in config.ts): the ROUTE base the
+			// router, `__ZERO_BASE__` and the server use, and the ASSET base —
+			// Vite's resolved `base`, which may be `./` or a CDN URL. Using the
+			// asset base for routes made every link `/https://cdn…/about`.
+			assertSupportedBase(resolvedConfig.base, config.mode, isBuild);
+			adoptRouteBase(config, userConfig.base, resolvedConfig.base);
+			// `config()` seeded these defines with zero's own base; the final
+			// route base can differ (a CLI / vite.config base), so rewrite
+			// them here — configResolved runs before any transform reads them.
+			if (resolvedConfig.define) {
+				resolvedConfig.define.__ZERO_BASE__ = JSON.stringify(config.base);
+				resolvedConfig.define.__ZERO_SERVER_CONFIG__ = JSON.stringify(
+					serializeServerConfig(config).value,
 				);
 			}
 		},
@@ -1030,39 +1022,23 @@ export function zeroPlugin(userInput: ZeroUserConfig = {}): Plugin[] {
 				...(userConfig.port === undefined && argvHasPortFlag()
 					? {}
 					: { server: { port: config.port } }),
-				// Propagate `zero({ base })` to Vite's `base` config — that's
+				// Propagate an EXPLICIT `zero({ base })` to Vite's `base` — that's
 				// what controls asset URL rewriting in the built HTML/JS
 				// (`<script src="/blog/assets/…">`).
 				//
-				// Precedence (CLI > user vite.config > zero({base}) > '/'):
-				//   1. `vite --base=/X/` → argvHasBaseFlag() === true AND
-				//      userConfig.base undefined → plugin omits `base`
-				//      entirely → CLI value wins.
-				//   2. `vite.config.ts { base: '/X/' }` → user config beats
-				//      plugin in Vite's merge order automatically — no
-				//      special handling needed.
-				//   3. `zero({ base: '/X/' })` → resolved into `config.base`
-				//      → returned here.
-				//   4. Default `/` — when no other source set a base.
-				//
-				// Pre-fix this was unconditional `base: config.base`, which
-				// silently swallowed the CLI `--base` flag (plugin BASE
-				// returns of the default `/` won the merge against CLI in
-				// every empirically tested case — the same bug class already
-				// fixed for `--port` via argvHasPortFlag). Symptom: `vite
-				// build --base=/sub/` emitted `<script src="/assets/…">`
-				// instead of `/sub/assets/…`, so every asset 404'd on a
-				// subpath deploy. Discovered when the docs site preview
-				// deploy at /pyreon/ shipped a white screen.
-				//
-				// `__ZERO_BASE__` define ALWAYS reflects config.base here
-				// because that's what `startClient` / `createApp` read for
-				// router base prefix matching. When the CLI flag is what's
-				// actually applied (case 1), `configResolved` overrides
-				// this define with the FINAL resolved value.
-				...(userConfig.base === undefined && argvHasBaseFlag()
-					? {}
-					: { base: config.base }),
+				// Precedence: `zero({ base })` > Vite's own base (the CLI
+				// `--base`, an inline `build({ base })`, or `vite.config.base`,
+				// ordered by Vite) > '/'. A plugin's `config()` return is
+				// merged OVER the user config, so returning the DEFAULT `/`
+				// here silently swallowed every Vite-level base — the CLI flag
+				// (once patched with an argv sniff, PR #1395), a programmatic
+				// `build({ base })` (loom's static site, #4391) and
+				// `vite.config.base` alike. Return a base only when zero was
+				// given one; otherwise Vite's resolved base stands, and
+				// `configResolved` makes every zero consumer (`__ZERO_BASE__`,
+				// the server config, SSG preloads, CSS/OG URLs, fonts) follow
+				// that FINAL value.
+				...(userConfig.base !== undefined ? { base: config.base } : {}),
 				define: {
 					__ZERO_MODE__: JSON.stringify(config.mode),
 					__ZERO_BASE__: JSON.stringify(config.base),
@@ -1728,6 +1704,26 @@ const devSsrErrorContext = new WeakMap<
  *   6. Inject everything into the user's transformed index.html (so Vite
  *      still gets a chance to inject its HMR client + JSX runtime prelude)
  */
+/** `pathname` with the route base removed when it is under it (else unchanged). */
+function withoutRouteBase(pathname: string, routeBase: string): string {
+	const base = routeBase.replace(/\/+$/, "");
+	if (!base) return pathname;
+	if (pathname === base) return "/";
+	return pathname.startsWith(`${base}/`) ? pathname.slice(base.length) : pathname;
+}
+
+/** The route base the dev server renders under (`__ZERO_BASE__`). */
+function devRouteBase(server: ViteDevServer): string {
+	const raw = server.config.define?.__ZERO_BASE__;
+	if (typeof raw !== "string") return "/";
+	try {
+		const value: unknown = JSON.parse(raw);
+		return typeof value === "string" && isRoutePath(value) ? value : "/";
+	} catch {
+		return "/";
+	}
+}
+
 async function renderSsr(
 	server: ViteDevServer,
 	root: string,
@@ -1791,10 +1787,19 @@ async function renderSsr(
 	// query-preserving action all read it. Pathname-only here made dev render
 	// every page as if its query were empty — an SSR/hydration mismatch.
 	const routerPath = pathname + (req ? new URL(req.url).search : "");
+	// The ROUTE base, from the same define the client and the SSG entry read
+	// (set in `configResolved`). zero's SSR middleware is registered BEFORE
+	// Vite's base middleware, so `pathname` normally still carries the base;
+	// `withoutRouteBase` below accepts it with or without. Without the base here
+	// every dev-rendered link dropped it (`<a href="/about">` under
+	// `--base /blog/`), every page rendered the loading fallback, and the
+	// hydrated client, which does have it, disagreed with the server HTML.
+	const routeBase = devRouteBase(server);
 	const { App, router: routerInst } = appMod.createApp({
 		routes: routes as import("@pyreon/router").RouteRecord[],
 		routerMode: "history",
 		url: routerPath,
+		...(routeBase !== "/" ? { base: routeBase } : {}),
 	});
 
 	// M1.2 — Unmatched URLs no longer bail to a static 404 page here; the
@@ -1816,7 +1821,11 @@ async function renderSsr(
 		result = await serverPkg.renderPage(
 			App as Parameters<typeof serverPkg.renderPage>[0],
 			routerInst as Parameters<typeof serverPkg.renderPage>[1],
-			routerPath,
+			// The router strips its base from `url`; renderPage preloads and
+			// matches the path it is given, so that must be base-less too
+			// (`/blog/about` matched nothing, and dev rendered the loading
+			// fallback for every page under a base).
+			withoutRouteBase(pathname, routeBase) + (req ? new URL(req.url).search : ""),
 			{
 				...(req ? { request: req } : {}),
 				...(locals ? { locals } : {}),

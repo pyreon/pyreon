@@ -1,4 +1,5 @@
 import type { ZeroConfig } from './types'
+import { isRoutePath } from './route-path'
 
 /**
  * Define a Zero configuration — a typed identity helper for building the
@@ -32,6 +33,7 @@ export function detectPlatformAdapter(
   if (env.VERCEL) return 'vercel'
   if (env.NETLIFY) return 'netlify'
   if (env.CF_PAGES) return 'cloudflare'
+
   return null
 }
 
@@ -55,20 +57,54 @@ function defaultAdapter(): NonNullable<ZeroConfig['adapter']> {
       `[Pyreon] Detected ${detected} build environment — using the "${detected}" adapter (set zero({ adapter }) to override).`,
     )
   }
+
   return detected
+}
+
+/**
+ * zero works with TWO bases, and every URL it writes uses exactly one:
+ *
+ * - the **route base** — where the app's pages live: router links, `pushState`
+ *   URLs, `__ZERO_BASE__`, redirect canonicals, i18n prefixes, the PWA
+ *   manifest/scope and the server's routing. Always a root-relative path.
+ * - the **asset base** — Vite's resolved `base`, where built files live:
+ *   chunks, modulepreloads, CSS assets, self-hosted fonts, OG images. It may be
+ *   a path, a relative `./`, or a full CDN URL.
+ *
+ * Precedence: `zero({ base })` is returned from zero's `config()` hook, so when
+ * set it is BOTH bases. Without it, Vite's base (CLI `--base`, inline
+ * `build({ base })`, `vite.config.base`) is the asset base, and also the route
+ * base when it is a path; a `./` or CDN asset base leaves the route base `/`.
+ */
+export function routeBaseOf(zeroBase: string | undefined, assetBase: string | undefined): string {
+  if (zeroBase !== undefined) return withTrailingSlash(zeroBase)
+  return assetBase !== undefined && isRoutePath(assetBase) ? withTrailingSlash(assetBase) : '/'
+}
+
+/**
+ * `/docs` → `/docs/`. A route base is a directory; Vite normalises its own base
+ * the same way, so `zero({ base: '/docs' })` and Vite agree on one spelling.
+ */
+export function withTrailingSlash(base: string): string {
+  return base.endsWith('/') ? base : `${base}/`
+}
+
+/** A Vite base that is relative to the HTML document (`./`, `''`). */
+export function isRelativeBase(base: string): boolean {
+  return base === '' || base.startsWith('.')
 }
 
 /** Merge user config with defaults. */
 export function resolveConfig(
   userConfig: ZeroConfig = {},
-): Required<Pick<ZeroConfig, 'mode' | 'base' | 'port' | 'adapter' | 'entryClient'>> &
-  ZeroConfig {
+): Required<Pick<ZeroConfig, 'mode' | 'port' | 'adapter' | 'entryClient'>> &
+  ZeroConfig & { base: string } {
   return {
     mode: 'ssr',
-    base: '/',
     port: 3000,
     entryClient: '/src/entry-client.ts',
     ...userConfig,
+    base: userConfig.base !== undefined ? withTrailingSlash(userConfig.base) : '/',
     adapter: userConfig.adapter ?? defaultAdapter(),
     ssr: {
       mode: 'string',

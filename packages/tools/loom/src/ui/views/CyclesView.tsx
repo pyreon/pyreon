@@ -20,9 +20,9 @@ export function CyclesView(props: { model: ObservatoryModel }) {
             <C.CardSev variant="ok">clean</C.CardSev>
           </C.CardHead>
           <C.CardText>
-            Every import chain terminates, so the packages layer and initialise in dependency
-            order. Runtime imports only — dev edges are excluded because shared test utilities
-            legitimately cycle.
+            Every dependency chain terminates, so the packages layer and initialise in dependency
+            order. Checked on the dependencies and peerDependencies each package.json declares —
+            dev edges are excluded because shared test utilities legitimately cycle.
           </C.CardText>
         </C.Card>
       </C.Article>
@@ -55,7 +55,7 @@ export function CyclesView(props: { model: ObservatoryModel }) {
             ))}
           </div>
           <C.CardText>
-            {`Runtime imports only — dev edges are excluded because shared test utilities legitimately cycle. Open the loop at one edge: move what ${loop[0]} and ${loop[1] ?? loop[0]} share into a leaf package, or invert the import with a registration seam (the type and the slot live in the lower package; the higher one registers at load).`}
+            {`Declared runtime edges only (dependencies and peerDependencies in package.json) — dev edges are excluded because shared test utilities legitimately cycle. Open the loop at one edge: move what ${loop[0]} and ${loop[1] ?? loop[0]} share into a leaf package, or invert the import with a registration seam (the type and the slot live in the lower package; the higher one registers at load).`}
           </C.CardText>
         </C.Card>
       ))}

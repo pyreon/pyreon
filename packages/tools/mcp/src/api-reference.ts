@@ -63,7 +63,7 @@ const initial = isClient ? navigator.onLine : true`,
   },
 
   'reactivity/computed': {
-    signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>',
+    signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean; name?: string }) => Computed<T>',
     example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
 doubled()  // 0
@@ -100,9 +100,9 @@ const kept = linked(options, (opts, prev): string =>
   },
 
   'reactivity/effect': {
-    signature: '(fn: () => (() => void) | void) => () => void',
+    signature: '(fn: () => (() => void) | void, options?: { name?: string }) => Effect',
     example: `const count = signal(0)
-const dispose = effect(() => {
+const e = effect(() => {
   console.log("Count:", count())
   onCleanup(() => console.log("cleaning up"))
 })
@@ -112,7 +112,7 @@ effect(() => {
   window.addEventListener("resize", handler)
   return () => window.removeEventListener("resize", handler)
 })`,
-    notes: 'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead. See also: onCleanup, computed, renderEffect.',
+    notes: 'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns an `Effect` whose `dispose()` unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead. See also: onCleanup, computed, renderEffect.',
     mistakes: `- Passing a dependency array — Pyreon auto-tracks; no array needed
 - \`effect(() => { count })\` — must call the signal: \`effect(() => { count() })\`
 - Nesting \`effect()\` inside \`effect()\` — use \`computed()\` for derived values instead
@@ -6213,7 +6213,7 @@ useFocusReturn(() => isOpen())   // returns focus to the opener on close
 
 // Or the single-arg form: inert while getEl() is null, no focus move.
 useFocusTrap(() => modalRef())`,
-    notes: 'Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmatic `.focus()` or mouse click that lands focus outside the container is recaptured back in; Tab-only trapping misses those escapes). Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every event, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally and it turns on/off with it. Concurrent traps form a scope STACK: only the most recently ACTIVATED trap whose container exists handles events, and deactivating/unmounting it reactivates the one beneath (stacked modals no longer fight over the same Tab) — arm each trap with `active` tied to its open state so the stack tracks OPEN order, not mount order. The optional 2nd argument arms the trap reactively WITHOUT unmounting (`active: () => isOpen()`, or the positional shorthand `useFocusTrap(getEl, () => isOpen())`) and moves focus INTO the container on activation (`initialFocus: true` focuses the `[data-autofocus]` descendant when present, else the first tabbable; or a selector / element / getter; default is no focus move, backward-compatible). Initial focus is placed one microtask after activation, so content revealed by the same write (`hidden={!open()}`, a `<Show>`) is focusable by then. The focusable query is spec-grade — it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `checkVisibility` in real browsers); and orders positive-`tabindex` first. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`; making the background actually inert is `useInertOthers`. See also: useFocusReturn, useInertOthers, useScrollLock, useDialog, useClickOutside.',
+    notes: 'Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmatic `.focus()` or mouse click that lands focus outside the container is recaptured back in; Tab-only trapping misses those escapes). Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every event, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally and it turns on/off with it. Concurrent traps form a scope STACK: only the most recently ACTIVATED trap whose container exists handles events, and deactivating/unmounting it reactivates the one beneath (stacked modals no longer fight over the same Tab) — arm each trap with `active` tied to its open state so the stack tracks OPEN order, not mount order. The optional 2nd argument arms the trap reactively WITHOUT unmounting (`active: () => isOpen()`, or the positional shorthand `useFocusTrap(getEl, () => isOpen())`) and moves focus INTO the container on activation (`initialFocus: true` focuses the `[data-autofocus]` descendant when present, else the first tabbable; or a selector / element / getter; default is no focus move, backward-compatible). Initial focus is placed one microtask after activation, so content revealed by the same write (`hidden={!open()}`, a `<Show>`) is focusable by then. With focus already inside the container, `true` never moves it; a named target (selector / element / getter) moves it only on the first activation or when the activation ran inside a user event at the focused element (a toggle inside the trapped container), and never when focus is already inside that target — so re-arming while the user types in a field leaves the field alone. The focusable query is spec-grade — it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `checkVisibility` in real browsers); and orders positive-`tabindex` first. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`; making the background actually inert is `useInertOthers`. See also: useFocusReturn, useInertOthers, useScrollLock, useDialog, useClickOutside.',
     mistakes: `- Keeping the element permanently mounted (e.g. \`display: none\`) and expecting the trap to disable when hidden — either unmount it (so \`getEl()\` returns null) or pass \`active: () => isOpen()\` to disarm without unmounting; visibility alone does not gate it
 - Expecting the trap to MOVE focus into the container on open — by default it only contains focus. Pass \`initialFocus: true\` (or a selector / element / getter) to place focus on activation, and pair with \`useFocusReturn\` to restore it on close
 - Expecting it to also RETURN focus to the trigger on close — that is useFocusReturn; useFocusTrap only contains focus within the container
@@ -12836,7 +12836,7 @@ plugins: [pyreon(), zero({
 // Subpath deploy (e.g. served at /blog/)
 plugins: [pyreon(), zero({ base: '/blog/', mode: 'ssg' })]`,
     notes: `Top-level Vite plugin chain for @pyreon/zero. Single config object selects rendering mode (\`'ssr' | 'ssg' | 'isr' | 'spa'\`), subpath base (\`base: '/blog/'\`), SSG settings (paths, concurrency, workers — opt-in worker-thread prerender, onProgress, emit404, emitRedirects), i18n config (locales / defaultLocale / strategy), and deployment adapter. Returns \`Plugin[]\` because the SSG mode adds a companion \`ssgPlugin()\` automatically — Vite's plugins array natively flattens nested arrays so \`plugins: [pyreon(), zero()]\` works without spread. See also: I18nRoutingConfig, GetStaticPaths, Adapter, createISRHandler.`,
-    mistakes: `- Setting \`base\` in BOTH \`vite.config.base\` AND \`zero({ base })\` and expecting them to merge — user's explicit \`vite.config.base\` overrides the plugin-returned base. Set base ONCE via \`zero({ base })\`; let it propagate to Vite + router automatically
+    mistakes: `- Setting \`base\` in BOTH \`vite.config.base\` (or \`vite build --base\`) AND \`zero({ base })\` and expecting them to merge — an explicit \`zero({ base })\` wins; without it Vite's base (CLI flag, inline \`build({ base })\`, \`vite.config.base\`) is the ASSET base, and the ROUTE base (router links, \`__ZERO_BASE__\`, server routing) only when it is a path — a CDN URL or \`./\` leaves routes at \`/\`. \`./\` is rejected for every mode but \`spa\`, and \`zero({ base })\` itself must be a root-relative path (a CDN URL or \`./\` belongs in \`vite.config.base\`). Set base ONCE, in either place
 - Passing \`layout\` to \`createApp\` / \`startClient\` when fs-router already emits \`_layout.tsx\` as a parent route — double-mounts the layout. Drop the explicit option; \`_layout.tsx\` is the canonical layout registration
 - Mixing \`mode: 'ssg'\` with a runtime adapter that has no SSG branch (e.g. expecting \`nodeAdapter\` to write platform routing config under SSG) — node/bun/static adapters no-op for SSG; use vercel/cloudflare/netlify if you need platform routing emission
 - Configuring \`ssg.paths\` AND per-route \`getStaticPaths\` together for the same dynamic route — both produce the same path list and the SSG plugin renders each path TWICE (the second pass overwrites). Pick one: \`ssg.paths\` for top-down explicit lists, \`getStaticPaths\` for per-route enumerators
@@ -13380,7 +13380,7 @@ export default function NewPost() {
 <Link href="/about" prefetch="viewport" activeClass="nav-active">About</Link>
 <Link href="https://example.com">External</Link>  // auto target="_blank" rel="noopener noreferrer"
 <Link href="/report.pdf" external>PDF</Link>       // force external for a same-origin asset`,
-    notes: 'Default navigation link built on an `<a>` tag. Only INTERNAL navigations are intercepted (`router.push()` + prefetch + `activeClass`); external URLs, `mailto:`/`tel:`, and `#hash` are detected from `href` at runtime and left to the browser — external links auto-get `target="_blank" rel="noopener noreferrer"`. `href` is generic (`CheckHref<T, RoutePath>`): once typed-routes codegen has run, a mistyped internal path is a compile error while dynamic strings + external URLs are always accepted. Built on `createLink` so consumers can swap the rendered element via `createLink(MyCustomLink)` without losing any of this. See also: useLink, createLink, prefetchRoute.',
+    notes: `Default navigation link built on an \`<a>\` tag. An internal root-relative \`href\` renders with the router base (\`/about\` → \`/blog/about\` under \`base: '/blog/'\`), like \`<RouterLink>\`. Only INTERNAL navigations are intercepted (\`router.push()\` + prefetch + \`activeClass\`); external URLs, \`mailto:\`/\`tel:\`, and \`#hash\` are detected from \`href\` at runtime and left to the browser — external links auto-get \`target="_blank" rel="noopener noreferrer"\`. \`href\` is generic (\`CheckHref<T, RoutePath>\`): once typed-routes codegen has run, a mistyped internal path is a compile error while dynamic strings + external URLs are always accepted. Built on \`createLink\` so consumers can swap the rendered element via \`createLink(MyCustomLink)\` without losing any of this. See also: useLink, createLink, prefetchRoute.`,
     mistakes: `- Wrapping an external URL in a plain \`<a>\` to avoid \`router.push\` — unnecessary: \`<Link href="https://x.com">\` auto-detects it as external, renders \`target="_blank" rel="noopener noreferrer"\`, and does NOT client-navigate. Override with \`external\` / \`target\` / \`rel\` or \`createApp({ links })\`
 - Using \`<a href={path} onClick={() => router.push(path)}>\` instead of \`<Link>\` — manual approach skips prefetch, active-state class merging, and the keyboard-modifier guard (Cmd+click should open new tab, not navigate in-place)
 - Setting \`prefetch="hover"\` (default) and expecting prefetch on mobile — mobile devices don't fire mouseenter; use \`prefetch="viewport"\` for IntersectionObserver-based prefetch (or accept that touchstart triggers prefetch too)
@@ -13407,7 +13407,7 @@ function CardLink(props: LinkProps) {
     </div>
   )
 }`,
-    notes: 'Composable that returns all link behavior — `{ ref, handleClick, handleMouseEnter, handleTouchStart, isActive, isExactActive, classes }`. Use when `createLink` is too opinionated (e.g. you need a `<button>` link, a card-shaped link, or want to compose with another framework primitive). Internals: hover/viewport prefetch via IntersectionObserver, keyboard-modifier guard (Cmd+click opens new tab), active/exact-active path matching, class-string composition. See also: Link, createLink, UseLinkReturn.',
+    notes: 'Composable that returns all link behavior — `{ href, ref, handleClick, handleMouseEnter, handleTouchStart, isActive, isExactActive, classes, isInternal, target, rel }`. `href()` is the value to render: an internal root-relative path carries the router base (like `<RouterLink>`), anything else is returned as written. Use when `createLink` is too opinionated (e.g. you need a `<button>` link, a card-shaped link, or want to compose with another framework primitive). Internals: hover/viewport prefetch via IntersectionObserver, keyboard-modifier guard (Cmd+click opens new tab), active/exact-active path matching, class-string composition. See also: Link, createLink, UseLinkReturn.',
     mistakes: `- Reading \`link.classes\` as a plain string — it's a \`() => string\` accessor. Call it inside reactive scopes (JSX expression thunks, \`class={link.classes}\`) so the active class updates on route change
 - Forgetting to wire \`link.ref\` to the root element under \`prefetch="viewport"\` — without the ref the IntersectionObserver has nothing to observe; viewport-based prefetch never fires
 - Calling \`link.handleClick(e)\` synchronously in the component body — handlers are meant to be JSX event props (\`onClick={link.handleClick}\`); synchronous invocation in the render body triggers \`router.push\` during render which the lint rule \`no-imperative-navigate-in-render\` flags
@@ -13432,7 +13432,7 @@ const ButtonLink = createLink((props) => (
 ))
 
 <ButtonLink href="/dashboard" activeClass="active">Dashboard</ButtonLink>`,
-    notes: 'HOC that wraps any component with link behavior. The wrapped component receives `LinkRenderProps` with all handlers + state pre-wired (`href`, `ref`, `onClick`, `onMouseEnter`, `onTouchStart`, `isActive`, `isExactActive`, `class`, `target`, `rel`). Use this to build styled link variants (button-links, card-links, design-system anchors) without re-implementing the prefetch + active-state machine. See also: Link, useLink, LinkRenderProps.',
+    notes: 'HOC that wraps any component with link behavior. The wrapped component receives `LinkRenderProps` with all handlers + state pre-wired (`href` — base-prefixed for an internal path, `ref`, `onClick`, `onMouseEnter`, `onTouchStart`, `isActive`, `isExactActive`, `class`, `target`, `rel`). Use this to build styled link variants (button-links, card-links, design-system anchors) without re-implementing the prefetch + active-state machine. See also: Link, useLink, LinkRenderProps.',
     mistakes: `- Not forwarding \`props.ref\` to the rendered element — the prefetch IntersectionObserver and active-state observer both need a real DOM ref to attach to
 - Calling the user-provided \`props.class\` as a function in JSX (\`class={props.class()}\`) — \`class\` is a string-or-accessor union; pass it directly (\`class={props.class}\`) and let the renderer call it if needed
 - Forgetting \`onTouchStart\` — mobile devices don't fire mouseenter; without \`onTouchStart\` mobile users get no prefetch benefit
@@ -13844,7 +13844,7 @@ export default {
     })
   ]
 }`,
-    notes: 'Vite plugin that auto-optimizes Google Fonts and local fonts declared in `zero({ font: { google, local } })`. In dev mode, injects CDN links for fast startup; in build mode, downloads fonts at build time, self-hosts them from `/assets/fonts/` with hashed filenames, injects preload + preconnect hints into the HTML, applies `font-display: swap` to prevent FOIT (Flash of Invisible Text), and optionally generates size-adjusted fallback `@font-face` rules to reduce CLS. Self-hosting shares a 60-second download deadline across CSS and all font bodies; failure aborts active requests, warns and falls back to the CDN. Complete downloads are cached. Auto-wired by the zero plugin unless disabled via `zero({ font: false })`. See also: fontImportPlugin, FontConfig, usePreloadFont.',
+    notes: 'Vite plugin that auto-optimizes Google Fonts and local fonts declared in `zero({ font: { google, local } })`. In dev mode, injects CDN links for fast startup; in build mode, downloads fonts at build time, self-hosts them from `<base>assets/fonts/` (the resolved build base) with hashed filenames, injects preload + preconnect hints into the HTML, applies `font-display: swap` to prevent FOIT (Flash of Invisible Text), and optionally generates size-adjusted fallback `@font-face` rules to reduce CLS. Self-hosting shares a 60-second download deadline across CSS and all font bodies; failure aborts active requests, warns and falls back to the CDN. Complete downloads are cached. Auto-wired by the zero plugin unless disabled via `zero({ font: false })`. See also: fontImportPlugin, FontConfig, usePreloadFont.',
     mistakes: `- Declaring fonts in both \`google\` and \`local\` with the same family name — the plugin applies all CSS at once; duplicate families cause cascade conflicts
 - Using \`display: 'block'\` for all fonts — this causes FOIT (Flash of Invisible Text); \`'swap'\` is the default for a reason and avoids invisible text during font load
 - Forgetting to add fallback metrics when using variable-weight fonts — without CLS-reduction fallback overrides, layout shift occurs when the custom font replaces the system fallback
@@ -16162,10 +16162,7 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json (^2.0.0)
      ↳ packages/util/package.json (^3.0.0)
 
-  ! 3 warnings
-  ! peer-mismatch · \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ↳ packages/plugin/package.json
+  ! 2 warnings
   ! prod-import-of-dev-dep · \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ↳ packages/app/src/index.ts
@@ -16182,7 +16179,7 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json
   ✗ internal-range · \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ↳ packages/plugin/package.json
   ✗ phantom-dep · \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -16192,8 +16189,8 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json (^1.0.0)
      ↳ packages/util/package.json (^2.0.0)
 
-✗ 5 errors, 3 warnings, 8 info · 5 packages · 3 ms`,
-    notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); eight detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
+✗ 5 errors, 2 warnings, 8 info · 5 packages · 3 ms`,
+    notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); the detectors emit findings under eight codes with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
     mistakes: `- Treating a dev-edge "cycle" as a bug — loom deliberately excludes devDependencies from cycle detection; monorepos legitimately share test utilities both ways, and a detector that cries wolf is a dead gate
 - Reading \`unused-dep\` as a removal order — it is INFO with lexical evidence only; bins, plugin autoloads, and CSS imports load without an import statement
 - Expecting outdated-vs-latest or duplicate-install findings — loom reads DECLARED truth; lockfile + registry layers are documented future work, not silently half-done
