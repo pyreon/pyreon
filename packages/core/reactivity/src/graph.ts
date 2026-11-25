@@ -149,24 +149,53 @@ export interface Subscriber {
   _depsTail: Link | null
 }
 
-/** A computed node: callable read function carrying both sides of the graph. */
-export interface ComputedNode extends Source, Subscriber {
-  (): unknown
-  _value: unknown
-  _fn: () => unknown
-  _eq: ((prev: unknown, next: unknown) => boolean) | null
-  _d1: (() => void) | null
-  _d: Set<() => void> | null
-}
-
-/** An effect or render binding: runs from the flush queue. */
+/** An effect, render binding or computed with direct updaters: runs from the flush queue. */
 export interface WatcherNode extends Subscriber {
   run(): void
 }
 
+/**
+ * A computed's graph node — a source AND a subscriber. A plain fixed-shape
+ * object, NOT the callable the user holds: the walks read `_f` / `_subs` /
+ * `_deps` on every node they visit, and on a function object those fields
+ * live out of object (one more dependent load each). The callable is a thin
+ * bound function over this node (computed.ts).
+ */
+export class ComputedNode implements Source, WatcherNode {
+  _f: number = F_COMPUTED | F_DIRTY
+  _value: unknown = undefined
+  _fn: () => unknown
+  _eq: ((prev: unknown, next: unknown) => boolean) | null
+  _deps: Link | null = null
+  _depsTail: Link | null = null
+  _subs: Link | null = null
+  _subsTail: Link | null = null
+  /** Direct tier (see `DirectHost` in signal.ts). */
+  _d1: (() => void) | null = null
+  _d: Set<() => void> | null = null
+
+  constructor(fn: () => unknown, eq: ((prev: unknown, next: unknown) => boolean) | null) {
+    this._fn = fn
+    this._eq = eq
+  }
+
+  /** At its queue turn (it has direct updaters). */
+  run(): void {
+    runComputedWatcher(this)
+  }
+
+  /** Drop every source; keeps the last value. Idempotent. */
+  _dispose(): void {
+    const f = this._f
+    if ((f & F_DISPOSED) !== 0) return
+    this._f = (f & ~F_MARKED) | F_DISPOSED
+    unlinkAllDeps(this)
+  }
+}
+
 /** A plain function in the queue: a signal direct updater or `subscribe()` listener. */
 type QueuedFn = (() => void) & { _f?: number }
-type QueueEntry = WatcherNode | ComputedNode | QueuedFn
+type QueueEntry = WatcherNode | QueuedFn
 
 // ─── Hot module state ───────────────────────────────────────────────────────
 
@@ -653,9 +682,8 @@ function runComputedWatcher(c: ComputedNode): void {
 }
 
 function dispatch(e: QueueEntry): void {
-  if (typeof e !== 'function') (e as WatcherNode).run()
-  else if (((e as QueuedFn)._f! & F_COMPUTED) !== 0) runComputedWatcher(e as ComputedNode)
-  else (e as QueuedFn)()
+  if (typeof e !== 'function') e.run()
+  else e()
 }
 
 /**
@@ -665,8 +693,8 @@ function dispatch(e: QueueEntry): void {
  * subscriber would stop every later write's marking there.
  */
 function settleDropped(e: QueueEntry): void {
-  if (typeof e !== 'function' || ((e as QueuedFn)._f! & F_COMPUTED) !== 0) {
-    const n = e as Subscriber
+  if (typeof e !== 'function') {
+    const n = e
     if ((n._f & F_DISPOSED) === 0) {
       for (let l = n._deps; l !== null; l = l.nextDep) {
         const dep = l.dep as Source & Partial<ComputedNode>

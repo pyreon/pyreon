@@ -1,11 +1,25 @@
 import { _enterCleanupFrame, _errorHandler, _exitCleanupFrame } from './effect'
 import { _rdSetOwnerReader } from './reactive-devtools'
+
+/**
+ * What a scope holds: a graph node (an effect handle or a computed's node,
+ * told apart by its `_f` flags — `_dispose()`), a `{ dispose }` handle, or a
+ * BARE disposer function.
+ */
+type ScopeEntry = { dispose(): void } | { _f: number; _dispose(): void } | (() => void)
+
+function disposeEntry(e: ScopeEntry): void {
+  if ((e as { _f?: number })._f !== undefined) (e as { _dispose(): void })._dispose()
+  else if (typeof e === 'function') e()
+  else (e as { dispose(): void }).dispose()
+}
+
 export class EffectScope {
   // A registered node (an effect handle, a computed) or a BARE disposer
   // function: render bindings register their dispose function directly
   // instead of wrapping it in `{ dispose }` (one 16 B object per binding, kept
   // for the binding's lifetime), and a computed registers ITSELF.
-  private _effects: ({ dispose(): void } | (() => void))[] | null = null
+  private _effects: ScopeEntry[] | null = null
   private _active = true
   private _updateHooks: (() => void)[] | null = null
   private _updatePending = false
@@ -67,14 +81,13 @@ export class EffectScope {
   }
 
   /** Register an effect/computed to be disposed when this scope stops. */
-  add(e: { dispose(): void } | (() => void)): void {
+  add(e: ScopeEntry): void {
     if (!this._active) {
       // A stopped scope never disposes anything again, so dropping the
       // registration left it live with no owner — e.g. an effect whose FIRST
       // run stopped its own scope (registration happens after that run).
       // Release it now instead.
-      if (typeof e === 'function') e()
-      else e.dispose()
+      disposeEntry(e)
       return
     }
     // `[e]`, not `[]` + push: V8's first push reserves 16 slots, which a
@@ -148,12 +161,8 @@ export class EffectScope {
       // error and never stops the rest of the scope's teardown — nor the
       // component unmount around it, which left a `<For>` row on screen.
       for (const e of this._effects) {
-        // A bare disposer is called; a node (effect handle, or a computed —
-        // itself callable, so told apart by its `_f` flags) is disposed.
         try {
-          if ((e as { _f?: number })._f !== undefined) (e as unknown as { _dispose(): void })._dispose()
-          else if (typeof e === 'function') e()
-          else e.dispose()
+          disposeEntry(e)
         } catch (err) {
           _errorHandler(err)
         }

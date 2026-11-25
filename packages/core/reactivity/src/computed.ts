@@ -1,18 +1,15 @@
 import { _errorHandler } from './errors'
 import {
-  type ComputedNode,
-  F_COMPUTED,
+  ComputedNode,
   F_DIRTY,
   F_DISPOSED,
   F_HAS_DIRECT,
   F_HAS_VALUE,
   F_PENDING,
-  type Link,
   _t,
   link,
   refreshComputed,
   runUntracked,
-  unlinkAllDeps,
 } from './graph'
 import { _captureCallerLocation, _rdDirect, _rdRegister } from './reactive-devtools'
 import { _ownerScope } from './scope'
@@ -56,24 +53,25 @@ export interface ComputedOptions<T> {
   __sourceLocation?: { file: string; line: number; col: number }
 }
 
-// Internal shape of a computed read function — state stored as PLAIN FIELDS on
-// the function object (fast in-object properties, exactly like `signal`), with
-// shareable methods on `ComputedProto`. The read function IS the graph node: it
-// is the source its readers link to and the subscriber its own reads link
-// from, so there is no separate notify closure, dispose closure or deps array.
-interface ComputedFn<T> extends ComputedNode {
+// The callable a user holds is a BOUND function over the graph node
+// (`ComputedNode` in graph.ts, a plain fixed-shape object), with shareable
+// methods on `ComputedProto` and one own property: `_n`, the node. The node is
+// what readers link to, what the scope disposes and what the walks visit; the
+// callable only reads it. (A bound function needs no closure context, which
+// keeps a computed at the size it had as one function object.)
+interface ComputedFn<T> {
   (): T
-  _value: T
+  /** @internal the graph node */
+  _n: ComputedNode
   _v: T
   dispose(): void
-  _dispose(): void
   direct(updater: () => void): () => void
 }
 
 /**
- * Shared prototype for every computed — `direct`, `dispose` and the `_v`
- * getter live here (one allocation total). Mirrors `SignalProto`, including
- * the `setPrototypeOf(_, Function.prototype)` step so computeds keep
+ * Shared prototype for every computed callable — `direct`, `dispose` and the
+ * `_v` getter live here (one allocation total). Mirrors `SignalProto`,
+ * including the `setPrototypeOf(_, Function.prototype)` step so computeds keep
  * `instanceof Function === true` (consumers across the ecosystem discriminate
  * reactive values that way).
  */
@@ -81,49 +79,73 @@ const ComputedProto = {
   direct(this: ComputedFn<unknown>, updater: () => void): () => void {
     // Dev: instrumented wrapper — see `_directFn` in signal.ts.
     if (process.env.NODE_ENV !== 'production') updater = _rdDirect(updater)
-    _addDirect(this, updater)
-    this._f |= F_HAS_DIRECT
-    const self = this
+    const n = this._n
+    _addDirect(n, updater)
+    n._f |= F_HAS_DIRECT
     return () => {
-      _removeDirect(self, updater)
+      _removeDirect(n, updater)
       // The last updater left: marking stops queueing the node (it is lazy again).
-      if (self._d1 === null && (self._d === null || self._d.size === 0)) self._f &= ~F_HAS_DIRECT
+      if (n._d1 === null && (n._d === null || n._d.size === 0)) n._f &= ~F_HAS_DIRECT
     }
   },
   /**
-   * Remove this computed from all its sources. A disposed computed keeps its
-   * last value and never re-links: reading it later returns that value (or,
-   * if it never evaluated, evaluates once, untracked).
+   * Public disposer — works detached (`onCleanup(c.dispose)`). Removes the
+   * computed from all its sources; it keeps its last value and never
+   * re-links: reading it later returns that value (or, if it never
+   * evaluated, evaluates once, untracked).
    */
-  _dispose(this: ComputedFn<unknown>): void {
-    const f = this._f
-    if ((f & F_DISPOSED) !== 0) return
-    this._f = (f & ~(F_DIRTY | F_PENDING)) | F_DISPOSED
-    unlinkAllDeps(this)
-  },
-  /** Public disposer — works detached (`onCleanup(c.dispose)`), see `EffectNode.dispose`. */
   get dispose(): () => void {
-    const self = this as unknown as ComputedFn<unknown>
-    return () => self._dispose()
+    const n = (this as unknown as ComputedFn<unknown>)._n
+    return () => n._dispose()
   },
   get _v() {
     // Getters can't declare a `this` param (TS2784); narrow inline.
-    const self = this as unknown as ComputedFn<unknown>
-    if ((self._f & (F_DIRTY | F_PENDING)) !== 0) refreshComputed(self)
-    else if ((self._f & (F_HAS_VALUE | F_DISPOSED)) === F_DISPOSED) readDisposedFirst(self)
-    return self._value
+    const n = (this as unknown as ComputedFn<unknown>)._n
+    const f = n._f
+    if ((f & (F_DIRTY | F_PENDING)) !== 0) refreshComputed(n)
+    else if ((f & (F_HAS_VALUE | F_DISPOSED)) === F_DISPOSED) readDisposedFirst(n)
+    return n._value
   },
 }
 Object.setPrototypeOf(ComputedProto, Function.prototype)
 
 /** A computed disposed before it ever evaluated: evaluate once, UNTRACKED. */
-function readDisposedFirst(c: ComputedFn<unknown>): void {
+function readDisposedFirst(c: ComputedNode): void {
   c._f |= F_HAS_VALUE
   try {
     c._value = runUntracked(c._fn)
   } catch (err) {
     _errorHandler(err)
   }
+}
+
+/**
+ * The read, bound to the node. Resolves its own marks first
+ * (`refreshComputed`: re-evaluate if a source changed, else clear without
+ * running), THEN links to the reader — so a change found by this very read
+ * never re-queues the reader that is reading the new value right now.
+ *
+ * Kept this small on purpose so V8 inlines it into its callers; the cold
+ * paths (resolution, disposal) live in module functions.
+ */
+function readComputed(this: ComputedNode): unknown {
+  const f = this._f
+  if ((f & (F_DIRTY | F_PENDING)) !== 0) refreshComputed(this)
+  // Disposed before it ever evaluated: evaluate once, untracked. (A LIVE
+  // computed is also unmarked without a value DURING its first evaluation —
+  // a re-entrant read then returns `undefined`, it must not evaluate again.)
+  else if ((f & (F_HAS_VALUE | F_DISPOSED)) === F_DISPOSED) readDisposedFirst(this)
+  const sub = _t.e
+  if (sub !== null) link(this, sub)
+  return this._value
+}
+
+/**
+ * @internal The graph node behind a computed callable (white-box tests and
+ * the devtools walkers; not exported from the package entry).
+ */
+export function _computedNode(c: unknown): ComputedNode {
+  return (c as ComputedFn<unknown>)._n
 }
 
 export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed<T> {
@@ -140,54 +162,30 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
     }
   }
 
-  /**
-   * The read. Resolves its own marks first (`refreshComputed`: re-evaluate if
-   * a source changed, else clear without running), THEN links to the reader —
-   * so a change found by this very read never re-queues the reader that is
-   * reading the new value right now.
-   *
-   * Kept this small on purpose so V8 inlines it into its callers; the cold
-   * paths (resolution, disposal) live in module functions.
-   */
-  const read = (() => {
-    const f = read._f
-    if ((f & (F_DIRTY | F_PENDING)) !== 0) refreshComputed(read)
-    // Disposed before it ever evaluated: evaluate once, untracked. (A LIVE
-    // computed is also unmarked without a value DURING its first evaluation —
-    // a re-entrant read then returns `undefined`, it must not evaluate again.)
-    else if ((f & (F_HAS_VALUE | F_DISPOSED)) === F_DISPOSED) readDisposedFirst(read)
-    const sub = _t.e
-    if (sub !== null) link(read, sub)
-    return read._value
-  }) as unknown as ComputedFn<T>
-
+  const node = new ComputedNode(fn as () => unknown, (options?.equals as ComputedNode['_eq'] | undefined) ?? null)
+  const read = readComputed.bind(node) as unknown as ComputedFn<T>
   Object.setPrototypeOf(read, ComputedProto)
-  read._value = undefined as T
-  // Starts DIRTY: the first read evaluates (and that evaluation is not a change).
-  read._f = F_COMPUTED | F_DIRTY
-  read._fn = fn
-  read._eq = (options?.equals as ComputedNode['_eq'] | undefined) ?? null
-  read._deps = null
-  read._depsTail = null
-  read._subs = null as Link | null
-  read._subsTail = null
-  read._d1 = null
-  read._d = null
+  read._n = node
 
-  if (process.env.NODE_ENV !== 'production')
-    // skipFrames=1: skip `computed`, capture the user's call site.
-    _rdRegister(
+  if (process.env.NODE_ENV !== 'production') {
+    // skipFrames=1: skip `computed`, capture the user's call site. The
+    // callable is the registered identity (`_rdNodeId(c)`); the node is the
+    // host the graph walkers read and the subscriber edges point at, and it
+    // carries the same id so its evaluations record as this node's fires.
+    const id = _rdRegister(
       read,
       'derived',
-      read,
-      read,
+      node,
+      node,
       undefined,
       options?.__sourceLocation ?? _captureCallerLocation(1),
     )
+    Object.defineProperty(node, '__pxRdId', { value: id, enumerable: false, configurable: true })
+  }
 
-  // The scope stores the node itself; `stop()` calls its prototype `dispose`.
+  // The scope stores the node itself; `stop()` calls its `_dispose`.
   // `_ownerScope()`: the current scope WITHOUT pinning it, else the server
   // request's scope.
-  _ownerScope()?.add(read)
+  _ownerScope()?.add(node)
   return read as unknown as Computed<T>
 }

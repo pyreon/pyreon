@@ -12,7 +12,7 @@
 import { accessInternal } from '@pyreon/test-utils'
 import { batch } from '../batch'
 import { Cell } from '../cell'
-import { computed } from '../computed'
+import { _computedNode, computed } from '../computed'
 import { createSelector } from '../createSelector'
 import {
   type ReactiveSnapshotCapture,
@@ -234,14 +234,14 @@ describe('computed — error handler and direct updaters', () => {
 
     // `_d1` getter exposes the inline slot; `_d` stays null on single
     // subscribe (no Set allocation).
-    expect(accessInternal<{ _d1: (() => void) | null }>(c)._d1).not.toBeNull()
-    expect(accessInternal<{ _d: Set<unknown> | null }>(c)._d).toBeNull()
+    expect(accessInternal<{ _d1: (() => void) | null }>(_computedNode(c))._d1).not.toBeNull()
+    expect(accessInternal<{ _d: Set<unknown> | null }>(_computedNode(c))._d).toBeNull()
 
     src.set(5)
     expect(seen).toEqual([10])
 
     unsub()
-    expect(accessInternal<{ _d1: (() => void) | null }>(c)._d1).toBeNull()
+    expect(accessInternal<{ _d1: (() => void) | null }>(_computedNode(c))._d1).toBeNull()
     src.set(7)
     expect(seen).toEqual([10]) // no further direct notifications
   })

@@ -18,6 +18,7 @@
  * computed.ts line count drop back. The drops should be exactly the
  * lines listed above.
  */
+import { _computedNode } from '../computed'
 import { computed, signal, setErrorHandler } from '../index'
 
 describe('computed.ts — coverage of uncovered branches', () => {
@@ -143,7 +144,7 @@ describe('computed.ts — coverage of uncovered branches', () => {
     const c = computed(() => s() * 2, { equals: (a, b) => a === b })
     c() // initialize
 
-    const internal = c as unknown as {
+    const internal = _computedNode(c) as unknown as {
       _d: Set<() => void> | null
       _d1: (() => void) | null
     }
@@ -171,7 +172,7 @@ describe('computed.ts — coverage of uncovered branches', () => {
     const c = computed(() => s() * 2, { equals: (a, b) => a === b })
     c()
 
-    const internal = c as unknown as {
+    const internal = _computedNode(c) as unknown as {
       _d: Set<() => void> | null
       _d1: (() => void) | null
     }
@@ -204,7 +205,7 @@ describe('computed.ts — coverage of uncovered branches', () => {
     const dispose1 = c.direct(updater1) // captured in directFn1
     c.direct(updater2) // promotes: directFn1 → directFns Set, directFn1 = null
 
-    const internal = c as unknown as {
+    const internal = _computedNode(c) as unknown as {
       _d: Set<() => void> | null
       _d1: (() => void) | null
     }
@@ -234,7 +235,7 @@ describe('computed.ts — coverage of uncovered branches', () => {
       ran.push('2')
     }) // Tier 2 promotion
 
-    const internal = c as unknown as { _d: Set<() => void> | null }
+    const internal = _computedNode(c) as unknown as { _d: Set<() => void> | null }
     expect(internal._d?.size).toBe(2)
 
     dispose2()

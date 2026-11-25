@@ -12,6 +12,7 @@ import {
   F_DIRTY,
   F_DISPOSED,
   F_PENDING,
+  F_QUEUED,
   F_RUNNING,
   F_STATIC,
   type Link,
@@ -391,7 +392,7 @@ export function effect(
   _b.d++
   try {
     node._exec(true)
-    settleFirstRun(node)
+    if ((node._f & (F_QUEUED | F_DISPOSED)) === F_QUEUED) settleFirstRun(node)
   } finally {
     endBatch()
   }
@@ -575,7 +576,7 @@ class BindingNode implements WatcherNode {
         this._f = (this._f & ~(F_DIRTY | F_PENDING)) | F_RUNNING
         let ok = false
         try {
-          this._call(true)
+          this._call()
           ok = true
         } finally {
           this._f &= ~F_RUNNING
@@ -585,28 +586,28 @@ class BindingNode implements WatcherNode {
 
         return
       }
-      this._track(true)
+      this._track()
     } else this._f &= ~F_PENDING
   }
 
-  /** Call the body; `restore` re-enters the setup-time context snapshot. */
-  _call(restore: boolean): void {
+  /** Call the body inside the setup-time context snapshot (a re-run). */
+  _call(): void {
     const fn = this._fn
     const snap = this._snap
     const cap = _c.s
-    if (restore && snap !== null && cap !== null) cap.restore(snap, fn)
+    if (snap !== null && cap !== null) cap.restore(snap, fn)
     else fn()
   }
 
-  /** A tracked run: reset the cursor, run, drop what this run did not read. */
-  _track(restore: boolean): void {
+  /** A tracked re-run: reset the cursor, run, drop what this run did not read. */
+  _track(): void {
     const prevSub = _t.e
     _t.e = this
     this._depsTail = null
     this._f = (this._f & ~(F_DIRTY | F_PENDING)) | F_RUNNING
     let ok = false
     try {
-      this._call(restore)
+      this._call()
       ok = true
     } finally {
       _t.e = prevSub
@@ -625,12 +626,33 @@ class BindingNode implements WatcherNode {
   }
 }
 
-/** First run of a binding: tracked, inside a batch window (see `effect()`). */
+/**
+ * First run of a binding: tracked, inside a batch window (see `effect()`).
+ *
+ * One frame for what a re-run splits over `_track` / `_call`, because a first
+ * run is the mount's hot path (one per text/attribute binding) and has less
+ * to do: no context snapshot to restore (the mount stack is intact), and no
+ * previous dependencies — every edge it links is inserted at the cursor's end,
+ * so nothing sits past the cursor afterwards (`purgeDeps` would find nothing)
+ * and a throw leaves nothing unconfirmed (`settleUnread` would find nothing).
+ * A node disposed by its own first run drops what the run linked.
+ */
 function firstRun(node: BindingNode): void {
   _b.d++
   try {
-    node._track(false)
-    settleFirstRun(node)
+    const prevSub = _t.e
+    _t.e = node
+    node._f |= F_RUNNING
+    try {
+      node._fn()
+    } finally {
+      _t.e = prevSub
+      const f = node._f & ~F_RUNNING
+      node._f = f
+      if ((f & F_DISPOSED) !== 0) unlinkAllDeps(node)
+    }
+    // Re-queued by its own write (it wrote a signal it had read): settle now.
+    if ((node._f & (F_QUEUED | F_DISPOSED)) === F_QUEUED) settleFirstRun(node)
   } finally {
     endBatch()
   }

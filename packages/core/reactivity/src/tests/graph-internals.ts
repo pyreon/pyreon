@@ -3,6 +3,15 @@
  * reads the link-list fields (`_subs`, `_deps`, `nextSub`, `nextDep`), so a
  * storage change touches one file.
  */
+/**
+ * A computed's callable is a bound function over its graph node (`_n`); the
+ * link-list and direct-tier fields live on the node. Signals and nodes pass
+ * through.
+ */
+function host(x: unknown): unknown {
+  return (x as { _n?: unknown } | null)?._n ?? x
+}
+
 interface LinkLike {
   dep: unknown
   sub: unknown
@@ -17,20 +26,20 @@ interface LinkLike {
  */
 export function edgeCount(source: unknown): number {
   const seen = new Set<unknown>()
-  for (let l = (source as { _subs: LinkLike | null })._subs; l !== null; l = l.nextSub) seen.add(l.sub)
+  for (let l = (host(source) as { _subs: LinkLike | null })._subs; l !== null; l = l.nextSub) seen.add(l.sub)
   return seen.size
 }
 
 /** Every edge object on a source — what a leak check counts: 0 after teardown. */
 export function rawEdgeCount(source: unknown): number {
   let n = 0
-  for (let l = (source as { _subs: LinkLike | null })._subs; l !== null; l = l.nextSub) n++
+  for (let l = (host(source) as { _subs: LinkLike | null })._subs; l !== null; l = l.nextSub) n++
   return n
 }
 
 /** Entries in a signal's or computed's direct tier (`.direct()` updaters, `subscribe()` listeners). */
 export function directCount(source: unknown): number {
-  const s = source as { _d1: unknown; _d: Set<unknown> | null }
+  const s = host(source) as { _d1: unknown; _d: Set<unknown> | null }
   return (s._d1 != null ? 1 : 0) + (s._d?.size ?? 0)
 }
 
@@ -42,6 +51,6 @@ export function subscriberTotal(source: unknown): number {
 /** Dependency edges a subscriber (computed / effect / binding node) holds. */
 export function depCount(node: unknown): number {
   let n = 0
-  for (let l = (node as { _deps: LinkLike | null })._deps; l !== null; l = l.nextDep) n++
+  for (let l = (host(node) as { _deps: LinkLike | null })._deps; l !== null; l = l.nextDep) n++
   return n
 }
