@@ -91,6 +91,7 @@ function memFs(): LockFs & { files: Map<string, { content: string; ino: number }
   const files = new Map<string, { content: string; ino: number }>()
   let ino = 1
   const eexist = () => Object.assign(new Error('EEXIST'), { code: 'EEXIST' })
+
   return {
     files,
     createExclusive(path, content) {
@@ -174,6 +175,7 @@ describe('cross-session lock', () => {
           tryAcquireLock({ ...fs, identity: realIdentity }, L, 'A 300\n', alive([300]), 'a'),
         ).toMatchObject({ acquired: true })
       }
+
       return id
     }
     const r = tryAcquireLock(fs, L, 'B 400\n', alive([300, 400]), 'b')
@@ -199,8 +201,10 @@ const trace = (t0: number, t1: number, every: number, load = 2): LoadSample[] =>
   const out: LoadSample[] = []
   for (let t = t0; t < t1; t += every) out.push({ t, load1: load })
   out.push({ t: t1, load1: load })
+
   return out
 }
+
 const base = {
   startedAt: 0,
   endedAt: 10_000,

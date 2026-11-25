@@ -92,6 +92,35 @@ function recordShape(name: string, suite: BenchSuite): void {
   ;(suite.domShapes ??= []).push({ name, shape: captureDomShape(suite.container) })
 }
 
+/** `--gate-only`: run the op once (or one batch cycle), verify, record its DOM. */
+async function gateOnlyBench(
+  name: string,
+  suite: BenchSuite,
+  fn: () => void | Promise<void>,
+  options: BenchOptions,
+  K: number,
+): Promise<BenchResult> {
+  let elapsed: number
+  if (K > 1) {
+    // One cycle with the batch's own pre/post probes (K = 1).
+    elapsed = await batchSample(suite, fn, options, 1)
+  } else {
+    if (options.reset) await options.reset()
+    const gate = OP_GATES[name]
+    const gatePre = gate ? gate.pre(suite.container) : undefined
+    const t0 = performance.now()
+    await fn()
+    if (options.commit) await options.commit()
+    suite.container.getBoundingClientRect()
+    elapsed = performance.now() - t0
+    await runVerify(name, suite, options, gate, gatePre)
+  }
+  recordShape(name, suite)
+  const result = singleSampleResult(name, elapsed)
+  suite.results.push(result)
+  return result
+}
+
 function singleSampleResult(name: string, elapsed: number): BenchResult {
   return {
     name,
@@ -655,27 +684,7 @@ export async function bench(
   options: BenchOptions = {},
 ): Promise<BenchResult> {
   const K = options.batchK ?? 0
-  if (gateOnly) {
-    let elapsed: number
-    if (K > 1) {
-      // One cycle with the batch's own pre/post probes (K = 1).
-      elapsed = await batchSample(suite, fn, options, 1)
-    } else {
-      if (options.reset) await options.reset()
-      const gate = OP_GATES[name]
-      const gatePre = gate ? gate.pre(suite.container) : undefined
-      const t0 = performance.now()
-      await fn()
-      if (options.commit) await options.commit()
-      suite.container.getBoundingClientRect()
-      elapsed = performance.now() - t0
-      await runVerify(name, suite, options, gate, gatePre)
-    }
-    recordShape(name, suite)
-    const result = singleSampleResult(name, elapsed)
-    suite.results.push(result)
-    return result
-  }
+  if (gateOnly) return gateOnlyBench(name, suite, fn, options, K)
   if (K > 1) return benchBatched(name, suite, fn, options, K)
   // Adaptive warmup. Track p90 of a rolling STABILIZE_WINDOW.
   // Stop early when two consecutive windows agree within tolerance.

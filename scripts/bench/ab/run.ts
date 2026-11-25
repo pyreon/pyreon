@@ -257,8 +257,9 @@ async function acquireWhenQuiet(what: string): Promise<boolean> {
       const r = tryAcquireLock(lockFs, LOCK, LOCK_CONTENT, pidAlive, `${process.pid}-${Date.now()}`)
       if (r.acquired) {
         lockHeld = true
-        if (r.reclaimed)
+        if (r.reclaimed) {
           log(`reclaimed a stale lock (its pid is dead): ${r.reclaimed.content.split('\n')[0]}`)
+        }
         return true
       }
       if (Date.now() - lastNote > 60_000) {
@@ -300,8 +301,9 @@ try {
         resolve(spec.dir, spec.build.cwd ?? '.'),
         logPath,
       )
-      if (code !== 0)
+      if (code !== 0) {
         throw new Error(`[bench-ab] preflight build of arm ${arm} exited ${code} (see ${logPath})`)
+      }
     }
     const h = entryHash(arm)
     if (h === null) {

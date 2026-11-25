@@ -2262,17 +2262,8 @@ async function orchestrate(): Promise<void> {
   }
 }
 
-async function measureAll(foldedDir: string): Promise<void> {
-  const argv = process.argv.slice(2)
-  const quick = argv.includes('--quick')
-  const rtIdx = argv.indexOf('--runtime')
-  const runtime =
-    rtIdx !== -1
-      ? argv[rtIdx + 1]!
-      : typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
-        ? 'bun'
-        : 'node'
-  const jsonIdx = argv.indexOf('--json')
+/** `--processes`, `--sections`, `--libs`, `--quick` → the cells to measure. */
+function parseCellArgs(argv: string[], quick: boolean) {
   const argOf = (flag: string): string | undefined => {
     const i = argv.indexOf(flag)
     return i === -1 ? undefined : argv[i + 1]
@@ -2296,23 +2287,11 @@ async function measureAll(foldedDir: string): Promise<void> {
     libs: s.libs.filter((l) => !libFilter || libFilter.includes(l)),
   }))
 
-  const cells: string[] = []
-  for (const s of sections) for (const l of s.libs) cells.push(`${s.id}|${l}`)
+  return { processes, windows, sections }
+}
 
-  const load0 = loadavg()
-  console.log(`Reactivity Benchmark — ${engineOf(runtime)}`)
-  console.log(`Pyreon vs ${LIBS.filter((l) => !l.startsWith('pyreon')).map((l) => LIB_LABEL[l]).join(' · ')}`)
-  console.log(
-    `${cpus()[0]?.model ?? 'cpu?'} ×${cpus().length} · load ${load0.map((x) => x.toFixed(2)).join(' ')} · ` +
-      `${processes} process(es) × ${windows} windows per cell, one process per cell, order reshuffled per round · cluster-bootstrap CI95`,
-  )
-  if (processes < MIN_MEANINGFUL_PROCESSES) {
-    console.log(
-      `⚠ ${processes} process(es) per cell: too few clusters for the CI to carry process-to-process variance — verdicts are provisional`,
-    )
-  }
-  console.log('='.repeat(70))
-
+/** Run every cell `processes` times, one child process each, order reshuffled per round. */
+function runCells(cells: string[], processes: number, windows: number, runtime: string, foldedDir: string) {
   // One array of windows per process, per cell.
   const perProcess = new Map<string, number[][]>(cells.map((c) => [c, []]))
   const rnd = mulberry32(0xbe1c4)
@@ -2337,6 +2316,41 @@ async function measureAll(foldedDir: string): Promise<void> {
       perProcess.get(cell)!.push((JSON.parse(line) as { samples: number[] }).samples)
     }
   }
+
+  return perProcess
+}
+
+async function measureAll(foldedDir: string): Promise<void> {
+  const argv = process.argv.slice(2)
+  const quick = argv.includes('--quick')
+  const rtIdx = argv.indexOf('--runtime')
+  const runtime =
+    rtIdx !== -1
+      ? argv[rtIdx + 1]!
+      : typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
+        ? 'bun'
+        : 'node'
+  const jsonIdx = argv.indexOf('--json')
+  const { processes, windows, sections } = parseCellArgs(argv, quick)
+
+  const cells: string[] = []
+  for (const s of sections) for (const l of s.libs) cells.push(`${s.id}|${l}`)
+
+  const load0 = loadavg()
+  console.log(`Reactivity Benchmark — ${engineOf(runtime)}`)
+  console.log(`Pyreon vs ${LIBS.filter((l) => !l.startsWith('pyreon')).map((l) => LIB_LABEL[l]).join(' · ')}`)
+  console.log(
+    `${cpus()[0]?.model ?? 'cpu?'} ×${cpus().length} · load ${load0.map((x) => x.toFixed(2)).join(' ')} · ` +
+      `${processes} process(es) × ${windows} windows per cell, one process per cell, order reshuffled per round · cluster-bootstrap CI95`,
+  )
+  if (processes < MIN_MEANINGFUL_PROCESSES) {
+    console.log(
+      `⚠ ${processes} process(es) per cell: too few clusters for the CI to carry process-to-process variance — verdicts are provisional`,
+    )
+  }
+  console.log('='.repeat(70))
+
+  const perProcess = runCells(cells, processes, windows, runtime, foldedDir)
 
   const json: Record<string, unknown> = {}
   // Widest row label + 2, so run-all's `label  ops  ns` parser always sees a 2-space gap.

@@ -210,8 +210,9 @@ export function formatDomShapeMismatches(
   const lines: string[] = []
   for (const m of mismatches) {
     lines.push(`✗ DOM-shape gate: ${scenario} / ${m.op} — arms differ on "${m.field}":`)
-    for (const g of m.groups)
+    for (const g of m.groups) {
       lines.push(`    ${String(g.value).padStart(10)}  ${g.arms.join(', ')}`)
+    }
   }
   return lines
 }

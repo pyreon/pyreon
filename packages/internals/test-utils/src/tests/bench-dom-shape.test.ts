@@ -26,6 +26,7 @@ function tree(leafText: string | null, comment = false): HTMLElement {
   }
   if (comment) treeRoot.appendChild(document.createComment('marker'))
   root.appendChild(treeRoot)
+
   return root
 }
 
@@ -118,6 +119,7 @@ describe('compareDomShapes', () => {
       const tbody = document.createElement('tbody')
       if (anchor) tbody.appendChild(document.createTextNode(''))
       root.appendChild(tbody)
+
       return root
     }
     expect(

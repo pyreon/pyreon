@@ -110,8 +110,9 @@ for (const [job, byRun] of pools) {
   const micro = windowAveraged.get(job) === true
   const runs = [...byRun.keys()].sort((x, y) => x - y)
   const rowNames = new Set<string>()
-  for (const r of runs)
+  for (const r of runs) {
     for (const pool of byRun.get(r)!.values()) for (const k of pool.keys()) rowNames.add(k)
+  }
   console.log(`\n══ ${job} ${'═'.repeat(Math.max(0, 70 - job.length))}`)
   for (const cand of arms.filter((a) => a !== base)) {
     for (const row of [...rowNames].filter((r) => rowFilter.test(r))) {

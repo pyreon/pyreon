@@ -60,39 +60,59 @@ export interface JobsFile {
 
 const LABEL_RE = /^[A-Za-z0-9._-]+$/
 
-/** Validate a parsed jobs file; returns a list of problems (empty = valid). */
-export function validateJobsFile(j: unknown): string[] {
+function armErrors(id: string, a: Partial<ArmSpec> | undefined): string[] {
   const errs: string[] = []
-  if (typeof j !== 'object' || j === null) return ['jobs file must be a JSON object']
-  const f = j as Partial<JobsFile>
-  if (typeof f.name !== 'string' || !LABEL_RE.test(f.name))
-    errs.push('"name" must match [A-Za-z0-9._-]+')
-  const arms = f.arms && typeof f.arms === 'object' ? Object.entries(f.arms) : []
-  if (arms.length < 2) errs.push('"arms" needs at least two arms')
-  for (const [id, a] of arms) {
-    if (!LABEL_RE.test(id)) errs.push(`arm id "${id}" must match [A-Za-z0-9._-]+`)
-    if (typeof a?.dir !== 'string' || !a.dir.startsWith('/'))
-      errs.push(`arm "${id}": "dir" must be an absolute path`)
-    if (!Array.isArray(a?.entry) || a.entry.length === 0)
-      errs.push(`arm "${id}": "entry" needs at least one glob`)
-    if (a?.build !== undefined && typeof a.build.command !== 'string')
-      errs.push(`arm "${id}": "build.command" must be a string`)
+  if (!LABEL_RE.test(id)) errs.push(`arm id "${id}" must match [A-Za-z0-9._-]+`)
+  if (typeof a?.dir !== 'string' || !a.dir.startsWith('/')) {
+    errs.push(`arm "${id}": "dir" must be an absolute path`)
   }
-  if (!Array.isArray(f.jobs) || f.jobs.length === 0) errs.push('"jobs" needs at least one job')
+  if (!Array.isArray(a?.entry) || a.entry.length === 0) {
+    errs.push(`arm "${id}": "entry" needs at least one glob`)
+  }
+  if (a?.build !== undefined && typeof a.build.command !== 'string') {
+    errs.push(`arm "${id}": "build.command" must be a string`)
+  }
+  return errs
+}
+
+function jobErrors(jobs: readonly Partial<JobSpec>[]): string[] {
+  const errs: string[] = []
   const seen = new Set<string>()
-  for (const job of f.jobs ?? []) {
-    if (typeof job?.label !== 'string' || !LABEL_RE.test(job.label))
-      errs.push(`job label "${job?.label}" must match [A-Za-z0-9._-]+`)
-    else if (seen.has(job.label)) errs.push(`duplicate job label "${job.label}"`)
-    else seen.add(job.label)
+  for (const job of jobs) {
+    const label = job?.label
+    if (typeof label !== 'string' || !LABEL_RE.test(label)) {
+      errs.push(`job label "${label}" must match [A-Za-z0-9._-]+`)
+    } else if (seen.has(label)) {
+      errs.push(`duplicate job label "${label}"`)
+    } else {
+      seen.add(label)
+    }
     if (typeof job?.command !== 'string' || !job.command.includes('{out}')) {
-      errs.push(`job "${job?.label}": "command" must write its result to {out}`)
+      errs.push(`job "${label}": "command" must write its result to {out}`)
     }
   }
+  return errs
+}
+
+/** Validate a parsed jobs file; returns a list of problems (empty = valid). */
+export function validateJobsFile(j: unknown): string[] {
+  if (typeof j !== 'object' || j === null) return ['jobs file must be a JSON object']
+  const f = j as Partial<JobsFile>
+  const errs: string[] = []
+  if (typeof f.name !== 'string' || !LABEL_RE.test(f.name)) {
+    errs.push('"name" must match [A-Za-z0-9._-]+')
+  }
+  const arms = f.arms && typeof f.arms === 'object' ? Object.entries(f.arms) : []
+  if (arms.length < 2) errs.push('"arms" needs at least two arms')
+  for (const [id, a] of arms) errs.push(...armErrors(id, a))
+  const jobs = Array.isArray(f.jobs) ? f.jobs : []
+  if (jobs.length === 0) errs.push('"jobs" needs at least one job')
+  errs.push(...jobErrors(jobs))
   for (const k of ['runs', 'passes'] as const) {
     const v = f[k]
-    if (v !== undefined && (!Number.isInteger(v) || v < 1))
+    if (v !== undefined && (!Number.isInteger(v) || v < 1)) {
       errs.push(`"${k}" must be a positive integer`)
+    }
   }
   return errs
 }
@@ -457,8 +477,9 @@ export function foreignProcesses(
   // Ancestors too: the shell or `caffeinate` that launched this runner carries
   // its command line.
   const parent = new Map(rows.map((r) => [r.pid, r.ppid]))
-  for (let p = parent.get(selfPid); p !== undefined && p > 0 && !own.has(p); p = parent.get(p))
+  for (let p = parent.get(selfPid); p !== undefined && p > 0 && !own.has(p); p = parent.get(p)) {
     own.add(p)
+  }
   const stack = [selfPid]
   while (stack.length > 0) {
     for (const c of children.get(stack.pop() as number) ?? []) {
@@ -507,10 +528,11 @@ export function extractClusters(json: unknown): { rows: RowClusters; windowAvera
       for (const r of s.results) {
         const pages = r.pages ?? 1
         const n = r.samples.length / pages
-        if (!Number.isInteger(n))
+        if (!Number.isInteger(n)) {
           throw new Error(
             `[bench-ab] ${s.framework}/${r.name}: ${r.samples.length} samples do not split into ${pages} pages`,
           )
+        }
         const cl: number[][] = []
         for (let i = 0; i < pages; i++) cl.push(r.samples.slice(i * n, (i + 1) * n))
         const key = `${r.name} · ${s.framework}`
@@ -524,10 +546,11 @@ export function extractClusters(json: unknown): { rows: RowClusters; windowAvera
       j.sections as Record<string, { lib: string; processes?: number[][] }[]>,
     )) {
       for (const st of stats) {
-        if (!st.processes)
+        if (!st.processes) {
           throw new Error(
             `[bench-ab] micro JSON for ${id}/${st.lib} has no per-process samples (pre-cluster-bootstrap harness)`,
           )
+        }
         const key = `${id} · ${st.lib}`
         rows.set(key, [...(rows.get(key) ?? []), ...st.processes])
       }
@@ -604,8 +627,9 @@ export function finalVerdict(runs: readonly { a: Cell; b: Cell }[]): {
   verdict: FinalVerdict
   why: string
 } {
-  if (runs.length < 2)
+  if (runs.length < 2) {
     return { verdict: 'NO VERDICT', why: `${runs.length} run(s); a verdict needs two` }
+  }
   const low = runs.find((r) => Math.min(r.a.quanta, r.b.quanta) < MIN_QUANTA)
   if (low) {
     return {
@@ -614,10 +638,12 @@ export function finalVerdict(runs: readonly { a: Cell; b: Cell }[]): {
     }
   }
   const vs = runs.map((r) => runVerdict(r.a, r.b))
-  if (vs.every((v) => v === 'B faster'))
+  if (vs.every((v) => v === 'B faster')) {
     return { verdict: 'WIN', why: 'B faster, CIs disjoint in every run' }
-  if (vs.every((v) => v === 'B slower'))
+  }
+  if (vs.every((v) => v === 'B slower')) {
     return { verdict: 'LOSS', why: 'B slower, CIs disjoint in every run' }
+  }
   return {
     verdict: 'TIE',
     why: vs.some((v) => v !== 'tie') ? `split: ${vs.join(' / ')}` : 'CIs overlap in every run',
