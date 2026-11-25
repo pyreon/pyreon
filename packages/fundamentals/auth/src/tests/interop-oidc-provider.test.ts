@@ -9,8 +9,12 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import Provider from 'oidc-provider'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { createAuth, memoryFlowStore } from '../index'
+import { _resetRedirectClaims } from '../redirects'
+
+// Redirect-URI claims are process-wide (see redirects.ts); each test starts with none.
+afterEach(() => _resetRedirectClaims())
 
 const REDIRECT = 'https://app.example/cb'
 let issuer = ''
@@ -93,6 +97,7 @@ function client() {
       authorizationParams: { prompt: 'consent' },
     },
     flows: memoryFlowStore(),
+    binding: 'b1',
     redirect: (u) => redirects.push(u),
   })
   return { auth, redirects }

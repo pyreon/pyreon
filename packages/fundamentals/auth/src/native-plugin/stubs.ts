@@ -17,7 +17,7 @@ export const AUTH_SWIFT_STUBS = `public enum PyreonOidcStatus {
 public final class PyreonOidcAuth {
     public private(set) var status: String = PyreonOidcStatus.signedOut
     public private(set) var subject: String?
-    public private(set) var accessToken: String?
+    public var accessToken: String? { nil }
     public private(set) var expiresAt: Double?
     public private(set) var error: String?
     public var isAuthenticated: Bool { status == PyreonOidcStatus.signedIn }
@@ -26,6 +26,9 @@ public final class PyreonOidcAuth {
                 postLogoutRedirectUri: String? = nil, authorizationParams: [String: String] = [:]) {}
     public func signIn() {}
     public func refresh() {}
+    public func start() {}
+    public func freshAccessToken() async -> String? { nil }
+    public func dispose() {}
     public func signOut(endProviderSession: Bool = false) {}
     public func handleCallback(_ url: String) {}
 }
@@ -37,16 +40,23 @@ export const AUTH_KOTLIN_STUBS = `object PyreonOidcStatus {
   const val SIGNED_IN: String = "signedIn"
   const val ERROR: String = "error"
 }
+class PyreonTokenValue {
+  val value: String? get() = null
+}
 class PyreonOidcAuth {
   val status: MutableState<String> = mutableStateOf(PyreonOidcStatus.SIGNED_OUT)
   val subject: MutableState<String?> = mutableStateOf(null)
-  val accessToken: MutableState<String?> = mutableStateOf(null)
+  val accessToken: PyreonTokenValue = PyreonTokenValue()
   val expiresAt: MutableState<Double?> = mutableStateOf(null)
   val error: MutableState<String?> = mutableStateOf(null)
   val isAuthenticated: Boolean get() = status.value == PyreonOidcStatus.SIGNED_IN
   fun claim(name: String): String? = null
   fun signIn() {}
   fun refresh() {}
+  fun start() {}
+  fun activate() {}
+  fun freshAccessToken(): String? = null
+  fun dispose() {}
   fun signOut(endProviderSession: Boolean = false) {}
   fun handleCallback(url: String) {}
 }

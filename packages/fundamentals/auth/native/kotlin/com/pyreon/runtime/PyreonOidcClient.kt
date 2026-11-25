@@ -156,6 +156,8 @@ public object PyreonOidcClient {
                 mapOf("content-type" to "application/x-www-form-urlencoded", "accept" to "application/json"),
             ),
         )
+        // 429 and 5xx are the provider being unavailable (retry later); anything else is a refusal.
+        if (res.status == 429 || res.status >= 500) throw PyreonAuthError("provider_unavailable", "token endpoint returned ${res.status}")
         if (!res.isOk) throw PyreonAuthError("token_exchange_failed", "token endpoint returned ${res.status}")
         val t = json(res) ?: throw PyreonAuthError("bad_token_response", "token response is not a JSON object")
         val access = t["access_token"]

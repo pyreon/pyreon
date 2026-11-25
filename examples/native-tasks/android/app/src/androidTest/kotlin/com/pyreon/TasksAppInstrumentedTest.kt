@@ -2104,6 +2104,9 @@ class TasksAppInstrumentedTest {
             .performScrollTo()
             .performClick()
         waitForTagText("toolkit-filter", "done")
+        // The write is a query-only navigation: the screen and its state must
+        // survive it (native twin of web #4814).
+        waitForTagText("toolkit-machine", "on")
 
         // performScrollTo() FIRST, like every other interaction on this screen
         // (toolkit-hotkey / toolkit-schema-* / toolkit-machine-toggle /

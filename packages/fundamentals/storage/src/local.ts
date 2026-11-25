@@ -9,7 +9,7 @@ import {
   warnIfOptionsDiffer,
 } from './registry'
 import type { StorageOptions, StorageSignal } from './types'
-import { deserialize, getWebStorage, isBrowser, serialize } from './utils'
+import { attempt, deserialize, getWebStorage, isBrowser, serialize } from './utils'
 
 // ─── Cross-tab sync ──────────────────────────────────────────────────────────
 
@@ -27,8 +27,8 @@ function onStorageEvent(e: StorageEvent): void {
   // Only localStorage events concern `useStorage`. A same-origin
   // sessionStorage event (iframes of the same tab) must not be routed into
   // local signals just because it shares a key.
-  // (Read `window.localStorage` directly — `getWebStorage` probes with a
-  // write, which an inbound-event handler must never do.)
+  // (Read `window.localStorage` directly: the event already proves storage is
+  // available, so there is nothing to probe.)
   if (e.storageArea != null && e.storageArea !== window.localStorage) return
 
   // `key === null` is `localStorage.clear()` in another tab. Every value this
@@ -225,13 +225,10 @@ export function createStorageSignal<T>(
   const writeNow = (value: T): void => {
     /* v8 ignore next — defensive null storage guard */
     if (!storage) return
-    try {
-      storage.setItem(key, serialize(value, options))
-    } catch (e) {
-      // Storage full or blocked — signal still updates. Surface the error to
-      // `onError` (notification; return ignored) so quota failures aren't silent.
-      options?.onError?.(e as Error)
-    }
+    // Storage full or blocked — the signal still updates and the previously
+    // stored value stays in storage (reads keep returning it on the next
+    // load); the failure reaches `onError` so quota problems aren't silent.
+    attempt(options, () => storage.setItem(key, serialize(value, options)))
   }
 
   // Opt-in write coalescing (localStorage/sessionStorage). The signal updates
@@ -302,9 +299,8 @@ export function createStorageSignal<T>(
     cancelPending()
     sig.set(defaultValue)
     /* v8 ignore next — defensive null storage guard */
-    if (storage) {
-      storage.removeItem(key)
-    }
+    if (!storage) return
+    attempt(options, () => storage.removeItem(key))
   }
 
   // Inbound cross-tab value: update the shared base signal only, and drop any

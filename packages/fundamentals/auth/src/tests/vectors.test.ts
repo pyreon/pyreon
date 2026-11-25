@@ -16,7 +16,8 @@ import {
   replaceRegion,
   type Vectors,
 } from './native-vectors'
-import { AuthError, decodeBase64url, verifyIdToken } from '../index'
+import { AuthError, verifyIdToken } from '../index'
+import { decodeBase64url } from '../pkce'
 import type { Jwk, OidcMetadata } from '../index'
 
 const v = JSON.parse(readFileSync(VECTORS, 'utf8')) as Vectors

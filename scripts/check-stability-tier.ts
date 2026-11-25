@@ -52,8 +52,8 @@
  *      `package.json` declares that package with a non-exact range. Internals
  *      change in any release, so the edge must be `workspace:*` (published as
  *      the exact version);
- *   7. a PRIVATE package (`"private": true`, e.g. `@pyreon/auth` until it is
- *      published) declares a tier or carries a README status line. An
+ *   7. a PRIVATE package (`"private": true`, e.g. `@pyreon/test-utils`)
+ *      declares a tier or carries a README status line. An
  *      unpublished package makes no semver promise, the generated table and
  *      badge leave it out ("unpublished"), and rules 1-2 never check it, so a
  *      tier left on it would drift unchecked. Publishing it (dropping

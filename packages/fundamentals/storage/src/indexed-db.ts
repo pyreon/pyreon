@@ -2,7 +2,7 @@ import { signal, wrapSignal } from '@pyreon/reactivity'
 import { registerPendingFlush, unregisterPendingFlush } from './local'
 import { getEntry, releaseWithOwner, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { IndexedDBOptions, IndexedDBSignal } from './types'
-import { deserialize, isBrowser, serialize } from './utils'
+import { deserialize, isBrowser, reportTo, serialize } from './utils'
 
 
 // ─── Database management ─────────────────────────────────────────────────────
@@ -87,26 +87,89 @@ function idbGet(db: IDBDatabase, storeName: string, key: string): Promise<string
   })
 }
 
-function idbSet(db: IDBDatabase, storeName: string, key: string, value: string): Promise<void> {
+// A write is durable only once its TRANSACTION completes. A quota failure
+// (`QuotaExceededError`) typically surfaces as the transaction ABORTING at
+// commit, after the put request already reported success — settling on
+// `request.onsuccess` resolved such a write as written and never reached
+// `onError` (#4812). Settle on the transaction instead.
+function settleOnTx(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    const request = store.put(value, key)
-    request.onsuccess = () => resolve()
-    /* v8 ignore next — IDB put onerror: defensive reject, fires only on a real IDB write failure */
-    request.onerror = () => reject(request.error)
+    tx.oncomplete = () => resolve()
+    // A real IDB write failure (quota, aborted commit): exercised in quota.browser.test.ts.
+    /* v8 ignore start */
+    tx.onabort = () => reject(tx.error ?? new DOMException('', 'AbortError'))
+    // During `error` the transaction's own `error` is still null (it is set
+    // when the abort follows): the failing REQUEST holds the real error
+    // (`ConstraintError`, `QuotaExceededError`, …).
+    tx.onerror = (event) =>
+      reject((event.target as IDBRequest | null)?.error ?? tx.error ?? new DOMException('', 'UnknownError'))
+    /* v8 ignore stop */
   })
 }
 
+function idbSet(db: IDBDatabase, storeName: string, key: string, value: string): Promise<void> {
+  const tx = db.transaction(storeName, 'readwrite')
+  tx.objectStore(storeName).put(value, key)
+  return settleOnTx(tx)
+}
+
 function idbDelete(db: IDBDatabase, storeName: string, key: string): Promise<void> {
+  const tx = db.transaction(storeName, 'readwrite')
+  tx.objectStore(storeName).delete(key)
+  return settleOnTx(tx)
+}
+
+/**
+ * Open an EXISTING database without creating or upgrading anything: resolves
+ * `null` when the database does not exist (the version change that would
+ * create it is aborted) or lacks `storeName`.
+ */
+/* v8 ignore start — happy-dom has no IndexedDB; exercised in quota.browser.test.ts */
+function openExisting(dbName: string, storeName: string): Promise<IDBDatabase | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(null)
+
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(storeName, 'readwrite')
-    const store = tx.objectStore(storeName)
-    const request = store.delete(key)
-    request.onsuccess = () => resolve()
-    /* v8 ignore next — IDB delete onerror: defensive reject, fires only on a real IDB delete failure */
-    request.onerror = () => reject(request.error)
+    const request = indexedDB.open(dbName)
+    let created = false
+    request.onupgradeneeded = () => {
+      // Only a database that does not exist yet upgrades on a version-less
+      // open. Abort, so a cleanup call never leaves an empty database behind.
+      created = true
+      request.transaction?.abort()
+    }
+    request.onsuccess = () => {
+      const db = request.result
+      if (db.objectStoreNames.contains(storeName)) return resolve(db)
+      db.close()
+      resolve(null)
+    }
+    request.onerror = () => (created ? resolve(null) : reject(request.error))
   })
+}
+/* v8 ignore stop */
+
+/**
+ * Delete one key from a database/store without a live binding (what
+ * `removeStorage(key, { type: 'indexeddb' })` needs when nothing is mounted).
+ * Never creates or upgrades a database or store: a missing one has nothing to
+ * delete. Resolves once the delete commits; rejects with the IndexedDB error.
+ */
+export async function deleteIndexedDBKey(
+  key: string,
+  dbName = 'pyreon-storage',
+  storeName = 'kv',
+): Promise<void> {
+  /* v8 ignore next — SSR/no-IDB guard */
+  if (!isBrowser() || typeof indexedDB === 'undefined') return
+  /* v8 ignore start — happy-dom has no IndexedDB; exercised in quota.browser.test.ts */
+  const db = await openExisting(dbName, storeName)
+  if (db === null) return
+  try {
+    await idbDelete(db, storeName, key)
+  } finally {
+    db.close()
+  }
+  /* v8 ignore stop */
 }
 
 // ─── useIndexedDB ────────────────────────────────────────────────────────────
@@ -183,7 +246,7 @@ export function useIndexedDB<T>(
           // oxlint-disable-next-line no-console
           console.warn(`[Pyreon] IndexedDB "${key}" init failed, using default:`, err)
         }
-        options.onError?.(err instanceof Error ? err : new Error(String(err)))
+        reportTo(options)(err)
       })
       /* v8 ignore stop */
       .finally(markReady)
@@ -214,10 +277,9 @@ export function useIndexedDB<T>(
     lastWrite = openDB(dbName, storeName)
       .then((db) => idbSet(db, storeName, key, serialize(value, options)))
       /* v8 ignore start — write-failure catch: signal already holds the value; notify onError */
-      .catch((err) => {
-        // Write failed — signal still has the correct value. Notify onError.
-        options.onError?.(err instanceof Error ? err : new Error(String(err)))
-      })
+      // Write failed — the signal still has the value and the stored value is
+      // unchanged (the transaction rolled back).
+      .catch(reportTo(options))
     /* v8 ignore stop */
     return lastWrite
   }
@@ -240,7 +302,8 @@ export function useIndexedDB<T>(
     },
   }) as unknown as IndexedDBSignal<T>
 
-  storageSig.remove = () => {
+  // Resolves once the delete commits (or fails and `onError` is notified).
+  storageSig.remove = (): Promise<void> => {
     localWrite = true
     sig.set(defaultValue)
     hasPending = false
@@ -248,15 +311,12 @@ export function useIndexedDB<T>(
     writeTimer = null
     unregisterPendingFlush(flushWrite)
 
-    if (isBrowser() && typeof indexedDB !== 'undefined') {
-      openDB(dbName, storeName)
-        .then((db) => idbDelete(db, storeName, key))
-        /* v8 ignore start — delete-failure catch: signal already reset, nothing to do */
-        .catch(() => {
-          // Delete failed — signal already reset
-        })
-      /* v8 ignore stop */
-    }
+    /* v8 ignore next — SSR/no-IDB guard */
+    if (!isBrowser() || typeof indexedDB === 'undefined') return Promise.resolve()
+    // Delete failed — the signal is already reset. Report it like a write.
+    return openDB(dbName, storeName)
+      .then((db) => idbDelete(db, storeName, key))
+      .catch(reportTo(options))
   }
 
   storageSig.ready = () => readySig()
