@@ -6,7 +6,8 @@
 import type { Router } from '@pyreon/router'
 import { setActiveRouter } from '@pyreon/router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { _actionStub, _resetActions, useSubmission } from '../actions'
+import { _actionStub, _resetActions } from '../internal'
+import { useSubmission } from '../actions'
 
 function deferredFetch() {
   const pending: Array<(body: unknown) => void> = []

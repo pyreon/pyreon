@@ -1,6 +1,6 @@
 import type { Ref, VNode } from '@pyreon/core'
 import { Fragment, h, onMount } from '@pyreon/core'
-import { _declareRootDecoration } from '@pyreon/runtime-dom'
+import { _declareRootDecoration } from '@pyreon/runtime-dom/internal'
 
 type RefLike<T> = ((node: T | null) => void) | Ref<T>
 

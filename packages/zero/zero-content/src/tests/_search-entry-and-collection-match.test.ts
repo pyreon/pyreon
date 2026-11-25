@@ -17,7 +17,7 @@
  * how the author happened to write their config.
  */
 import { describe, expect, it } from 'vitest'
-import { buildPageSearchEntry, findCollectionForFileImpl } from '../plugin'
+import { buildPageSearchEntry, findCollectionForFileImpl } from '../internal-server'
 
 const heading = (text: string, slug = text.toLowerCase()) =>
   ({ text, slug, depth: 2 }) as never

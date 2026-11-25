@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { createServer, request as httpRequest, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { _resetServerIslands } from '@pyreon/server'
+import { _resetServerIslands } from '@pyreon/server/internal'
 import { isIslandName } from '@pyreon/server/paths'
 import type { MiddlewareContext } from '@pyreon/server'
 import { afterEach, describe, expect, it } from 'vitest'

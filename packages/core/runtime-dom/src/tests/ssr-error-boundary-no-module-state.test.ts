@@ -6,7 +6,8 @@
  * later dispatch outside any boundary went to a stale one. A boundary now
  * `provide()`s its handler, which the server pops with the subtree.
  */
-import { dispatchToErrorBoundary, ErrorBoundary, h } from '@pyreon/core'
+import { ErrorBoundary, h } from '@pyreon/core'
+import { dispatchToErrorBoundary } from '@pyreon/core/internal'
 import { renderToString } from '@pyreon/runtime-server'
 import { describe, expect, it } from 'vitest'
 

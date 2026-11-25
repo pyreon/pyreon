@@ -1,4 +1,5 @@
-import { ErrorBoundary, h, runWithHooks } from '@pyreon/core'
+import { ErrorBoundary, h } from '@pyreon/core'
+import { runWithHooks } from '@pyreon/core/internal'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
 import {

@@ -1703,6 +1703,22 @@ import { TransitionGroup } from '@pyreon/runtime-dom'`,
           },
   },
   {
+    // `<Defer>` (core `defer.ts`): its chunk load failed and no <ErrorBoundary>
+    // encloses it, so the slot renders nothing. Listed before the generic
+    // chunk-load entry: the logged line carries the browser's error too.
+    pattern: /<Defer> failed to load and no <ErrorBoundary> encloses it/,
+    diagnose: () => ({
+      cause:
+        "A `<Defer>`'s chunk failed to load (its `chunk` promise rejected: a network error, or a deploy that replaced the hashed chunk files while this page was open), and no `<ErrorBoundary>` encloses the `<Defer>`. The failure was reported to `registerErrorHandler` and the slot renders nothing, so the region stays empty.",
+      fix: "Wrap the `<Defer>` in an `<ErrorBoundary>`. The load error then goes to the boundary like any other render error, and the fallback's `reset()` remounts the `<Defer>`, which loads the chunk again.",
+      fixCode: `<ErrorBoundary fallback={(_err, reset) => <button onClick={reset}>Retry</button>}>
+  <Defer chunk={() => import('./Chart')} when={open}>
+    {(Chart) => <Chart />}
+  </Defer>
+</ErrorBoundary>`,
+    }),
+  },
+  {
     // Deferred lazy hydration: a server-rendered `lazy()` whose client chunk
     // had not landed keeps its server nodes until the chunk settles. When the
     // chunk FAILS instead, those nodes are dropped and the error reaches the

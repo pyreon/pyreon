@@ -1634,7 +1634,7 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 
 ## @pyreon/money — Money
 
-A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits come from `Intl` (no table is shipped); `defineCurrency` adds custom ones. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `@pyreon/format` displays a Money.
+A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits are ISO 4217 minor units (ISO 4217 list one is shipped, 178 codes and their minor units, so codes and digits agree on every engine; `Intl` is never asked); `defineCurrency` adds custom currencies or gives an ISO one the digits a payment provider uses. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `formatCurrency(m)` from `@pyreon/format` displays a Money exactly.
 
 ```typescript
 import { money, add, multiply, allocate, round } from '@pyreon/money'
@@ -1654,7 +1654,7 @@ allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount)   // => ['33.34
 >
 > **Defaults**: `divide` of decimals and `ratio` need a scale: 20 digits for `decimal.divide`, 10 for `ratio`, both overridable. `divide(Money, n)` rounds to the currency's digits.
 >
-> **Formatting**: This package formats nothing. `@pyreon/format` will take a `{ amount, currency }` directly; until then use `Intl.NumberFormat` with the amount STRING (`new Intl.NumberFormat("en", { style: "currency", currency: "EUR" }).format("9.99")`), which formats decimal strings exactly. `formatCurrency(Number(m.amount), ...)` loses precision for large amounts.
+> **Formatting**: This package formats nothing. `formatCurrency(m)` from `@pyreon/format` takes a Money directly and formats the amount string exactly, with the Money's own digits. Never `formatCurrency(Number(m.amount), ...)`: a large amount loses precision as a number.
 
 ## @pyreon/state-tree — State Tree
 
@@ -2683,6 +2683,8 @@ now()                                         // => 1795003200000
 >
 > **Tickers are bounded**: `second` and `minute` tickers are always shared. Up to 16 other tickers (custom intervals and per-zone `hour`/`day` tickers) are shared; a reader beyond that gets a private ticker that is stopped with it.
 >
+> **Testing**: Pin the clock with `setClock` and reset between tests with `resetClockState()` and `resetLocaleState()` from `@pyreon/ambient/testing` (in `afterEach`). They drop every ticker, the pin and the hand-over, and forget the memoized runtime locale and zone, the provide flags and the printed warnings.
+>
 > **Peer dependencies**: `@pyreon/core` and `@pyreon/reactivity` are both required peers: the entry imports them when it loads, and every Pyreon app has them. The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
 
 ## @pyreon/a11y — Accessibility Primitives
@@ -3494,6 +3496,8 @@ const InvertedSection = () => (
 >
 > **System-mode subscription**: `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
 >
+> **Un-enriched theme means unistyle is not loaded**: `@pyreon/unistyle` registers the theme engine (theme enrichment with default breakpoints/spacing, CSS variables, CPSE) into ui-core at module load, so ui-core carries no unistyle dependency. Without it in the module graph — a bare `@pyreon/rocketstyle`-only setup — `<PyreonUI>` falls back to an identity engine and dev-warns once. Missing default breakpoints/spacing or no CSS variables: `import '@pyreon/unistyle'` somewhere reachable from the app (every styled `@pyreon` UI package except bare rocketstyle pulls it in transitively).
+>
 > **Low-level Provider / context**: The package also exports a low-level `Provider` (default export) + `context` from `context.tsx`. It feeds the core theme + mode context and is the path `@pyreon/rocketstyle`'s public `Provider` delegates to, so it is supported and does not warn. App code should still mount `<PyreonUI theme={theme}>`, which sets up every context layer, and read with `useMode()` / `useThemeValue()`.
 
 ## @pyreon/styler — CSS-in-JS
@@ -3614,10 +3618,6 @@ isDynamic("12px")          // false → static, cached
 import { hash, hashUpdate, hashFinalize, HASH_INIT } from "@pyreon/styler"
 hash("color:red")  // e.g. "1a2b3c"
 hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")
-
-// Apps enable CPSE through ui-core, not this call:
-import { init } from "@pyreon/ui-core"
-init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood
 ```
 
 > **css / keyframes return lazy values, not strings**: The `css` tagged template yields a `CSSResult` (resolved on use, never injected by itself); `keyframes` stringifies to an animation NAME and injects its `@keyframes` rule at CALL time; `createGlobalStyle` returns a `ComponentFn` — a fully static template injects at call time, a dynamic one when the component mounts.

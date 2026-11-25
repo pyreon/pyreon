@@ -1189,26 +1189,9 @@ export const RouterView = nativeCompat(function RouterView(props) {
   provide(RouterContext, ...)
   return <div>{children}</div>
 })`,
-    notes: `Mark a Pyreon framework component as "self-managing" so compat layers (\`@pyreon/{react,preact,vue,solid}-compat\`) skip their wrapping and route the component through Pyreon's mount path. Use on every \`@pyreon/*\` JSX component whose setup body uses \`provide()\` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (\`Symbol.for("pyreon:native-compat")\`), so framework and compat sides share it without an import dependency between them. See also: isNativeCompat, NATIVE_COMPAT_MARKER.`,
+    notes: `Mark a Pyreon framework component as "self-managing" so compat layers (\`@pyreon/{react,preact,vue,solid}-compat\`) skip their wrapping and route the component through Pyreon's mount path. Use on every \`@pyreon/*\` JSX component whose setup body uses \`provide()\` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (\`Symbol.for("pyreon:native-compat")\`), so framework and compat sides share it without an import dependency between them. The compat layers read it through \`isNativeCompat()\` from \`@pyreon/core/compat\`, an internal subpath with no semver promise. See also: createContext, provide.`,
     mistakes: `- Forgetting to mark a new framework JSX export — under compat mode, the component's \`provide()\` / \`onMount()\` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.
 - Marking user-app components — only \`@pyreon/*\` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).`,
-  },
-
-  'core/isNativeCompat': {
-    signature: '(fn: unknown) => boolean',
-    example: `// In a compat layer's jsx-runtime:
-if (isNativeCompat(type)) return h(type, props)
-return wrapCompatComponent(type)(props)`,
-    notes: 'Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. Compat `jsx()` calls this to decide whether to skip the React/Vue/Solid/Preact-style wrapping. Always returns `false` for non-function inputs. See also: nativeCompat, NATIVE_COMPAT_MARKER.',
-  },
-
-  'core/NATIVE_COMPAT_MARKER': {
-    signature: 'symbol',
-    example: `import { NATIVE_COMPAT_MARKER } from '@pyreon/core'
-
-// Equivalent to nativeCompat(MyComponent):
-;(MyComponent as Record<symbol, boolean>)[NATIVE_COMPAT_MARKER] = true`,
-    notes: 'The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framework component. Most callers should use `nativeCompat()` / `isNativeCompat()` instead of touching the symbol directly; exported for advanced cases (e.g., a compat layer that wants to inspect the property without going through the helper). See also: nativeCompat, isNativeCompat.',
   },
 
   'core/Defer': {
@@ -4058,22 +4041,25 @@ convert(money('100.00', 'EUR'), 'JPY', '162.5')     // => { amount: '16250', cur
     signature: '(code: CurrencyCode) => number',
     example: `currencyDigits('EUR')                     // => 2
 currencyDigits('JPY')                     // => 0
-currencyDigits('KWD')                     // => 3`,
-    notes: '[EXPERIMENTAL] The minor-unit digits of a currency from the platform (`Intl`; no table is shipped) or `defineCurrency`. Added in v0.53.0.',
+currencyDigits('KWD')                     // => 3
+currencyDigits('HUF')                     // => 2`,
+    notes: '[EXPERIMENTAL] The minor-unit digits of a currency: what `defineCurrency` gave it, else its ISO 4217 minor unit. The same on every engine (`Intl` is never asked for digits: V8 reports CLDR display digits, 0 for HUF, IDR, COP, IQD and others, while JavaScriptCore reports ISO 4217). Added in v0.53.0.',
   },
 
   'money/isCurrency': {
     signature: '(code: string) => boolean',
     example: `isCurrency('EUR')                         // => true
 isCurrency('eur')                         // => false`,
-    notes: '[EXPERIMENTAL] Whether `code` is an upper-case ISO 4217 code the platform knows, or a registered one. Never throws. Added in v0.53.0.',
+    notes: '[EXPERIMENTAL] Whether `code` is a current ISO 4217 code (list one as amended 2026-09-17, shipped: engines list different codes) or a registered one. Never throws. Added in v0.53.0.',
   },
 
   'money/defineCurrency': {
     signature: '(code: string, spec: { digits: number }) => void',
     example: `defineCurrency('PTS', { digits: 0 })
-currencyDigits('PTS')                     // => 0`,
-    notes: '[EXPERIMENTAL] Register a currency the platform does not know (crypto, points, a test currency). The code is 2 to 12 upper-case letters or digits starting with a letter. Re-registering with the same digits is fine; different digits throw, as does changing an ISO currency. At most 64 are registered. Added in v0.53.0.',
+currencyDigits('PTS')                     // => 0
+defineCurrency('ISK', { digits: 2 })
+fromMinor(12345, 'ISK')                   // => { amount: '123.45', currency: 'ISK' }`,
+    notes: '[EXPERIMENTAL] Register a currency the platform does not know (crypto, points, a test currency), or give an ISO currency the digits your payment provider uses (ISK in hundredths). The code is 2 to 12 upper-case letters or digits starting with a letter. A code is defined once, at startup, in a module both the server and client entries import (each realm has its own registry): the same digits again is fine, different digits throw. At most 64 are registered. Added in v0.53.0.',
   },
 
   'money/Money': {
@@ -4940,7 +4926,7 @@ const messages = formatErrors(result.issues ?? [], t)`,
     example: `const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
 const { t } = useI18n()
 const form = useForm({
-  fields: [emailField, ageField],
+  initialValues: { email: '', age: 0 },
   schema: toFormValidator(schema, t),
   onSubmit,
 })`,
@@ -5239,7 +5225,7 @@ const parse = wrapStandardSchema(schema)
 const r = parse(input)
 if (r instanceof Promise) throw new Error('async schema unsupported')
 if (r.ok) use(r.value)`,
-    notes: 'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. @internal — most consumers go through extractParseFn. See also: extractParseFn, standardSchemaToValidator.',
+    notes: 'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. Most consumers go through extractParseFn; call this directly when building your own Standard-Schema-derived parser. See also: extractParseFn, standardSchemaToValidator.',
     mistakes: `- Treating it like standardSchemaToValidator — this returns a coerced-value ParseResult, not a form error record
 - Not probing for a Promise return — an async Standard Schema returns a Promise, which is not a valid sync ParseResult`,
   },
@@ -8799,15 +8785,20 @@ formatNumber(null, { fallback: '-' }) // → "-"`,
   },
 
   'format/formatCurrency': {
-    signature: '(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string',
+    signature: '(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string | (value: MoneyLike, options?: CurrencyOptions | CurrencyPreset) => string',
     example: `formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // → "€9.99"
+formatCurrency('12345678901234567.89', 'EUR', { locale: 'en-US' }) // → "€12,345,678,901,234,567.89"
+formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // → "€9.99"
+formatCurrency({ amount: '1234.50', currency: 'USDT' }, { locale: 'de' }) // → "1.234,50 USDT"
 formatCurrency(1234.5, 'EUR', { locale: 'de' }) // → "1.234,50 €"
 formatCurrency(1234.5, 'CZK', { locale: 'cs' }) // → "1 234,50 Kč"
 formatCurrency(-5, 'USD', { locale: 'en-US', currencySign: 'accounting' }) // → "($5.00)"
 formatCurrency(5, 'USD', { locale: 'en-US', currencyDisplay: 'name' }) // → "5.00 US dollars"`,
-    notes: 'Format money. `currency` is an ISO 4217 code; a malformed code returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`. See also: formatNumber, defineFormats.',
+    notes: `Format money: a number, bigint or decimal string with an ISO 4217 \`currency\` code, or a Money (\`{ amount, currency }\`, what \`@pyreon/money\` produces) on its own. A decimal string or a Money amount is formatted exactly, at any size (never converted to a float); a Money shows its own digits, so a currency given other digits with \`defineCurrency\` displays them. A plain value with a code uses the engine's display digits for that currency (HUF: 0 in V8, 2 in JavaScriptCore), so format a Money when the digits must not depend on the engine. A custom code such as \`USDT\` (2 to 12 upper-case letters or digits) is placed where the locale puts a currency code, always shown as the code (whatever \`currencyDisplay\` says), with 2 fraction digits for a plain value and the Money's own scale for a Money. An amount with more than 100 fraction digits, or a malformed code or value, returns the \`fallback\` with a dev warning. Presets: \`symbol\`, \`narrowSymbol\`, \`code\`, \`name\`, \`accounting\`. See also: formatNumber, defineFormats, MoneyLike.`,
     mistakes: `- Formatting an amount in minor units (cents) without dividing: \`formatCurrency(999, 'EUR')\` is 999 euros
-- Passing the symbol (\`'€'\`) instead of the code (\`'EUR'\`)`,
+- Passing the symbol (\`'€'\`) instead of the code (\`'EUR'\`)
+- Formatting a Money as \`formatCurrency(Number(m.amount), m.currency)\`: a large amount loses precision; pass the Money (\`formatCurrency(m)\`)
+- Passing a currency next to a Money (\`formatCurrency(m, 'EUR')\`): a Money carries its currency, and this throws`,
   },
 
   'format/formatPercent': {
@@ -8938,8 +8929,10 @@ formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "heute"`,
     example: `formatDateRange('2026-11-12', '2026-11-15', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
 formatDateRange('2026-11-15', '2026-11-12', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
 formatDateRange('2026-11-28', '2026-12-02', { locale: 'en-US' }) // → "Nov 28 – Dec 2, 2026"
-formatDateRange('2026-11-12', '2026-11-15', { locale: 'de' }) // → "12.–15.11.2026"`,
-    notes: 'Format a range with the shared parts collapsed. Two calendar strings are a range of calendar days in every zone. A reversed pair (a range picker mid-selection) is ordered first, so the earlier date always comes first; equal ends give the single value where Intl does. See also: formatDate.',
+formatDateRange('2026-11-12', '2026-11-15', { locale: 'de' }) // → "12.–15.11.2026"
+formatDateRange('2026-10-21', '2026-10-27', { locale: 'cs', dateStyle: 'long' }) // → "21.–27. 10. 2026"`,
+    notes: `Format a range with the shared parts collapsed, by the locale's CLDR interval pattern (\`Intl.DateTimeFormat#formatRange\`; Pyreon joins no text itself). Two calendar strings are a range of calendar days in every zone. A reversed pair (a range picker mid-selection) is ordered first, so the earlier date always comes first; equal ends give the single value where Intl does. What is collapsed is locale data and differs between engines' CLDR versions: Czech numeric dates give \`21.10.2026 – 27.10.2026\` (no year collapse), while \`dateStyle: 'long'\` gives \`21.–27. 10. 2026\`. See also: formatDate.`,
+    mistakes: `- Comparing a range with a typed literal: the text is the engine's CLDR data (thin spaces, and some locales such as sk and pl differ between V8 and JavaScriptCore); compare with \`Intl\`'s own \`formatRange\` output`,
   },
 
   'format/formatNumberRange': {
@@ -9028,7 +9021,7 @@ n.parts(1.5).map((p) => p.type) // → ["integer","decimal","fraction"]`,
   },
 
   'format/currencyFormatter': {
-    signature: `(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<NumberInput, 'currency'>`,
+    signature: `(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<CurrencyInput, 'currency'>`,
     example: `const price = currencyFormatter('EUR', { locale: 'en-US' })
 price(9.99) // → "€9.99"
 price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
@@ -9036,7 +9029,7 @@ price.from((cents) => cents / 100)(999) // → "€9.99"
 ;[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
 price.range(10, 20) // → "€10.00 – €20.00"
 price.parts(9.99).map((p) => p.type) // → ["currency","integer","decimal","fraction"]`,
-    notes: 'A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. A malformed code returns the fallback with a dev warning. See also: formatCurrency, numberFormatter.',
+    notes: 'A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. It takes numbers, decimal strings and Money values in its currency (a Money in another currency is the fallback with a dev warning). A malformed code returns the fallback with a dev warning. See also: formatCurrency, numberFormatter.',
     mistakes: `- Building "€9.99 per month" by concatenation: the platform has no locale data for a currency "per" pattern; format the value and put it in a translated message
 - Passing cents without \`.from\`: \`price(999)\` is nine hundred ninety-nine euros`,
   },
@@ -9284,7 +9277,7 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
   'format/ConvertedUnitOptions': {
     signature: `interface ConvertedUnitOptions extends UnitOptions { convertTo?: Unit; system?: 'auto' | 'metric' | 'us' | 'uk' }`,
     example: `// formatUnit(100, 'kilometer', { system: 'auto', locale: 'en-US' })`,
-    notes: `Options of \`formatUnit\` and \`unitFormatter\` from \`@pyreon/format/units\`: everything in \`UnitOptions\`, plus a conversion before formatting. \`convertTo\` names the unit; \`system\` picks the locale's own (\`'auto'\`, which follows the active locale in the reactive entry) or a fixed system. \`convertTo\` wins when both are given. See also: formatUnit, convert.`,
+    notes: `Options of \`formatUnit\` and \`unitFormatter\` from \`@pyreon/format/units\`: everything in \`UnitOptions\`, plus a conversion before formatting. \`convertTo\` names the unit; \`system\` picks the locale's own (\`'auto'\`, which follows the active locale in the reactive entry) or a fixed system. \`convertTo\` wins when both are given. A conversion is arithmetic on a binary float (\`Number(value)\` times a factor), so a converted decimal string or bigint is no longer exact: \`formatUnit('12345678901234567.89', 'meter', { convertTo: 'kilometer' })\` shows about 17 significant digits. Without \`convertTo\` or \`system\`, a decimal string is formatted exactly. See also: formatUnit, convert.`,
   },
 
   'format/MeasurementSystem': {
@@ -9300,9 +9293,16 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
   },
 
   'format/NumberInput': {
-    signature: 'type NumberInput = number | bigint | null | undefined',
-    example: '// formatNumber(null) // → ""',
-    notes: 'A number-like input. Nullish formats as the `fallback`. See also: DateInput.',
+    signature: 'type NumberInput = number | bigint | string | null | undefined',
+    example: `// formatNumber(null) // → ""
+// formatNumber('12345678901234567890.5', { locale: 'en-US' }) // → "12,345,678,901,234,567,890.5"`,
+    notes: 'A number-like input: a number, a bigint, or a decimal string (an optional `-`, digits, an optional `.` and digits), which is formatted exactly at any size. Nullish formats as the `fallback`; any other string (`"1e3"`, `" 12 "`, `""`) is invalid. See also: DateInput, MoneyLike.',
+  },
+
+  'format/MoneyLike': {
+    signature: 'interface MoneyLike { readonly amount: string; readonly currency: string }',
+    example: `// formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // → "€9.99"`,
+    notes: 'The structural shape of a `@pyreon/money` Money, which `formatCurrency` and `currencyFormatter` take. No dependency on that package. `CurrencyInput = NumberInput | MoneyLike`. See also: formatCurrency, NumberInput.',
   },
 
   'format/DateInput': {
@@ -10649,17 +10649,6 @@ HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text`,
     notes: `The two tag allowlists \`@pyreon/elements\`' Element/Text bases dispatch on: \`HTML_TAGS\` is every recognized host tag (used to validate/narrow a \`tag\` prop), \`HTML_TEXT_TAGS\` is the subset of TEXT-flavored tags (\`span\`, \`p\`, \`label\`, \`h1\`-\`h6\`, …) Text defaults \`component\` to when no explicit tag is given.`,
   },
 
-  'ui-core/getThemeEngine / setThemeEngine': {
-    signature: 'getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void',
-    example: `// User code never calls this — it's how @pyreon/unistyle wires itself into
-// <PyreonUI> without ui-core depending on unistyle. Documented here because
-// "theme isn't enriched" / "no CSS variables" debugging starts here: import
-// "@pyreon/unistyle" somewhere in your app to register the real engine.`,
-    notes: `@internal — the registration seam that breaks the \`ui-core ↔ unistyle\` dependency cycle. \`@pyreon/unistyle\` calls \`setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })\` at module load (a side effect its \`package.json\` marks \`sideEffects\` for, so tree-shaking can't drop the registration); \`<PyreonUI>\` reads it lazily via \`getThemeEngine()\` at each use-site, never eagerly at setup. When unistyle is NOT in the module graph (a bare \`@pyreon/rocketstyle\`-only app), \`getThemeEngine()\` returns a minimal FALLBACK — identity \`enrichTheme\`, no CSS vars, no CPSE — and dev-warns ONCE, so \`<PyreonUI>\` degrades instead of crashing. See also: PyreonUI.`,
-    mistakes: `- Seeing an un-enriched theme (missing default breakpoints/spacing, no CSS variables) and not realizing \`@pyreon/unistyle\` was never imported — every styled \`@pyreon\` UI package except bare \`@pyreon/rocketstyle\` pulls it in transitively, but a minimal custom setup can miss it
-- Calling \`setThemeEngine()\` from app code — it is for a THEME ENGINE PACKAGE to register itself (the unistyle precedent); overwriting it from an app silently replaces every consumer's theme resolution`,
-  },
-
   'ui-core/resolveCssVariables': {
     signature: 'resolveCssVariables(): { enabled: boolean; prefix: string; attribute: string }',
     example: `import { resolveCssVariables } from '@pyreon/ui-core'
@@ -11131,15 +11120,6 @@ hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")`,
     notes: 'The FNV-1a non-cryptographic hash styler uses for compact, deduped class names + rule keys. `hash(str)` is the one-shot form → a base-36 string. The streaming trio composes it: `hashUpdate(HASH_INIT, "ab")` folds bytes into a running 32-bit numeric state, `hashFinalize(state)` renders `(state >>> 0).toString(36)`, and `hashUpdate(hashUpdate(HASH_INIT, "ab"), "cd") === hash("abcd")`. Exported for tooling/consumers that need the SAME class-name hash styler emits (e.g. precomputing a class name before injection). Low-level — most apps never call it. See also: createSheet, styled.',
     mistakes: `- Using it for anything security-sensitive — FNV-1a is NON-cryptographic (fast, collision-cheap for CSS keys, NOT collision-resistant against adversarial input).
 - Feeding the base-36 STRING from \`hashFinalize\` back into \`hashUpdate\` — the streaming state is the 32-bit NUMBER; keep folding numbers with \`hashUpdate\` and call \`hashFinalize\` ONCE at the end.`,
-  },
-
-  'styler/setStyleExtraction': {
-    signature: 'setStyleExtraction(enabled: boolean, rewrite?: (cssText: string, varsOut: Record<string, string>) => string) => void',
-    example: `// Apps enable CPSE through ui-core, not this call:
-import { init } from "@pyreon/ui-core"
-init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood`,
-    notes: `Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). \`@pyreon/ui-core\`'s \`init({ styleExtraction: true })\` calls this to enable CPSE and inject the \`cpseRewrite\` function — which lives in \`@pyreon/unistyle\` (styler cannot import unistyle: dep direction), so it is threaded in at init time. When on, the static + SSR resolve path rewrites resolved CSS to hoist per-instance values into custom properties. Apps do NOT call this directly — enable CPSE via the \`@pyreon/ui-core\` init flag; it is exported only so ui-core can wire it. See also: styled, createSheet.`,
-    mistakes: '- Calling `setStyleExtraction(true)` directly to turn on CPSE — without the `rewrite` from `@pyreon/unistyle` (which `@pyreon/ui-core` supplies) it enables the branch with no rewriter. Use `init({ styleExtraction: true })` from `@pyreon/ui-core`.',
   },
   // <gen-docs:api-reference:end @pyreon/styler>
 
@@ -12464,9 +12444,13 @@ toast.promise(fetchData(), {
 
 // Dismiss:
 toast.dismiss(id)  // one
-toast.dismiss()    // all`,
-    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), and `.promise(promise, messages)` for async operation tracking. See also: Toaster.',
+toast.dismiss()    // all
+
+// Read the live queue reactively:
+<span>{() => toast.list().length} notifications</span>`,
+    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), `.promise(promise, messages)` for async operation tracking, and `.list()`, a reactive read of the live queue (`readonly Readonly<Toast>[]`, oldest first) for a notification count or a custom history view. See also: Toaster.',
     mistakes: `- Forgetting to render \`<Toaster />\` — toasts are created but have no visual container to render into
+- Mutating the array \`toast.list()\` returns — it is the queue's own snapshot; change the queue through \`toast()\` / \`toast.update\` / \`toast.dismiss\` / \`toast.remove\`
 - Calling \`toast.update()\` after the toast has been auto-dismissed — the ID is no longer valid, the update is silently ignored
 - Using \`toast.promise()\` with a function instead of a promise — pass the promise directly, not \`() => fetch(...)\`
 - Expecting \`toast.dismiss(id)\` to remove the toast synchronously — it is SOFT (plays the ~200ms leave animation first); reach for \`toast.remove(id)\` when you need it gone instantly
@@ -14246,6 +14230,25 @@ console.log(a()) // 5`,
     mistakes: `- Disagreeing on \`T\` across two callers with the same key — both get the same runtime signal but mismatched compile-time types (author error, no runtime safeguard).
 - Calling \`clearAllSharedSignals()\` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).
 - Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.`,
+  },
+
+  'zero-content/resolvePageLayout': {
+    signature: 'resolvePageLayout(args: { frontmatter: Record<string, unknown>; registry: ContentLayoutRegistry; defaultLayout: ContentLayout }): { layout: ContentLayout; fellBack: boolean; missingName?: string }',
+    example: `import { resolvePageLayout } from '@pyreon/zero-content'
+import DocsLayout from './layouts/docs'
+import LandingLayout from './layouts/landing'
+
+const { layout: Layout, fellBack, missingName } = resolvePageLayout({
+  frontmatter: page.frontmatter,          // e.g. { title: 'Home', layout: 'landing' }
+  registry: { landing: LandingLayout },
+  defaultLayout: DocsLayout,
+})
+if (fellBack) console.warn(\`[content] unknown layout "\${missingName}"\`)
+
+return <Layout>{page.content}</Layout>`,
+    notes: `Pick the layout for one content page from its \`layout:\` frontmatter field. Pure and runtime-agnostic: call it from the route that renders the page, with a \`registry\` you build (usually from \`import.meta.glob('./layouts/*.tsx', { eager: true })\`) and the route's default layout. No \`layout\` field (or an empty one) returns \`defaultLayout\`; a name missing from the registry also returns \`defaultLayout\`, with \`fellBack: true\` and the requested name in \`missingName\` so the route can warn. The plugin does not call it for you: per-page \`layout:\` only takes effect when the route does.`,
+    mistakes: `- Expecting \`layout:\` frontmatter to switch layouts on its own — nothing calls \`resolvePageLayout\` automatically; the rendering route must
+- Ignoring \`fellBack\` — a typo in \`layout:\` silently renders the default layout unless the route reports \`missingName\``,
   },
 
   'zero-content/Details': {

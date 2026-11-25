@@ -1,6 +1,7 @@
 /** @jsxImportSource @pyreon/core */
 import { h } from '@pyreon/core'
-import { setStyleExtraction, sheet, styled } from '@pyreon/styler'
+import { sheet, styled } from '@pyreon/styler'
+import { setStyleExtraction } from '@pyreon/styler/internal'
 import { mountInBrowser } from '@pyreon/test-utils/browser'
 import { cpseRewrite } from '@pyreon/unistyle'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'

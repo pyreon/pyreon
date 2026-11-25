@@ -19,33 +19,13 @@
  * `lib/preset.js` (see tests/preset.test.ts).
  */
 
-import { fileURLToPath } from 'node:url'
+import { previewPathFor } from './preview-path'
 
 export const addons: string[] = []
 
 // Extensionless sibling path: resolves to lib/preview.js next to the built
-// preset (and src/preview.ts under the bun condition in-repo). Scheme-guarded
-// because the module must stay TOTAL in every ESM environment: Storybook
-// loads the built file with a real `file:` URL, but transform pipelines
-// (vitest serves modules over its own scheme) hand out non-file URLs, where
-// `fileURLToPath` THROWS at module eval — the same "works shipped, dies in
-// another loader" fragility class this file was just cured of, inverted.
-/**
- * The preview path a loader will accept, for either URL scheme.
- *
- * Named and exported so BOTH arms are testable from source. Under vitest the
- * module's own `import.meta.url` is always vitest's scheme, so the `file:`
- * arm — the one that runs in every shipped Storybook — is unreachable from a
- * source test; it is exercised only by `shipped-preset.test.ts`, which loads
- * the built artifact. A branch whose production arm can only be reached
- * through a different artifact is one nobody can reason about locally.
- *
- * @internal
- */
-export function previewPathFor(url: URL): string {
-  return url.protocol === 'file:' ? fileURLToPath(url) : url.pathname
-}
-
+// preset (and src/preview.ts under the bun condition in-repo). See
+// `previewPathFor` for why the scheme is guarded.
 const previewUrl = new URL('preview', import.meta.url)
 export const previewAnnotations: string[] = [previewPathFor(previewUrl)]
 

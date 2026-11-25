@@ -18,8 +18,6 @@ import { For, h } from '@pyreon/core'
 import * as jsxRuntime from '@pyreon/core/jsx-runtime'
 import * as reactivity from '@pyreon/reactivity'
 import {
-  __resetReactiveDevtoolsForTesting,
-  _rdRegistrySize,
   activateReactiveDevtools,
   describeReactiveGraph,
   getReactiveGraph,
@@ -27,6 +25,7 @@ import {
   type ReactiveNode,
   signal,
 } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting, _rdNodeId, _rdRegistrySize } from '@pyreon/reactivity/internal'
 import {
   computeReactiveCoverage,
   startReactiveCoverage,
@@ -315,7 +314,7 @@ export function Row() { return <li>{locale()}</li> }
     // 512-entry buffer holds, so the signal's own entry is evicted.
     m.locale.set('fr')
     expect(el.textContent!.startsWith('frfr')).toBe(true)
-    const effCause = getUpdateCause(reactivity._rdNodeId(e)!)
+    const effCause = getUpdateCause(_rdNodeId(e)!)
     expect(effCause?.chain.map((l) => l.name)).toEqual(['locale'])
     expect(effCause?.rootReached).toBe(true)
     const rows = getReactiveGraph().nodes.filter((n) => n.binding === 'text')

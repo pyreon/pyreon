@@ -8,7 +8,6 @@
  */
 import {
   _bind,
-  _noopDispose,
   type ReactiveSnapshotCapture,
   computed,
   effect,
@@ -19,6 +18,9 @@ import {
   signal,
   untrack,
 } from '../../index'
+import {
+  _noopDispose,
+} from '../../internal'
 
 describe('C11 — cleanup order: inner effects, then onCleanup in registration order, then the returned cleanup', () => {
   function build(log: string[]) {

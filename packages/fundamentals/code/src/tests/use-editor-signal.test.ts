@@ -2,7 +2,7 @@
  * Tests for `useEditorSignal` hook — ensures automatic disposal
  * on component unmount.
  */
-import { runWithHooks } from '@pyreon/core'
+import { runWithHooks } from '@pyreon/core/internal'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
 import { createEditor } from '../editor'

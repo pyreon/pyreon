@@ -12,7 +12,8 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _resetInitThemeForTests, theme, ThemeToggle } from '../theme'
+import { _resetInitThemeForTests } from '../internal'
+import { theme, ThemeToggle } from '../theme'
 
 describe('zero/theme — the shared effect outlives the toggle that created it', () => {
   let container: HTMLElement

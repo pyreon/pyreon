@@ -217,6 +217,16 @@
       "bun": "./src/web-vitals.ts",
       "import": "./lib/web-vitals.js",
       "types": "./lib/types/web-vitals.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
+    },
+    "./internal-server": {
+      "bun": "./src/internal-server.ts",
+      "import": "./lib/internal-server.js",
+      "types": "./lib/types/internal-server.d.ts"
     }
   },
   "files": [

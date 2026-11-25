@@ -1,11 +1,11 @@
 import * as core from '../core'
 import * as reactive from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { _numberTables, tableStats } from '../number'
 import { clearAllTables } from './helpers'
 
 afterEach(() => {
-  _resetLocaleState()
+  resetLocaleState()
   clearAllTables()
 })
 

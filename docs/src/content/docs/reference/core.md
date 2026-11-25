@@ -155,8 +155,6 @@ const Card = () => {
 | [`createRef`](#createref-function) | function | Create a mutable ref object (`{ current: T \| null }`) for holding DOM element references. |
 | [`elementRef`](#elementref-function) | function | A single value that is BOTH a ref and the `() => T \| null` accessor element-consuming hooks take (`useElementSize`,… |
 | [`nativeCompat`](#nativecompat-function) | function | Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip… |
-| [`isNativeCompat`](#isnativecompat-function) | function | Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. |
-| [`NATIVE_COMPAT_MARKER`](#native_compat_marker-constant) | constant | The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native… |
 | [`Defer`](#defer-component) | component | Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when` loads once the condition… |
 | [`registerErrorHandler / reportError`](#registererrorhandler-reporterror-function) | function | `registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component… |
 | [`isClient / isServer`](#isclient-isserver-constant) | constant | Re-exported from `@pyreon/reactivity` for convenience — `isServer = typeof document === 'undefined'`, `isClient` its… |
@@ -1031,7 +1029,7 @@ function Card() {
 <T>(fn: T) => T
 ```
 
-Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip their wrapping and route the component through Pyreon's mount path. Use on every `@pyreon/*` JSX component whose setup body uses `provide()` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (`Symbol.for("pyreon:native-compat")`), so framework and compat sides share it without an import dependency between them.
+Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip their wrapping and route the component through Pyreon's mount path. Use on every `@pyreon/*` JSX component whose setup body uses `provide()` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (`Symbol.for("pyreon:native-compat")`), so framework and compat sides share it without an import dependency between them. The compat layers read it through `isNativeCompat()` from `@pyreon/core/compat`, an internal subpath with no semver promise.
 
 **Example**
 
@@ -1048,48 +1046,7 @@ export const RouterView = nativeCompat(function RouterView(props) {
 - Forgetting to mark a new framework JSX export — under compat mode, the component's `provide()` / `onMount()` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.
 - Marking user-app components — only `@pyreon/*` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).
 
-**See also:** `isNativeCompat` · `NATIVE_COMPAT_MARKER`
-
----
-
-### `isNativeCompat` `function`
-
-```ts
-(fn: unknown) => boolean
-```
-
-Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. Compat `jsx()` calls this to decide whether to skip the React/Vue/Solid/Preact-style wrapping. Always returns `false` for non-function inputs.
-
-**Example**
-
-```tsx
-// In a compat layer's jsx-runtime:
-if (isNativeCompat(type)) return h(type, props)
-return wrapCompatComponent(type)(props)
-```
-
-**See also:** `nativeCompat` · `NATIVE_COMPAT_MARKER`
-
----
-
-### `NATIVE_COMPAT_MARKER` `constant`
-
-```ts
-symbol
-```
-
-The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framework component. Most callers should use `nativeCompat()` / `isNativeCompat()` instead of touching the symbol directly; exported for advanced cases (e.g., a compat layer that wants to inspect the property without going through the helper).
-
-**Example**
-
-```tsx
-import { NATIVE_COMPAT_MARKER } from '@pyreon/core'
-
-// Equivalent to nativeCompat(MyComponent):
-;(MyComponent as Record<symbol, boolean>)[NATIVE_COMPAT_MARKER] = true
-```
-
-**See also:** `nativeCompat` · `isNativeCompat`
+**See also:** `createContext` · `provide`
 
 ---
 

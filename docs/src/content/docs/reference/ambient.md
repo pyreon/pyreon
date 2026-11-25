@@ -399,4 +399,6 @@ const o: ClockScriptOptions = { nonce: 'abc' }
 
 > **Tickers are bounded:** `second` and `minute` tickers are always shared. Up to 16 other tickers (custom intervals and per-zone `hour`/`day` tickers) are shared; a reader beyond that gets a private ticker that is stopped with it.
 
+> **Testing:** Pin the clock with `setClock` and reset between tests with `resetClockState()` and `resetLocaleState()` from `@pyreon/ambient/testing` (in `afterEach`). They drop every ticker, the pin and the hand-over, and forget the memoized runtime locale and zone, the provide flags and the printed warnings.
+
 > **Peer dependencies:** `@pyreon/core` and `@pyreon/reactivity` are both required peers: the entry imports them when it loads, and every Pyreon app has them. The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.

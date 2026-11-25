@@ -12,11 +12,13 @@
  * fields, so the shapes are the ones the runtime actually produces.
  */
 import {
-  _resumeSoleSubscriber,
-  _suspendSoleSubscriber,
   effect,
   signal,
 } from '../index'
+import {
+  _resumeSoleSubscriber,
+  _suspendSoleSubscriber,
+} from '../internal'
 import { accessInternal } from '@pyreon/test-utils'
 
 /** Drive a signal into the "promoted Set that shrank back to 1" shape. */

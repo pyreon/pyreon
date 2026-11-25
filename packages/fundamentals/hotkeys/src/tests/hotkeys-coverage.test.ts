@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  _resetHotkeys,
   disableScope,
   enableScope,
   formatCombo,
@@ -9,6 +8,7 @@ import {
   parseShortcut,
   registerHotkey,
 } from '../index'
+import { _resetHotkeys } from '../internal'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

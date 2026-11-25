@@ -13,7 +13,7 @@
  * (the compile actually runs twice).
  */
 import { describe, expect, it, beforeEach } from 'vitest'
-import { _resetCompileCacheForTesting } from '../plugin'
+import { _resetCompileCacheForTesting } from '../internal-server'
 import { compileMarkdown } from '../pipeline/parse'
 
 // Sanity — the public reset helper exists so test suites can isolate

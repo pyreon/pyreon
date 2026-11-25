@@ -76,7 +76,8 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }))
 async function bundle(entryFile: string): Promise<string> {
   const result = await build({
     logLevel: 'silent',
-    resolve: { alias: { '@pyreon/zero': join(dir, 'zero-stub.ts') } },
+    // Anchored: a string alias would prefix-match `@pyreon/zero/<subpath>`.
+    resolve: { alias: [{ find: /^@pyreon\/zero$/, replacement: join(dir, 'zero-stub.ts') }] },
     build: {
       write: false,
       // Tree-shaking is independent of minification in the build pipeline;

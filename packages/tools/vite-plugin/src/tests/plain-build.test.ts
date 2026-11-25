@@ -27,16 +27,14 @@ const FIXTURE = join(import.meta.dirname, '__fixtures__/plain-app')
 // bun's isolated store exposes only this package's DECLARED deps to the
 // fixture dir, so the app's `@pyreon/*` imports are aliased to the built
 // workspace `lib/` — the same node-condition artifacts a real consumer gets.
-// Array form, EXACT subpaths first: a bare `@pyreon/core` find would
-// prefix-match `@pyreon/core/plain` and rewrite it into lib/index.js/plain.
+// Every `@pyreon/{core,runtime-dom,reactivity}` specifier (bare or subpath,
+// e.g. `@pyreon/core/internal`) maps to the matching built `lib/<subpath>.js`.
+// A plain-string `find` would prefix-match a subpath and rewrite it into
+// `lib/index.js/<subpath>`, so the finds are anchored regexes.
 const PKGS = join(import.meta.dirname, '../../../..')
 const ALIASES = [
-  { find: '@pyreon/core/plain', replacement: join(PKGS, 'core/core/lib/plain.js') },
-  { find: '@pyreon/core/jsx-runtime', replacement: join(PKGS, 'core/core/lib/jsx-runtime.js') },
-  { find: '@pyreon/core/jsx-dev-runtime', replacement: join(PKGS, 'core/core/lib/jsx-dev-runtime.js') },
-  { find: '@pyreon/core', replacement: join(PKGS, 'core/core/lib/index.js') },
-  { find: '@pyreon/runtime-dom', replacement: join(PKGS, 'core/runtime-dom/lib/index.js') },
-  { find: '@pyreon/reactivity', replacement: join(PKGS, 'core/reactivity/lib/index.js') },
+  { find: /^@pyreon\/(core|runtime-dom|reactivity)$/, replacement: join(PKGS, 'core/$1/lib/index.js') },
+  { find: /^@pyreon\/(core|runtime-dom|reactivity)\/([a-z-]+)$/, replacement: join(PKGS, 'core/$1/lib/$2.js') },
 ]
 
 let outDir: string

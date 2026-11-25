@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _resetUnloadFlush } from '../local'
-import { _resetRegistry, useStorage } from '../index'
+import { useStorage } from '../index'
+import { _resetRegistry } from '../internal'
 
 // Real timers (not fake) per .agents/rules/testing.md — fake timers cause
 // subtle issues with the debounce/await flow.

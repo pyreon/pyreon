@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { parsePresetList } from '../cli'
+import { parsePresetList } from '../cli-helpers'
 import { getPreset, isPresetName } from '../config/presets'
 import { resolveLintConfig } from '../lint'
 import { readable, readableStrict } from '../oxfmt'

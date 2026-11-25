@@ -18,11 +18,8 @@ vi.mock('@pyreon/router', () => ({
   useParams: () => mockParams,
 }))
 
-const {
-  _resetRegistryForTesting,
-  _setRegistry,
-  defineContentRoute,
-} = await import('../index')
+const { _resetRegistryForTesting, _setRegistry } = await import('../internal')
+const { defineContentRoute } = await import('../index')
 type CollectionRegistry =
   Awaited<ReturnType<typeof import('../runtime')._getRegistry>>
 

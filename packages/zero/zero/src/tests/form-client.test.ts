@@ -11,7 +11,8 @@ import type { Router } from '@pyreon/router'
 import { setActiveRouter } from '@pyreon/router'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { _actionStub, _resetActions, Form, useSubmission } from '../actions'
+import { _actionStub, _resetActions } from '../internal'
+import { Form, useSubmission } from '../actions'
 
 const tick = () => new Promise((r) => setTimeout(r, 0))
 
