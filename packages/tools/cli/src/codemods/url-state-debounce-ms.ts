@@ -1,19 +1,7 @@
-import { createRequire } from 'node:module'
+import { loadTs } from './load-ts'
 import type { Codemod } from './types'
 
-type TS = typeof import('typescript')
 type Node = import('typescript').Node
-
-/** TypeScript, loaded only when the codemod actually has a candidate file. */
-function loadTs(): TS {
-  try {
-    return createRequire(import.meta.url)('typescript') as TS
-  } catch {
-    throw new Error(
-      '[Pyreon] codemod url-state-debounce-ms needs the `typescript` package. Install it (it is a peer dependency of @pyreon/cli) and re-run `pyreon upgrade`.',
-    )
-  }
-}
 
 /**
  * `@pyreon/url-state` 0.54 renamed the `debounce` option of `useUrlState` to
@@ -35,7 +23,7 @@ export const urlStateDebounceMs: Codemod = {
   matches: (p) => /\.[mc]?[jt]sx?$/.test(p),
   transform(source, relPath) {
     if (!source.includes('@pyreon/url-state') || !/\bdebounce\b/.test(source)) return null
-    const ts = loadTs()
+    const ts = loadTs('url-state-debounce-ms')
     const kind = /\.[mc]?tsx$|\.jsx$/.test(relPath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     const sf = ts.createSourceFile(relPath, source, ts.ScriptTarget.ESNext, true, kind)
 

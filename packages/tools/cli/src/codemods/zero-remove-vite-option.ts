@@ -1,18 +1,5 @@
-import { createRequire } from 'node:module'
+import { loadTs } from './load-ts'
 import type { Codemod } from './types'
-
-type TS = typeof import('typescript')
-
-/** TypeScript, loaded only when the codemod actually has a candidate file. */
-function loadTs(): TS {
-  try {
-    return createRequire(import.meta.url)('typescript') as TS
-  } catch {
-    throw new Error(
-      '[Pyreon] codemod zero-remove-vite-option needs the `typescript` package. Install it (it is a peer dependency of @pyreon/cli) and re-run `pyreon upgrade`.',
-    )
-  }
-}
 
 /**
  * `@pyreon/zero` 0.52 removed the `vite` option from `ZeroConfig`. It was
@@ -33,7 +20,7 @@ export const zeroRemoveViteOption: Codemod = {
   matches: (p) => /(^|\/)vite\.config\.[mc]?[jt]s$/.test(p),
   transform(source) {
     if (!/\bzero\s*\(/.test(source) || !/\bvite\b/.test(source)) return null
-    const ts = loadTs()
+    const ts = loadTs('zero-remove-vite-option')
     const sf = ts.createSourceFile('vite.config.ts', source, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TS)
     const edits: { start: number; end: number; text: string }[] = []
     const visit = (node: import('typescript').Node): void => {

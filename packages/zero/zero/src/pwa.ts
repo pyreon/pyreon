@@ -30,6 +30,8 @@ import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { join, relative, sep } from 'node:path'
 import type { Plugin } from 'vite'
+import { routeBaseOf } from './config'
+import { isRoutePath } from './route-path'
 import { writeFileAtomic } from './ssr-build-shared'
 
 /** A web app manifest icon. */
@@ -356,8 +358,10 @@ export async function writeServiceWorker(
  * writes it at `closeBundle`.
  * @internal Wired by `zero({ pwa })`.
  */
-export function pwaPlugin(config: PwaConfig, zeroMode: string | undefined, zeroBase = '/'): Plugin {
+export function pwaPlugin(config: PwaConfig, zeroMode: string | undefined, zeroBase?: string): Plugin {
   let distDir = ''
+  // The ROUTE base (see `routeBaseOf`), known once Vite resolves its own.
+  let routeBase = zeroBase ?? '/'
   let assetsDir = 'assets'
   let isSsrBuild = false
   return {
@@ -367,20 +371,28 @@ export function pwaPlugin(config: PwaConfig, zeroMode: string | undefined, zeroB
       distDir = join(resolved.root, resolved.build.outDir)
       assetsDir = resolved.build.assetsDir
       isSsrBuild = Boolean(resolved.build.ssr)
+      // A service worker precaches and serves same-origin files under its own
+      // scope; assets on a CDN or behind a relative base are neither.
+      if (!isRoutePath(resolved.base)) {
+        throw new Error(
+          `[Pyreon] zero({ pwa }) needs a path base, but Vite's base is \`${resolved.base || "''"}\`. A service worker can only precache and serve same-origin files under its scope. Use a path base (\`zero({ base: '/app/' })\` or \`--base /app/\`), or drop \`pwa\`.`,
+        )
+      }
+      routeBase = routeBaseOf(zeroBase, resolved.base)
     },
     generateBundle() {
       if (isSsrBuild) return
       this.emitFile({
         type: 'asset',
         fileName: PWA_MANIFEST_FILE,
-        source: buildWebManifest(config.manifest, zeroBase),
+        source: buildWebManifest(config.manifest, routeBase),
       })
     },
     transformIndexHtml() {
       const tags: { tag: string; attrs: Record<string, string>; injectTo: 'head' }[] = [
         {
           tag: 'link',
-          attrs: { rel: 'manifest', href: withBase(zeroBase, PWA_MANIFEST_FILE) },
+          attrs: { rel: 'manifest', href: withBase(routeBase, PWA_MANIFEST_FILE) },
           injectTo: 'head',
         },
       ]
@@ -399,7 +411,7 @@ export function pwaPlugin(config: PwaConfig, zeroMode: string | undefined, zeroB
       async handler() {
         if (isSsrBuild || zeroMode !== 'spa') return
         await writeServiceWorker(distDir, config, {
-          base: zeroBase,
+          base: routeBase,
           assetsDir,
           includeHtml: false,
           shell: true,

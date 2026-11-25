@@ -74,7 +74,10 @@ test.describe('FormDemo interaction — @pyreon/form', () => {
     // onSubmit awaits 500ms then sets `submitted` → the section appears with
     // the submitted JSON (proves getSubmitValues returned the typed values).
     await expect(page.getByText('Submitted Data')).toBeVisible({ timeout: 4000 })
-    await expect(page.locator('pre', { hasText: 'ada@example.com' })).toBeVisible()
+    // Two <pre>s hold the email now: the live `Values:` readout (form.values()
+    // is a tracked read, so it follows the typing) and the submitted JSON.
+    await expect(page.locator('pre', { hasText: 'Values:' })).toContainText('ada@example.com')
+    await expect(page.locator('.section', { hasText: 'Submitted Data' }).locator('pre')).toContainText('ada@example.com')
     // submit count badge incremented
     await expect(page.locator('.badge', { hasText: 'Submits: 1' })).toBeVisible()
   })

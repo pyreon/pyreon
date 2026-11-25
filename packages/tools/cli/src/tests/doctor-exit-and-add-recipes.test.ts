@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { add } from '../add'
 import { doctor } from '../doctor'
+import { stdoutToConsoleLog } from './stdout-to-console'
 
 let cwd: string
 
@@ -67,9 +68,11 @@ async function capture<T>(fn: () => T | Promise<T>): Promise<{ value: T; out: st
     chunks.push(a.map(String).join(' '))
   }
   const log = vi.spyOn(console, 'log').mockImplementation(sink)
+  const stdout = stdoutToConsoleLog()
   const err = vi.spyOn(console, 'error').mockImplementation(sink)
   const value = await fn()
   log.mockRestore()
+  stdout.mockRestore()
   err.mockRestore()
   return { value, out: chunks.join('\n') }
 }

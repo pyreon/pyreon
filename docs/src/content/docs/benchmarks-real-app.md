@@ -67,7 +67,7 @@ Read any number from this benchmark with these in mind.
 
 - **The authors of one arm wrote all six and judge the outcome.** Nobody from a rival project has reviewed its arm. An arm written by someone who knows a framework less well than its own maintainers can be slower than it should be.
 - **Idiomatic means different.** Each arm holds state the way its docs do. Vue and Svelte make the 5,000 records deeply reactive; Solid keeps favourites per id in a store; Pyreon, React and Preact replace a set. These differences are what the benchmark compares, and each arm states them.
-- **Different router defaults.** Pyreon's router uses View Transitions for navigation where the browser supports them; SvelteKit preloads links on hover; the other routers do neither. SvelteKit also splits its code per route by default, so its first load is several files where the other arms ship one.
+- **Different router defaults.** SvelteKit preloads links on hover; the other routers do not. No arm's router runs View Transitions (Pyreon's are opt-in). SvelteKit also splits its code per route by default, so its first load is several files where the other arms ship one.
 - **A synthetic keystroke.** The input the probe types is dispatched by script, not by the operating system. It is the same for every arm.
 - **The DOM, not the screen.** Time to interactive ends when the page's DOM shows the result, before it is painted.
 - **Emulated throttling.** A CPU slowdown on a desktop and an emulated network are not a phone on a mobile network.

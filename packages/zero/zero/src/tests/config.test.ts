@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { defineConfig, detectPlatformAdapter, resolveConfig } from '../config'
+import { adoptRouteBase } from '../adopt-route-base'
+import { defineConfig, detectPlatformAdapter, isRelativeBase, resolveConfig, routeBaseOf } from '../config'
 
 describe('defineConfig', () => {
   it('returns the config as-is', () => {
@@ -87,5 +88,42 @@ describe('resolveConfig adapter auto-detection', () => {
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+})
+
+describe('route base vs asset base (#4269)', () => {
+  it('routeBaseOf: zero({ base }) wins; else a PATH Vite base; else /', () => {
+    expect(routeBaseOf('/zero/', '/zero/')).toBe('/zero/')
+    expect(routeBaseOf(undefined, '/showcase/hn-clone/')).toBe('/showcase/hn-clone/')
+    expect(routeBaseOf(undefined, './')).toBe('/')
+    expect(routeBaseOf(undefined, '')).toBe('/')
+    expect(routeBaseOf(undefined, 'https://cdn.example.com/x/')).toBe('/')
+    // Protocol-relative is a URL, not a path (#4751 review).
+    expect(routeBaseOf(undefined, '//cdn.example.com/x/')).toBe('/')
+    expect(routeBaseOf(undefined, '/\\evil.com/')).toBe('/')
+    expect(routeBaseOf(undefined, undefined)).toBe('/')
+  })
+
+  it('adoptRouteBase writes the route base, never a CDN or relative asset base', () => {
+    const config = { base: '/' }
+    expect(adoptRouteBase(config, undefined, '/docs/')).toBe(true)
+    expect(config.base).toBe('/docs/')
+    expect(adoptRouteBase(config, undefined, 'https://cdn.example.com/x/')).toBe(true)
+    expect(config.base).toBe('/')
+    expect(adoptRouteBase(config, undefined, './')).toBe(false)
+    expect(config.base).toBe('/')
+  })
+
+  it('a zero({ base }) without a trailing slash is normalised, like Vite normalises its own', () => {
+    expect(resolveConfig({ base: '/docs' }).base).toBe('/docs/')
+    expect(routeBaseOf('/docs', '/docs/')).toBe('/docs/')
+    expect(routeBaseOf(undefined, '/docs')).toBe('/docs/')
+  })
+
+  it('isRelativeBase', () => {
+    expect(isRelativeBase('./')).toBe(true)
+    expect(isRelativeBase('')).toBe(true)
+    expect(isRelativeBase('/')).toBe(false)
+    expect(isRelativeBase('https://cdn/x/')).toBe(false)
   })
 })

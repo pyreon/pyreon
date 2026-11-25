@@ -14,7 +14,7 @@
  * Runs actual `vite build`s of `fixture-reserved-route` with the zero plugin
  * built inline from src (`configFile: false`).
  */
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { build } from 'vite'
@@ -66,8 +66,9 @@ afterEach(() => {
 
 afterAll(async () => {
   await rm(DIST, { recursive: true, force: true })
-  await rm(join(FIXTURE, '__pyreon-zero-ssr-entry.js'), { force: true })
-  await rm(join(FIXTURE, '__pyreon-zero-ssg-entry.js'), { force: true })
+  for (const f of readdirSync(FIXTURE).filter((n) => n.startsWith('__pyreon-zero-ss'))) {
+    await rm(join(FIXTURE, f), { force: true })
+  }
 })
 
 describe('a prerendered route may not be named after a build output (#4259)', () => {

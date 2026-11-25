@@ -45,10 +45,11 @@ beforeEach(() => {
 })
 
 const rendered = (m: ReturnType<typeof createModel>): string => {
-  const out = m.preview()
-  // The preview is wrapped in a PermissionsProvider; the component's own output
-  // sits between the two mount marks that scope coverage to it.
-  const children = (out as { children?: unknown[] }).children
+  // The preview is the isolated-router wrapper around a PermissionsProvider;
+  // the component's own output sits between the two mount marks that scope
+  // coverage to it.
+  const provider = (m.preview() as { children?: unknown[] }).children?.[0]
+  const children = (provider as { children?: unknown[] }).children
   return String(children?.[1])
 }
 

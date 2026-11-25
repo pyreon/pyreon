@@ -53,7 +53,7 @@ export const loader = async () => fetch('/api/hello').then((r) => r.json())
 
 export default function Home() {
   const data = useLoaderData<{ message: string }>()
-  return <h1>{data.message}</h1>
+  return <h1>{data().message}</h1>
 }
 ```
 
@@ -61,12 +61,12 @@ export default function Home() {
 // src/routes/_layout.tsx — wraps every route in this subtree
 import { Link, Meta } from '@pyreon/zero'
 
-export default function Layout({ children }) {
+export default function Layout(props) {
   return (
     <>
       <Meta title="My App" description="..." />
-      <nav><Link to="/">Home</Link> <Link to="/posts">Posts</Link></nav>
-      <main>{children}</main>
+      <nav><Link href="/">Home</Link> <Link href="/posts">Posts</Link></nav>
+      <main>{props.children}</main>
     </>
   )
 }
@@ -156,16 +156,20 @@ import hero from './hero.jpg?optimize'
 <Image src="/remote.jpg" alt="" width={1200} height={600} /> {/* …or a runtime URL (w+h required) */}
 <OptimizedImage source={hero} alt="Hero" />               {/* whole descriptor in one prop */}
 <NoOptimize><Image src={logo} alt="Logo" /></NoOptimize>  {/* subtree opt-out → bare <img> */}
-<Link to="/about" prefetch="intent">About</Link>
+<Link href="/about" prefetch="viewport">About</Link>
 <Script strategy="afterInteractive" src="https://analytics.example.com/script.js" />
 <Meta title="..." description="..." />
 <Icon as={MyIconSvgComponent} />          {/* loaded via `?component` */}
 <ThemeToggle />                            {/* light/dark/system mode */}
 ```
 
-`<Image>` is **bi-modal** — `src` takes a `?optimize` descriptor (dims/srcset/formats inferred) OR a runtime string URL (`width`+`height` then required, to prevent CLS); the `optimize` prop and `<NoOptimize>` boundary opt individual images / subtrees out. Built on `imagePlugin` (build-time WebP/AVIF + blur/color placeholders). `<Link>` is `@pyreon/router`'s `RouterLink` re-exported. `<Meta>` writes via `@pyreon/head`.
+`<Image>` is **bi-modal** — `src` takes a `?optimize` descriptor (dims/srcset/formats inferred) OR a runtime string URL (`width`+`height` then required, to prevent CLS); the `optimize` prop and `<NoOptimize>` boundary opt individual images / subtrees out. Built on `imagePlugin` (build-time WebP/AVIF + blur/color placeholders). `<Link>` (`@pyreon/zero/link`, also `useLink` / `createLink`) takes `href` (not `to`), intercepts only internal navigations, prefetches on `hover` / `viewport`, and renders an internal path with the router base (`/about` → `/blog/about` under `base: '/blog/'`). `<Meta>` writes via `@pyreon/head`.
+
+**Base path.** Set it once: `zero({ base: '/blog/' })`, or the Vite way (`vite build --base /blog/`, `base` in `vite.config.ts`, or `build({ base })`). An explicit `zero({ base })` wins; without it Vite's base applies; with neither it is `/`. zero keeps two bases: the **route base** (router links for `<RouterLink>` and `<Link>`, `__ZERO_BASE__`, the server's routing, the PWA scope — always a path, so a CDN or `./` Vite base leaves it `/`) and the **asset base** (Vite's resolved base, which may be a CDN URL: chunks, SSG modulepreloads, CSS assets, OG images, self-hosted fonts). A relative `./` base is only supported with `mode: 'spa'`; other modes stop the build with the fix. `zero({ base })` itself must be a root-relative path — a CDN URL or `./` belongs in `vite.config.base`. With a CDN Vite base, dev serves under the URL's path while the build routes at `/` (Vite's dev behaviour). `dist/` stays unprefixed — the host mounts it at the base.
 
 **Resource hints & fonts.** `usePreconnect` / `useDnsPrefetch` / `usePreload` emit typed `<link rel>` hints; `usePreloadFont(href)` preloads a critical font; the `?font` import (`import Inter from './Inter.woff2?font'`) auto-emits an `@font-face` + hashed-URL descriptor. See [docs/images-and-fonts](https://pyreon.dev/images-and-fonts).
+
+Self-hosted font URLs (the inlined `@font-face` CSS and the preload hints) carry the build's base, so a subpath deploy loads them from `<base>assets/fonts/`.
 
 Google Fonts self-hosting has one 60-second download budget for the CSS and all font response bodies. Failure aborts active requests, warns, and uses the existing CDN fallback; completed downloads are cached for subsequent builds. Use local fonts when builds must work without provider access.
 

@@ -35,10 +35,12 @@ const appearance = (read: (w: AtlasWrapperProps) => string): WorkbenchComponent 
   render: (_v, ctx) => read((ctx as WorkbenchRenderCtx).wrapperProps),
 })
 
-// The workbench's own preview is [start mark, the component's output, end
+// Every preview is its own router scope around a PermissionsProvider. The
+// workbench's own preview is then [start mark, the component's output, end
 // mark] (see `MountMark` in ../model); a Theme Lab tile is the output alone.
 const out = (node: unknown): string => {
-  const children = (node as { children?: unknown[] }).children ?? []
+  const provider = (node as { children?: unknown[] }).children?.[0]
+  const children = (provider as { children?: unknown[] }).children ?? []
   return String(children.length === 3 ? children[1] : children[0])
 }
 

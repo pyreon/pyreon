@@ -19,6 +19,24 @@ import { decodePng } from '../png'
 import { runBrowserVerify, unsettledOutcome } from '../runner'
 import { SETTLE_SOURCE, unsettledMessage } from '../settle'
 
+/**
+ * A port the OS says is free. A fixed port made this suite fail whenever
+ * anything else on the machine held it (another `atlas dev`), with an error
+ * about the port rather than about verify-browser.
+ */
+async function freePort(): Promise<number> {
+  const { createServer } = await import('node:net')
+  return await new Promise((done, fail) => {
+    const probe = createServer()
+    probe.on('error', fail)
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address()
+      const port = typeof address === 'object' && address ? address.port : 0
+      probe.close(() => done(port))
+    })
+  })
+}
+
 const FIXTURE = resolve(import.meta.dirname, 'fixtures/settle')
 
 async function chromiumAvailable(): Promise<boolean> {
@@ -185,7 +203,7 @@ describe('verify-browser capture readiness (real Chromium, end to end)', () => {
       await runScan({ cwd: work, mount: false })
       const summary = await runBrowserVerify({
         cwd: work,
-        port: 5392,
+        port: await freePort(),
         axe: false,
         settleMs: 300,
         settleTimeoutMs: 4500,

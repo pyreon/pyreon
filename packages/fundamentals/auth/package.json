@@ -65,6 +65,9 @@
     "bun-types": "^1.4.4",
     "oidc-provider": "9.15.0"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

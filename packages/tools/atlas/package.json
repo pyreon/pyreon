@@ -3,6 +3,9 @@
   "version": "0.54.0",
   "description": "AI-native component workbench for the Pyreon ecosystem \u2014 derives, verifies, and serves a machine-readable component catalog.",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -64,9 +67,16 @@
       "bun": "./src/dev.ts",
       "import": "./lib/dev.js",
       "types": "./lib/types/dev.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [
+    "app",
+    "!app/.pyreon",
     "bin",
     "lib",
     "!lib/analysis",
@@ -79,7 +89,7 @@
     "dev": "vl_rolldown_build-watch",
     "demo": "bun scripts/demo.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p app",
     "lint": "oxlint ."
   },
   "dependencies": {
@@ -104,13 +114,16 @@
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/head": "workspace:*",
     "@pyreon/manifest": "workspace:*",
     "@pyreon/query": "workspace:*",
     "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/server": "workspace:*",
     "@pyreon/store": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
+    "@pyreon/zero": "workspace:*",
     "happy-dom": "^21.0.4",
     "playwright-core": ">=1.40",
     "vite": "^8.3.8",
@@ -118,8 +131,12 @@
   },
   "peerDependencies": {
     "@pyreon/compiler": "workspace:*",
+    "@pyreon/head": "workspace:*",
+    "@pyreon/runtime-server": "workspace:*",
+    "@pyreon/server": "workspace:*",
     "@pyreon/store": "workspace:*",
     "@pyreon/vite-plugin": "workspace:*",
+    "@pyreon/zero": "workspace:*",
     "happy-dom": ">=15",
     "playwright-core": ">=1.40",
     "vite": ">=6"
@@ -128,10 +145,22 @@
     "@pyreon/compiler": {
       "optional": true
     },
+    "@pyreon/head": {
+      "optional": true
+    },
+    "@pyreon/runtime-server": {
+      "optional": true
+    },
+    "@pyreon/server": {
+      "optional": true
+    },
     "@pyreon/store": {
       "optional": true
     },
     "@pyreon/vite-plugin": {
+      "optional": true
+    },
+    "@pyreon/zero": {
       "optional": true
     },
     "happy-dom": {

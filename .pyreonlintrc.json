@@ -176,6 +176,9 @@
       "warn",
       {
         "exemptPaths": [
+          "packages/tools/atlas/src/discover/load.ts",
+          "packages/tools/atlas/src/plugins/mount.ts",
+          "packages/tools/atlas/src/plugins/registry.ts",
           "packages/zero/cli/",
           "packages/zero/create-zero/src/",
           "packages/zero/zero/src/adapters/",

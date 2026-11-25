@@ -339,7 +339,7 @@
    "lib": "Next.js App Router",
    "title": "A cached page that refreshes itself",
    "before": "// app/blog/[slug]/page.tsx\nexport const revalidate = 60\n\nexport default async function Post({ params }: { params: Promise<{ slug: string }> }) {\n  const { slug } = await params\n  const post = await getPost(slug)\n  return <h1>{post.title}</h1>\n}",
-   "after": "// src/routes/blog/[slug].tsx\nimport { useLoaderData, type LoaderData } from '@pyreon/router'\n\nexport const renderMode = 'isr' // refreshed after zero({ isr: { revalidate } }), 60 s by default\n\nexport const loader = ({ params }: { params: Record<string, string> }) => getPost(params.slug!)\n\nexport default function Post() {\n  const post = useLoaderData<LoaderData<typeof loader>>()\n  return <h1>{post.title}</h1>\n}",
+   "after": "// src/routes/blog/[slug].tsx\nimport { useLoaderData, type LoaderData } from '@pyreon/router'\n\nexport const renderMode = 'isr' // refreshed after zero({ isr: { revalidate } }), 60 s by default\n\nexport const loader = ({ params }: { params: Record<string, string> }) => getPost(params.slug!)\n\nexport default function Post() {\n  const post = useLoaderData<LoaderData<typeof loader>>()\n  return <h1>{post().title}</h1>\n}",
    "note": "The refresh interval is set once for the app in `zero({ isr })`, not per page. A `loader` also runs in the browser on client-side navigation; put database code in a `.server.ts` file next to the route instead. On-demand refresh goes by tag: the ISR handler's `revalidateTag('posts')` drops every cached page that rendered posts."
   }
  ],

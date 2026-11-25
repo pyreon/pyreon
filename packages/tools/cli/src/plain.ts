@@ -32,6 +32,7 @@ import {
   type Term,
   verdict,
   wrap,
+  writeOut,
 } from '@pyreon/ansi'
 
 export interface PlainOptions {
@@ -120,10 +121,10 @@ export async function plain(opts: PlainOptions): Promise<number> {
     // hands a parser `No source files matched.` and it throws — the one
     // consumer the flag exists for is the one that breaks.
     if (opts.json) {
-      console.log(JSON.stringify({ files: [], declined: {}, matched: 0 }, null, 2))
+      await writeOut(JSON.stringify({ files: [], declined: {}, matched: 0 }, null, 2))
       return 0
     }
-    console.log(nothingTo(createTerm(), 'No source files matched', 'pass a file or directory: pyreon plain src/'))
+    await writeOut(nothingTo(createTerm(), 'No source files matched', 'pass a file or directory: pyreon plain src/'))
     return 0
   }
 
@@ -159,7 +160,7 @@ export async function plain(opts: PlainOptions): Promise<number> {
   }
 
   if (opts.json) {
-    console.log(
+    await writeOut(
       JSON.stringify(
         {
           files: reports.filter((r) => r.status !== 'nothing'),
@@ -182,7 +183,7 @@ export async function plain(opts: PlainOptions): Promise<number> {
     return 0
   }
 
-  console.log(
+  await writeOut(
     renderPlainText(createTerm(), {
       reports,
       skippedTests: skipped.tests,

@@ -27,6 +27,6 @@ export default function GuardedPage() {
     'div',
     { 'data-testid': 'guarded-page', 'data-action': guardedAction.actionId },
     h('h1', null, 'Guarded'),
-    h('p', { 'data-testid': 'guarded-secret' }, () => data?.secret ?? 'none'),
+    h('p', { 'data-testid': 'guarded-secret' }, () => data()?.secret ?? 'none'),
   )
 }

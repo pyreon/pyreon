@@ -235,7 +235,7 @@ const initial = isClient ? navigator.onLine : true
 ### `computed` `function`
 
 ```ts
-<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>
+<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean; name?: string }) => Computed<T>
 ```
 
 Create a derived value that caches its result and recomputes lazily. Dependencies auto-tracked on each evaluation — no dependency array needed (unlike React `useMemo`). Only recomputes when a tracked signal actually changes. By DEFAULT a computed gates on `Object.is`, like a signal write and like Solid `createMemo` / Vue + Preact `computed`: when a dependency changes and the recomputed result is identical, downstream effects do not re-run. While nothing subscribes it stays lazy (a dependency change only marks it dirty). Pass `equals` when the result is a fresh array/object each time, which identity can never gate; that also makes the computed eager.
@@ -245,7 +245,7 @@ Create a derived value that caches its result and recomputes lazily. Dependencie
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `fn` | `() => T` | Derivation — reads other signals/computeds; dependencies are auto-tracked on each run. |
-| `options?` | `{ equals?: (a: T, b: T) => boolean }` | Custom equality comparator. A computed already gates on `Object.is` by default (like `signal.set`), so an identical primitive or the same object reference stops propagation without it. Pass `equals` only when identity is the wrong test — a derivation that rebuilds a fresh array/object whose CONTENTS are unchanged, which `Object.is` can never gate. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke. |
+| `options?` | `{ equals?: (a: T, b: T) => boolean; name?: string }` | `name` is a dev-only debug name shown in devtools (`@pyreon/vite-plugin` injects it for `const x = computed(…)`). `equals`: custom equality comparator. A computed already gates on `Object.is` by default (like `signal.set`), so an identical primitive or the same object reference stops propagation without it. Pass `equals` only when identity is the wrong test — a derivation that rebuilds a fresh array/object whose CONTENTS are unchanged, which `Object.is` can never gate. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke. |
 
 **Returns** `Computed<T>` — A read-only callable — call to read the cached value; recomputes lazily only when a dependency changes, and notifies downstream only when the result changes (`Object.is`, or your `equals`).
 
@@ -311,24 +311,25 @@ const kept = linked(options, (opts, prev): string =>
 ### `effect` `function`
 
 ```ts
-(fn: () => (() => void) | void) => () => void
+(fn: () => (() => void) | void, options?: { name?: string }) => Effect
 ```
 
-Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.
+Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns an `Effect` whose `dispose()` unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.
 
 **Parameters**
 
 | Parameter | Type | Description |
 | --- | --- | --- |
 | `fn` | `() => (() => void) \| void` | Effect body — auto-tracks the signals it reads; may return a cleanup callback run before each re-run and on dispose. |
+| `options?` | `{ name?: string }` | `name` is a dev-only debug name shown in devtools (`@pyreon/vite-plugin` injects it for `const x = effect(…)`). |
 
-**Returns** `() => void` — A dispose function — call it to stop the effect and run its final cleanup.
+**Returns** `Effect` — `{ dispose() }` — call `dispose()` to stop the effect and run its final cleanup.
 
 **Example**
 
 ```tsx
 const count = signal(0)
-const dispose = effect(() => {
+const e = effect(() => {
   console.log("Count:", count())
   onCleanup(() => console.log("cleaning up"))
 })

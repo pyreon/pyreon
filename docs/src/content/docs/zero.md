@@ -253,6 +253,8 @@ Parameter names may contain letters, digits, `_` and `-`: `[post-id].tsx` reads 
 fs-router emits `_layout.tsx` as a **parent route**. Do **not** also pass it via `createApp({ layout })` / `startClient({ layout })` — that mounts the layout twice. `createApp` detects this collision and ignores the explicit `layout` with a dev warning, but the correct shape is to never pass it.
 :::
 
+`startClient({ routes, trailingSlash })` (and `createApp`) forward `trailingSlash: 'strip' | 'add' | 'ignore'` to the client router (default `'strip'`). An app that is deployed as SSG directories (`<route>/index.html`, the default `ssg.format`) to a plain static host can pass `'add'`, so the URL the router writes is the one the host serves without a redirect.
+
 ### Route Groups
 
 Wrap a directory name in parentheses to group routes without affecting the URL:
@@ -364,8 +366,9 @@ Each route file can export any combination of:
 ```tsx
 // src/routes/users/[id].tsx
 
-// Required: the page component. Read loader data with useLoaderData() —
-// the component receives { params, query, meta }, never the data itself.
+// Required: the page component. Read loader data with useLoaderData(), a
+// reactive accessor — call data() where the value is used. The component
+// receives { params, query, meta }, never the data itself.
 // Keep `props` whole: destructuring it captures the values once.
 import { useLoaderData } from '@pyreon/router'
 
@@ -373,7 +376,7 @@ export default function UserPage(props) {
   const data = useLoaderData()
   return (
     <div>
-      User {props.params.id}: {data.name}
+      User {props.params.id}: {data().name}
     </div>
   )
 }
@@ -736,7 +739,7 @@ export async function serverLoader(ctx: { request?: Request }) {
 
 ```tsx
 // src/routes/dashboard.tsx — reads it like any loader
-const data = useLoaderData<Dashboard>()
+const data = useLoaderData<Dashboard>() // read data() in JSX / effects
 ```
 
 How it works:
@@ -777,6 +780,8 @@ import { Link, useLink, createLink, prefetchRoute } from '@pyreon/zero'
 | `external`         | `boolean`                         | auto             | Force external (`true`) / internal (`false`), overriding auto-detection |
 | `target`           | `string`                          | auto             | Override `<a target>` (auto `"_blank"` for external) |
 | `rel`              | `string`                          | auto             | Override `<a rel>` (auto `"noopener noreferrer"` on new-tab links) |
+
+An internal root-relative `href` renders with the router base (`<Link href="/about">` → `<a href="/blog/about">` under `base: '/blog/'`), exactly like `<RouterLink>`; `useLink(props).href()` returns the same value for a custom element, and `createLink` passes it as `href`. External, protocol-relative and `external`-forced hrefs are written as given.
 
 #### `<Link>` external links
 
@@ -1300,6 +1305,8 @@ export default {
 
 `fontVariables({ Inter: "'Inter', sans-serif" })` generates CSS custom properties.
 
+Self-hosted files are emitted under `assets/fonts/`; the inlined `@font-face` CSS and the preload hints carry the build's base (see [Base Path](#base-path)), so a subpath deploy loads them from `<base>assets/fonts/`.
+
 ### `usePreloadFont` — per-route runtime preload
 
 For fonts that **aren't** in the global `fontPlugin` declaration — a route-specific display face, a conditionally-loaded variable font, a CDN-hosted brand font — use `usePreloadFont` to emit a `<link rel="preload" as="font">` into `<head>` at render time:
@@ -1689,13 +1696,14 @@ For a static build (`ssg` / `spa`) `zero preview` serves `dist/`. For an `ssr` /
 
 ## Base Path
 
-`zero({ base: '/blog/' })` is the **single source of truth** for subpath deploys. It propagates to:
+Set the base once, either as `zero({ base: '/blog/' })` or the Vite way (`vite build --base /blog/`, `base` in `vite.config.ts`, or `build({ base })` from code). zero then works with two bases:
 
-1. **Vite's `base`** — asset URLs in built HTML/JS get the prefix (`<script src="/blog/assets/...">`).
-2. **`createRouter({ base })`** — RouterLink hrefs render prefixed (`<a href="/blog/about">`), incoming URLs are `stripBase`d.
-3. **SSG render + `startClient`** — the SSR sub-build and client both read `__ZERO_BASE__` so hydration matches.
+- The **route base** is where pages live. It is always a root-relative path: `zero({ base })` when set, else Vite's base when that is a path, else `/`. It reaches `createRouter({ base })` (so `<RouterLink>` and zero's `<Link>` render `<a href="/blog/about">` and incoming URLs are `stripBase`d), `__ZERO_BASE__` (read by `startClient` and the SSG render, so hydration matches), the dev server, redirect canonicals, i18n prefixes, the PWA manifest scope and the production server's routing (`__ZERO_SERVER_CONFIG__`).
+- The **asset base** is Vite's resolved base: where built files live. It is usually the same path, but may be a full URL for assets on a CDN (`base: 'https://cdn.example.com/app/'`, with the pages still at `/`). Chunks, SSG route modulepreloads, `ssg.cssMode: 'asset'` stylesheets, per-route OG images and self-hosted fonts use it.
 
-A user's explicit `vite.config.base` still wins (Vite merge semantics: plugin config is the base). The on-disk `dist/` layout stays **unprefixed** (`dist/about/index.html`) — the host serves `dist/` mounted at `/blog/`.
+An explicit `zero({ base })` is both bases (it wins over a Vite base), and must be a root-relative path (`/blog/`; a missing trailing slash is added; no `//host`, `/\`, query, fragment, whitespace or `..` segment; leave it `undefined` to unset it) — a CDN URL or `./` there stops the build and belongs in `vite.config.base`. With a CDN `vite.config.base`, `vite` (dev) serves under the URL's path (`/app/about` for `https://cdn.example.com/app/`), which is Vite's dev behaviour, while the build routes the pages at `/`. A **relative** Vite base (`./`) is only supported with `mode: 'spa'`: prerendered and server-rendered pages live at every depth (`about/index.html`), where `./assets/…` would resolve under the page, so other modes stop the build with an error that names the fix. `zero({ pwa })` needs a path base (a service worker cannot precache another origin's files).
+
+The on-disk `dist/` layout stays **unprefixed** (`dist/about/index.html`) — the host serves `dist/` mounted at `/blog/`.
 
 ## Deployment Adapters
 

@@ -17,6 +17,7 @@
  *   - check-distribution    (sideEffects / source-map invariants)
  *   - check-declarations    (published .d.ts: imports declared + strict compile)
  *   - check-esm-only        (no CJS-enabling export condition)
+ *   - check-shipped-src-imports (no shipped file imports a src/ the publish strips)
  *   - check-export-entries  (subpath export has a build entry — release-build guard)
  *   - check-release-readiness (publishConfig.access / fixed-group coverage)
  *   - check-manifest-depth  (LOCKED package density regressed)
@@ -33,11 +34,14 @@
  *   - check-workflow-triggers (a PR workflow without superseded-run cancellation, or a draft skip with no ready_for_review)
  *   - check-leak-ratchet    (a leak-class finding grew above its committed baseline)
  *   - check-counter-catalog (a dev counter emitted with no COUNTERS.md row, or a stale row)
+ *   - check-script-imports  (a script in scripts/ imports a module or export that no longer exists)
+ *   - check-e2e-webservers  (an e2e webServer waits for a port it does not open itself)
  *   - check-zero-feature-coverage (a documented zero feature has no real-build test)
  *   - check-breaking-changeset-codemod (a zero minor changeset lacks an `Upgrade:` line)
  *   - check-lint-ratchet    (oxlint warn-finding count grew above baseline)
  *   - check-multiplatform-tier (published pkg without a declared multiplatform story)
  *   - check-stability-tier  (published pkg tier, README status, stable→experimental deps, meta, @deprecated)
+ *   - check-support-matrix  (engines.node, native platform floors and the documented support matrix agree)
  *   - check-native-coverage (an app-runtime pkg that should cross to native regressed)
  *   - check-native-golden   (the native compiler's emitted Swift/Kotlin changed for the golden corpus)
  *   - check-compiler-boundary (library knowledge inside a compiler grew above its committed baseline)
@@ -109,6 +113,10 @@ const GATES: Gate[] = [
   // Published package tiers (Stable / Experimental): field, README status line,
   // dependency direction, @pyreon/meta, @deprecated → manifest removeIn.
   { name: 'check-stability-tier', cmd: 'bun scripts/check-stability-tier.ts' },
+  // The support matrix (Node, Bun, browsers, iOS, Android): engines.node on every
+  // published package, the SwiftPM / minSdk / deployment-target floors, and the
+  // stability page + SECURITY.md all match SUPPORT_MATRIX.
+  { name: 'check-support-matrix', cmd: 'bun scripts/check-support-matrix.ts' },
   // The finish-line ratchet: every app-runtime/feature-building package that
   // SHOULD cross to native either lowers clean through PMTC or ships a native
   // runtime — regressions (a snippet that starts warning, a co-source that
@@ -136,6 +144,15 @@ const GATES: Gate[] = [
   // only runs when perf-harness is in a PR's test closure; #4236 added a
   // counter that passed its own CI and turned main red.
   { name: 'check-counter-catalog', cmd: 'bun scripts/check-counter-catalog.ts' },
+  // `scripts/` is not a package, so no per-package typecheck sees it: a script
+  // importing a renamed or removed workspace export broke only when someone ran
+  // it (bench:loom on the retired detectPeerMismatch). Fails on the import
+  // class of tsc diagnostics in scripts/ only. ~15s, the slowest gate here.
+  { name: 'check-script-imports', cmd: 'bun scripts/check-script-imports.ts' },
+  // Every e2e webServer owns its port: no placeholder entry waiting for a port
+  // another entry's command opened (CI refuses a taken port; locally
+  // reuseExistingServer hid it, #4751), no two entries on one port.
+  { name: 'check-e2e-webservers', cmd: 'bun scripts/check-e2e-webservers.ts' },
   // IP: every workspace carries the root LICENSE byte-for-byte and declares
   // "license": "MIT". A published package without either ships with no stated
   // terms; an example without either is code people copy with none.
@@ -185,6 +202,7 @@ const GATES: Gate[] = [
   { name: 'check-declared-imports', cmd: 'bun scripts/check-declared-imports.ts' },
   { name: 'check-declarations', cmd: 'bun scripts/check-declarations.ts' },
   { name: 'check-esm-only', cmd: 'bun scripts/check-esm-only.ts' },
+  { name: 'check-shipped-src-imports', cmd: 'bun scripts/check-shipped-src-imports.ts' },
   { name: 'check-export-entries', cmd: 'bun scripts/check-export-entries.ts' },
   { name: 'check-tsconfig-presets', cmd: 'bun scripts/check-tsconfig-presets.ts' },
   { name: 'check-release-readiness', cmd: 'bun scripts/check-release-readiness.ts' },

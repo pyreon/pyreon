@@ -61,7 +61,7 @@ describe('loom scan, themed', () => {
     }
     const last = (strict: boolean) =>
       renderScanText(warnOnly, { ...BASE, color: 0, unicode: true, strict }).trimEnd().split('\n').at(-1)
-    expect(last(false)).toBe('! 3 warnings, 8 info · 5 packages · 412 ms')
-    expect(last(true)).toBe('✗ 3 warnings, 8 info · strict · 5 packages · 412 ms')
+    expect(last(false)).toBe('! 2 warnings, 8 info · 5 packages · 412 ms')
+    expect(last(true)).toBe('✗ 2 warnings, 8 info · strict · 5 packages · 412 ms')
   })
 })

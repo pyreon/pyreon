@@ -23,7 +23,7 @@ export default function FormActionsPage() {
     <div data-testid="form-actions-page">
       <h1>Server functions</h1>
       <ul data-testid="entries">
-        {() => (data?.entries ?? []).map((e) => <li>{e}</li>)}
+        {() => (data()?.entries ?? []).map((e) => <li>{e}</li>)}
       </ul>
       <Form action={action} data-testid="guestbook-form">
         <input name="name" data-testid="name-input" />

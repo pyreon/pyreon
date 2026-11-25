@@ -96,6 +96,9 @@
     "@pyreon/compiler-linux-x64-musl": "workspace:*",
     "@pyreon/compiler-win32-x64-msvc": "workspace:*"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

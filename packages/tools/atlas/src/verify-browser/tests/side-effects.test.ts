@@ -19,6 +19,24 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { runScan } from '../../cli/run'
 import { INTERACTION_GUARD_SOURCE, runBrowserVerify, summarizeSuppressed } from '../runner'
 
+/**
+ * A port the OS says is free. A fixed port made this suite fail whenever
+ * anything else on the machine held it (another `atlas dev`), with an error
+ * about the port rather than about verify-browser.
+ */
+async function freePort(): Promise<number> {
+  const { createServer } = await import('node:net')
+  return await new Promise((done, fail) => {
+    const probe = createServer()
+    probe.on('error', fail)
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address()
+      const port = typeof address === 'object' && address ? address.port : 0
+      probe.close(() => done(port))
+    })
+  })
+}
+
 const FIXTURE = resolve(import.meta.dirname, 'fixtures/side-effects')
 
 async function chromiumAvailable(): Promise<boolean> {
@@ -78,7 +96,7 @@ describe('verify-browser side effects (real Chromium)', () => {
     async () => {
       cpSync(FIXTURE, work, { recursive: true })
       await runScan({ cwd: work, mount: false })
-      const summary = await runBrowserVerify({ cwd: work, port: 5391, axe: false })
+      const summary = await runBrowserVerify({ cwd: work, port: await freePort(), axe: false })
 
       // Every scenario was driven — nothing aborted the catalog.
       expect(summary.scenarios).toBeGreaterThanOrEqual(7)

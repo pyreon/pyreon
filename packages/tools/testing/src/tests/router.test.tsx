@@ -20,7 +20,7 @@ function Post() {
   const data = useLoaderData<{ title: string }>()
   return (
     <div>
-      Post {params.id}: {data.title}
+      Post {params.id}: {data().title}
     </div>
   )
 }

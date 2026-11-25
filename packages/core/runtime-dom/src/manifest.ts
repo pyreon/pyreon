@@ -103,9 +103,9 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
     {
       name: 'Transition',
       kind: 'component',
-      signature: '<Transition name={name} show={() => boolean} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>',
+      signature: '<Transition name={name} show={boolean | (() => boolean)} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>',
       summary:
-        'CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show: () => boolean` accessor — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles.',
+        'CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show` prop — a value or an accessor, like `<Show when>` (`show={open}` with a component-local signal, `show={open()}` and `show={() => open()}` are all reactive) — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles.',
       example: `const visible = signal(true)
 
 <Transition name="fade" show={() => visible()}>
@@ -117,7 +117,7 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
 .fade-enter-from, .fade-leave-to { opacity: 0 }
 */`,
       mistakes: [
-        'Omitting `show` — it is REQUIRED (`() => boolean`); Transition drives visibility itself, so a plain child with no `show` will not animate',
+        'Omitting `show` — it is REQUIRED; Transition drives visibility itself, so a plain child with no `show` will not animate',
         'Wrapping the child in a `<Show>` — `show` already toggles visibility; a nested `<Show>` double-gates it',
         'Missing CSS classes — `<Transition name="fade">` does nothing without `.fade-enter-active` / `.fade-leave-active` CSS',
         'Passing a `mode` prop — Transition has no `mode`; for sequenced list moves use TransitionGroup',
@@ -127,9 +127,9 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
     {
       name: 'TransitionGroup',
       kind: 'component',
-      signature: '<TransitionGroup items={() => T[]} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />',
+      signature: '<TransitionGroup items={T[] | (() => T[])} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />',
       summary:
-        'Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (a reactive accessor), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`).',
+        'Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (an accessor or an array — `items={list}` with a component-local signal stays reactive), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`).',
       example: `const items = signal([{ id: 1, name: "a" }, { id: 2, name: "b" }])
 
 <TransitionGroup
@@ -154,14 +154,13 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
     {
       name: 'KeepAlive',
       kind: 'component',
-      signature: '<KeepAlive active={() => boolean}>{children}</KeepAlive>',
+      signature: '<KeepAlive active={boolean | (() => boolean)}>{children}</KeepAlive>',
       summary:
-        "Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab).",
+        "Mount children ONCE and keep them alive when hidden — when `active` is false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab).",
       example: `// One KeepAlive per route — each keeps its own subtree mounted + hidden.
 <KeepAlive active={() => route() === "/a"}><RouteA /></KeepAlive>
 <KeepAlive active={() => route() === "/b"}><RouteB /></KeepAlive>`,
       mistakes: [
-        '`active` MUST be a thunk — write `active={() => cond()}`, not `active={cond}`; the runtime calls `props.active?.()`, so any non-function value (a boolean, or a bare signal the compiler auto-calls to a value) THROWS `TypeError: props.active is not a function` at mount — there is no `<Show when>`-style value-form normalization; only omitting `active` entirely defaults to visible',
         'KeepAlive CSS-HIDES when inactive, it does NOT unmount — the hidden component\'s effects, timers, subscriptions, and signals keep RUNNING (memory + side-effect cost); use it ONLY for expensive-to-recreate state, not as a default wrapper',
         'It is the OPPOSITE of `<Show>`/ternary — those DESTROY + recreate state on toggle; reach for KeepAlive precisely when you need state PRESERVED across hide/show (form drafts, scroll, heavy trees)',
         'Each KeepAlive slot keeps its OWN children mounted — wrapping N routes in N KeepAlives keeps ALL N subtrees mounted + their effects live simultaneously, not just the active one',

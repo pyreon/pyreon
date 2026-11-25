@@ -20,6 +20,12 @@ export interface AddRecipe {
   provider?: { setup: string; wrap: string }
   /** A minimal usage snippet (inside a component / module). */
   usage: string
+  /**
+   * Dev dependencies some of the package's commands need, with what needs
+   * them. Printed as an install line for the DETECTED package manager — never
+   * hard-coded into `usage`, which would tell a pnpm user to run bun.
+   */
+  devDependencies?: { packages: readonly string[]; for: string }
   /** Docs page path on the Pyreon site. */
   docs: string
 }
@@ -95,8 +101,13 @@ npx @pyreon/loom scan .
 #   strict    exit non-zero on warnings too
 #   severity  per-code override: error | warning | info
 
-# The observatory UI (needs vite + @pyreon/vite-plugin as dev deps):
-npx @pyreon/loom dev`,
+# The observatory UI, or a static site of it:
+npx @pyreon/loom dev
+npx @pyreon/loom build`,
+    devDependencies: {
+      packages: ['vite', '@pyreon/vite-plugin', '@pyreon/zero'],
+      for: '`loom dev` (vite + the plugin) and `loom build` (also zero); `loom scan` needs none',
+    },
     docs: '/docs/loom',
   },
   '@pyreon/atlas': {
@@ -104,10 +115,15 @@ npx @pyreon/loom dev`,
     usage: `# Derive the catalog (writes atlas-catalog.json — the machine surface):
 npx @pyreon/atlas scan
 
-# Serve the workbench:
+# Serve the workbench, or build it into a static site:
 npx @pyreon/atlas dev
+npx @pyreon/atlas build
 
 # Optional atlas.config.ts, or an \`atlas\` section in pyreon.config.*.`,
+    devDependencies: {
+      packages: ['vite', '@pyreon/vite-plugin', '@pyreon/zero'],
+      for: '`atlas dev` and `atlas build` (the workbench is a zero app); `atlas scan` needs none',
+    },
     docs: '/docs/atlas',
   },
   '@pyreon/config': {

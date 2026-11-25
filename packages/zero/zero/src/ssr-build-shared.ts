@@ -23,11 +23,14 @@
  * for unit-test access, never re-exported from `@pyreon/zero/server`.
  */
 
+import { randomBytes } from 'node:crypto'
 import { mkdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import type { PyreonPluginOptions } from '@pyreon/vite-plugin'
 import type { BuildOptions, Plugin } from 'vite'
 import { _enterInnerBuild, _exitInnerBuild } from './build-flags'
 import { innerPyreonOptions } from './inner-pyreon-options'
+import { isRoutePath } from './route-path'
 
 /**
  * zero's optional native peers — every `peerDependenciesMeta[*].optional`
@@ -107,6 +110,7 @@ export function renderSsrEntrySource(options: RenderSsrEntryOptions): string {
         '[Pyreon] SSG entry renderer not registered. Import ssg-plugin before calling renderSsrEntrySource({ kind: "ssg" }).',
       )
     }
+
     return _ssgEntryRenderer(options.locales)
   }
   // SSR / ISR: canonical createServer body. Same module shape as
@@ -271,6 +275,7 @@ export function buildInnerBuildOptions(options: BuildSsrBundleOptions): BuildOpt
   }
   if (options.assetsInlineLimit !== undefined) build.assetsInlineLimit = options.assetsInlineLimit
   if (options.assetsDir !== undefined) build.assetsDir = options.assetsDir
+
   return build
 }
 
@@ -311,6 +316,7 @@ export function edgeNodeBuiltinsPlugin(): Plugin {
       }
       const bare = id.startsWith('node:') ? id.slice(5) : id
       if (!id.startsWith('node:') && !builtins.has(bare)) return null
+
       return EDGE_BUILTIN_PREFIX + bare
     },
     async load(id) {
@@ -340,6 +346,7 @@ export default { AsyncLocalStorage }
       // carry any request-derived value into executable source.
       const stub =
         '() => { throw new Error("[Pyreon] A Node builtin is not available on the edge runtime. Remove `export const runtime = \'edge\'` from the route that reaches it (it will run on Node), or use a web API instead.") }'
+
       return [
         ...names.map((n) => `export const ${n} = ${stub}`),
         `export default new Proxy({}, { get: (_t, k) => typeof k === "string" ? (${stub}) : undefined })`,
@@ -451,8 +458,12 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
     // we must inject the base via `zeroPlugin(userConfig)` not via the
     // top-level build call. Defaulting back to `userConfig` when no
     // base was forwarded (e.g. older callers).
+    //
+    // Only a PATH base is a route base too (see `routeBaseOf`). A `./` or CDN
+    // asset base goes to Vite alone (top-level `base` below); giving it to
+    // zero would make the inner router's base `/.` or `/https://…`.
     const innerZeroConfig: ZeroConfig =
-      options.base !== undefined && options.base !== '/'
+      options.base !== undefined && options.base !== '/' && isRoutePath(options.base)
         ? { ...options.userConfig, base: options.base }
         : options.userConfig
 
@@ -474,6 +485,7 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
       // as a total Record.
       plugins: [
         ...(options.edge ? [edgeNodeBuiltinsPlugin()] : []),
+        syntheticEntryResolvePlugin(options.entryPath, options.root),
         pyreon(innerPyreonOptions(options.userPlugins)),
         zeroPlugin(innerZeroConfig),
         ...userPlugins,
@@ -503,6 +515,48 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
 }
 
 /**
+ * The path a synthetic entry is written to: `<dir>/<name>` with a per-build
+ * suffix (`__pyreon-zero-ssg-entry-<pid>-<random>.js`). `dir` is Vite's
+ * resolved `cacheDir`, never the app root.
+ *
+ * - Per build: a fixed name made two builds of the SAME root collide — the
+ *   first to finish removed the file under the other (`Cannot resolve entry
+ *   module`). Ordinary for a tool that ships its own app (two `atlas build`
+ *   runs in one CI job, test files building in parallel).
+ * - In the cache dir: the root can be read-only (an app shipped inside an
+ *   installed package under Yarn PnP or a Nix store) and is the user's
+ *   working tree; a cache dir is writable scratch by definition. The entry's
+ *   bare imports still resolve from the root (`syntheticEntryResolvePlugin`).
+ *
+ * The stem is unchanged, so `__pyreon-zero-ss{g,r}-entry*.js` gitignores an
+ * entry an older zero left in the root.
+ */
+export function syntheticEntryPath(dir: string, filename: string): string {
+  const unique = `${process.pid}-${randomBytes(4).toString('hex')}`
+  return join(dir, filename.replace(/\.js$/, `-${unique}.js`))
+}
+
+/**
+ * Resolve the synthetic entry's bare imports (`@pyreon/zero/server`,
+ * `@pyreon/head/ssr`, …) as if it sat in the app root, where it used to be
+ * written. It now lives in the cache dir (see `syntheticEntryPath`), and a
+ * node_modules walk from there can reach a different copy — or none.
+ * Relative, absolute, virtual and `\0` ids pass through untouched.
+ */
+export function syntheticEntryResolvePlugin(entryPath: string, root: string): Plugin {
+  const stand_in = join(root, '__pyreon-zero-entry.js')
+  return {
+    name: 'pyreon-zero:synthetic-entry-resolve',
+    enforce: 'pre',
+    resolveId(id, importer, opts) {
+      if (importer !== entryPath) return null
+      if (id.startsWith('.') || id.startsWith('/') || id.startsWith('\0') || id.startsWith('virtual:')) return null
+      return this.resolve(id, stand_in, { ...opts, skipSelf: true })
+    },
+  }
+}
+
+/**
  * Write the synthetic entry to disk inside the project root. The path
  * must sit at `root` (not under `node_modules/`) so its imports resolve
  * relative to the user's source tree — the inner build's plugin chain
@@ -512,6 +566,8 @@ export async function buildSsrBundle(options: BuildSsrBundleOptions): Promise<vo
  * block at the call site). The helper just writes the file.
  */
 export async function materializeEntry(entryPath: string, source: string): Promise<void> {
+  // The cache dir may not exist yet (a cold project, a custom `cacheDir`).
+  await mkdir(dirname(entryPath), { recursive: true })
   await writeFile(entryPath, source, 'utf-8')
 }
 
@@ -536,6 +592,7 @@ export async function materializeEntry(entryPath: string, source: string): Promi
  * @internal
  */
 let _atomicSeq = 0
+
 export async function writeFileAtomic(target: string, content: string | Uint8Array): Promise<void> {
   const tmp = `${target}.tmp.${process.pid}.${++_atomicSeq}`
   try {
@@ -599,6 +656,7 @@ export function injectIntoTemplate(
         const i = s.indexOf(c)
         if (i !== -1 && (best === -1 || i < best)) best = i
       }
+
       return best
     }
     const openIdx = findOpenAppDiv(html)
@@ -622,6 +680,7 @@ export function injectIntoTemplate(
   } else if (result.loaderScript) {
     html = html.replace('</body>', () => `${result.loaderScript}</body>`)
   }
+
   return html
 }
 
@@ -642,6 +701,7 @@ export function injectIntoTemplate(
  * @internal
  */
 const _mkdirCache = new Map<string, Promise<void>>()
+
 export async function mkdirOnce(dir: string): Promise<void> {
   let p = _mkdirCache.get(dir)
   if (!p) {
@@ -650,9 +710,11 @@ export async function mkdirOnce(dir: string): Promise<void> {
   }
   await p
 }
+
 export function _resetMkdirCache(): void {
   _mkdirCache.clear()
 }
+
 export function _peekMkdirCacheSize(): number {
   return _mkdirCache.size
 }

@@ -4,8 +4,7 @@
  * hrefs so its tabs navigate for real instead of flipping a signal.
  */
 import { h } from '@pyreon/core'
-import { Observatory } from '../../src/ui/Observatory'
-import type { ViewId } from '../../src/ui/model'
+import { Observatory, type ViewId } from '@pyreon/loom/ui'
 import { loomReport } from './report'
 
 interface ViteEnvMeta {

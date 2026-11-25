@@ -292,12 +292,12 @@ describe('panel against a real Pyreon app', () => {
     })
     expect($('#pd-view-components .pane-h .ins-name')?.textContent).toBe('Composer')
     const reads = $$('#pd-view-components .kv dt').map((d) => d.textContent)
-    // `validity` is a computed: it has no runtime name, so the panel names
-    // it by where it was created.
-    expect(reads).toEqual(expect.arrayContaining(['owner', 'draft', expect.stringMatching(/^panel\.browser\.test\.tsx:\d+$/)]))
+    // `validity` is a computed; `@pyreon/vite-plugin` names it after its
+    // binding, the same way it names signals (#4446).
+    expect(reads).toEqual(expect.arrayContaining(['owner', 'draft', 'validity']))
     expect($$('#pd-view-components .kv dd').map((d) => d.textContent)).toContain('App › Composer')
     expect(why.textContent).toMatch(
-      /draft signal changed \(panel\.browser\.test\.tsx:\d+\) → panel\.browser\.test\.tsx:\d+ computed recomputed/,
+      /draft signal changed \(panel\.browser\.test\.tsx:\d+\) → validity computed recomputed \(panel\.browser\.test\.tsx:\d+\)/,
     )
   })
 
@@ -336,9 +336,9 @@ describe('panel against a real Pyreon app', () => {
     await show('graph')
     await waitFor(() => $$('.gn').length > 0)
     const labels = $$('.gn text').map((t) => t.textContent)
-    // draft and what it feeds (the `validity` computed, label truncated);
+    // draft and what it feeds (the `validity` computed, named by the plugin);
     // not `to`, which only shares a subscriber with draft.
-    expect(labels).toEqual(expect.arrayContaining(['draft', expect.stringMatching(/^panel\.browser\.te/)]))
+    expect(labels).toEqual(expect.arrayContaining(['draft', 'validity']))
     expect(labels).not.toContain('to')
     expect($('#pd-view-graph .cap')?.textContent).toContain('around draft')
     ;($$('.seg2 button')[1] as HTMLButtonElement).click()
@@ -350,8 +350,8 @@ describe('panel against a real Pyreon app', () => {
     store.messages.set([...store.messages(), { id: 44, text: 'New' }])
     await show('effects')
     const lane = await waitFor(() => $$('.lane').find((l) => l.textContent?.includes('reads')))
-    // `unread` is a computed, named by where it was created.
-    expect(lane.textContent).toMatch(/reads panel\.browser\.test\.tsx:\d+/)
+    // `unread` is a computed, named after its binding by the vite plugin.
+    expect(lane.textContent).toMatch(/reads unread/)
     expect(lane.querySelectorAll('.lt i').length).toBeGreaterThanOrEqual(1)
   })
 

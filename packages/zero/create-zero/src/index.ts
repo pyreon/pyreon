@@ -1,6 +1,6 @@
 import { readdirSync } from 'node:fs'
 import { performance } from 'node:perf_hooks'
-import { createTerm, finding, formatElapsed, plural } from '@pyreon/ansi'
+import { createTerm, exitAfterFlush, finding, formatElapsed, plural } from '@pyreon/ansi'
 import * as p from './ui'
 import { type CliArgs, helpText, parseArgs } from './args'
 import { OWN_VERSION } from './own-version'
@@ -41,12 +41,13 @@ async function main() {
     console.error(
       finding(t, { severity: 'error', source: invokedAs, message, fix: `run ${invokedAs} --help for usage` }, { indent: 0, width: t.width }).join('\n'),
     )
-    process.exit(2)
+
+    return exitAfterFlush(2)
   }
 
   if (args.help) {
     console.log(helpText(invokedAs))
-    process.exit(0)
+    return exitAfterFlush(0)
   }
 
   // Rule 1: the first line names what ran — the alias typed, and its version.
@@ -89,5 +90,5 @@ main().catch((err) => {
       ...stack.map((l) => t.dim(`   ${l.trim()}`)),
     ].join('\n'),
   )
-  process.exit(1)
+  void exitAfterFlush(1)
 })

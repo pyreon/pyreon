@@ -1,3 +1,4 @@
+import { isRoutePath } from './route-path'
 import type { ZeroConfig } from './types'
 
 type UserKeys = keyof Omit<ZeroConfig, '_autoMode'>
@@ -51,6 +52,7 @@ function distance(a: string, b: string): number {
       diag = tmp
     }
   }
+
   return prev[b.length]!
 }
 
@@ -66,6 +68,7 @@ export function didYouMean(input: string, candidates: readonly string[]): string
       best = c
     }
   }
+
   return bestScore <= Math.max(2, Math.floor(input.length / 3)) ? best : undefined
 }
 
@@ -121,6 +124,15 @@ export function validateZeroConfig(input: unknown): void {
   }
   if (cfg.base !== undefined && typeof cfg.base !== 'string') {
     problems.push(`\`base\` must be a string (e.g. "/docs/") — got ${JSON.stringify(cfg.base)}.`)
+  } else if (typeof cfg.base === 'string' && !isRoutePath(cfg.base)) {
+    // `zero({ base })` is the ROUTE base: where pages live, so a path on this
+    // origin. A CDN URL or a relative `./` here became the router base
+    // (`/https://cdn…/about`, `/.`), and `docs/` never matched a request path.
+    problems.push(
+      `\`base\` must be a root-relative path such as "/docs/" (no \`//host\`, \`/\\\`, query, fragment, whitespace or \`..\`) — got ${JSON.stringify(cfg.base)}. ` +
+        (cfg.base === '' ? 'An unset base is `undefined` (pass `process.env.BASE` as is, not `?? ""`). ' : '') +
+        'It is where your pages live. For assets on a CDN or a relative asset base, set `base` in vite.config.ts (or `vite build --base`) instead and leave zero({ base }) unset — see https://pyreon.dev/docs/zero#base-path.',
+    )
   }
   if (
     cfg.port !== undefined &&

@@ -45,13 +45,9 @@ describe('createModel with no DOM', () => {
     expect(m.addon()).toBe('controls')
   })
 
-  it('keeps the query-string behaviour — a path cannot be read with no location', () => {
-    ;(globalThis as { __ATLAS_ROUTES__?: boolean }).__ATLAS_ROUTES__ = true
-    try {
-      expect(createModel(CATALOG, {}).selId()).toBe('button')
-    } finally {
-      delete (globalThis as { __ATLAS_ROUTES__?: boolean }).__ATLAS_ROUTES__
-    }
+  it('reads a route without a location — the router, not the DOM, names the component', () => {
+    const route = { id: () => 'badge', go: () => {} }
+    expect(createModel(CATALOG, { route }).selId()).toBe('badge')
   })
 
   it('a state change does not throw where there is nothing to write it to', () => {

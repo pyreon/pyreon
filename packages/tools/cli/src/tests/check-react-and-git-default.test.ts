@@ -25,6 +25,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { check } from '../check'
+import { stdoutToConsoleLog } from './stdout-to-console'
 
 let cwd: string
 
@@ -64,6 +65,7 @@ async function run(opts: {
     chunks.push(a.map(String).join(' '))
   }
   const log = vi.spyOn(console, 'log').mockImplementation(sink)
+  const stdout = stdoutToConsoleLog()
   const err = vi.spyOn(console, 'error').mockImplementation(sink)
   const code = await check({
     paths: opts.paths ?? [],
@@ -72,6 +74,7 @@ async function run(opts: {
     fix: opts.fix ?? false,
   })
   log.mockRestore()
+  stdout.mockRestore()
   err.mockRestore()
   return { code, out: chunks.join('\n') }
 }

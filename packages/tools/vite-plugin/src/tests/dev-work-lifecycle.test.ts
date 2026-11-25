@@ -83,6 +83,19 @@ describe('dev work belongs to its server', { timeout: 10_000 }, () => {
     expect(watcher.listenerCount('change')).toBe(0)
   })
 
+  it('projectContext: false writes no context map and watches nothing for it', async () => {
+    // A dev server whose root is not the user's project (atlas dev roots at
+    // the workbench app inside its own install) must not write a map of
+    // itself into that install directory.
+    const root = fixture()
+    const plugin = pyreon({ islands: false, projectContext: false })
+    plugins.push(plugin)
+    const watcher = configure(plugin, root)
+    await vi.dynamicImportSettled()
+    expect(existsSync(join(root, '.pyreon/context.json'))).toBe(false)
+    expect(watcher.listenerCount('change')).toBe(0)
+  })
+
   it('does not schedule work from a stale watcher callback after close', async () => {
     vi.useFakeTimers()
     const root = fixture()

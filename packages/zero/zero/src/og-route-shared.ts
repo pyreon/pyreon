@@ -117,5 +117,7 @@ export function injectOgMeta(html: string, tags: string): string {
 export function absoluteOgUrl(href: string, siteUrl: string | undefined): string {
   // `href` is already base-prefixed; only the ORIGIN of `siteUrl` is used,
   // so `base` is never applied twice.
+  // An href that is already absolute (a CDN asset base) is left alone.
+  if (/^[a-z][a-z\d+.-]*:\/\//i.test(href)) return href
   return siteUrl ? `${new URL(siteUrl).origin}${href}` : href
 }

@@ -2,6 +2,6 @@
   "package": "@pyreon/validate",
   "bundle": 17600,
   "imports": {
-    "mini": 6400
+    "mini": 7112
   }
 }
