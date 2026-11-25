@@ -202,7 +202,7 @@ export function mountReactive(
   let lastItems: unknown[] | null = null
 
   // Owned by the cleanup returned below, not the ambient scope (`_effectOwned`).
-  const e = _effectOwned(() => {
+  const disposeEffect = _effectOwned(() => {
     const myGen = ++generation
     // Read the accessor FIRST: the identity check needs the value, and the
     // read is what establishes this effect's dependencies either way. A
@@ -316,13 +316,13 @@ export function mountReactive(
   })
   // Dev: name this boundary's graph node; its creation site is this file.
   if (process.env.NODE_ENV !== 'production') {
-    if (_structuralDead.get(marker) === true) _rdDropBinding(e)
-    else _rdLabelBinding(e, 'child', parent, undefined, null)
+    if (_structuralDead.get(marker) === true) _rdDropBinding(disposeEffect)
+    else _rdLabelBinding(disposeEffect, 'child', parent, undefined, null)
     _structuralDead.set(marker, false)
   }
 
   return () => {
-    e.dispose()
+    disposeEffect()
     if (hasCleanup) _emitCleanup()
     currentCleanup()
     // The marker goes like the content it bounds: skipped inside a bulk-detach
@@ -1367,7 +1367,7 @@ export function mountFor<T>(
   }
 
   // Owned by the cleanup returned below, not the ambient scope (`_effectOwned`).
-  const e = _effectOwned(() => {
+  const disposeEffect = _effectOwned(() => {
     const liveParent = startMarker.parentNode
     if (!liveParent) return
     const items = source()
@@ -1446,13 +1446,13 @@ export function mountFor<T>(
   })
   // Dev: name this boundary's graph node; its creation site is this file.
   if (process.env.NODE_ENV !== 'production') {
-    if (_structuralDead.get(startMarker) === true) _rdDropBinding(e)
-    else _rdLabelBinding(e, 'list', parent, undefined, null)
+    if (_structuralDead.get(startMarker) === true) _rdDropBinding(disposeEffect)
+    else _rdLabelBinding(disposeEffect, 'list', parent, undefined, null)
     _structuralDead.set(startMarker, false)
   }
 
   return () => {
-    e.dispose()
+    disposeEffect()
     const unitParent = parentRemovesUnit ? startMarker.parentNode : null
     if (unitParent !== null) {
       // The parent element leaves the document as a unit right after this, so

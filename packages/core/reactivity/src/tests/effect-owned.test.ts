@@ -33,7 +33,7 @@ describe('_effectOwned', () => {
     const prev = getCurrentScope()
     setCurrentScope(scope)
     let runs = 0
-    let e: { dispose(): void }
+    let e: () => void
     try {
       e = _effectOwned(() => {
         x()
@@ -45,7 +45,7 @@ describe('_effectOwned', () => {
     expect(scope._isEmpty()).toBe(true)
     x.set(1)
     expect(runs).toBe(2)
-    e!.dispose()
+    e!()
     expect(subs(x)).toBe(0)
   })
 
@@ -56,7 +56,7 @@ describe('_effectOwned', () => {
     scope.addUpdateHook(() => updates++)
     const prev = getCurrentScope()
     setCurrentScope(scope)
-    let e: { dispose(): void }
+    let e: () => void
     try {
       e = _effectOwned(() => {
         x()
@@ -67,7 +67,7 @@ describe('_effectOwned', () => {
     x.set(1)
     await Promise.resolve()
     expect(updates).toBe(1)
-    e!.dispose()
+    e!()
   })
 
   test('an aborted owner frame disposes it; a closed one leaves it to its owner', () => {
@@ -86,7 +86,7 @@ describe('_effectOwned', () => {
     })
     _closeOwnerFrame(closed)
     expect(subs(x)).toBe(1)
-    e.dispose()
+    e()
     expect(subs(x)).toBe(0)
   })
 

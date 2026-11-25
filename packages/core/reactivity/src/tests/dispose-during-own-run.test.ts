@@ -156,9 +156,9 @@ describe('effect disposed during its own run', () => {
     const close = signal(false)
     let innerRuns = 0
     let cleanups = 0
-    let owner: { dispose(): void } | undefined
+    let owner: (() => void) | undefined
     owner = _effectOwned(() => {
-      if (close()) owner?.dispose()
+      if (close()) owner?.()
       onCleanup(() => cleanups++)
       effect(() => {
         s()

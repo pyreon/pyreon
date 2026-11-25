@@ -346,17 +346,44 @@ class EffectNode implements WatcherNode, Effect {
  * effect, exactly as `effect()` does. Never use it for an effect whose
  * disposer is dropped.
  */
-export function _effectOwned(fn: () => (() => void) | void): Effect {
-  return effect(fn, OWNED)
+export function _effectOwned(fn: () => (() => void) | void): () => void {
+  const node = startEffect(
+    fn,
+    process.env.NODE_ENV !== 'production' ? _captureCallerLocation(1) : undefined,
+  )
+  // One disposer, made once: the owner frame records it and the owning
+  // cleanup calls it. Reading `dispose` on the node instead allocates a fresh
+  // closure per read (it is a getter, so a detached `e.dispose` still works),
+  // which put one allocation per row into every `<For>` clear.
+  const dispose = (): void => node._dispose()
+  if (process.env.NODE_ENV !== 'production') _rdTagHandle(dispose, node)
+  registerEffectHere(node, dispose)
+  return dispose
 }
-
-/** The options identity `_effectOwned` passes; nothing reads its fields. */
-const OWNED: EffectOptions = {}
 
 export function effect(
   fn: () => (() => void) | void,
   options?: EffectOptions,
 ): Effect {
+  // skipFrames=1: skip the `effect()` frame, capture the user's call site.
+  // Prefer build-time-injected location over the ~2.2µs stack-capture
+  // fallback. @pyreon/vite-plugin's `injectSignalNames` rewrites
+  // `effect(() => …)` to `effect(() => …, { __sourceLocation: {…} })`.
+  const node = startEffect(
+    fn,
+    process.env.NODE_ENV !== 'production' ? (options?.__sourceLocation ?? _captureCallerLocation(1)) : undefined,
+  )
+  // If we're inside another effect's run, register with it so the outer disposes
+  // this inner automatically. The collector is `null` inside `runUntracked`, so
+  // work that explicitly opted out of the outer reactive context falls through
+  // to scope.add — that's what keeps child component effects mounted inside
+  // `mountFor`'s `runUntracked` wrap alive across the For's next re-run.
+  registerEffectHere(node, null)
+  return node
+}
+
+/** Create an effect node and run it the first time (`loc`: dev-only call site). */
+function startEffect(fn: () => (() => void) | void, loc: Parameters<typeof _rdRegister>[5]): EffectNode {
   // Async effect callbacks: the tracking context is the synchronous frame around
   // fn's top half, so reads after the first `await` are never tracked. The
   // constructor-name check catches it at registration without invoking anything.
@@ -376,12 +403,7 @@ export function effect(
   const cap = _c.s
   const node = new EffectNode(fn, _currentScope(), cap ? cap.capture() : null)
 
-  if (process.env.NODE_ENV !== 'production')
-    // skipFrames=1: skip the `effect()` frame, capture the user's call site.
-    // Prefer build-time-injected location over the ~2.2µs stack-capture
-    // fallback. @pyreon/vite-plugin's `injectSignalNames` rewrites
-    // `effect(() => …)` to `effect(() => …, { __sourceLocation: {…} })`.
-    _rdRegister(node, 'effect', null, node, undefined, options?.__sourceLocation ?? _captureCallerLocation(1))
+  if (process.env.NODE_ENV !== 'production') _rdRegister(node, 'effect', null, node, undefined, loc)
 
   // The first run happens inside a batch window, so a write it makes to a
   // signal it already read RE-QUEUES this effect instead of re-running it
@@ -396,23 +418,15 @@ export function effect(
   } finally {
     endBatch()
   }
-
-  // If we're inside another effect's run, register with it so the outer disposes
-  // this inner automatically. The collector is `null` inside `runUntracked`, so
-  // work that explicitly opted out of the outer reactive context falls through
-  // to scope.add — that's what keeps child component effects mounted inside
-  // `mountFor`'s `runUntracked` wrap alive across the For's next re-run.
-  registerEffectHere(node, options === OWNED)
-
   return node
 }
 
 /**
  * Register a new effect with the CURRENT frame: the enclosing run's inner
- * window, else the scope — or, for an `owned` effect, an open owner frame
- * instead of the scope (see `_effectOwned`).
+ * window, else the scope — or, for an owned effect (`owned` is its disposer),
+ * an open owner frame instead of the scope (see `_effectOwned`).
  */
-function registerEffectHere(e: Effect, owned = false): void {
+function registerEffectHere(e: Effect, owned: (() => void) | null): void {
   const collector = _t.n
   if (collector !== null) {
     if (collector === LAZY_INNER) {
@@ -423,10 +437,8 @@ function registerEffectHere(e: Effect, owned = false): void {
     } else {
       ;(collector as Effect[]).push(e)
     }
-  } else if (owned) {
-    // The node's own disposer, not the `dispose` getter (which allocates a
-    // closure per read on this core).
-    if (_of.d > 0) _of.l.push(() => (e as EffectNode)._dispose())
+  } else if (owned !== null) {
+    if (_of.d > 0) _of.l.push(owned)
   } else {
     // Otherwise auto-register with the active EffectScope (if any)
     _ownerScope()?.add(e)
@@ -472,7 +484,7 @@ export function _captureRun<T>(fn: () => T, out: RunCapture): T {
  * @internal
  */
 export function _releaseRun(cap: RunCapture): void {
-  if (cap.inner !== null) for (const e of cap.inner) registerEffectHere(e)
+  if (cap.inner !== null) for (const e of cap.inner) registerEffectHere(e, null)
   if (cap.cleanups !== null) for (const c of cap.cleanups) onCleanup(c)
   cap.inner = null
   cap.cleanups = null
