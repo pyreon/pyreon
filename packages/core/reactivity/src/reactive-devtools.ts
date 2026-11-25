@@ -172,24 +172,40 @@ export const LPIH_RATE_TAU_MS = 1000
 // ── Internal node record ─────────────────────────────────────────────────
 
 /**
- * Structural shape of a tracking-subscriber host (signal read fn / computed).
- * Declared locally rather than imported from `./tracking` on purpose: this
- * module is deliberately import-free so the prod dev-block guard can be dropped
- * at PARSE time without pinning any other module's symbols.
+ * Structural shape of a graph source (signal read fn / computed / selector
+ * bucket). Declared locally rather than imported from `./graph` on purpose:
+ * this module is deliberately import-free so the prod dev-block guard can be
+ * dropped at PARSE time without pinning any other module's symbols.
  *
- * Two tiers — see `SubscriberHost` in `./tracking`. `_s1` holds the SOLE
- * subscriber (the common case) and `_s` only exists after promotion to >=2.
+ * Tracked subscribers hang off `_subs` as a linked list of edges
+ * (`link.sub` is the subscriber node, `link.nextSub` the next edge).
  */
+interface LinkLike {
+  sub: object
+  nextSub: LinkLike | null
+}
+
 interface SubscriberHostLike {
-  _s1: (() => void) | null
-  _s: Set<() => void> | (() => void) | null
+  _subs: LinkLike | null
   /**
-   * Direct-updater tiers (`signal.direct()` / `computed.direct()`), present on
-   * signals and computeds. Compiled `_bindText` / `_bindDirect` subscribe here,
-   * never in `_s1`/`_s`, so the graph walks both pairs.
+   * The direct tier (`signal.direct()` / `computed.direct()` / `subscribe()`),
+   * present on signals and computeds. Compiled `_bindText` / `_bindDirect`
+   * subscribe here, never as graph edges, so the graph walks both.
    */
   _d1?: (() => void) | null
   _d?: Set<() => void> | null
+}
+
+/**
+ * The tracked subscribers of a source (graph edges), in subscription order.
+ * A computed's edges hang off its graph node, which its callable holds in
+ * `_n`; callers may pass either.
+ */
+function trackedSubs(source: (Partial<SubscriberHostLike> & { _n?: Partial<SubscriberHostLike> }) | null): object[] {
+  const out: object[] = []
+  const host = source?._n ?? source
+  for (let l = host?._subs ?? null; l !== null; l = l.nextSub) out.push(l.sub)
+  return out
 }
 
 interface NodeRec {
@@ -304,8 +320,10 @@ export function _rdScopeNodes(scope: object): OwnedReactiveNode[] {
       out.push({ id, name: recName(rec), kind: rec.kind })
     }
     ids.length = live
+
     return out
   }
+
   return []
 }
 
@@ -323,6 +341,7 @@ export function _setCoverageRetention(on: boolean): void {
   _retain = on
   if (!on) _retained.clear()
 }
+
 // Subscriber-callback identity → node id. Lets `getReactiveGraph()`
 // resolve `_s` Set membership (anonymous `recompute`/`run` closures)
 // back to graph nodes for edge extraction. A WeakMap so a disposed
@@ -375,6 +394,7 @@ function preview(v: unknown): string {
   } catch {
     s = '[unstringifiable]'
   }
+
   return s.length > PREVIEW_MAX ? `${s.slice(0, PREVIEW_MAX)}…` : s
 }
 
@@ -467,6 +487,7 @@ export function _captureCallerLocation(skipFrames: number): DeferredLocation {
   Error.stackTraceLimit = skipFrames + 2
   const err = new Error()
   Error.stackTraceLimit = limit
+
   return { __deferred: true, err, skipFrames }
 }
 
@@ -490,6 +511,7 @@ function resolveDeferred(d: DeferredLocation): SourceLocation | undefined {
   // form's contract.
   const target = lines[startIdx + 1 + d.skipFrames]
   if (!target) return undefined
+
   return parseStackLine(target)
 }
 
@@ -515,6 +537,7 @@ function _resolveLoc(rec: NodeRec): SourceLocation | undefined {
   // "not yet resolved" undefined). Drop the Error so it's GC-eligible.
   rec.loc = parsed ?? null
   _pendingLoc.delete(node!)
+
   return parsed
 }
 
@@ -548,6 +571,7 @@ function parseStackLine(line: string): SourceLocation | undefined {
     const col = Number.parseInt(jsc[3], 10)
     if (Number.isFinite(lineN) && Number.isFinite(col)) return { file, line: lineN, col }
   }
+
   return undefined
 }
 
@@ -618,6 +642,7 @@ export function _rdRegister(
     enumerable: false,
     configurable: true,
   })
+
   return id
 }
 
@@ -723,6 +748,7 @@ const _bf: {
   target: string | undefined
   key: string | undefined
 } = { depth: 0, kind: null, target: undefined, key: undefined }
+
 const _bfSaved: (ReactiveBindingKind | string | undefined | null)[] = []
 // What the most recently CLOSED frame captured, consumed by the
 // `_rdRegisterBinding` call that immediately follows the close (the binding
@@ -743,6 +769,7 @@ function tagOf(el: { localName?: string; parentNode?: unknown } | null | undefin
   // A Text node has no `localName`; report the element that holds it.
   if (typeof el.localName === 'string') return el.localName
   const p = el.parentNode as { localName?: string } | null | undefined
+
   return typeof p?.localName === 'string' ? p.localName : undefined
 }
 
@@ -790,8 +817,10 @@ export function _rdCloseBindingFrame(): BindingTarget | null {
       // truncating anyway bounds it even if a caller ever broke the pairing.
       _bfSaved.length = 0
     }
+
     return out
   }
+
   return null
 }
 
@@ -863,6 +892,7 @@ export function _rdDirect(updater: () => void): () => void {
     w = wrapped
   }
   _lastDirect = w
+
   return w
 }
 
@@ -952,6 +982,7 @@ export function _rdSelectorUpdater(
     _selectorWrap.set(updater, wrapped)
     w = wrapped
   }
+
   return w
 }
 
@@ -1057,14 +1088,7 @@ export function _rdDropBinding(handle: object): void {
  */
 export function _rdLabelSubscribers(source: object, kind: ReactiveBindingKind, el: object | null): void {
   if (process.env.NODE_ENV !== 'production') {
-    const host = source as Partial<SubscriberHostLike>
-    const tier2 = host._s ?? null
-    const subs: (() => void)[] = []
-    if (host._s1) subs.push(host._s1)
-    if (tier2 !== null) {
-      if (typeof tier2 === 'function') subs.push(tier2)
-      else for (const f of tier2) subs.push(f)
-    }
+    const subs = trackedSubs(source as Partial<SubscriberHostLike>)
     const tag = tagOf(el as { localName?: string } | null)
     for (const sub of subs) {
       const id = resolveSubId(sub)
@@ -1103,14 +1127,16 @@ function recName(rec: NodeRec): string {
     const what = rec.key ?? BINDING_VERB[b]
     if (rec.target === undefined) return `${what}#${rec.id}`
     const prep = b === 'text' ? 'in' : b === 'child' || b === 'list' ? 'of' : 'on'
+
     return `${what} ${prep} <${rec.target}>`
   }
+
   return `${rec.kind}#${rec.id}`
 }
 
 // ── Snapshot API (consumed by the devtools hook) ─────────────────────────
 
-function resolveSubId(sub: () => void): number | undefined {
+function resolveSubId(sub: object): number | undefined {
   const direct = (sub as { __pxRdId?: number }).__pxRdId
   if (direct !== undefined) return direct
   return _subId.get(sub)
@@ -1141,25 +1167,14 @@ export function getReactiveGraph(): ReactiveGraph {
       const node = rec.ref.deref()
       if (!node) continue
       const host = rec.hostRef?.deref() ?? null
-      // Two-tier tracking storage: the sole subscriber lives in the `_s1`
-      // inline slot and never reaches `_s`, so BOTH tiers must be walked or a
-      // single-subscriber source (the overwhelmingly common shape) would report
-      // zero subscribers and contribute no edges.
-      const s1 = host?._s1 ?? null
-      const tier2 = host?._s ?? null
-      // Second tier: a function is the second inline subscriber, a Set the promoted store.
-      const subs: Iterable<() => void> | null =
-        tier2 === null ? null : typeof tier2 === 'function' ? [tier2] : tier2
-      // Direct updaters (`_bindText` / `_bindDirect`) live in their own pair of
-      // slots. Skipping them reported a signal shown only through compiled text
-      // as having no subscribers at all (an `orphan-signal` false positive).
+      // Tracked subscribers are graph edges; direct updaters and `subscribe()`
+      // listeners live in the direct tier. Skipping the direct tier reported a
+      // signal shown only through compiled text as having no subscribers at
+      // all (an `orphan-signal` false positive).
+      const subs = trackedSubs(host)
       const d1 = host?._d1 ?? null
       const d = host?._d ?? null
-      const subCount =
-        (s1 !== null ? 1 : 0) +
-        (tier2 === null ? 0 : typeof tier2 === 'function' ? 1 : tier2.size) +
-        (d1 !== null ? 1 : 0) +
-        (d === null ? 0 : d.size)
+      const subCount = subs.length + (d1 !== null ? 1 : 0) + (d === null ? 0 : d.size)
       // `preview()` is total (its own try/catch returns '[unstringifiable]'),
       // and `_v` on our registered nodes is a plain property (signal) or a
       // getter that never throws (computed's getter routes errors through
@@ -1187,15 +1202,9 @@ export function getReactiveGraph(): ReactiveGraph {
         if (rec.key !== undefined) out.key = rec.key
       }
       nodes.push(out)
-      if (s1 !== null) {
-        const to = resolveSubId(s1)
+      for (const cb of subs) {
+        const to = resolveSubId(cb)
         if (to !== undefined) edges.push({ from: rec.id, to })
-      }
-      if (subs) {
-        for (const cb of subs) {
-          const to = resolveSubId(cb)
-          if (to !== undefined) edges.push({ from: rec.id, to })
-        }
       }
       // An explicitly recorded upstream (a selector `.subscribe()` updater).
       if (rec.upstream !== undefined) {
@@ -1213,8 +1222,10 @@ export function getReactiveGraph(): ReactiveGraph {
         }
       }
     }
+
     return { nodes, edges }
   }
+
   return { nodes: [], edges: [] }
 }
 
@@ -1299,8 +1310,10 @@ export function getFireSummaries(): FireSummary[] {
         })
       }
     }
+
     return [...byKey.values()]
   }
+
   return []
 }
 
@@ -1317,6 +1330,7 @@ export function getReactiveFires(): ReactiveFire[] {
     const e = _fireBuf[(start + i) % FIRE_CAP]
     if (e) out.push(e)
   }
+
   return out
 }
 
@@ -1449,6 +1463,7 @@ export function getUpdateCause(nodeId: number): UpdateCause | null {
     currentId = causeId
   }
   chain.reverse() // root-first
+
   return { target: toLink(nodeId, targetTs), chain, rootReached }
 }
 
@@ -1469,6 +1484,7 @@ export function formatUpdateCause(cause: UpdateCause): string {
     lines.push(
       `  ${cause.target.name} was updated directly (no upstream dependency fired before it).`,
     )
+
     return lines.join('\n')
   }
   cause.chain.forEach((l, i) => {
@@ -1484,5 +1500,6 @@ export function formatUpdateCause(cause: UpdateCause): string {
   if (!cause.rootReached) {
     lines.push('  (chain truncated — earlier fires aged out of the ring buffer)')
   }
+
   return lines.join('\n')
 }

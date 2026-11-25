@@ -398,7 +398,7 @@ const auth: RouteMiddleware = async (ctx) => { ctx.data.user = await getUser(ctx
 
 ## @pyreon/reactivity — Complete API
 
-Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (`count()` to read, `count.set(5)` to write, `count.update(n => n + 1)` to derive). Direct subscribers use a single-subscriber inline slot (`_d1`) promoting to a `Set` only on the 2nd subscriber (a 10k-row `<For>` allocates zero subscriber Sets); effect subscribers use a lazy `Set`; batch uses pointer swap for zero-allocation grouping. Every other Pyreon package builds on this foundation but `@pyreon/reactivity` can be used independently in Node, Bun, or browser scripts without any framework overhead. `wrapSignal(base, { set, update? })` builds a writable side-effect facade (persistence, patch emission, validation) that forwards the internal `_v` field and `.direct` by construction, so the bind-fast-path contract cannot be silently broken.
+Standalone reactive primitives — no DOM, no JSX, no framework dependency. Signals are callable functions (`count()` to read, `count.set(5)` to write, `count.update(n => n + 1)` to derive). Direct subscribers (compiled bindings, `subscribe()` listeners) use a single-entry inline slot (`_d1`) promoting to a `Set` only on the 2nd entry (a 10k-row `<For>` allocates zero subscriber Sets); computeds, effects and render bindings are nodes in a dependency graph with one small edge object per dependency — a write marks what may be stale and a read re-evaluates only what really changed. Every other Pyreon package builds on this foundation but `@pyreon/reactivity` can be used independently in Node, Bun, or browser scripts without any framework overhead. `wrapSignal(base, { set, update? })` builds a writable side-effect facade (persistence, patch emission, validation) that forwards the internal `_v` field and `.direct` by construction, so the bind-fast-path contract cannot be silently broken.
 
 ```typescript
 import { signal, computed, effect, batch, onCleanup, createStore, watch, untrack } from "@pyreon/reactivity"
@@ -410,7 +410,7 @@ count.set(5)         // write
 count.update(n => n + 1)  // derive
 count.peek()         // read WITHOUT subscribing
 
-// computed<T>() — auto-tracked; caches its value, notifies unconditionally (see equals)
+// computed<T>() — auto-tracked, lazy; caches its value, an equal result stops propagation
 const doubled = computed(() => count() * 2)
 
 // effect() — re-runs when dependencies change

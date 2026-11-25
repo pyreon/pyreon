@@ -24,14 +24,16 @@
  *   REACTIVITY_FUZZ_CASES=<n>   cases to run (default 1500)
  *   REACTIVITY_FUZZ_STEPS=<n>   ops per case (default 30)
  *   REACTIVITY_FUZZ_SEED=<n>    run only this seed (replay a failure)
- *   REACTIVITY_FUZZ_ASSERT_WASTED=1  also assert zero wasted evaluations
+ *   REACTIVITY_FUZZ_ASSERT_WASTED=0  only report wasted evaluations (asserted by default)
  *   REACTIVITY_FUZZ_STRICT=0    count the B1–B3 metrics instead of asserting them
  *
- * WASTED EVALUATIONS are counted, not asserted (stage i): a computed evaluated
- * although it read exactly the same values as its previous evaluation. The
- * design (§2, §4.2) expects today's core to waste evaluations below an
- * unchanged node and the new core to waste none; stage (ii) turns the knob on
- * by default.
+ * WASTED EVALUATIONS: a computed evaluated although it read exactly the same
+ * values as its previous evaluation. Since stage (ii) every such evaluation
+ * must be TRANSIENT — a node it read changed and changed back in between (a
+ * batch that writes 1 → 2 → 1, a value that moves across effect passes and
+ * returns) — and the rest ("unexplained": evaluations below an unchanged node,
+ * design §2) are asserted zero. Transient re-evaluation is inherent to a core
+ * that records "a source changed" instead of every value each edge saw.
  *
  * BUGS this fuzz found on the core are tracked as metrics
  * (`staleAfterEffectWrite`, `extraEffectRuns`, `leakAfterExtraRun`; each is
@@ -58,6 +60,7 @@ function rng(seed: number): () => number {
     a = (a + 0x6d2b79f5) | 0
     let t = Math.imul(a ^ (a >>> 15), 1 | a)
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
@@ -93,6 +96,7 @@ function evalFormula(f: Formula, r: (j: number) => number): number {
       const n = Math.abs(r(f.a)) % (f.list.length + 1)
       let s = 0
       for (let i = 0; i < n; i++) s += r(f.list[i]!)
+
       return s
     }
     case 'mod':
@@ -275,6 +279,7 @@ function generateCase(seed: number, steps: number): Case {
     const cleanComputeds = computeds.filter((i) => clean.includes(i))
     if (cleanComputeds.length > 0)
       return { o: 'killer', a: pickFrom(clean), target: { computed: pickFrom(cleanComputeds) } }
+
     return { o: 'directSignal', sig: 0 }
   }
   const create = () => {
@@ -308,16 +313,36 @@ function generateCase(seed: number, steps: number): Case {
     } else if (computeds.length > 0)
       ops.push({ op: 'disposeComputed', node: pickFrom(computeds), pull: rand() < 0.5 })
   }
+
   return { seed, nodes, selectors, ops }
 }
 
 // ─── execution + oracle ─────────────────────────────────────────────────────
+
+/**
+ * The THROWING-run rule (pinned in stage ii; the design errata left it open):
+ * a run that throws drops no dependency — it keeps every dependency of the
+ * last completed run until a run completes. Returns the previous run's reads
+ * the throwing run did not read again.
+ */
+function keptTail(
+  prev: Array<[number, number]>,
+  reads: Array<[number, number]>,
+): Array<[number, number]> {
+  const read = new Set(reads.map(([j]) => j))
+  const kept: Array<[number, number]> = []
+  for (const r of prev) if (!read.has(r[0]) && !kept.some(([j]) => j === r[0])) kept.push(r)
+
+  return kept
+}
 
 class FuzzError extends Error {}
 
 interface Stats {
   evaluations: number
   wasted: number
+  /** Wasted evaluations where a node it read changed and changed back in between. */
+  wastedTransient: number
   checks: number
   /**
    * Effects left on a stale value after an effect wrote a signal in the same
@@ -383,6 +408,10 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
   const frozen = new Map<number, number>()
   const lastReads: Array<Array<[number, number]> | null> = Array.from({ length: N }, () => null)
   const evals: number[] = Array.from({ length: N }, () => 0)
+  /** Per node: how many times its value changed (signals on a changing write, computeds on a new value). */
+  const changes: number[] = Array.from({ length: N }, () => 0)
+  /** Per computed: `changes` of each node its last evaluation read, at read time. */
+  const lastSeen: Array<number[] | null> = Array.from({ length: N }, () => null)
   /** The value of each computed's last SUCCESSFUL evaluation (what it keeps). */
   const lastEval: Array<number | undefined> = Array.from({ length: N }, () => undefined)
   /** Every node each computed read during the current op (incl. mid-batch states). */
@@ -422,12 +451,14 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         )
       }
     }
+
     return v
   }
   const throws = (i: number, v: number[]): boolean => {
     const n = c.nodes[i]!
     if (n.t !== 'computed' || n.throwOn === null || frozen.has(i)) return false
     const raw = evalFormula(n.f, (j) => v[j]!)
+
     return ((raw % 7) + 7) % 7 === n.throwOn
   }
   /** Record that throwers were evaluated at state `sv` (the oracle reads them). */
@@ -451,7 +482,10 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         const s = signal(n.init)
         sigVals.push(n.init)
         getters.push(s)
-        setters.push((v) => s.set(v))
+        setters.push((v) => {
+          if (v !== s.peek()) changes[i]!++
+          s.set(v)
+        })
         disposers.push(null)
         continue
       }
@@ -473,6 +507,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
               return x
             })
             rec.reads = reads
+            if (v !== s.peek()) changes[i]!++
             s.set(v)
           })
         } else {
@@ -487,6 +522,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
             rec.reads = reads
             const target = ((raw % 6) + 6) % 6
             const y = s()
+            if (y !== target) changes[i]!++
             if (y < target) s.set(y + 1)
             else if (y > target) s.set(y - 1)
           })
@@ -499,9 +535,12 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         evals[i]!++
         stats.evaluations++
         const reads: Array<[number, number]> = []
+        const seen: number[] = []
         const raw = evalFormula(f, (j) => {
           const x = get(j)
           reads.push([j, x])
+          seen.push(changes[j]!)
+
           return x
         })
         const prev = lastReads[i]
@@ -509,20 +548,31 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           prev &&
           prev.length === reads.length &&
           prev.every(([j, x], k) => reads[k]![0] === j && reads[k]![1] === x)
-        )
+        ) {
           stats.wasted++
+          // Something it read changed and changed BACK since the previous
+          // evaluation (a write reverted within a batch, a value that moved
+          // across effect passes and returned): a core that records "a source
+          // changed" rather than every value it saw must re-evaluate here.
+          const before = lastSeen[i]
+          if (before && before.length === seen.length && seen.some((n, k) => n !== before[k]))
+            stats.wastedTransient++
+        }
         lastReads[i] = reads
+        lastSeen[i] = seen
         for (const [j] of reads) opDeps[i]!.add(j)
         if (throwOn !== null && ((raw % 7) + 7) % 7 === throwOn) {
           // A throwing evaluation keeps the unconfirmed tail of its previous
           // deps (as effects do), so it may still pull them on a later check.
-          if (prev && prev.length > reads.length && reads.every(([j], k) => prev[k]![0] === j))
-            lastReads[i] = [...reads, ...prev.slice(reads.length)]
+          const kept = keptTail(prev ?? [], reads)
+          if (kept.length > 0) lastReads[i] = [...reads, ...kept]
           const e = new FuzzError(`computed ${i}`)
           thrown.push(e)
           throw e
         }
+        if (lastEval[i] !== raw) changes[i]!++
         lastEval[i] = raw
+
         return raw
       }
       const comp = n.equals ? computed(fn, { equals: (a, b) => a === b }) : computed(fn)
@@ -591,17 +641,14 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
     rec.untrackedSeen =
       spec.untracked === null ? null : [spec.untracked, untrack(() => get(spec.untracked!))]
     if (spec.throwOn !== null && ((v % 5) + 5) % 5 === spec.throwOn) {
-      // A run that throws keeps the unconfirmed tail of its previous deps when
-      // it read a positional prefix of them (design §1.5: "a throwing run
-      // keeps its tail"); a run that diverged has already dropped it.
-      const prev = prevReads
-      if (prev.length > reads.length && reads.every(([j], k) => prev[k]![0] === j))
+      // A run that throws drops no dependency: it keeps every dependency of
+      // the previous runs until a run completes (design §1.5 "a throwing run
+      // keeps its tail", made order-independent in stage ii — see `keptTail`).
+      const kept = keptTail(prevReads, reads)
+      if (kept.length > 0)
         // Tail values are filled in from the reference once the op settles
         // (NaN = "subscribed, baseline unknown yet").
-        rec.reads = [
-          ...reads,
-          ...prev.slice(reads.length).map(([j]) => [j, Number.NaN] as [number, number]),
-        ]
+        rec.reads = [...reads, ...kept.map(([j]) => [j, Number.NaN] as [number, number])]
       // Thrown BEFORE any onCleanup: cleanups registered earlier in a throwing
       // run are dropped today (reported in the PR), so the fuzz does not rely
       // on either behaviour.
@@ -625,6 +672,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
     if (spec.ret) labels.push(`${run}:ret`)
     rec.pending = labels
     if (spec.ret) return () => void rec.log.push(`${run}:ret`)
+
     return undefined
   }
 
@@ -640,6 +688,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         recs.set(id, rec)
         const e = effect(effectBody(rec, spec))
         rec.dispose = () => e.dispose()
+
         return
       }
       case 'directSignal':
@@ -653,6 +702,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           rec.seen = s.peek()
         }
         rec.dispose = spec.o === 'directSignal' ? s.direct(fn) : s.subscribe(fn)
+
         return
       }
       case 'directComputed': {
@@ -666,6 +716,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         })
         // establish the edge (a direct updater alone does not evaluate)
         rec.seen = comp._v
+
         return
       }
       case 'selectorRow': {
@@ -677,6 +728,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           rec.seen = sel(spec.key)
         })
         rec.dispose = () => e.dispose()
+
         return
       }
       case 'selectorSub': {
@@ -687,6 +739,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           rec.fires!++
           rec.seen = m
         })
+
         return
       }
       case 'outer': {
@@ -735,6 +788,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           first = false
         })
         rec.dispose = () => e.dispose()
+
         return
       }
       case 'killer': {
@@ -763,6 +817,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
           }
         })
         rec.dispose = () => e.dispose()
+
         return
       }
     }
@@ -875,6 +930,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
         (op.spec.o === 'selectorRow' || op.spec.o === 'selectorSub')
       )
         return { sel: op.spec.sel, key: op.spec.key }
+
     return null
   }
 
@@ -1295,6 +1351,7 @@ function runCase(c: Case, stats: Stats, stopAtFirst = false): string[] {
     fail(`seed ${c.seed} teardown threw: ${err instanceof Error ? err.message : String(err)}`)
   }
   setErrorHandler(() => {})
+
   return violations
 }
 
@@ -1304,11 +1361,13 @@ function quietRun(c: Case): string[] {
   const s: Stats = {
     evaluations: 0,
     wasted: 0,
+    wastedTransient: 0,
     checks: 0,
     staleAfterEffectWrite: 0,
     extraEffectRuns: 0,
     leakAfterExtraRun: 0,
   }
+
   return runCase(c, s, true)
 }
 
@@ -1328,6 +1387,7 @@ function shrink(c: Case): Case {
       }
     }
   }
+
   return cur
 }
 
@@ -1344,6 +1404,7 @@ function describeCase(c: Case): string {
   if (c.selectors.length) lines.push(`selectors over nodes: ${JSON.stringify(c.selectors)}`)
   lines.push('ops:')
   c.ops.forEach((op, i) => lines.push(`  ${i}: ${JSON.stringify(op)}`))
+
   return lines.join('\n')
 }
 
@@ -1351,16 +1412,18 @@ function describeCase(c: Case): string {
 
 const env = (k: string): string | undefined =>
   (process.env as Record<string, string | undefined>)[k]
+
 const CASES = Number(env('REACTIVITY_FUZZ_CASES') ?? 1500)
 const STEPS = Number(env('REACTIVITY_FUZZ_STEPS') ?? 30)
 const ONLY = env('REACTIVITY_FUZZ_SEED')
-const ASSERT_WASTED = env('REACTIVITY_FUZZ_ASSERT_WASTED') === '1'
+const ASSERT_WASTED = env('REACTIVITY_FUZZ_ASSERT_WASTED') !== '0'
 const STRICT = env('REACTIVITY_FUZZ_STRICT') !== '0'
 
 describe('differential fuzz against a from-scratch reference', () => {
   const stats: Stats = {
     evaluations: 0,
     wasted: 0,
+    wastedTransient: 0,
     checks: 0,
     staleAfterEffectWrite: 0,
     extraEffectRuns: 0,
@@ -1401,6 +1464,7 @@ describe('differential fuzz against a from-scratch reference', () => {
       const s: Stats = {
         evaluations: 0,
         wasted: 0,
+    wastedTransient: 0,
         checks: 0,
         staleAfterEffectWrite: 0,
         extraEffectRuns: 0,
@@ -1414,15 +1478,18 @@ describe('differential fuzz against a from-scratch reference', () => {
     }
   })
 
-  // Stage (i): reported, not asserted. Stage (ii) asserts zero (design §2:
-  // "wasted evaluations below an unchanged node" close by construction).
-  test('metric: wasted evaluations (asserted from stage ii, REACTIVITY_FUZZ_ASSERT_WASTED=1)', () => {
-    const line = `[reactivity fuzz] evaluations=${stats.evaluations} wasted=${stats.wasted} (${((100 * stats.wasted) / Math.max(1, stats.evaluations)).toFixed(1)}%) staleAfterEffectWrite=${stats.staleAfterEffectWrite} extraEffectRuns=${stats.extraEffectRuns} leakAfterExtraRun=${stats.leakAfterExtraRun} checks=${stats.checks}`
+  // Asserted since stage (ii) (design §2: "wasted evaluations below an
+  // unchanged node" close by construction): every wasted evaluation must be
+  // TRANSIENT — something it read changed and changed back since its previous
+  // evaluation, which marking cannot tell from a real change without keeping
+  // every value each edge saw. REACTIVITY_FUZZ_ASSERT_WASTED=0 only reports.
+  test('metric: wasted evaluations (unexplained ones asserted zero)', () => {
+    const line = `[reactivity fuzz] evaluations=${stats.evaluations} wasted=${stats.wasted} (${((100 * stats.wasted) / Math.max(1, stats.evaluations)).toFixed(1)}%) transient=${stats.wastedTransient} unexplained=${stats.wasted - stats.wastedTransient} staleAfterEffectWrite=${stats.staleAfterEffectWrite} extraEffectRuns=${stats.extraEffectRuns} leakAfterExtraRun=${stats.leakAfterExtraRun} checks=${stats.checks}`
     // Printed so a local run shows the number the next stage must drive to 0.
     // oxlint-disable-next-line no-console
     console.info(line)
     expect(stats.evaluations).toBeGreaterThan(0)
-    if (ASSERT_WASTED) expect(stats.wasted, line).toBe(0)
+    if (ASSERT_WASTED) expect(stats.wasted - stats.wastedTransient, line).toBe(0)
     if (STRICT) {
       expect(stats.staleAfterEffectWrite, line).toBe(0)
       expect(stats.extraEffectRuns, line).toBe(0)

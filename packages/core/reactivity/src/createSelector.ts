@@ -1,61 +1,6 @@
 import { effect } from './effect'
+import { type Source, propagate, trackSubscriber } from './graph'
 import { _rdSelectorUpdater } from './reactive-devtools'
-import { type SubscriberHost, trackSubscriber } from './tracking'
-
-/**
- * Is `fn` currently a subscriber of `host`, across every shape the two-tier
- * store can be in? `_s1` holds the sole/first subscriber, `_s` holds EITHER the
- * second inline subscriber (a function) OR the promoted Set of three-or-more.
- * Asking only the inline tiers is the bug this exists to prevent — see
- * `notifyBucket`. The `typeof s !== 'function'` discriminator mirrors
- * `removeSubscriber` in `tracking.ts`, so the two agree on what `_s` holds.
- */
-function isSubscribed(host: SubscriberHost, fn: () => void): boolean {
-  if (host._s1 === fn) return true
-  const s = host._s
-  if (s === fn) return true
-  return s !== null && typeof s !== 'function' && (s as Set<() => void>).has(fn)
-}
-
-/**
- * Notify a subscriber bucket without snapshot allocation.
- * Caps iteration at the original size to avoid infinite loops from
- * re-inserted entries (same pattern as notifySubscribers in tracking.ts).
- */
-function notifyBucket(host: SubscriberHost): void {
-  // Inline slot first — the dominant shape (one effect watching one key), and
-  // the read is a plain field rather than a materialised Set iterator. BOTH
-  // inline subscribers are snapshotted BEFORE the first dispatch, because the
-  // dispatch can move them: this is the same capture-then-dispatch shape
-  // `signal.ts`'s `_set`/`_trigger` and `batch.ts`'s `propagateLazyDirty` use.
-  const s1 = host._s1
-  if (s1 !== null) {
-    const s2 = host._s as (() => void) | null
-    s1()
-    // `s2` is dispatched only if it is STILL subscribed — but "still
-    // subscribed" must be asked of ALL THREE storage shapes, not just the two
-    // it could have been in at entry. Re-reading `host._s === s2 || host._s1
-    // === s2` was an identity compare against the INLINE tiers only, so when
-    // `s1()` registered a THIRD subscriber `addSubscriber` PROMOTED both inline
-    // slots into a Set — `_s` becomes that Set and `_s1` becomes null, so
-    // neither compare matched and `s2` was silently skipped despite being live
-    // inside the Set. v0.51.0 iterated the Set with a size cap and was correct;
-    // the inline fast path reintroduced the hole. A subscriber registered
-    // DURING this pass is still deliberately not notified here — same
-    // semantics as the Set branch's `originalSize` cap below.
-    if (s2 !== null && isSubscribed(host, s2)) s2()
-    return
-  }
-  const bucket = host._s as Set<() => void> | null
-  if (bucket === null || bucket.size === 0) return
-  const originalSize = bucket.size
-  let i = 0
-  for (const fn of bucket) {
-    if (i >= originalSize) break
-    fn()
-    i++
-  }
-}
 
 /**
  * Smallest key count that can trigger a reclamation sweep. Below this the map
@@ -152,12 +97,11 @@ export interface Selector<T> {
  * once, and is still worth calling when the selector outlives its list.
  */
 export function createSelector<T>(source: () => T): Selector<T> {
-  // Per-key tracked-subscriber buckets. The value is the `SubscriberHost` that
-  // `trackSubscriber` writes into, so this ONE map serves both roles the code
-  // used to split across a `subs` (value → Set) and a `hosts` (value → {_s})
-  // map — they were always the same bucket behind two entries, so every key
-  // paid two Map entries to store one relationship.
-  const subs = new Map<T, SubscriberHost>()
+  // Per-key tracked-subscriber buckets. Each bucket is a graph SOURCE (two
+  // fields, `_subs` / `_subsTail`) that the rows reading `selector(key)` link
+  // to; a selection change marks the old and the new key's bucket like a
+  // signal write.
+  const subs = new Map<T, Source>()
   // Bound updaters (from `selector.subscribe`) — kept SEPARATE from the effect
   // bucket so the source effect can call them with the resolved boolean directly
   // instead of an empty re-run closing over `current` and `value`.
@@ -246,33 +190,35 @@ export function createSelector<T>(source: () => T): Selector<T> {
     if (Object.is(next, current)) return
     const old = current
     current = next
-    // Only notify the two affected buckets — O(1) regardless of list size.
-    // Iteration-capped loop avoids [...bucket] snapshot allocation.
+    // Only mark the two affected buckets — O(1) regardless of list size. This
+    // runs inside the source effect's run, so marking queues the rows' effects
+    // and they run after this one returns, in the same flush (a mark runs no
+    // user code, so a bucket cannot change while it is walked).
     const oldBucket = subs.get(old)
     const newBucket = subs.get(next)
-    // A sweep must not run while these buckets are being notified — a
-    // subscriber re-reading the selector mid-notify would otherwise be able to
-    // drop and re-create the very key being delivered.
+    if (oldBucket !== undefined && oldBucket._subs !== null) propagate(oldBucket._subs)
+    if (newBucket !== undefined && newBucket._subs !== null) propagate(newBucket._subs)
+    // A sweep must not run while the bound updaters below are delivered — the
+    // source effect holds bucket references across its two `boundSubs.get`
+    // calls and must not have the map swapped underneath.
     notifying = true
     try {
-      if (oldBucket) notifyBucket(oldBucket)
-      if (newBucket) notifyBucket(newBucket)
-    } finally {
-      notifying = false
-    }
     // Bound updaters — pass the resolved boolean directly so the user
     // updater can run with zero closure overhead per fire.
     // One extra field deref per SELECTION CHANGE (not per key, not per row) —
     // the holder indirection is paid exactly twice here.
-    const oldBoundBucket = boundSubs.get(old)?.fn
-    const newBoundBucket = boundSubs.get(next)?.fn
-    if (oldBoundBucket) {
-      if (typeof oldBoundBucket === 'function') oldBoundBucket(false)
-      else for (const fn of oldBoundBucket) fn(false)
-    }
-    if (newBoundBucket) {
-      if (typeof newBoundBucket === 'function') newBoundBucket(true)
-      else for (const fn of newBoundBucket) fn(true)
+      const oldBoundBucket = boundSubs.get(old)?.fn
+      const newBoundBucket = boundSubs.get(next)?.fn
+      if (oldBoundBucket) {
+        if (typeof oldBoundBucket === 'function') oldBoundBucket(false)
+        else for (const fn of oldBoundBucket) fn(false)
+      }
+      if (newBoundBucket) {
+        if (typeof newBoundBucket === 'function') newBoundBucket(true)
+        else for (const fn of newBoundBucket) fn(true)
+      }
+    } finally {
+      notifying = false
     }
   })
 
@@ -291,7 +237,7 @@ export function createSelector<T>(source: () => T): Selector<T> {
    */
   const sweep = (): void => {
     for (const [key, host] of subs) {
-      if (host._s1 === null && (host._s === null || (host._s as Set<() => void>).size === 0)) subs.delete(key)
+      if (host._subs === null) subs.delete(key)
     }
     // Amortize: the next sweep waits until the live set could have doubled, so
     // total sweep work stays O(1) per key inserted.
@@ -305,7 +251,7 @@ export function createSelector<T>(source: () => T): Selector<T> {
         // NEW key — the only place the map can grow, so the only place that
         // needs to consider reclaiming. Never sweeps mid-notification.
         if (subs.size >= sweepAt && !notifying) sweep()
-        host = { _s1: null, _s: null }
+        host = { _subs: null, _subsTail: null }
         subs.set(value, host)
       }
       trackSubscriber(host)

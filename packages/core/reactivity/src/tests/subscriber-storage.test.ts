@@ -1,170 +1,120 @@
 /**
- * Two-tier TRACKING-subscriber storage (`_s1` inline slot / `_s` Set).
- *
- * Mirrors the `_d1`/`_d` idiom already used for direct updaters. These specs
- * lock the tier's INVARIANT and the paths that are easy to get subtly wrong:
- * promotion, idempotent re-add (the `divergeVerify` prefix repair), removal
- * from either tier, and the store's suspend/resume window.
+ * Tracked-subscriber storage: a source's subscribers are a doubly linked list
+ * of edges (`_subs` / `_subsTail`, one `Link` per edge, see graph.ts). These
+ * specs lock the list's INVARIANT and the paths that are easy to get subtly
+ * wrong: subscription order, removal from the head / middle / tail, no
+ * duplicate edges on re-subscription, and the store's suspend/resume window
+ * (which works on the DIRECT tier, where `subscribe()` listeners live).
  */
 import { describe, expect, it } from 'vitest'
 import { computed } from '../computed'
 import { effect } from '../effect'
 import { createSelector } from '../createSelector'
 import { _hasSubscribers, _resumeSoleSubscriber, _suspendSoleSubscriber, signal } from '../signal'
+import { edgeCount } from './graph-internals'
 
-/** Internal view of a tracking-subscriber host. */
-type Host = { _s1: (() => void) | null; _s: Set<() => void> | (() => void) | null }
-const host = (x: unknown): Host => x as Host
-/** The second inline subscriber, if `_s` holds one (a function, not a Set). */
-const second = (x: unknown): (() => void) | null => {
-  const s = host(x)._s
-  return typeof s === 'function' ? s : null
-}
-const setOf = (x: unknown): Set<() => void> | null => {
-  const s = host(x)._s
-  return s !== null && typeof s !== 'function' ? s : null
-}
-const subCount = (x: unknown): number => {
-  const h = host(x)
-  return (h._s1 !== null ? 1 : 0) + (h._s === null ? 0 : typeof h._s === 'function' ? 1 : h._s.size)
+interface LinkView {
+  sub: unknown
+  prevSub: LinkView | null
+  nextSub: LinkView | null
 }
 
-describe('two-tier tracking subscribers — storage invariant', () => {
-  it('the FIRST subscriber lives in the inline slot, allocating no Set', () => {
+const subCount = edgeCount
+
+/** Walk the list both ways and check every back-pointer and the tail. */
+const listOf = (x: unknown): unknown[] => {
+  const h = x as { _subs: LinkView | null; _subsTail: LinkView | null }
+  const fwd: unknown[] = []
+  let prev: LinkView | null = null
+  for (let l = h._subs; l !== null; l = l.nextSub) {
+    expect(l.prevSub).toBe(prev)
+    fwd.push(l.sub)
+    prev = l
+  }
+  expect(h._subsTail).toBe(prev)
+
+  return fwd
+}
+
+describe('tracked subscribers — edge list invariant', () => {
+  it('a source with no reader holds no edge; the first reader adds exactly one', () => {
     const s = signal(0)
+    expect(listOf(s)).toEqual([])
     const d = effect(() => {
       s()
     })
-    expect(host(s)._s1).not.toBeNull()
-    expect(host(s)._s).toBeNull() // no Set allocated for the common case
+    expect(listOf(s)).toHaveLength(1)
     d.dispose()
+    expect(listOf(s)).toEqual([])
   })
 
-  it('a SECOND subscriber fills the second inline slot — still no Set', () => {
-    // A row that owns an effect() AND a text bind on its own signal is the
-    // dispose-500 shape; a hashed Set.delete per subscriber per teardown was
-    // 61% of its on-CPU cost, so the second subscriber stays inline too.
+  it('subscribers are kept in subscription order', () => {
     const s = signal(0)
-    const a = effect(() => {
-      s()
-    })
-    const first = host(s)._s1
-    const b = effect(() => {
-      s()
-    })
-    // INVARIANT: a FUNCTION in `_s` (the second subscriber) implies `_s1 !== null`;
-    // it reuses the Set field so a signal grows by no property (152 B stays 152 B).
-    expect(host(s)._s1).toBe(first)
-    expect(second(s)).not.toBeNull()
-    expect(setOf(s)).toBeNull()
-    a.dispose()
-    b.dispose()
+    const fx = [0, 1, 2, 3].map(() =>
+      effect(() => {
+        s()
+      }),
+    )
+    expect(listOf(s)).toEqual(fx)
+    for (const e of fx) e.dispose()
   })
 
-  it('a THIRD subscriber promotes both slots into a Set and empties them', () => {
+  it('removal from the head, the middle and the tail keeps the list consistent', () => {
     const s = signal(0)
-    const a = effect(() => {
-      s()
-    })
-    const first = host(s)._s1
-    const b = effect(() => {
-      s()
-    })
-    const snd = second(s)
-    const c = effect(() => {
-      s()
-    })
-    expect(host(s)._s1).toBeNull()
-    expect(second(s)).toBeNull()
-    expect(setOf(s)?.size).toBe(3)
-    expect(setOf(s)?.has(first as () => void)).toBe(true)
-    expect(setOf(s)?.has(snd as () => void)).toBe(true)
-    a.dispose()
-    b.dispose()
-    c.dispose()
+    const [a, b, c, d] = [0, 1, 2, 3].map(() =>
+      effect(() => {
+        s()
+      }),
+    )
+    b!.dispose() // middle
+    expect(listOf(s)).toEqual([a, c, d])
+    a!.dispose() // head
+    expect(listOf(s)).toEqual([c, d])
+    d!.dispose() // tail
+    expect(listOf(s)).toEqual([c])
+    c!.dispose()
+    expect(listOf(s)).toEqual([])
   })
 
-  it('there is NO demotion — a Set that shrinks back to one entry stays a Set', () => {
+  it('a reader that reads a source twice holds one edge', () => {
     const s = signal(0)
-    const a = effect(() => {
-      s()
-    })
-    const b = effect(() => {
-      s()
-    })
-    const c = effect(() => {
-      s()
-    })
-    b.dispose()
-    c.dispose()
-    expect(setOf(s)?.size).toBe(1)
-    expect(host(s)._s1).toBeNull()
-    a.dispose()
-  })
-
-  it('removing the FIRST slot shifts the second down — the slots stay packed', () => {
-    const s = signal(0)
-    const a = effect(() => {
-      s()
-    })
-    const b = effect(() => {
-      s()
-    })
-    const snd = second(s)
-    a.dispose()
-    expect(host(s)._s1).toBe(snd)
-    expect(host(s)._s).toBeNull()
-    // and the survivor is still live
-    let runs = 0
-    const probe = host(s)._s1
-    expect(typeof probe).toBe('function')
-    s.set(1)
-    void runs
-    b.dispose()
-    expect(subCount(s)).toBe(0)
-  })
-
-  it('removal works from EVERY tier and leaves no subscribers behind', () => {
-    const s = signal(0)
-    const a = effect(() => {
-      s()
-    })
-    expect(subCount(s)).toBe(1) // slot tier
-    a.dispose()
-    expect(subCount(s)).toBe(0)
-
-    const b = effect(() => {
-      s()
-    })
-    const c = effect(() => {
-      s()
-    })
-    expect(subCount(s)).toBe(2) // two inline subscribers, no Set
-    expect(setOf(s)).toBeNull()
-    b.dispose()
-    c.dispose()
-    expect(subCount(s)).toBe(0)
-
+    const t = signal(0)
     const d = effect(() => {
       s()
+      t()
+      s()
+      s()
     })
+    expect(subCount(s)).toBe(1)
+    t.set(1)
+    s.set(1)
+    expect(subCount(s)).toBe(1)
+    expect(subCount(t)).toBe(1)
+    d.dispose()
+    expect(subCount(s)).toBe(0)
+    expect(subCount(t)).toBe(0)
+  })
+
+  it('removal works for every reader kind and leaves no subscribers behind', () => {
+    const s = signal(0)
+    const c = computed(() => s() + 1)
+    c()
     const e = effect(() => {
       s()
     })
     const f = effect(() => {
       s()
     })
-    expect(subCount(s)).toBe(3) // Set tier
-    d.dispose()
+    expect(subCount(s)).toBe(3)
+    c.dispose()
     e.dispose()
     f.dispose()
     expect(subCount(s)).toBe(0)
   })
 
-  it('two inline subscribers observe the same tiered ordering a Set gives them', () => {
-    // An effect that reads a `{ equals }` computed over the same signal must
-    // see the computed settled — a direct pair of calls could run the effect
-    // first; the two-slot dispatch routes through the pending queues instead.
+  it('an effect reading a signal AND an { equals } computed over it sees them settled', () => {
+    // The effect is reached twice (directly, and through the computed): it is
+    // marked once, runs once per write, and pulls the computed fresh.
     const s = signal(1)
     const c = computed(() => s() * 100, { equals: Object.is })
     const seen: [number, number][] = []
@@ -182,7 +132,7 @@ describe('two-tier tracking subscribers — storage invariant', () => {
   })
 })
 
-describe('two-tier tracking subscribers — notification', () => {
+describe('tracked subscribers — notification', () => {
   it('notifies through the inline slot (1 subscriber)', () => {
     const s = signal(0)
     const seen: number[] = []
@@ -229,9 +179,8 @@ describe('two-tier tracking subscribers — notification', () => {
   })
 
   it('a branching effect re-subscribes idempotently across many flips', () => {
-    // `divergeVerify` repairs the confirmed prefix by RE-ADDING the owner —
-    // under the tier that resolves to an identity compare rather than a hash.
-    // A double-registration would double-notify and grow storage per flip.
+    // A branch flip drops the stale edge and links the new one; a duplicate
+    // edge would double-notify and grow storage per flip.
     const flag = signal(true)
     const a = signal(1)
     const b = signal(2)
@@ -243,6 +192,7 @@ describe('two-tier tracking subscribers — notification', () => {
     })
     for (let i = 0; i < 50; i++) flag.set(i % 2 === 0)
     expect(subCount(flag)).toBe(1)
+    expect(subCount(a) + subCount(b)).toBe(1)
     expect(subCount(a)).toBeLessThanOrEqual(1)
     expect(subCount(b)).toBeLessThanOrEqual(1)
     const before = runs
@@ -324,18 +274,37 @@ describe('sole-subscriber suspend/resume (the @pyreon/store patch window)', () =
     unB()
   })
 
-  it('returns null (caller must fall back) when >1 subscriber is present', () => {
+  it('returns null (caller must fall back) when the direct tier holds >1 entry', () => {
     const s = signal(0)
     s.subscribe(() => {})
+    const un = s.direct(() => {})
+    expect(_suspendSoleSubscriber(s)).toBeNull()
+    un()
+  })
+
+  it('an effect does not block it: effects are graph edges, not direct-tier entries', () => {
+    const s = signal(0)
+    let fired = 0
+    const det = () => fired++
+    s.subscribe(det)
+    let runs = 0
     const d = effect(() => {
       s()
+      runs++
     })
-    expect(_suspendSoleSubscriber(s)).toBeNull()
+    const token = _suspendSoleSubscriber(s)
+    expect(token).not.toBeNull()
+    s.set(1)
+    expect(fired).toBe(0) // the listener is suspended …
+    expect(runs).toBe(2) // … the effect is not
+    _resumeSoleSubscriber(s, token as never, det)
+    s.set(2)
+    expect(fired).toBe(1)
     d.dispose()
   })
 })
 
-describe('createSelector buckets use the tier', () => {
+describe('createSelector buckets are graph sources', () => {
   it('notifies the sole per-key subscriber and reclaims empty keys', () => {
     const sel = createSelector(signal(1))
     const hits: string[] = []
@@ -362,15 +331,13 @@ describe('createSelector buckets use the tier', () => {
   })
 })
 
-describe('devtools sees inline-slot subscribers', () => {
-  it('debug() counts a subscriber living in the inline slot', () => {
+describe('debug() counts subscribers', () => {
+  it('debug() counts a single tracked subscriber', () => {
     const s = signal(0, { name: 'counted' })
     expect(s.debug().subscriberCount).toBe(0)
     const d = effect(() => {
       s()
     })
-    // A Set-only count would report 0 here — the single-subscriber shape is
-    // the overwhelmingly common one, so missing it would blank the graph.
     expect(s.debug().subscriberCount).toBe(1)
     d.dispose()
     expect(s.debug().subscriberCount).toBe(0)

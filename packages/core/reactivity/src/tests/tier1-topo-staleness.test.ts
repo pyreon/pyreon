@@ -1,30 +1,18 @@
 /**
- * Regression locks for the tier-1 topo-staleness bug (pre-existing —
- * 0.45.0-identical; NOT a #2284 regression).
+ * Regression locks for the tier-1 topo-staleness bug of the pre-graph core
+ * (0.45.0-identical; NOT a #2284 regression).
  *
- * The bug: an `{ equals }` computed re-evaluated ONLY inside its queued
- * recompute and never set `_dirty` on notification. Tier-1 drains in
- * SUBSCRIPTION order, not topological order — so
- * `outer = computed(() => s() + inner(), { equals })` that subscribed to `s`
- * BEFORE `inner` drained first, pull-read `inner()` (enqueued-but-not-dirty →
- * STALE cache), and `inner`'s later re-notify of `outer` was dropped by the
- * tier-1 dedup (already visited) → `outer()` was PERMANENTLY stale (12 instead
- * of 22) until the next write — falsifying the "computeds settle before
- * effects" contract.
+ * The bug: an `{ equals }` computed was refreshed from a queue drained in
+ * SUBSCRIPTION order, not topological order, so
+ * `outer = computed(() => s() + inner(), { equals })` subscribed to `s` BEFORE
+ * `inner` could pull a stale `inner` and stay PERMANENTLY stale (12 instead of
+ * 22) until the next write — falsifying "computeds settle before effects".
  *
- * The fix: (A) `{ equals }` computeds are dirty-marked at NOTIFY time and
- * evaluated by their READ's dirty branch — a tier-1 visitor that pull-reads a
- * dirty dep evaluates it in place, so subscription order stops mattering when
- * deps are dirty-at-visit; (B) the tier-1 drain clears each entry's membership
- * flag BEFORE running it, so a genuine post-visit re-dirty (reachable only
- * THROUGH a lazy intermediate whose dirtiness materializes when an upstream
- * `{ equals }` computed refreshes later in the drain) re-pushes the entry for
- * another `_dirty`-guarded sweep instead of being dropped by dedup.
- *
- * Bisect-verified: revert computed.ts's `computedWithEquals` + batch.ts's
- * tier-1 to the notify-less Set-dedup form → the permutation/cascade/mixed
- * specs fail with the exact stale values (`expected 12, got 22`-shaped);
- * restore → pass.
+ * Since stage (ii) of the reactivity redesign there is no refresh queue: a
+ * write only marks, and every read of a marked computed resolves its
+ * dependencies bottom-up first, so subscription order cannot matter. These
+ * specs keep pinning the observable contract (settled values, run counts, no
+ * phantom errors, no stranded marks) in the orders that broke it.
  */
 import { batch, computed, effect, setErrorHandler, signal } from '../index'
 
@@ -188,15 +176,11 @@ describe('tier-1 topo-staleness ({ equals } computeds)', () => {
     }
   })
 
-  test('a drain aborted by a throwing raw listener strands a dirty { equals } computed — the next bare read self-heals', () => {
-    // A raw `subscribe()` listener throws STRAIGHT THROUGH the drain (effects
-    // wrap their callbacks; raw listeners do not). If an effect that ran
-    // earlier in the same pass wrote a signal feeding an { equals } computed,
-    // that computed's refresh sits flagged in the tier-1 queue when the drain
-    // aborts — the finally resets the flag and drops the entry, leaving the
-    // computed DIRTY outside any batch window. The next bare read must
-    // refresh AND propagate (opening its own inline window — the read path's
-    // non-batching propagate arm), not return the stale value silently.
+  test('a throwing raw listener on the trigger does not strand an { equals } computed (one direct entry)', () => {
+    // A `subscribe()` listener sits in the trigger's direct tier and fires
+    // first. It throws, but the write had already marked the effect, so the
+    // window's close still flushes it: the effect writes `s`, `e` changes and
+    // its direct updater fires once — all before the throw leaves `set()`.
     const s = signal(0)
     const trigger = signal(0)
     const e = computed(() => s() * 2, { equals: eq })
@@ -212,21 +196,13 @@ describe('tier-1 topo-staleness ({ equals } computeds)', () => {
       throw new Error('raw boom')
     })
 
-    // The effect (queued first) writes s → e is dirty-marked + its refresh
-    // enqueued; the raw listener then throws → drain aborts → refresh dropped.
     expect(() => trigger.set(1)).toThrow('raw boom')
-    expect((e as unknown as { _dirty: number })._dirty).toBe(2) // stranded DIRTY
-
-    // Bare read outside any window: refreshes, propagates via its own window.
+    expect(directRuns).toBe(1)
     expect(e()).toBe(2)
     expect(directRuns).toBe(1)
-    expect((e as unknown as { _dirty: number })._dirty).toBe(0)
   })
 
-  test('a stranded { equals } computed with a PROMOTED direct-Set self-heals too (multi-direct arm)', () => {
-    // Same stranded-drain shape as above, but with TWO direct subscribers so
-    // `_d1` has been promoted into the `_d` Set — the read path's non-batching
-    // propagate must iterate the Set, not just the inline slot.
+  test('same with two direct updaters on the computed (the Set arm)', () => {
     const s = signal(0)
     const trigger = signal(0)
     const e = computed(() => s() * 2, { equals: eq })
@@ -247,8 +223,6 @@ describe('tier-1 topo-staleness ({ equals } computeds)', () => {
     })
 
     expect(() => trigger.set(1)).toThrow('raw boom')
-    expect((e as unknown as { _dirty: number })._dirty).toBe(2)
-
     expect(e()).toBe(2)
     expect(runsA).toBe(1)
     expect(runsB).toBe(1)
@@ -286,30 +260,6 @@ describe('tier-1 topo-staleness ({ equals } computeds)', () => {
     for (const at of [497, 498, 499, 500, 501, 502, 503, DEPTH - 1]) {
       expect(seen.get(at)).toBe(at + 2)
     }
-  })
-
-  test('a raw out-of-window notify dispatch still refreshes synchronously (external-caller arm)', () => {
-    // White-box: every in-tree notify runs under a write's batch window; a raw
-    // external caller invoking a subscriber directly (no window) must not
-    // strand the computed — the notify opens its own window so the refresh +
-    // propagation complete before the dispatch returns.
-    const s = signal(1)
-    const e = computed(() => s() * 2, { equals: eq })
-    let seen = -1
-    effect(() => {
-      seen = e()
-    })
-    expect(seen).toBe(2)
-
-    // Mutate the raw value WITHOUT notification, then dispatch the subscriber
-    // set manually, outside any batch window — the raw-external-caller shape.
-    ;(s as unknown as { _v: number })._v = 5
-    const host = s as unknown as { _s1: (() => void) | null; _s: Set<() => void> | null }
-    const subs = [...(host._s1 !== null ? [host._s1] : []), ...(host._s ?? [])]
-    for (const sub of subs) sub()
-
-    expect(e()).toBe(10)
-    expect(seen).toBe(10)
   })
 
   test('effects always read settled { equals } computeds regardless of subscription order (the doc claim)', () => {

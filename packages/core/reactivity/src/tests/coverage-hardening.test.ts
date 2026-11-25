@@ -12,7 +12,7 @@
 import { accessInternal } from '@pyreon/test-utils'
 import { batch } from '../batch'
 import { Cell } from '../cell'
-import { computed } from '../computed'
+import { _computedNode, computed } from '../computed'
 import { createSelector } from '../createSelector'
 import {
   type ReactiveSnapshotCapture,
@@ -33,27 +33,40 @@ describe('effect — inner-effect disposal error handling', () => {
     setErrorHandler((err) => caught.push(err))
 
     const trigger = signal(0)
-    let inner: ReturnType<typeof effect> | undefined
 
     const outer = effect(() => {
-      trigger() // re-runs outer → runCleanup disposes the inner effect
-      inner = effect(() => {})
-      // Make the inner effect's dispose throw so the catch + _errorHandler
-      // branch in runCleanup (effect.ts:183-190) is exercised.
-      const orig = inner.dispose
-      inner.dispose = () => {
-        orig()
-        throw new Error('inner-dispose-boom')
-      }
+      trigger() // re-runs outer → its cleanup disposes the inner effect
+      effect(() => {
+        // The inner effect's cleanup throws while the OUTER re-run disposes it.
+        return () => {
+          throw new Error('inner-dispose-boom')
+        }
+      })
     })
 
-    trigger.set(1) // outer re-runs → runCleanup → inner.dispose() throws
+    trigger.set(1) // outer re-runs → inner disposed → its cleanup throws
 
     expect(caught).toHaveLength(1)
     expect((caught[0] as Error).message).toBe('inner-dispose-boom')
 
     outer.dispose()
     setErrorHandler((_err) => {})
+  })
+
+  test('assigning over an effect handle\'s dispose shadows it (plain-object handle compat)', () => {
+    const s = signal(0)
+    const e = effect(() => {
+      s()
+    })
+    const original = e.dispose
+    let called = 0
+    e.dispose = () => {
+      called++
+      original()
+    }
+    e.dispose()
+    expect(called).toBe(1)
+    s.set(1)
   })
 })
 
@@ -221,14 +234,14 @@ describe('computed — error handler and direct updaters', () => {
 
     // `_d1` getter exposes the inline slot; `_d` stays null on single
     // subscribe (no Set allocation).
-    expect(accessInternal<{ _d1: (() => void) | null }>(c)._d1).not.toBeNull()
-    expect(accessInternal<{ _d: Set<unknown> | null }>(c)._d).toBeNull()
+    expect(accessInternal<{ _d1: (() => void) | null }>(_computedNode(c))._d1).not.toBeNull()
+    expect(accessInternal<{ _d: Set<unknown> | null }>(_computedNode(c))._d).toBeNull()
 
     src.set(5)
     expect(seen).toEqual([10])
 
     unsub()
-    expect(accessInternal<{ _d1: (() => void) | null }>(c)._d1).toBeNull()
+    expect(accessInternal<{ _d1: (() => void) | null }>(_computedNode(c))._d1).toBeNull()
     src.set(7)
     expect(seen).toEqual([10]) // no further direct notifications
   })

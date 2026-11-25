@@ -1,396 +1,49 @@
-import { enqueuePendingNotification, isBatching } from './batch'
-
 /**
- * The tracking frame — every hot piece of module state the tracked-read path
- * touches, held as FIELDS of one module-level `const` object rather than as
- * module-level `let` bindings.
+ * Tracking-frame helpers over the graph core (`graph.ts`).
  *
- * Measured, not stylistic: V8 compiles each access to a module-scope `let` from
- * inside a function as a context-slot load plus a TDZ hole check, and does not
- * hoist either across the calls a tracked read makes. Saving, setting and
- * restoring three `let`s cost ~1.9ns per frame in an isolated probe versus
- * ~0.1ns for the same three fields on a `const` object (node 26, M3 Max; JSC
- * showed no difference there). Applied to this frame plus the batch, cleanup,
- * scope and trace state, the reactivity micro board moved by: computed diamond
- * -32%, 50-deep chain -26%, 1→100 effect fan-out -8%, batch-50 -10% under V8;
- * diamond -8%, fan-out -8%, batch -6% under JSC (chain within noise there).
- * Zero bytes per signal, computed or effect: one object in total.
- *
- * Keep NEW hot module state on a holder like this rather than adding a
- * module-level `let` (`tests/no-hot-module-let.test.ts` enforces it).
- *
- * Field names are one letter on purpose: a minifier renames a `let` but never a
- * property. Descriptive names cost +146 B gzipped on the package entry; one
- * letter costs +79 B. Each field is documented below instead.
+ * Kept as its own module for the names other packages and tests import:
+ * `runUntracked`, `trackSubscriber`, the `SubscriberHost` type and the read-replay trio `runtime-dom` uses to hand an
+ * evaluated accessor's dependencies to the binding that owns it.
  */
-interface TrackingFrame {
-  /** The subscriber a tracked read registers — `null` outside any tracking scope. */
-  e: (() => void) | null
-  /**
-   * The deps collector — every primitive that establishes a tracking scope
-   * (`effect` / `renderEffect` / `_bind` / `computed`) enters a FRAME via
-   * `runCollect` / `runVerify` below, which points this at the frame's own
-   * local `deps` array BEFORE `e` goes live, so `trackSubscriber`
-   * always records deps inline here (no per-effect WeakMap). This is an
-   * INVARIANT, not a fast path: there is no fallback collector.
-   */
-  d: SubscriberHost[] | null
-  /**
-   * Verify-mode position. Mode is encoded in the SIGN (-1 = collect, >=0 =
-   * verify at that position) — folding the former separate owner flag into the
-   * index drops one state read from the hottest tracked-read line.
-   */
-  i: number
-  /**
-   * Thread-local collector for nested effects — captures `effect()` calls made
-   * inside another effect's body so the parent can dispose them on re-run.
-   * Lives here (not effect.ts) so `runUntracked` can suspend it in lock-step
-   * with `e`: without that, child component effects created inside
-   * `mountFor`'s `runUntracked` wrap would register as inner effects of the
-   * For's effect and be disposed on its NEXT re-run, silently dropping every
-   * subscription they had. Untyped (`unknown[]`) to avoid a circular dep with
-   * effect.ts.
-   */
-  n: unknown[] | null
-}
-/**
- * @internal Exported ONLY for `computed.ts`'s CHECK-state dep refresh, which
- * suspends `e` inline around a loop of dep pulls instead of paying a
- * `runUntracked` closure per pull (see `refreshDeps` there).
- */
-export const _t: TrackingFrame = {
-  e: null,
-  d: null,
-  i: -1,
-  n: null,
-}
+import {
+  F_DIRTY,
+  type Link,
+  type Source,
+  type Subscriber,
+  _t,
+  link,
+  runUntracked,
+  trackSubscriber,
+  unlinkAllDeps,
+} from './graph'
 
-// ─── Verify-mode dep reuse ───────────────────────────────────────────────────
-//
-// A steady-state re-run reads the SAME sources in the SAME order, so instead of
-// tearing down and rebuilding the dep list every time we keep the persistent
-// per-effect `deps: SubscriberHost[]` and VERIFY it positionally:
-//
-//   - `runVerify(owner, deps, fn)` walks `deps` as reads arrive. Steady state is
-//     ONE array-identity compare + increment per read: no Set.add, no
-//     Set.delete, no push, no allocation, and the owner never leaves its
-//     subscriber storage.
-//   - Divergence (new dep / reorder / branch flip) → `divergeVerify` unsubscribes
-//     the unconfirmed tail, repairs the confirmed prefix, and drops to collect
-//     mode for the rest of the run.
-//   - Shrink (read FEWER deps, never diverged) → handled at frame exit.
-//
-// `deps` records the HOST, not the host's subscriber Set. That is what lets the
-// storage be two-tier (`_s1` inline slot / `_s` Set) — under the tier there is
-// no Set object to record while a source has exactly one subscriber. It also
-// makes verify mode strictly MORE stable than a Set-identity compare was: the
-// `_suspendSoleSubscriber` container swap used to change `host._s`'s identity
-// and spuriously diverge every effect tracking that signal; the host's identity
-// never changes.
-//
-// Duplicate-read aliasing hazard: `deps` may hold the SAME host twice (one
-// signal read twice). Removing the owner via a stale TAIL entry would also
-// remove it from a CONFIRMED prefix position aliasing that host — so both
-// removal sites re-`addSubscriber` across the confirmed prefix afterwards
-// (idempotent, cold path).
-//
-// Why not preact-style linked-list Nodes: subscriber identity here is a bare
-// `() => void` in `_s1`/`_s`, which the batch router, `signal.subscribe`,
-// devtools and `_set`'s inline dispatch all consume. Nodes would force a rewrite
-// of that tuned notify path plus one allocation per dependency edge.
+export { _t, runUntracked, trackSubscriber }
 
 /**
- * Subscriber host — any reactive source that can have downstream subscribers.
- * Signals, computeds, and createSelector buckets all implement this interface.
- * The Set is created lazily — only allocated when an effect actually tracks this source.
+ * Subscriber host — any reactive source that can have downstream subscribers:
+ * signals, computeds and `createSelector` key buckets. Opaque outside this
+ * package: hold it, hand it back to `_replayReads`, never read its fields.
  */
-export interface SubscriberHost {
-  /**
-   * @internal SOLE tracking subscriber — inline slot, no Set allocation.
-   * Mirrors the `_d1`/`_d` two-tier idiom already used for direct updaters.
-   *
-   * INVARIANT: `_s1 !== null` implies `_s === null`. The second subscriber
-   * PROMOTES `_s1` into a fresh `_s` Set and nulls the slot; there is no
-   * demotion (a Set that shrinks back to one entry stays a Set).
-   */
-  _s1: (() => void) | null
-  /**
-   * INVARIANT for the second tier below: a FUNCTION in `_s` implies `_s1 !==
-   * null` (the slots fill in order and `removeSubscriber` shifts the second
-   * down); a `Set` in `_s` implies `_s1 === null`. The THIRD subscriber
-   * promotes both into the Set.
-   *
-   * Why two: the "sole subscriber" census behind `_s1` counted flat row lists
-   * and computed chains. A row that owns an `effect()` AND a text bind on the
-   * same signal — the dispose-500 scenario, and any list row with a derived
-   * side effect — has exactly TWO, and paid a hashed `Set.delete` per
-   * subscriber per dispose (~52ns each, 61% of the on-CPU teardown once the
-   * dispose closures were cheap). Two inline slots make that shape hash-free
-   * at the cost of one more null check on notify.
-   */
-  /**
-   * @internal The SECOND subscriber, or the promoted Set. A FUNCTION here is
-   * the second inline subscriber (implies `_s1 !== null`); a `Set` holds ≥3
-   * (implies `_s1 === null`). One field carries both so a signal stays at its
-   * pre-two-slot size: an extra property measured +24 B per signal (152 → 176)
-   * under V8's in-object slack, which on a 10k-row page is the whole retained-
-   * heap margin the board tracks. `typeof _s === 'function'` is the tier test.
-   */
-  _s: Set<() => void> | (() => void) | null
-}
+export type SubscriberHost = Source
 
 /**
- * Add `sub` to `host`'s tracking subscribers. Idempotent.
- *
- * Tier 1 (`_s1`) is the dominant shape: a census of the row-list and
- * computed-chain workloads found the tracking subscriber count is exactly 1 in
- * 100% of cases, so the Set — and its hashed add/delete — is pure overhead
- * there. Duplicate registration (the `divergeVerify` prefix repair) resolves to
- * an identity compare instead of a hash probe.
- */
-export function addSubscriber(host: SubscriberHost, sub: () => void): void {
-  const s1 = host._s1
-  if (s1 === sub) return // already inline — idempotent, no hash
-  if (s1 === null) {
-    const s = host._s as Set<() => void> | null // `_s1 === null` ⇒ never a function
-    if (s === null) {
-      host._s1 = sub
-      return
-    }
-    s.add(sub)
-    return
-  }
-  const s2 = host._s as (() => void) | null // `_s1 !== null` ⇒ never a Set
-  if (s2 === sub) return
-  if (s2 === null) {
-    host._s = sub
-    return
-  }
-  // Promote: both slots are occupied by DIFFERENT subscribers.
-  const set = new Set<() => void>()
-  set.add(s1)
-  set.add(s2)
-  set.add(sub)
-  host._s1 = null
-  host._s = set
-}
-
-/** Remove `sub` from `host`'s tracking subscribers. No-op when absent. */
-export function removeSubscriber(host: SubscriberHost, sub: () => void): void {
-  const s = host._s
-  if (host._s1 === sub) {
-    // Keep the slots packed: `_s1` is the one every reader checks first.
-    // `_s` is a function or null here (never a Set while `_s1` is occupied).
-    host._s1 = s as (() => void) | null
-    host._s = null
-    return
-  }
-  if (s === sub) {
-    host._s = null
-    return
-  }
-  if (s !== null && typeof s !== 'function') s.delete(sub)
-}
-
-/**
- * Register the active effect as a subscriber of the given reactive source.
- * Storage is created lazily on the host — sources read only outside effects
- * never allocate anything.
- */
-export function trackSubscriber(host: SubscriberHost) {
-  const ae = _t.e
-  if (ae === null) return
-  const idx = _t.i
-  if (idx >= 0) {
-    // Verify mode — steady-state re-run: one identity compare, no Set ops.
-    // Safe to trust the index after the `ae === null` gate: `runUntracked`
-    // suspends `_t.e` only, so untracked code can't reach a stale index.
-    const deps = _t.d as SubscriberHost[]
-    if (idx < deps.length && deps[idx] === host) {
-      _t.i = idx + 1
-      return
-    }
-    divergeVerify(host, ae)
-    return
-  }
-  addSubscriber(host, ae)
-  // INVARIANT (see `TrackingFrame.d`): a collector is ALWAYS set while
-  // `_t.e` is live, so no null guard is needed here.
-  ;(_t.d as SubscriberHost[]).push(host)
-}
-
-/**
- * Cold path — a verified re-run read a source that doesn't match the recorded
- * position (new dep / reorder / branch flip). Unsubscribe the unconfirmed
- * tail, repair the confirmed prefix (duplicate-alias hazard), and fall back
- * to plain collect mode for the remainder of this run.
- */
-function divergeVerify(host: SubscriberHost, owner: () => void): void {
-  const deps = _t.d as SubscriberHost[]
-  // The owner can empty `deps` while its own run is on the stack (it was
-  // disposed mid-run), which leaves the frame's position past the end. Never
-  // grow the list back to that position: the holes would be "repaired" below.
-  const confirmed = _t.i < deps.length ? _t.i : deps.length
-  // 1. Unsubscribe the unconfirmed tail — those positions are stale-dep
-  //    candidates; any that get re-read later in this run re-subscribe via
-  //    the collect path below.
-  for (let j = confirmed; j < deps.length; j++) removeSubscriber(deps[j] as SubscriberHost, owner)
-  deps.length = confirmed
-  // 2. Repair the confirmed prefix — step 1 may have removed the owner from a
-  //    host that ALSO sits at a confirmed position (duplicate reads of the
-  //    same source alias the same host).
-  for (let j = 0; j < confirmed; j++) addSubscriber(deps[j] as SubscriberHost, owner)
-  // 3. Exit verify mode (-1 = collect) — the rest of this run collects
-  //    normally onto the preserved confirmed prefix.
-  _t.i = -1
-  // 4. Record the current (diverging) read.
-  addSubscriber(host, owner)
-  deps.push(host)
-}
-
-/**
- * Exact-size copy of a just-collected dep list, for the owner to keep instead
- * of the collecting array.
- *
- * V8 gives a `[]` a 16-slot backing store on its first `push`, so a one-dep
- * list retains 184 B where `[x]` retains 56 B (node, uncompressed pointers).
- * Every effect, computed, `_bind` and renderEffect collects into a fresh `[]`
- * once and keeps that list for its lifetime, so the slack is paid per binding
- * (~128 B each on node, about half that under Chromium's pointer compression).
- * Copying once after the FIRST collect drops it; the collecting array becomes
- * young-generation garbage. An empty list is returned as-is (no backing store
- * was ever allocated).
- *
- * A reused per-depth scratch was considered and rejected: `length = 0` makes
- * V8 drop the backing store, so the scratch would re-grow every time (the same
- * garbage), and keeping it un-truncated would mean nulling stale slots on the
- * hot collect path, or retaining hosts past their owner (a leak).
- *
- * Re-runs that diverge push onto the exact array and may grow it again; that
- * is the rare branch-flip path and is not re-trimmed.
- */
-export function exactDeps(deps: SubscriberHost[]): SubscriberHost[] {
-  return deps.length === 0 ? deps : deps.slice()
-}
-
-/**
- * Enter a COLLECT tracking frame: `fn`'s reactive reads subscribe `owner` and
- * append their subscriber Sets to `deps`. Used for FIRST runs. Fully re-entrant
- * — saves and restores the complete tracking frame, so nested evaluations each
- * get an isolated frame and the outer frame resumes where it left off.
- */
-export function runCollect<T>(owner: () => void, deps: SubscriberHost[], fn: () => T): T {
-  const prevEffect = _t.e
-  const prevDeps = _t.d
-  const prevIndex = _t.i
-  _t.e = owner
-  _t.d = deps
-  _t.i = -1 // collect mode
-  try {
-    return fn()
-  } finally {
-    _t.e = prevEffect
-    _t.d = prevDeps
-    _t.i = prevIndex
-  }
-}
-
-/**
- * Enter a VERIFY tracking frame: `fn`'s reactive reads are checked positionally
- * against the previous run's `deps`. Steady state (same sources, same order)
- * costs one identity compare per read — no Set ops, no allocations, and the
- * owner never leaves its subscriber Sets.
- */
-export function runVerify<T>(owner: () => void, deps: SubscriberHost[], fn: () => T): T {
-  const prevEffect = _t.e
-  const prevDeps = _t.d
-  const prevIndex = _t.i
-  _t.e = owner
-  _t.d = deps
-  _t.i = 0 // verify mode, position 0
-  try {
-    const result = fn()
-    // Shrink: fn stayed in verify mode but read FEWER deps than last run —
-    // unsubscribe + truncate the stale tail, then repair the confirmed prefix
-    // (duplicate-alias hazard, same as divergeVerify).
-    // Deliberately NOT in the finally: if fn threw, the unverified tail stays
-    // subscribed + recorded (dispose still removes everything) and the next run
-    // re-verifies from index 0.
-    const idx = _t.i
-    if (idx >= 0 && idx < deps.length) {
-      for (let j = idx; j < deps.length; j++) removeSubscriber(deps[j] as SubscriberHost, owner)
-      deps.length = idx
-      for (let j = 0; j < idx; j++) addSubscriber(deps[j] as SubscriberHost, owner)
-    }
-    return result
-  } finally {
-    _t.e = prevEffect
-    _t.d = prevDeps
-    _t.i = prevIndex
-  }
-}
-
-export function notifySubscribers(subscribers: Set<() => void>) {
-  if (subscribers.size === 0) return
-  // Single-subscriber fast path: avoid any iteration overhead.
-  if (subscribers.size === 1) {
-    const sub = subscribers.values().next().value as () => void
-    if (isBatching()) enqueuePendingNotification(sub)
-    else sub()
-    return
-  }
-  if (isBatching()) {
-    // Effects are queued not run inline — no re-entrancy risk, iterate the live Set directly.
-    for (const sub of subscribers) enqueuePendingNotification(sub)
-  } else {
-    // Effects run inline. Under verify-mode dep reuse a steady-state re-run no
-    // longer removes + re-adds itself, so the live Set is stable; the
-    // original-size cap guards DIVERGING re-runs and raw subscribe() listeners
-    // that mutate the set.
-    const originalSize = subscribers.size
-    let i = 0
-    for (const sub of subscribers) {
-      if (i >= originalSize) break
-      sub()
-      i++
-    }
-  }
-}
-
-export function getInnerEffectCollector(): unknown[] | null {
-  return _t.n
-}
-
-export function setInnerEffectCollector(c: unknown[] | null): void {
-  _t.n = c
-}
-
-/** Read signals without subscribing AND prevent auto-registration of new
- * effects with the surrounding outer effect's inner-effect collector.
- * Alias: `untrack`. */
-export function runUntracked<T>(fn: () => T): T {
-  const prevActive = _t.e
-  const prevCollector = _t.n
-  _t.e = null
-  _t.n = null
-  try {
-    return fn()
-  } finally {
-    _t.e = prevActive
-    _t.n = prevCollector
-  }
-}
-
-/**
- * @internal The reads the CURRENT collect frame has recorded so far (a copy),
- * or `null` outside a collect frame. With `_replayReads` this lets a caller
+ * @internal The sources the CURRENT run has read so far, in order (a copy),
+ * or `null` outside any tracking frame. With `_replayReads` this lets a caller
  * that already evaluated an accessor once (to classify its value) hand the
  * value AND its dependencies to the machinery that owns the binding, instead
  * of that machinery calling the accessor — user code — a second time.
  */
 export function _frameReads(): SubscriberHost[] | null {
-  if (_t.e === null || _t.i >= 0) return null
-  return (_t.d as SubscriberHost[]).slice()
+  const sub = _t.e
+  if (sub === null) return null
+  const out: SubscriberHost[] = []
+  const tail = sub._depsTail
+  if (tail === null) return out
+  for (let l: Link | null = sub._deps; l !== null; l = l.nextDep) {
+    out.push(l.dep)
+    if (l === tail) break
+  }
+  return out
 }
 
 /**
@@ -399,20 +52,35 @@ export function _frameReads(): SubscriberHost[] | null {
  * the code that read them.
  */
 export function _replayReads(hosts: readonly SubscriberHost[]): void {
-  for (let i = 0; i < hosts.length; i++) trackSubscriber(hosts[i] as SubscriberHost)
+  const sub = _t.e
+  if (sub === null) return
+  for (let i = 0; i < hosts.length; i++) link(hosts[i] as SubscriberHost, sub)
 }
 
-const _sampleOwner = (): void => {}
+/**
+ * The subscriber `_sampleReads` tracks into. Permanently marked DIRTY, so a
+ * write during the sample never queues it (marking stops at marked nodes);
+ * its edges are dropped before `_sampleReads` returns.
+ */
+class SampleNode implements Subscriber {
+  _f = F_DIRTY
+  _deps: Link | null = null
+  _depsTail: Link | null = null
+}
 
 /**
- * @internal Evaluate `fn` once in its own collect frame and return its value,
- * appending every source it read to `reads`. No subscription survives: the
- * sampling owner is removed from each source before returning.
+ * @internal Evaluate `fn` once in its own tracking frame and return its value,
+ * appending every source it read to `reads`. No subscription survives.
  */
 export function _sampleReads<T>(fn: () => T, reads: SubscriberHost[]): T {
+  const node = new SampleNode()
+  const prev = _t.e
+  _t.e = node
   try {
-    return runCollect(_sampleOwner, reads, fn)
+    return fn()
   } finally {
-    for (let i = 0; i < reads.length; i++) removeSubscriber(reads[i] as SubscriberHost, _sampleOwner)
+    _t.e = prev
+    for (let l = node._deps; l !== null; l = l.nextDep) reads.push(l.dep)
+    unlinkAllDeps(node)
   }
 }

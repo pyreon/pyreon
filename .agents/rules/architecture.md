@@ -53,7 +53,7 @@ Reconciler functions below live in `packages/core/runtime-dom/src/nodes.ts` unle
 
 - Compiled templates use `_tpl()` (cloneNode) + `_bind()` — zero VNode allocations.
 - Reactive text writes `TextNode.data`, not `.textContent`.
-- Signals keep their first subscriber in an inline slot (`_s1` tracked, `_d1` direct) and promote to a `Set` on the second; batch uses a pointer swap.
+- Signals keep their first DIRECT subscriber (compiled binding, `subscribe()` listener) in an inline slot `_d1` and promote to a `Set` on the second; tracked subscribers (computeds, effects, render bindings) are graph edges, one `Link` per dependency (`packages/core/reactivity/src/graph.ts`). A write marks and queues; reads resolve stale computeds bottom-up; one flush queue runs at the outermost batch close.
 - `mountFor` is a keyed reconciler using LIS. `computeForLis` has three tiers: extend when `v > lastV` (append, O(1)); known slot when `tails[v] === v` (prepend and piecewise-monotonic shapes, O(1)); binary search otherwise. Only tier 3 counts `lisOps`, so a prepend costs 0 probes.
 - `tryContiguousRemoval` (`removeFast`): a common-prefix + common-suffix `===` scan detects a single contiguous deleted run (`n < currentKeys.length` and `prefix + suffix === n`) and unmounts only those rows, skipping the key probes, stale scan and LIS.
 - `tryContiguousInsertion` (`insertFast`), and `tryContiguousInsertionKeyed` in `mountKeyedList`: the same scan detects a contiguous inserted run where every old key survives in order (`n > currentKeys.length` and `prefix + suffix === oldLen`). Both mount the run straight into the live parent before the suffix's first anchor. Duplicate keys in the run follow `mountNewForEntries`' first-wins rule. Locked by `for-contiguous-insertion.test.tsx`.

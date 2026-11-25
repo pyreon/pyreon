@@ -12,7 +12,6 @@ import {
   _replayReads,
   _sampleReads,
 } from '../internal'
-import { runCollect } from '../tracking'
 
 // The single-evaluation hand-off helpers (`mountAccessorChild` in
 // runtime-dom evaluates an accessor child once, then gives the value, its
@@ -87,23 +86,21 @@ describe('_frameReads / _replayReads / _sampleReads', () => {
     expect(_frameReads()).toBeNull()
   })
 
-  test('_frameReads copies the reads the current collect frame recorded', () => {
+  test('_frameReads copies the reads the current run recorded so far, in order', () => {
     const a = signal(1)
     const b = signal(2)
-    const deps: SubscriberHost[] = []
     let seen: SubscriberHost[] | null = null
-    runCollect(
-      () => {},
-      deps,
-      () => {
-        a()
-        b()
-        seen = _frameReads()
-      },
-    )
-    expect(seen).toHaveLength(2)
-    expect(seen).not.toBe(deps)
-    expect(seen).toEqual(deps)
+    let again: SubscriberHost[] | null = null
+    const e = effect(() => {
+      a()
+      b()
+      seen = _frameReads()
+      again = _frameReads()
+    })
+    expect(seen).toEqual([a, b])
+    expect(seen).not.toBe(again) // a fresh copy per call
+    expect(_frameReads()).toBeNull() // outside any tracking frame
+    e.dispose()
   })
 
   test('_sampleReads returns the value and the reads, and leaves no subscription behind', () => {

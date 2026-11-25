@@ -90,16 +90,17 @@ describe('reactivity.computedRecompute', () => {
     expect(outcome.after['reactivity.computedRecompute']).toBe(2)
   })
 
-  it('fires eagerly for equals-computed on each dependency change', async () => {
+  it('stays lazy with `equals`: writes nobody reads do not evaluate', async () => {
     const s = signal(1)
     const c = computed(() => s() * 2, { equals: (a, b) => a === b })
-    const outcome = await perfHarness.record('eager-computed', () => {
+    const outcome = await perfHarness.record('equals-computed', () => {
       c() // 1st read → recompute
-      s.set(2) // invalidates → eager recompute
-      s.set(3) // invalidates → eager recompute
-      c() // read, already clean — no extra recompute
+      s.set(2) // marks only
+      s.set(3) // marks only
+      c() // read → one recompute for both writes
     })
-    // With eager evaluation: 1 (read) + 2 (invalidations) = 3
-    expect(outcome.after['reactivity.computedRecompute']).toBe(3)
+    // `equals` no longer makes a computed eager (link-graph core, design D3):
+    // 1 (first read) + 1 (the read after the writes) = 2.
+    expect(outcome.after['reactivity.computedRecompute']).toBe(2)
   })
 })

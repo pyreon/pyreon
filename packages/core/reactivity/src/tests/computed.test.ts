@@ -1,4 +1,4 @@
-import { computed } from '../computed'
+import { _computedNode, computed } from '../computed'
 import { effect } from '../effect'
 import { signal } from '../signal'
 
@@ -210,7 +210,7 @@ describe('computed', () => {
     const s = signal(0)
     const c = computed(() => s() * 2)
     c() // initialize
-    const internal = c as unknown as {
+    const internal = _computedNode(c) as unknown as {
       _d: Set<() => void> | null
       _d1: (() => void) | null
     }
@@ -313,7 +313,7 @@ describe('computed', () => {
       const s = signal(1)
       const c = computed(() => s() * 2)
       c() // initialize
-      const internal = c as unknown as {
+      const internal = _computedNode(c) as unknown as {
         _d: Set<() => void> | null
         _d1: (() => void) | null
       }
@@ -493,13 +493,18 @@ describe('computed', () => {
       expect((c as unknown as { _v: number })._v).toBe(4)
       expect(typeof c.direct).toBe('function')
 
+      // The state lives on the graph node (a plain object the callable is
+      // bound to); the callable's one own property is that node.
+      const node = _computedNode(c)
+      expect(node).toBeDefined()
+      expect(Object.hasOwn(c, '_d1')).toBe(false)
       // `_d1` is a plain DATA field — no accessor getter (the dictionary-mode
       // trigger we removed). Pre-refactor this was a defineProperty getter.
-      const d1Desc = Object.getOwnPropertyDescriptor(c, '_d1')
+      const d1Desc = Object.getOwnPropertyDescriptor(node, '_d1')
       expect(d1Desc).toBeDefined()
       expect(d1Desc?.get).toBeUndefined()
-      expect(Object.hasOwn(c, '_d1')).toBe(true)
-      expect(Object.hasOwn(c, '_d')).toBe(true)
+      expect(Object.hasOwn(node as object, '_d1')).toBe(true)
+      expect(Object.hasOwn(node as object, '_d')).toBe(true)
 
       // setPrototypeOf(_, Function.prototype) contract preserved.
       expect(c instanceof Function).toBe(true)
