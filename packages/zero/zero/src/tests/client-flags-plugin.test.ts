@@ -221,6 +221,25 @@ describe('every page islands-only', () => {
       '/app/node_modules/@pyreon/zero/lib/_chunks/client-islands-Ab1_c.js',
     ]) expect(group?.test.test(id), id).toBe(true)
     expect(group?.test.test('/repo/packages/zero/zero/src/client.ts')).toBe(false)
+    // The server-island marker code is a group of its own, above the runtime
+    // (a group takes its modules' dependencies along, and the runtime's barrel
+    // imports it), without its own dependencies (the codec, the base).
+    const si = groups.find((g) => g.name === 'server-island')
+    expect(si?.priority).toBeGreaterThan(group?.priority ?? Infinity)
+    expect(si?.includeDependenciesRecursively).toBe(false)
+    for (const id of [
+      '/repo/packages/core/server/src/server-island.ts',
+      '/app/node_modules/@pyreon/server/lib/_chunks/server-island-Dc_g-L3.js',
+      '/repo/packages/zero/zero/src/client-server-islands.ts',
+      '/app/node_modules/@pyreon/zero/lib/_chunks/client-server-islands-BCLf9JJ3.js',
+    ]) expect(si?.test?.test(id), id).toBe(true)
+    for (const id of [
+      '/repo/packages/core/server/src/server-island-render.ts',
+      '/repo/packages/core/server/src/fragment-base.ts',
+      '/repo/packages/core/server/src/client.ts',
+      '/app/node_modules/@pyreon/server/lib/client.js',
+      '/repo/packages/zero/zero/src/client-islands.ts',
+    ]) expect(si?.test?.test(id), id).toBe(false)
     expect((await hook({ root: none }, build))?.build).toBeUndefined()
     expect((await hook({ root: some }, { ...build, isSsrBuild: true }))?.build).toBeUndefined()
   })

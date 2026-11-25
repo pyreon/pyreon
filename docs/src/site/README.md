@@ -7,15 +7,14 @@ system on Zero.
 ## How a marketing page runs
 
 **Static HTML with islands.** Every page — the `(site)` shell, the docs and
-the 404 — is server-rendered at build time and never hydrates as a whole. The
-browser entry (`src/entry-client.ts`) loads `static-client.ts`, which hydrates
-only the `<pyreon-island>` elements on the page. The docs follow the same
-model: their islands are listed in `docs-ui/islands.ts` (search, the drawer,
-page actions, code copy and scroll-spy, live examples, demo tabs).
-`render-mode.ts` explains the contract; Zero has no per-route islands-only
-mode yet (#4371), so `vite-plugins/static-pages.ts` removes the route
-preloads and loader data a static page (the `data-site-static` marker that
-`SiteShell` prints) does not need.
+the 404 — is server-rendered at build time and never hydrates as a whole: the
+root layout (`routes/_layout.tsx`) declares Zero's islands-only hydration
+(`export const hydrate = 'islands'`, which explains the contract). The browser
+entry (`src/entry-client.ts`) calls `startClientLazy` with the islands
+registry, which hydrates only the `<pyreon-island>` elements on the page; the
+production client build carries no router and no route code. The docs follow
+the same model: their islands are listed in `docs-ui/islands.ts` (search, the
+drawer, page actions, code copy and scroll-spy, live examples, demo tabs).
 
 What that means when you build a page:
 

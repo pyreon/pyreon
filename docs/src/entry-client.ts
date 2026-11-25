@@ -1,18 +1,28 @@
 import './styles/tokens.css'
-import './site/static-client'
+import { startClientLazy } from '@pyreon/zero/client-lazy'
+import * as islands from 'virtual:pyreon/islands-registry'
+import { followSystemMode } from './site/color-mode'
 import { prefetchStylesheetsOnIntent } from './styles/sheets'
 
 /**
- * The browser entry. Every page on the site, marketing and docs, is static
- * HTML with islands (`site/render-mode.ts`): `site/static-client.ts` hydrates
- * the `<pyreon-island>` elements on the page (the nav, copy buttons, demos;
- * on docs pages also search, the drawer, the TOCs, live examples), each with
- * its own strategy. No page hydrates as a whole, so neither the router nor
- * the UI system's styling runtime is downloaded.
+ * The browser entry. Every page on the site, marketing and docs, is
+ * islands-only (`export const hydrate = 'islands'` in `routes/_layout.tsx`):
+ * Zero hydrates the `<pyreon-island>` elements on the page (the nav, copy
+ * buttons, demos; on docs pages also search, the drawer, the TOCs, live
+ * examples), each with its own strategy. No page hydrates as a whole, so
+ * neither the router nor the UI system's styling runtime is downloaded; the
+ * production build compiles the app path of `startClientLazy` out.
  *
- * Zero has no per-route "islands only" mode yet; this is the app-side
- * version of it (see `site/render-mode.ts` for the issue).
+ * Islands root themselves (`KitScope`), so there is no `islandRoot`.
  */
+startClientLazy({ routes: () => import('virtual:zero/routes'), islands })
+
+// The colour mode follows the OS while the visitor has not chosen one: the
+// root layout's `useFollowSystemMode` never runs in the browser here. A
+// static import on purpose: loading it with `import()`, or from the nav
+// island, each measured larger per page (the signal runtime then splits into
+// chunks of its own).
+followSystemMode()
 
 // Each layout links its own stylesheets (`styles/sheets.ts`); the other side's
 // are prefetched when the visitor reaches for a link into it (and this is what

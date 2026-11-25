@@ -43,6 +43,14 @@ const ZERO_ISLANDS_FILE = /[\\/]client-islands(?:-[\w-]+)?\.[cm]?[jt]s$/
 /** Either of the two, each kept whole inside its own group. */
 const ISLANDS_RUNTIME_MODULE = new RegExp(`(?:${SERVER_CLIENT_DIR.source})|(?:${ZERO_ISLANDS_FILE.source})`)
 
+/**
+ * The server-island marker code: `@pyreon/server`'s `server-island.ts` (or
+ * its `_chunks/server-island-<hash>.js` lib chunk, which `@pyreon/server`
+ * builds as a file of its own) and zero's `client-server-islands`.
+ */
+const SERVER_ISLAND_MODULE =
+  /[\\/](?:core|@pyreon)[\\/]server[\\/](?:src[\\/]server-island\.[cm]?[jt]s|lib[\\/]_chunks[\\/]server-island-[\w-]+\.js)$|[\\/]client-server-islands(?:-[\w-]+)?\.[cm]?[jt]s$/
+
 export function clientFlagsPlugin(userConfig: ZeroConfig, appMode: string): Plugin {
   return {
     name: 'pyreon-zero:client-flags',
@@ -186,6 +194,7 @@ interface ChunkGroup {
   priority: number
   test?: RegExp
   tags?: '$initial'[]
+  includeDependenciesRecursively?: boolean
 }
 
 export function islandsRuntimeChunk(): { rolldownOptions: { output: { codeSplitting: { groups: ChunkGroup[] } } } } {
@@ -197,6 +206,14 @@ export function islandsRuntimeChunk(): { rolldownOptions: { output: { codeSplitt
             // What the entry itself needs stays out of the islands chunk, so a
             // page with no island still loads only the entry.
             { name: 'entry-deps', tags: ['$initial'], priority: 2 },
+            // The server-island marker code loads only on a page with a server
+            // island (`client-islands.ts` imports it on demand). Without its
+            // own group, the runtime group below pulled it in as a dependency
+            // of `@pyreon/server/client` (a group takes its modules'
+            // dependencies along), so every islands-only page downloaded it:
+            // about 1 KB gzip on pyreon.dev, which has no server island. Its
+            // own dependencies (the codec, the base) stay with the runtime.
+            { name: 'server-island', priority: 3, test: SERVER_ISLAND_MODULE, includeDependenciesRecursively: false },
             {
               name: 'islands-runtime',
               priority: 1,

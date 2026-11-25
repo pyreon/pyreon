@@ -20,6 +20,7 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import type { RouteRecord } from '@pyreon/router'
 import { ISLANDS_ONLY_MARKER } from '@pyreon/server'
+import { _resetServerIslands } from '@pyreon/server/internal'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { startClientLazy } from '../client-lazy'
 import { startIslandsOnlyPage } from '../client-marker'
@@ -65,6 +66,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  // The server-island base is module state (`setServerIslandBase`): one test's
+  // `/sub/` must not satisfy the next one's assertion.
+  _resetServerIslands()
   document.head.innerHTML = ''
   document.body.innerHTML = ''
   delete g.__ZERO_APP_PAGES__
@@ -228,6 +232,59 @@ describe('startClientLazy on an islands-only page', () => {
       expect(urls).toEqual(['/sub/_pyreon/fragment/Stamp?page=%2Fsub%2F&sig=s'])
       expect(startClientMock).not.toHaveBeenCalled()
       expect(hydrateStores).not.toHaveBeenCalled()
+    } finally {
+      cleanup()
+      vi.unstubAllGlobals()
+      delete (globalThis as Record<string, unknown>).__ZERO_BASE__
+    }
+  })
+
+  it('activates a top-level server island next to a client island', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', (url: string) => {
+      urls.push(url)
+      return Promise.resolve({ ok: true, status: 200, text: async () => '<b>live</b>' } as Response)
+    })
+    serverPage(
+      `${ISLAND}<pyreon-server-island data-name="Stamp" data-page="/sub/" data-sig="s"><i>fallback</i></pyreon-server-island>`,
+    )
+    ;(globalThis as Record<string, unknown>).__ZERO_BASE__ = '/sub/'
+    const loads = { n: 0 }
+    const cleanup = startClientLazy({ routes: routesLoader(), islands: registry(loads) })
+    try {
+      const marker = document.querySelector('pyreon-server-island')!
+      await vi.waitFor(() => expect(marker.innerHTML).toBe('<b>live</b>'))
+      expect(urls).toEqual(['/sub/_pyreon/fragment/Stamp?page=%2Fsub%2F&sig=s'])
+      await vi.waitFor(() => expect(loads.n).toBe(1))
+    } finally {
+      cleanup()
+      vi.unstubAllGlobals()
+      delete (globalThis as Record<string, unknown>).__ZERO_BASE__
+    }
+  })
+
+  // The activation code loads only on a page with a server island, but the
+  // base is set on every islands-only page: an island can render a server
+  // island later, and its marker must still fetch under the build base.
+  it('sets the build base for server islands an island renders later, on a page that had none', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', (url: string) => {
+      urls.push(url)
+      return Promise.resolve({ ok: true, status: 200, text: async () => '<b>live</b>' } as Response)
+    })
+    serverPage(ISLAND)
+    ;(globalThis as Record<string, unknown>).__ZERO_BASE__ = '/sub/'
+    const loads = { n: 0 }
+    const cleanup = startClientLazy({ routes: routesLoader(), islands: registry(loads) })
+    try {
+      await vi.waitFor(() => expect(loads.n).toBe(1))
+      const { activateServerIslandElement } = await import('@pyreon/server/client')
+      const later = document.createElement('pyreon-server-island')
+      later.setAttribute('data-name', 'Later')
+      document.body.append(later)
+      activateServerIslandElement(later)
+      await vi.waitFor(() => expect(later.innerHTML).toBe('<b>live</b>'))
+      expect(urls).toEqual(['/sub/_pyreon/fragment/Later'])
     } finally {
       cleanup()
       vi.unstubAllGlobals()

@@ -8,9 +8,11 @@
  * (or has no islands) never downloads it. Imports nothing from the app side.
  */
 import type { ComponentFn } from '@pyreon/core'
-import { hydrateIslandsAuto } from '@pyreon/server/client'
-import { startServerIslands } from './client-server-islands'
+import { hydrateIslandsAuto, setServerIslandBase } from '@pyreon/server/client'
 import type { IslandRootLoader, IslandsRegistry } from './client-marker'
+
+/** zero's route base, a build-time constant (see vite-plugin.ts). */
+declare const __ZERO_BASE__: string
 
 /**
  * Hydrate the islands on an islands-only page. Returns a cleanup that ends
@@ -33,7 +35,22 @@ export function startIslands(
     hydrateStores(storeState as Record<string, Record<string, unknown>>)
   }
 
-  startServerIslands()
+  // The base comes first, before any island can render a server island
+  // (`client-server-islands.ts` says why it is code, not the DOM). The
+  // activation code loads only on a page that HAS a server island: every
+  // other islands-only page shipped it for nothing (about 1 KB gzip on
+  // pyreon.dev, which has none).
+  setServerIslandBase(typeof __ZERO_BASE__ !== 'undefined' ? __ZERO_BASE__ : '/')
+  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- client-only: startIslandsOnlyPage runs this after it found a document
+  if (document.querySelector('pyreon-server-island') !== null) {
+    import('./client-server-islands').then(
+      (m) => m.startServerIslands(),
+      (err: unknown) => {
+        // oxlint-disable-next-line no-console
+        console.error('[Pyreon] Could not load the server-islands runtime for this page:', err)
+      },
+    )
+  }
   if (!islands) return () => {}
 
   return hydrateIslandsAuto(

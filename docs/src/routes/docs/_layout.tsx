@@ -27,7 +27,7 @@ const SPECULATION_RULES = JSON.stringify({
  *   < 960px   "Browse docs" drawer above the article
  *
  * Like the marketing pages, a docs page is static HTML with islands
- * (`site/render-mode.ts`, `docs-ui/islands.ts`): the sidebar, breadcrumbs,
+ * (islands-only, `routes/_layout.tsx`, `docs-ui/islands.ts`): the sidebar, breadcrumbs,
  * the Markdown and the selling slots never run in the browser; search, the
  * drawer, the TOCs, page actions, code copy and the live examples are islands.
  * Links between docs pages are page loads (prefetched, above).
