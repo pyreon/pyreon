@@ -20,6 +20,7 @@ import { depCount, edgeCount } from './graph-internals'
 
 type Mode = 'unbatched' | 'batched'
 const MODES: Mode[] = ['unbatched', 'batched']
+
 const BINDERS = [
   ['renderEffect', renderEffect],
   ['_renderBind', _renderBind],

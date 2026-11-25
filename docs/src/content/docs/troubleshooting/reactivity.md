@@ -72,6 +72,18 @@ The single-walk `propagate` pushes a continuation only when one exists, so after
 
 ---
 
+### A graph node that is a callable function object
+
+The walks (`propagate`, `checkDirty`, `updateComputed`) load `_f` / `_subs` / `_deps` on every node they visit. On a function object those fields live OUT of object (V8 `%DebugPrint`: `location: properties[i]`, a `PropertyArray`), one more dependent load per field, and on V8 that cost the chain rows 1.2–1.3× alien-signals. The computed's node is a plain class instance (`ComputedNode` in `graph.ts`, every field `in-object`); the callable the user holds is a BOUND function over it (no closure context) whose one own property `_n` points at the node, so a computed stays ≤ its old size (signal + computed 504 B). The scope, the queue and every edge hold the NODE: a scope that received the callable would CALL it on `stop()` (a read, not a dispose). Test: `first-run-and-node.test.ts`; evidence `bench-results-2026-11-23/rc3-v8-node-shape.txt`.
+
+---
+
+### A first run that pays for re-run bookkeeping
+
+A binding's first run has no previous dependencies, so `purgeDeps` and `settleUnread` can never find anything and the context snapshot need not be restored. In the board page's context V8 did not inline the five-call `_track` → `_call` → `purgeDeps` → `settleFirstRun` → `endBatch` chain, which cost the deep-tree mount +3–4%. `firstRun` in `effect.ts` is one frame and calls `settleFirstRun` only when the run re-queued itself. Keep hot one-per-binding paths to the work they can actually need. Test: `first-run-and-node.test.ts` (unbatched vs `batch()`, bisect-verified).
+
+---
+
 ### Clearing a mark that was upgraded during its own resolution
 
 Resolving a node evaluates its dependencies, and an evaluated computed may WRITE a signal the node (or a computed between them) reads. That write upgrades the already-marked node from PENDING to DIRTY without queueing it, because a marked node is assumed queued. A walk that then concludes "not dirty" and clears only PENDING leaves the node DIRTY and unqueued, and since marking stops at marked nodes, it never runs again (B4).
