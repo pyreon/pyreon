@@ -29,6 +29,7 @@ export function GraphChart(props: GraphChartProps): VNode {
   const opts = (t: ChartTheme): GraphOptions => ({ palette: t.palette, labelColor: t.label, linkColor: t.label, ...props.graph })
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 300,

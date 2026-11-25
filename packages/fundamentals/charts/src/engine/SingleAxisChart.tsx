@@ -18,6 +18,7 @@ export function SingleAxisChart(props: SingleAxisChartProps): VNode {
   const readPoints = (): readonly SingleAxisPoint[] => typeof props.points === 'function' ? props.points() : props.points
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<SingleAxisLayout>({
     props,
     defaultHeight: 160,

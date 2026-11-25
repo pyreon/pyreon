@@ -21,6 +21,7 @@ export function TreemapChart(props: TreemapChartProps): VNode {
   const readData = (): readonly TreeNode[] => (typeof props.data === 'function' ? (props.data as () => readonly TreeNode[])() : props.data)
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<TreemapCell[]>({
     props,
     defaultHeight: 300,

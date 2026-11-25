@@ -26,6 +26,7 @@ export function ChordChart(props: ChordChartProps): VNode {
   const opts = (t: ChartTheme): ChordOptions => ({ palette: t.palette, labelColor: t.label, ...props.chord })
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<ChordLayout>({
     props,
     defaultHeight: 360,

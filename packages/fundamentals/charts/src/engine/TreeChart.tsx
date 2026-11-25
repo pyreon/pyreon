@@ -24,6 +24,7 @@ export function TreeChart(props: TreeChartProps): VNode {
   const opts = (t: ChartTheme): TreeOptions => ({ palette: t.palette, labelColor: t.label, linkColor: t.label, ...props.tree })
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<TreeLayout>({
     props,
     defaultHeight: 300,

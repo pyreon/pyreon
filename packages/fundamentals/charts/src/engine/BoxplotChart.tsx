@@ -34,6 +34,7 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
   const hitAt = (g: Geometry, px: Double, py: Double): number => hitBox(g.rows.length, g.plot, px - g.box.x, py - g.box.y)
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 240,

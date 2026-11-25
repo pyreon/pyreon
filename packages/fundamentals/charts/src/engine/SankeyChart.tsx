@@ -32,6 +32,7 @@ export function SankeyChart(props: SankeyChartProps): VNode {
   const opts = (t: ChartTheme): SankeyOptions => ({ palette: t.palette, labelColor: t.label, ...props.sankey })
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<SankeyLayout>({
     props,
     transpose: () => props.orient === 'vertical',

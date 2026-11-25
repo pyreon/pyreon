@@ -24,6 +24,7 @@ export function GanttChart(props: GanttChartProps): VNode {
   const opts = (t: ChartTheme): GanttOptions => ({ palette: t.palette, labelColor: t.label, gridColor: t.grid, laneColor: t.grid, todayColor: t.negative, ...props.gantt })
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<GanttLayout>({
     props,
     defaultHeight: 320,

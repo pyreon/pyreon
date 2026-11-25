@@ -26,6 +26,7 @@ export function PolarChart(props: PolarChartProps): VNode {
   const opts = (t: ChartTheme): PolarOptions => ({ palette: t.palette, labelColor: t.label, gridColor: t.grid, ...props.polar })
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<PolarLayout>({
     props,
     defaultHeight: 300,

@@ -202,6 +202,7 @@ export function pieToSvg<T>(options: PieToSvgOptions<T>): string {
   for (const c of body) cmds.push(c)
 
   const loc = svgLocale(options)
+
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () =>
     describeChart({
       title: options.title,
@@ -354,6 +355,7 @@ export function radarToSvg<T>(options: RadarToSvgOptions<T>): string {
   for (const c of body) cmds.push(c)
 
   const loc = svgLocale(options)
+
   return renderSvg(cmds, width, height, svgTail(options.svg, options.title, options.description, () =>
     describeChart({
       title: options.title,

@@ -115,6 +115,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
   }
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 200,
@@ -218,12 +219,12 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       if (c === undefined) return null
       return { seriesIndex: 0, dataIndex: idx + g.offset, name: g.categories[idx] ?? '', value: [c.open, c.close, c.low, c.high] }
     },
-    describe: (g, m, num) => {
+    describe: (g, m, digits) => {
       const title = props.title ?? m?.untitled ?? 'Candlestick chart'
-      if (g.candles.length === 0) return describeCandles({ title, count: 0, min: '', max: '', close: '' }, m, num)
+      if (g.candles.length === 0) return describeCandles({ title, count: 0, min: '', max: '', close: '' }, m, digits)
       const ext = ohlcExtent(g.candles)
-      const fmt = props.format ?? num ?? String
-      return describeCandles({ title, count: g.candles.length, min: fmt(ext.min), max: fmt(ext.max), close: fmt(g.candles[g.candles.length - 1]!.close) }, m, num)
+      const fmt = props.format ?? digits ?? String
+      return describeCandles({ title, count: g.candles.length, min: fmt(ext.min), max: fmt(ext.max), close: fmt(g.candles[g.candles.length - 1]!.close) }, m, digits)
     },
     a11y: (g, m) => {
       return {

@@ -36,6 +36,7 @@ export function ParallelChart(props: ParallelChartProps): VNode {
   }
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<ParallelLayout>({
     props,
     transpose: () => props.orient === 'vertical',

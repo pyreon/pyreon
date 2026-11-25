@@ -33,6 +33,7 @@ export function FunnelChart<T>(props: FunnelChartProps<T>): VNode {
     readData().map((d, i) => ({ value: props.value(d, i), label: props.label(d, i), color: props.color !== undefined ? props.color(d, i) : paletteAt(palette, i) }))
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 240,

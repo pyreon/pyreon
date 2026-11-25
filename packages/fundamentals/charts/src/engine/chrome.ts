@@ -281,6 +281,7 @@ export function geoTip(layout: GeoLayout, values: readonly GeoValue[], px: Doubl
   return v === v ? [region.label, formatNumber(v, fmt)] : [region.label]
 }
 
+// oxlint-disable-next-line max-params -- the crossing tooltip call every target emits (items, frame, tap x, tap y, …); the locale formatter is its trailing optional argument
 export function funnelTip(stages: FunnelStage[], plot: Rect, px: Double, py: Double, options?: FunnelOptions, fmt?: Formatter): string[] {
   const i = hitFunnel(stages, plot, px, py, options)
   if (i < 0) return []
@@ -289,6 +290,7 @@ export function funnelTip(stages: FunnelStage[], plot: Rect, px: Double, py: Dou
 }
 
 /** The slice's label, value and share of the whole. */
+// oxlint-disable-next-line max-params -- the crossing tooltip call every target emits (items, frame, tap x, tap y, …); the locale formatter is its trailing optional argument
 export function pieTip(slices: Slice[], box: Rect, innerRatio: Double, px: Double, py: Double, fmt?: Formatter): string[] {
   const fit = fitCircle(box)
   const arcs = layoutArcs(slices)

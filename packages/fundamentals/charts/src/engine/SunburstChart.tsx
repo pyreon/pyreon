@@ -27,6 +27,7 @@ export function SunburstChart(props: SunburstChartProps): VNode {
   const readData = (): readonly TreeNode[] => (typeof props.data === 'function' ? (props.data as () => readonly TreeNode[])() : props.data)
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 300,

@@ -54,6 +54,7 @@ export function PieChart<T>(props: PieChartProps<T>): VNode {
     readData().map((d, i) => ({ value: props.value(d, i), label: props.label(d, i), color: props.color?.(d, i) ?? paletteAt(palette, i) }))
   // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
   const num = chartNumber(props)
+
   return canvasHost<PieGeometry>({
     props,
     defaultHeight: 240,
@@ -145,6 +146,7 @@ export function GaugeChart(props: GaugeChartProps): VNode {
   }
   // The value's digits: the gauge's `locale` (the dial's own labels keep their `formatter`).
   const num = chartNumber(props)
+
   return canvasHost<GaugeGeometry>({
     props,
     defaultHeight: 140,
@@ -188,7 +190,7 @@ export function GaugeChart(props: GaugeChartProps): VNode {
       px >= g.box.x && px <= g.box.x + g.box.w && py >= g.box.y && py <= g.box.y + g.box.h
         ? { seriesIndex: 0, dataIndex: 0, name: props.title ?? '', value: g.value, color: props.valueColor }
         : null,
-    describe: (g, m, num) => describeGauge(props.title ?? m?.untitled ?? m?.gaugeLabel ?? 'Gauge', (num ?? plain)(g.value), (num ?? plain)(g.max), m),
+    describe: (g, m, digits) => describeGauge(props.title ?? m?.untitled ?? m?.gaugeLabel ?? 'Gauge', (digits ?? plain)(g.value), (digits ?? plain)(g.max), m),
     a11y: (g, m) => ({
       title: props.title,
       categories: [props.title ?? m?.gaugeLabel ?? 'Gauge'],
