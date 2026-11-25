@@ -1,5 +1,5 @@
 import { PARKED, type Parked } from './parked-text'
-import { domNumberText, type TextValue } from './text-value'
+import { domText, type TextValue } from './text-value'
 
 
 /**
@@ -230,7 +230,7 @@ export function reportFirstText(node: Text, value: unknown, next: TextValue, lea
   if (value !== null && (typeof value === 'object' || typeof value === 'function')) return
   const branded = (node as BrandedText)[SERVER_TEXT]
   const server = branded !== undefined ? branded : node.data
-  const text = typeof next === 'number' ? domNumberText(next) : next
+  const text = domText(next)
   if (server !== text) {
     warnHydrationMismatch('text', text, server, compiledMismatchPath(node.parentNode, leaf))
   }

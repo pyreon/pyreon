@@ -25,44 +25,39 @@ export function textValue(v: unknown): TextValue {
 }
 
 /**
- * Has the text changed since `written` (the raw value last written, or the
- * server's string on an adopted node's first run; `undefined` on a fresh
+ * Has the text changed since `written` (the raw value last written, the
+ * server's string on an adopted node's first run, `undefined` on a fresh
  * clone)? Compared raw: `NaN` equals `NaN` and `-0` equals `0`, as their text
  * does. A number against a string (`1` then `'1'`, or a number over adopted
- * server text) is compared by the DOM's own conversion, so a value that keeps
- * its text is never rewritten. That costs one scratch-node write on the
- * type-mixed path only (Chromium ~46 ns, against ~37 ns for the redundant
- * write it saves, which would also queue a MutationObserver record).
+ * server text) is compared through the DOM's own conversion (`domText`), so a
+ * value that keeps its text is never rewritten. That costs one scratch-node
+ * write on the type-mixed path only (Chromium ~46 ns, against ~37 ns for the
+ * redundant write it saves, which would also queue a MutationObserver record).
  */
 export function textChanged(next: TextValue, written: TextValue | null | undefined): boolean {
-  if (next === written) return false
-  if (typeof next === 'number') {
-    if (typeof written === 'string') return domNumberText(next) !== written
-    // NaN is the one number not equal to itself.
-    return next === next || written === written
-  }
-
-  return typeof written !== 'number' || next !== domNumberText(written)
+  return (
+    next !== written &&
+    (typeof next === typeof written
+      ? // NaN is the one value not equal to itself.
+        next === next || written === written
+      : written == null || domText(next) !== domText(written))
+  )
 }
 
 // One detached text node, reused for every conversion below. A fixed single
 // node, not a cache: nothing is added per call, and it holds only the last
 // string written to it.
-let scratch: Text | null = null
+let scratch: Text | undefined
 
 /**
- * The DOM's own text for a number: the characters `String(n)` gives, produced
- * by the DOM's conversion so V8's Number→String cache is not touched. For the
- * places that must compare a number with text already in the page (a
- * hydration-adopted node's server text) or measure it (`splitText`).
+ * The text a value renders as, with a NUMBER converted by the DOM: the
+ * characters `String(n)` gives, without touching V8's Number→String cache. For
+ * the places that must compare a number with text already in the page (an
+ * adopted node's server text, a mismatch report) or measure it (`splitText`).
  */
-export function domNumberText(n: number): string {
-  const t = (scratch ??= document.createTextNode(''))
-  t.data = n as unknown as string
-  return t.data
-}
+export function domText(v: TextValue): string {
+  if (typeof v === 'string') return v
+  ;(scratch ??= document.createTextNode('')).data = v as unknown as string
 
-/** `_childText` with a number converted by the DOM (see `domNumberText`). */
-export function domChildText(v: unknown): string {
-  return typeof v === 'number' ? domNumberText(v) : _childText(v)
+  return scratch.data
 }

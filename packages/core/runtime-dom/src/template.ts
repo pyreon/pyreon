@@ -515,17 +515,14 @@ export function _bindText(
     let written: TextValue | null | undefined = null
     const textUpdate = () => {
       const v = source._v
-      const next = typeof v === 'string' || typeof v === 'number' ? v : textValue(v)
+      const next = textValue(v)
       if (written === null) {
         written = _freshBind ? undefined : node.data
         // Dev: the first write into ADOPTED server text (#4419).
         if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
           reportFirstText(node, v, next, 'reactive')
       }
-      // Two strings, the dominant case, are compared inline; anything else
-      // (a number, or a number against an adopted node's server string) goes
-      // through `textChanged`.
-      if (next !== written && ((typeof next === 'string' && typeof written === 'string') || textChanged(next, written))) {
+      if (textChanged(next, written)) {
         // Value actually changed — the ONLY place the upgrade check runs, never
         // on the no-change hot path. Strings and numbers short-circuit on typeof.
         if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
