@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { buildLpihClientScript, resolveLpihCachePath } from '../lpih-bridge'
 import {
   _collectImportedNames,
   _extractBalancedArgs,
@@ -9,9 +10,7 @@ import {
   _maskCommentsAndStrings,
   _maskStringsAndComments,
   _skipStringLiteral,
-  buildLpihClientScript,
-  resolveLpihCachePath,
-} from '../index'
+} from '../internal'
 
 describe('_collectImportedNames', () => {
   it('collects named imports', () => {

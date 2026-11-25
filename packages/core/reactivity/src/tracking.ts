@@ -227,7 +227,10 @@ export function trackSubscriber(host: SubscriberHost) {
  */
 function divergeVerify(host: SubscriberHost, owner: () => void): void {
   const deps = _t.d as SubscriberHost[]
-  const confirmed = _t.i
+  // The owner can empty `deps` while its own run is on the stack (it was
+  // disposed mid-run), which leaves the frame's position past the end. Never
+  // grow the list back to that position: the holes would be "repaired" below.
+  const confirmed = _t.i < deps.length ? _t.i : deps.length
   // 1. Unsubscribe the unconfirmed tail — those positions are stale-dep
   //    candidates; any that get re-read later in this run re-subscribe via
   //    the collect path below.

@@ -144,7 +144,13 @@ export type { WebViewProps } from './types/webview'
 // WebView-host pattern. A web-only-rich component built as a self-contained
 // bundle runs `connectWebHost()` INSIDE the hosted page to read host-pushed
 // props (`data()`/`onData`) and send events back (`emit`) on every platform.
-export { connectWebHost, webHostDocument, parseWebHostGroupMessage, WEB_HOST_GROUP_MARKER, WEB_HOST_GROUP_RELAY_FN } from './web-host-bridge'
+export {
+  connectWebHost,
+  webHostDocument,
+  parseWebHostGroupMessage,
+  WEB_HOST_GROUP_MARKER,
+  WEB_HOST_GROUP_RELAY_FN,
+} from './web-host-bridge'
 export type { WebHostConnection, WebHostDocumentOptions, WebHostGroupMessage } from './web-host-bridge'
 // User-defined native modules (Layer 4) — the FFI escape hatch. The
 // canonical primitives + built-in service hooks are a fixed set; this is
@@ -156,6 +162,5 @@ export {
   defineNativeModule,
   useNativeModule,
   hasNativeModule,
-  _resetNativeModules,
 } from './native-module'
 export type { NativeModuleShape } from './native-module'

@@ -51,7 +51,6 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 | [`filterProps`](#filterprops-function) | function | Returns a copy of `props` keeping ONLY known HTML attributes plus `data-*` / `aria-*` (an allowlist, not a denylist);… |
 | [`isDynamic`](#isdynamic-function) | function | True when an interpolation is a function (signal accessor / props reader) — i.e. |
 | [`hash / hashUpdate / hashFinalize / HASH_INIT`](#hash-hashupdate-hashfinalize-hash_init-function) | function | The FNV-1a non-cryptographic hash styler uses for compact, deduped class names + rule keys. |
-| [`setStyleExtraction`](#setstyleextraction-function) | function | Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). |
 
 ## API
 
@@ -559,30 +558,6 @@ hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")
 - Feeding the base-36 STRING from `hashFinalize` back into `hashUpdate` — the streaming state is the 32-bit NUMBER; keep folding numbers with `hashUpdate` and call `hashFinalize` ONCE at the end.
 
 **See also:** `createSheet` · `styled`
-
----
-
-### `setStyleExtraction` `function`
-
-```ts
-setStyleExtraction(enabled: boolean, rewrite?: (cssText: string, varsOut: Record<string, string>) => string) => void
-```
-
-Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). `@pyreon/ui-core`'s `init({ styleExtraction: true })` calls this to enable CPSE and inject the `cpseRewrite` function — which lives in `@pyreon/unistyle` (styler cannot import unistyle: dep direction), so it is threaded in at init time. When on, the static + SSR resolve path rewrites resolved CSS to hoist per-instance values into custom properties. Apps do NOT call this directly — enable CPSE via the `@pyreon/ui-core` init flag; it is exported only so ui-core can wire it.
-
-**Example**
-
-```tsx
-// Apps enable CPSE through ui-core, not this call:
-import { init } from "@pyreon/ui-core"
-init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood
-```
-
-**Common mistakes**
-
-- Calling `setStyleExtraction(true)` directly to turn on CPSE — without the `rewrite` from `@pyreon/unistyle` (which `@pyreon/ui-core` supplies) it enables the branch with no rewriter. Use `init({ styleExtraction: true })` from `@pyreon/ui-core`.
-
-**See also:** `styled` · `createSheet`
 
 ---
 

@@ -14,11 +14,11 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { generateRssFeed, toRfc822 } from '@pyreon/zero'
-import { joinUrl } from '../index'
+import { generateRssFeed } from '@pyreon/zero'
 import { generateLlmsTxt } from '../seo/llms-txt'
 import { generateSitemap } from '../seo/sitemap'
-import { emitSeoOutputs } from '../plugin'
+import { toRfc822 } from '@pyreon/zero/internal'
+import { emitSeoOutputs, joinUrl } from '../internal-server'
 
 describe('PR-L — joinUrl helper', () => {
   it.each([

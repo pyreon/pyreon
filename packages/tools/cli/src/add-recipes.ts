@@ -69,8 +69,8 @@ export const ADD_RECIPES: Record<string, AddRecipe> = {
     docs: '/docs/permissions',
   },
   '@pyreon/form': {
-    summary: 'Signal-based forms — field(), useForm, <Form>/<Submit>, arrays, validation.',
-    usage: `import { field, useForm, Form, Submit } from '@pyreon/form'\nconst form = useForm({\n  fields: { email: field('') },\n  onSubmit: (values) => save(values),\n})\n// <Form of={form}> … <Submit /> </Form>`,
+    summary: 'Signal-based forms — useForm, useField, <Form>/<Submit>, arrays, validation.',
+    usage: `import { useForm, Form, Submit } from '@pyreon/form'\nconst form = useForm({\n  initialValues: { email: '' },\n  validators: { email: (v) => (v.includes('@') ? undefined : 'Invalid email') },\n  onSubmit: (values) => save(values),\n})\n// <Form of={form}> … <Submit /> </Form>`,
     docs: '/docs/form',
   },
   '@pyreon/store': {

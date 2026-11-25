@@ -5,7 +5,8 @@
  * delivered BEFORE that wait (the shell is not held back by a slow boundary).
  */
 import { type ComponentFn, For, Suspense, h } from '@pyreon/core'
-import { _setStreamFlushBytes, renderToStream } from '../index'
+import { renderToStream } from '../index'
+import { _setStreamFlushBytes } from '../internal'
 
 async function chunks(v: ReturnType<typeof h>): Promise<{ out: string[]; at: number[] }> {
   const t0 = Date.now()

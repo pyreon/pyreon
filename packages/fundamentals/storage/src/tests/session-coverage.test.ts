@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { _resetRegistry, useSessionStorage } from '../index'
+import { useSessionStorage } from '../index'
+import { _resetRegistry } from '../internal'
 
 describe('useSessionStorage — full coverage', () => {
   beforeEach(() => {

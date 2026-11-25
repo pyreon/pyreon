@@ -11,7 +11,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 // `isServer` is decided when @pyreon/reactivity loads: a DOM must exist first, or `useNow` (rightly) starts no ticker.
 GlobalRegistrator.register()
 const { effect, effectScope } = await import('@pyreon/reactivity')
-const { _fireAll, _resetClockState } = await import('../src/clock')
+const { _fireAll, resetClockState } = await import('../src/clock')
 const { setClock, useNow } = await import('../src/index')
 
 const READERS = 1000
@@ -70,4 +70,4 @@ console.log(`1,000 useNow readers: one tick runs ${READERS} effects in median ${
 console.log(`load ${load.toFixed(2)} ${load < 5 ? '(valid conditions)' : '(ABOVE the gate of 5: indicative only, do not publish)'} sink=${sink}`)
 scope.stop()
 probe.stop()
-_resetClockState()
+resetClockState()

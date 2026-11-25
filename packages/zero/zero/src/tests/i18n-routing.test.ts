@@ -7,12 +7,12 @@ import {
   detectLocaleFromHeader,
   expandRoutesForLocales,
   extractLocaleFromPath,
-  validateLocale,
 } from '../i18n-routing'
 // `i18nRouting` + `_parseCookiesForTesting` moved to the server-only plugin
 // module (it holds the `node:async_hooks` ALS dynamic import).
 import { _parseCookiesForTesting } from '../i18n-routing-plugin'
 import type { FileRoute } from '../types'
+import { validateLocale } from '../internal'
 
 describe('detectLocaleFromHeader', () => {
   const locales = ['en', 'de', 'cs']

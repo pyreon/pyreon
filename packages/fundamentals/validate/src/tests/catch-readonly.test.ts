@@ -1,6 +1,7 @@
 // `.catch(fallback)` (resilient parse) + `.readonly()` (freeze + Readonly<T>).
 import { describe, expect, it } from 'vitest'
-import { installServerCheck, s, uninstallServerCheck } from '../v1'
+import { installServerCheck, uninstallServerCheck } from '../core/registry'
+import { s } from '../v1'
 
 describe('.catch — resilient parse', () => {
   it('passes a valid value through unchanged', () => {

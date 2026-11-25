@@ -128,7 +128,7 @@ export default createServer({ routes, routeMiddleware, apiRoutes })
  * locale-aware renderer here at module load (so SSG-shaped imports
  * don't transitively pull the SSR plugin and vice-versa). Mirrors
  * the `_setDefaultChromeLayout` pattern in `@pyreon/router`'s
- * `match.ts` and `_setLocaleStoreReader` in `i18n-routing.ts`.
+ * `match.ts` and `_setLocaleStoreReader` in `i18n-routing-state.ts`.
  */
 type SsgEntryRenderer = (locales: readonly string[]) => string
 let _ssgEntryRenderer: SsgEntryRenderer | null = null

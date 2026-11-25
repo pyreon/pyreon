@@ -2,11 +2,11 @@ import type { VNodeChild } from '@pyreon/core'
 import { h, popContext } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { locale, provideLocale, provideTimeZone, setLocale, setTimeZone, timeZone } from '../index'
 import { _resetWarnings } from '../warn'
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 function render(vnode: VNodeChild) {
   const root = document.createElement('div')

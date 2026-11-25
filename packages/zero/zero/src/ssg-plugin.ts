@@ -176,7 +176,8 @@ import { h } from "@pyreon/core"
 import { renderWithHead } from "@pyreon/head/ssr"
 import { renderPage } from "@pyreon/server"
 import { runWithRequestContext } from "@pyreon/runtime-server"
-import { collectRouteModes, createApp, prerenderServerIslandLocals, renderOgSvgFromLoaded, resolveRenderModeForPath } from "@pyreon/zero/server"
+import { collectRouteModes, createApp, prerenderServerIslandLocals, resolveRenderModeForPath } from "@pyreon/zero/server"
+import { renderOgSvgFromLoaded } from "@pyreon/zero/internal-server"
 
 // Phase 2 — route-level render modes. The plugin filters/validates the
 // resolved path list through THESE exports so build-time mode decisions

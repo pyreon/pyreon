@@ -656,9 +656,9 @@ test.describe('atlas dev — cold dependency cache (#3846)', () => {
     )
     writeFileSync(
       join(counter, 'src/Counter.tsx'),
-      `import { _toasts, toast } from '@pyreon/toast'
+      `import { toast } from '@pyreon/toast'
 export function Counter() {
-  return <button onClick={() => toast('hello')}>{() => _toasts().length}</button>
+  return <button onClick={() => toast('hello')}>{() => toast.list().length}</button>
 }
 `,
     )

@@ -9,7 +9,8 @@
  */
 
 import type { VNodeChild } from '@pyreon/core'
-import { onErrorCaptured, shallowEqualProps as shallowEqual, useContext } from '@pyreon/core'
+import { onErrorCaptured, useContext } from '@pyreon/core'
+import { shallowEqualProps as shallowEqual } from '@pyreon/core/compat'
 import type { EffectEntry } from './jsx-runtime'
 import { getCurrentCtx, getHookIndex } from './jsx-runtime'
 

@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  _resetDBCache,
-  _resetRegistry,
   clearStorage,
   removeStorage,
   useCookie,
@@ -9,6 +7,7 @@ import {
   useSessionStorage,
   useStorage,
 } from '../index'
+import { _resetDBCache, _resetRegistry } from '../internal'
 
 describe('removeStorage — indexeddb branch', () => {
   beforeEach(() => {

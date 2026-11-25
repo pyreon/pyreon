@@ -179,30 +179,111 @@ public class PyreonRouter(
             initialPath.lastOrNull()?.takeIf { initialPathAllowed }?.let { tabFor(it, tabs) } ?: first
         }
 
-    /**
-     * Reactive path stack. Drives the host's NavHost / when-on-path
-     * branching. Compose observers recompose when this changes.
-     *
-     * With [tabs] this is the ACTIVE tab's pushed entries (its root is the
-     * stack's root view, not an entry); a deep link is PUSHED onto its tab's
-     * root, so Back returns to the tab's root page.
-     */
-    public val path: MutableState<List<String>> = mutableStateOf(
-        if (!initialPathAllowed) {
+    /** Each entry's URL tail after its route — `?q=1#sec`, `#intro` or `""` —
+     *  for the ACTIVE stack: index 0 is the root view, index `i` is
+     *  `path[i - 1]`. Always `path.size + 1` long. */
+    private val entrySuffixes: MutableState<List<String>>
+
+    /** Backing store of [path] (route parts only). */
+    private val _path: MutableState<List<String>>
+
+    init {
+        val start: List<String> = if (!initialPathAllowed) {
             emptyList()
         } else if (initialTab == null) {
             initialPath
         } else {
             initialPath.lastOrNull()?.takeIf { !isTabRoot(initialTab, it) }?.let { listOf(it) } ?: emptyList()
-        },
-    )
+        }
+        // A deep link to a tab's ROOT: the root entry carries its query.
+        val rootSuffix = if (initialPathAllowed && initialTab != null) {
+            initialPath.lastOrNull()?.takeIf { isTabRoot(initialTab, it) }?.let { splitEntry(it).second } ?: ""
+        } else {
+            ""
+        }
+        val normalized = normalizeStack(start, emptyList(), listOf(rootSuffix))
+        _path = mutableStateOf(normalized.first)
+        entrySuffixes = mutableStateOf(normalized.second)
+    }
+
+    /**
+     * Reactive path stack. Drives the host's NavHost / when-on-path
+     * branching. Compose observers recompose when this changes.
+     *
+     * Each element is a ROUTE path WITHOUT its query or fragment (`/search`,
+     * never `/search?q=cat`) — the same shape as the Swift router, where the
+     * element is the pushed screen's identity. Each entry's query lives beside
+     * it; [currentPath] reassembles the URL. A write through `path.value` is
+     * normalised: an element carrying `?…` / `#…` is split and its tail kept as
+     * that entry's query; unchanged leading entries keep theirs.
+     *
+     * With [tabs] this is the ACTIVE tab's pushed entries (its root is the
+     * stack's root view, not an entry); a deep link is PUSHED onto its tab's
+     * root, so Back returns to the tab's root page.
+     */
+    public val path: MutableState<List<String>> = object : MutableState<List<String>> {
+        override var value: List<String>
+            get() = _path.value
+            set(next) {
+                writeStack(next)
+            }
+
+        override fun component1(): List<String> = value
+
+        override fun component2(): (List<String>) -> Unit = { value = it }
+    }
+
+    /** Replace the active stack, normalising elements and reconciling the
+     *  per-entry suffixes. */
+    private fun writeStack(next: List<String>) {
+        val normalized = normalizeStack(next, _path.value, entrySuffixes.value)
+        _path.value = normalized.first
+        entrySuffixes.value = normalized.second
+    }
+
+    /** The URL tail of the visible entry (the root's when the stack is empty). */
+    private var topSuffix: String
+        get() = entrySuffixes.value.getOrElse(_path.value.size) { "" }
+        set(next) {
+            val list = entrySuffixes.value.toMutableList()
+            while (list.size <= _path.value.size) list.add("")
+            list[_path.value.size] = next
+            entrySuffixes.value = list
+        }
 
     /** The active tab's name; `null` for a single-stack router. */
     public val activeTab: MutableState<String?> = mutableStateOf(initialTab?.name)
 
+    /** Backing store of [tabPaths]. */
+    private val _tabPaths: MutableState<Map<String, List<String>>> = mutableStateOf(emptyMap())
+
+    /** Each parked tab's entry suffixes (root first), keyed like [tabPaths]. */
+    private val tabSuffixes: MutableState<Map<String, List<String>>> = mutableStateOf(emptyMap())
+
     /** The pushed entries of every tab EXCEPT the active one (whose entries
-     *  are [path]). */
-    public val tabPaths: MutableState<Map<String, List<String>>> = mutableStateOf(emptyMap())
+     *  are [path]). Route parts only, like [path]; a write is normalised the
+     *  same way. */
+    public val tabPaths: MutableState<Map<String, List<String>>> = object : MutableState<Map<String, List<String>>> {
+        override var value: Map<String, List<String>>
+            get() = _tabPaths.value
+            set(next) {
+                val old = _tabPaths.value
+                val suffixes = tabSuffixes.value
+                val routes = mutableMapOf<String, List<String>>()
+                val nextSuffixes = mutableMapOf<String, List<String>>()
+                for ((name, stack) in next) {
+                    val normalized = normalizeStack(stack, old[name] ?: emptyList(), suffixes[name] ?: listOf(""))
+                    routes[name] = normalized.first
+                    nextSuffixes[name] = normalized.second
+                }
+                _tabPaths.value = routes
+                tabSuffixes.value = nextSuffixes
+            }
+
+        override fun component1(): Map<String, List<String>> = value
+
+        override fun component2(): (Map<String, List<String>>) -> Unit = { value = it }
+    }
 
     /** The active tab's root path, when the router has tabs. */
     public val activeTabRoot: String?
@@ -212,9 +293,14 @@ public class PyreonRouter(
     public fun tabPath(name: String): List<String> =
         if (name == activeTab.value) path.value else tabPaths.value[name] ?: emptyList()
 
-    /** The path a tab is showing: its top entry, or its root. */
-    public fun tabTop(name: String): String =
-        tabPath(name).lastOrNull() ?: tabs.firstOrNull { it.name == name }?.root ?: "/"
+    /** The URL a tab is showing: its top entry, or its root, with that entry's
+     *  query. */
+    public fun tabTop(name: String): String {
+        if (name == activeTab.value) return currentPath
+        val stack = _tabPaths.value[name] ?: emptyList()
+        val suffix = tabSuffixes.value[name]?.getOrNull(stack.size) ?: ""
+        return (stack.lastOrNull() ?: tabs.firstOrNull { it.name == name }?.root ?: "/") + suffix
+    }
 
     /**
      * Select a tab. Switching keeps every tab's stack and shows the selected
@@ -226,19 +312,20 @@ public class PyreonRouter(
         val tab = tabs.firstOrNull { it.name == name } ?: return
         if (name == activeTab.value) {
             if (path.value.isEmpty()) return
-            if (!allowNavigation(tab.root)) return
-            path.value = emptyList()
+            val rootUrl = tab.root + entrySuffixes.value.firstOrNull().orEmpty()
+            if (!allowNavigation(rootUrl)) return
+            writeStack(emptyList())
             _forwardStack.clear()
-            updateParamsFromPath(tab.root)
-            runAfterEach(tab.root)
+            updateParamsFromPath(currentPath)
+            runAfterEach(currentPath)
             return
         }
-        val destination = tabPaths.value[name]?.lastOrNull() ?: tab.root
+        val destination = tabTop(name)
         if (!allowNavigation(destination)) return
         activateTab(name)
         _forwardStack.clear()
-        updateParamsFromPath(destination)
-        runAfterEach(destination)
+        updateParamsFromPath(currentPath)
+        runAfterEach(currentPath)
     }
 
     /** Make [name] the active tab, parking the current tab's entries and
@@ -246,10 +333,16 @@ public class PyreonRouter(
     private fun activateTab(name: String) {
         val current = activeTab.value
         if (name == current) return
-        val parked = tabPaths.value.toMutableMap()
-        if (current != null) parked[current] = path.value
-        path.value = parked.remove(name) ?: emptyList()
-        tabPaths.value = parked
+        val parked = _tabPaths.value.toMutableMap()
+        val parkedSuffixes = tabSuffixes.value.toMutableMap()
+        if (current != null) {
+            parked[current] = _path.value
+            parkedSuffixes[current] = entrySuffixes.value
+        }
+        _path.value = parked.remove(name) ?: emptyList()
+        entrySuffixes.value = parkedSuffixes.remove(name) ?: listOf("")
+        _tabPaths.value = parked
+        tabSuffixes.value = parkedSuffixes
         activeTab.value = name
     }
 
@@ -263,9 +356,34 @@ public class PyreonRouter(
         val isRoot = isTabRoot(target, candidate)
         if (target.name == activeTab.value && !isRoot) return false
         activateTab(target.name)
-        path.value = if (isRoot) emptyList() else path.value + candidate
-        updateParamsFromPath(candidate)
+        val (route, suffix) = splitEntry(candidate)
+        if (isRoot) writeStack(emptyList()) else _path.value = _path.value + route
+        topSuffix = suffix
+        updateParamsFromPath(currentPath)
         return true
+    }
+
+    /** Append [url]'s route as a new stack entry carrying its query. */
+    private fun commitPush(url: String) {
+        val (route, suffix) = splitEntry(url)
+        _path.value = _path.value + route
+        topSuffix = suffix
+        updateParamsFromPath(currentPath)
+    }
+
+    /** Swap the visible entry for [url]. A replace that keeps the ROUTE leaves
+     *  the stack element untouched and only rewrites the entry's query — on
+     *  the root too, where it used to push a second copy of the root. */
+    private fun commitReplace(url: String) {
+        val (route, suffix) = splitEntry(url)
+        val current = _path.value
+        if (current.isEmpty()) {
+            if (route != routePath) _path.value = listOf(route)
+        } else if (current.last() != route) {
+            _path.value = current.dropLast(1) + route
+        }
+        topSuffix = suffix
+        updateParamsFromPath(currentPath)
     }
 
     private fun runAfterEach(committed: String) {
@@ -348,15 +466,24 @@ public class PyreonRouter(
     public val notFoundComponent: MutableState<(@Composable () -> Unit)?> =
         mutableStateOf(notFoundComponent)
 
-    /** Phase 3 (loaders) — per-route loaded data, keyed by full path. A
+    /** Phase 3 (loaders) — per-route loaded data, keyed by the ROUTE path
+     *  with the query dropped ([loaderKey]), the web's default loader key. A
      *  route's loader stores its result here on navigation; `useLoaderData()`
-     *  reads the current path's entry. Type-erased (`Any?`) because payloads
+     *  reads the current route's entry. Type-erased (`Any?`) because payloads
      *  are per-route. Empty until a loader harness populates it. */
     public val loaderData: MutableState<Map<String, Any?>> = mutableStateOf(emptyMap())
 
-    /** Top-of-stack path. Mirrors `router.currentRoute().path` on the web side. */
+    /** Top-of-stack URL, query included. Mirrors `router.currentRoute().fullPath`
+     *  on the web side. On the root view (empty stack) it carries the root's
+     *  query, so a url-state write there is reflected. */
     public val currentPath: String
-        get() = path.value.lastOrNull() ?: activeTabRoot ?: "/"
+        get() = routePath + topSuffix
+
+    /** The visible route WITHOUT its query — the screen's identity and the key
+     *  route loaders and `useLoaderData()` use, so a query-only navigation
+     *  neither re-runs a loader nor loses its data. */
+    public val routePath: String
+        get() = _path.value.lastOrNull() ?: activeTabRoot ?: "/"
 
     init {
         // Resolve any params that the initial top-of-stack path produces,
@@ -368,6 +495,7 @@ public class PyreonRouter(
             if (resolved != null) {
                 params.value = resolved.second
             }
+            query.value = parseQuery(splitPathAndQuery(initialPath.last()).second)
         }
     }
 
@@ -451,12 +579,11 @@ public class PyreonRouter(
         if (value == null) next.remove(key) else next[key] = value
         if (next == query.value) return
         query.value = next
-        val stack = path.value
-        val top = stack.lastOrNull() ?: return
-        val base = splitPathAndQuery(top).first
+        // Only the visible entry's query changes — never the stack element,
+        // and the fragment is kept. On the root view the root entry's query is
+        // updated, so [currentPath] reflects it.
         val serialized = serializeQuery(next)
-        path.value =
-            stack.dropLast(1) + if (serialized.isEmpty()) base else "$base?$serialized"
+        topSuffix = (if (serialized.isEmpty()) "" else "?$serialized") + fragmentOf(topSuffix)
     }
 
     private fun updateParamsFromPath(committed: String) {
@@ -492,6 +619,9 @@ public class PyreonRouter(
      *  entry (the `+` operator on a `mapOf`-backed Map preserves
      *  insertion order via the default LinkedHashMap impl) is dropped. */
     public fun setLoaderData(path: String, value: Any?) {
+        // The route, query excluded: a url-state write is a query-only
+        // navigation and must not re-run the loader or hide its data.
+        val path = loaderKey(path)
         val current = loaderData.value
         if (path !in current && current.size >= MAX_LOADER_ENTRIES) {
             val oldest = current.keys.first()
@@ -657,8 +787,7 @@ public class PyreonRouter(
             // Re-entry from a guard's redirect — bypass the guard
             // chain (guard is the active gate) AND the afterEach
             // fan-out (the outer level fires it).
-            this.path.value = this.path.value + path
-            updateParamsFromPath(path)
+            commitPush(path)
             return
         }
         if (!allowNavigation(path)) return
@@ -667,11 +796,10 @@ public class PyreonRouter(
             runAfterEach(path)
             return
         }
-        this.path.value = this.path.value + path
         // Phase A4: resolve the matched route + extract params atomically
         // with the path mutation, so observers see a consistent snapshot
         // (params + path always describe the same route).
-        updateParamsFromPath(path)
+        commitPush(path)
         // Phase B8: NEW navigation invalidates forward history.
         _forwardStack.clear()
         for (hook in afterEachHooks) hook(path)
@@ -691,13 +819,7 @@ public class PyreonRouter(
     public fun replace(path: String) {
         if (_inGuard) {
             // Re-entry from a guard's redirect — skip the chain.
-            val current = this.path.value
-            this.path.value = if (current.isEmpty()) {
-                listOf(path)
-            } else {
-                current.dropLast(1) + path
-            }
-            updateParamsFromPath(path)
+            commitReplace(path)
             return
         }
         if (!allowNavigation(path)) return
@@ -706,14 +828,8 @@ public class PyreonRouter(
             runAfterEach(path)
             return
         }
-        val current = this.path.value
-        this.path.value = if (current.isEmpty()) {
-            listOf(path)
-        } else {
-            current.dropLast(1) + path
-        }
         // Phase A4: same params-after-path contract as `push`.
-        updateParamsFromPath(path)
+        commitReplace(path)
         // Phase B8: replace is a NEW navigation; clear forward history.
         _forwardStack.clear()
         for (hook in afterEachHooks) hook(path)
@@ -754,8 +870,8 @@ public class PyreonRouter(
     public fun back() {
         val current = this.path.value
         if (current.isEmpty()) return
-        val popped = current.last()
-        this.path.value = current.dropLast(1)
+        val popped = currentPath
+        writeStack(current.dropLast(1))
         // Phase B8: push the popped path onto forward stack for a
         // later forward() to re-navigate.
         _forwardStack.add(popped)
@@ -785,9 +901,7 @@ public class PyreonRouter(
      *  wire its own "forward" button or programmatic redo. */
     public fun forward() {
         if (_forwardStack.isEmpty()) return
-        val path = _forwardStack.removeAt(_forwardStack.size - 1)
-        this.path.value = this.path.value + path
-        updateParamsFromPath(path)
+        commitPush(_forwardStack.removeAt(_forwardStack.size - 1))
     }
 
     /**
@@ -796,12 +910,52 @@ public class PyreonRouter(
      * "logout / forget everything".
      */
     public fun reset() {
-        this.path.value = emptyList()
+        writeStack(emptyList())
+        topSuffix = ""
         // Phase B8: reset is "blow-away"; clear forward history too.
         _forwardStack.clear()
+        updateParamsFromPath(currentPath)
     }
 
     public companion object {
+        /** The [loaderData] key for a URL: its route part, query and fragment
+         *  dropped (`/search?q=cat` → `/search`). */
+        public fun loaderKey(url: String): String = splitPathAndQuery(url).first
+
+        /** Split a URL into its route and its tail (`?query#fragment`, either
+         *  part optional), keeping the fragment. */
+        internal fun splitEntry(full: String): Pair<String, String> {
+            val cut = full.indexOfFirst { it == '?' || it == '#' }
+            return if (cut < 0) Pair(full, "") else Pair(full.substring(0, cut), full.substring(cut))
+        }
+
+        /** The `#fragment` part of an entry tail, `#` included, or "". */
+        internal fun fragmentOf(suffix: String): String {
+            val hash = suffix.indexOf('#')
+            return if (hash < 0) "" else suffix.substring(hash)
+        }
+
+        /** Normalise a stack write: split every element into its route and
+         *  tail. An element carrying a tail stores it as its entry's suffix; a
+         *  bare element keeps its old suffix when it is unchanged at the same
+         *  position, else starts with none. The root suffix (index 0) is kept. */
+        internal fun normalizeStack(
+            raw: List<String>,
+            old: List<String>,
+            suffixes: List<String>,
+        ): Pair<List<String>, List<String>> {
+            val routes = ArrayList<String>(raw.size)
+            val out = ArrayList<String>(raw.size + 1)
+            out.add(suffixes.firstOrNull() ?: "")
+            raw.forEachIndexed { i, element ->
+                val (route, suffix) = splitEntry(element)
+                routes.add(route)
+                val keep = suffix.isEmpty() && i < old.size && old[i] == route && i + 1 < suffixes.size
+                out.add(if (suffix.isNotEmpty()) suffix else if (keep) suffixes[i + 1] else "")
+            }
+            return Pair(routes, out)
+        }
+
         /** The tab whose root is the longest segment-prefix of [candidate]. */
         public fun tabFor(candidate: String, tabs: List<PyreonRouterTab>): PyreonRouterTab? {
             val segs = splitPathAndQuery(candidate).first.split('/').filter { it.isNotEmpty() }

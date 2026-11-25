@@ -47,7 +47,7 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@pyreon/core": "workspace:^",
+    "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/native-compiler": "workspace:^"
   },

@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Plugin } from 'vite'
+import { createIcoFromPngs } from './favicon-ico'
 
 /**
  * Stable content hash (FNV-1a, 32-bit) of the favicon source file(s),
@@ -793,42 +794,6 @@ async function generateIco(input: string): Promise<Uint8Array | null> {
 export interface IcoEntry {
   buffer: Buffer
   size: number
-}
-
-/** @internal Exported for testing */
-export function createIcoFromPngs(entries: IcoEntry[]): Uint8Array {
-  const headerSize = 6
-  const dirEntrySize = 16
-  const dirSize = dirEntrySize * entries.length
-  let dataOffset = headerSize + dirSize
-
-  // ICO header
-  const header = Buffer.alloc(headerSize)
-  header.writeUInt16LE(0, 0)              // reserved
-  header.writeUInt16LE(1, 2)              // type: icon
-  header.writeUInt16LE(entries.length, 4) // count
-
-  // Directory entries
-  const dirEntries = Buffer.alloc(dirSize)
-  const dataBuffers: Buffer[] = []
-
-  for (let i = 0; i < entries.length; i++) {
-    const entry = entries[i]!
-    const offset = i * dirEntrySize
-    dirEntries.writeUInt8(entry.size === 256 ? 0 : entry.size, offset)     // width
-    dirEntries.writeUInt8(entry.size === 256 ? 0 : entry.size, offset + 1) // height
-    dirEntries.writeUInt8(0, offset + 2)                                    // palette
-    dirEntries.writeUInt8(0, offset + 3)                                    // reserved
-    dirEntries.writeUInt16LE(1, offset + 4)                                 // color planes
-    dirEntries.writeUInt16LE(32, offset + 6)                                // bits per pixel
-    dirEntries.writeUInt32LE(entry.buffer.length, offset + 8)               // size
-    dirEntries.writeUInt32LE(dataOffset, offset + 12)                       // offset
-
-    dataOffset += entry.buffer.length
-    dataBuffers.push(entry.buffer)
-  }
-
-  return Buffer.concat([header, dirEntries, ...dataBuffers])
 }
 
 // ─── Dev badge helpers ──────────────────────────────────────────────────────

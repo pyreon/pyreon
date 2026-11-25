@@ -11,7 +11,8 @@
  * id in the HTML the server produced for it. That is the only comparison that fails when the two disagree.
  */
 import type { ComponentFn, VNodeChild } from '@pyreon/core'
-import { _resetIdCounter, createUniqueId, h } from '@pyreon/core'
+import { createUniqueId, h } from '@pyreon/core'
+import { _resetIdCounter } from '@pyreon/core/internal'
 import { renderToString } from '@pyreon/runtime-server'
 import { disableHydrationWarnings, hydrateRoot } from '../index'
 

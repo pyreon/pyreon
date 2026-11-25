@@ -161,7 +161,7 @@
       "error",
       {
         "exemptPaths": [
-          "packages/zero/zero/src/i18n-routing.ts",
+          "packages/zero/zero/src/i18n-routing-state.ts",
           "packages/zero/zero/src/theme.tsx"
         ]
       }

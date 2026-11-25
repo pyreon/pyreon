@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { base64url, passkeyChallenge, verifyAssertion, verifyRegistration } from '../index'
+import { passkeyChallenge, verifyAssertion, verifyRegistration } from '../index'
+import { base64url } from '../pkce'
 import { decodeCbor } from '../cbor'
 
 const RP = 'app.example'
