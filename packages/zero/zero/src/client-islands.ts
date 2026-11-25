@@ -38,10 +38,10 @@ export function startIslands(
   // The base comes first, before any island can render a server island
   // (`client-server-islands.ts` says why it is code, not the DOM). The
   // activation code loads only on a page that HAS a server island: every
-  // other islands-only page shipped it for nothing (about 1 KB gzip on
+  // other islands-only page shipped it for nothing (about 600 B gzip on
   // pyreon.dev, which has none).
   setServerIslandBase(typeof __ZERO_BASE__ !== 'undefined' ? __ZERO_BASE__ : '/')
-  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- client-only: startIslandsOnlyPage runs this after it found a document
+  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr, pyreon/no-dom-in-setup -- client-only: startIslandsOnlyPage runs this after it found a document
   if (document.querySelector('pyreon-server-island') !== null) {
     import('./client-server-islands').then(
       (m) => m.startServerIslands(),

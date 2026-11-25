@@ -183,7 +183,7 @@ describe('mayDeclareIslandsOnly', () => {
  */
 describe('every page islands-only', () => {
   type Hook = (c: object, e: { command: string; mode: string; isSsrBuild?: boolean }) => Promise<
-    { define?: Record<string, string>; build?: { rolldownOptions?: { output?: { codeSplitting?: { groups?: { name: string; test: RegExp }[] } } } } } | undefined
+    { define?: Record<string, string>; build?: { rolldownOptions?: { output?: { codeSplitting?: { groups?: { name: string; test: RegExp; priority: number; includeDependenciesRecursively?: boolean }[] } } } } } | undefined
   >
   const build = { command: 'build', mode: 'production' }
   const LAYOUT = 'export function layout() { return null }\n'
@@ -221,9 +221,17 @@ describe('every page islands-only', () => {
       '/app/node_modules/@pyreon/zero/lib/_chunks/client-islands-Ab1_c.js',
     ]) expect(group?.test.test(id), id).toBe(true)
     expect(group?.test.test('/repo/packages/zero/zero/src/client.ts')).toBe(false)
-    // The server-island marker code is a group of its own, above the runtime
-    // (a group takes its modules' dependencies along, and the runtime's barrel
-    // imports it), without its own dependencies (the codec, the base).
+    expect((await hook({ root: none }, build))?.build).toBeUndefined()
+    expect((await hook({ root: some }, { ...build, isSsrBuild: true }))?.build).toBeUndefined()
+  })
+
+  it('puts the server-island marker code in a group of its own, above the runtime', async () => {
+    const some = project({ 'index.tsx': PAGE, 'docs.tsx': `${PAGE}export const hydrate = 'islands'\n` })
+    const hook = clientFlagsPlugin({}, 'ssg').config as unknown as Hook
+    const groups = (await hook({ root: some }, build))?.build?.rolldownOptions?.output?.codeSplitting?.groups ?? []
+    const group = groups.find((g) => g.name === 'islands-runtime')
+    // A group takes its modules' dependencies along, and the runtime's barrel
+    // imports the marker code; this one must not take the codec and the base.
     const si = groups.find((g) => g.name === 'server-island')
     expect(si?.priority).toBeGreaterThan(group?.priority ?? Infinity)
     expect(si?.includeDependenciesRecursively).toBe(false)
@@ -240,7 +248,5 @@ describe('every page islands-only', () => {
       '/app/node_modules/@pyreon/server/lib/client.js',
       '/repo/packages/zero/zero/src/client-islands.ts',
     ]) expect(si?.test?.test(id), id).toBe(false)
-    expect((await hook({ root: none }, build))?.build).toBeUndefined()
-    expect((await hook({ root: some }, { ...build, isSsrBuild: true }))?.build).toBeUndefined()
   })
 })
