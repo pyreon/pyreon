@@ -4648,7 +4648,9 @@ describe('route middleware', () => {
 // ─── View Transitions API ───────────────────────────────────────────────────
 
 describe('View Transitions API', () => {
-  it('calls document.startViewTransition on navigation when available', async () => {
+  it('does NOT call document.startViewTransition by default (opt-in)', async () => {
+    // A transition defers the DOM swap to the next frame and leaves the page
+    // un-hit-testable while it animates, so it is never the default.
     const startViewTransition = vi.fn((cb: () => void) => {
       cb()
     })
@@ -4661,9 +4663,104 @@ describe('View Transitions API', () => {
 
     const router = createRouter({ routes: vtRoutes, url: '/' })
     await router.push('/about')
-    expect(startViewTransition).toHaveBeenCalled()
+    expect(startViewTransition).not.toHaveBeenCalled()
+    expect(router.currentRoute().path).toBe('/about')
 
     delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('calls document.startViewTransition when the router opts in', async () => {
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const vtRoutes: RouteRecord[] = [
+      { path: '/', component: Home },
+      { path: '/about', component: About },
+    ]
+
+    const router = createRouter({ routes: vtRoutes, url: '/', viewTransition: true })
+    await router.push('/about')
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('meta.viewTransition: true opts ONE route in (and its children, through meta merging)', async () => {
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+    })
+    ;(document as any).startViewTransition = startViewTransition
+
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/plain', component: About },
+        {
+          path: '/gallery',
+          component: Home,
+          meta: { viewTransition: true },
+          children: [{ path: 'item', component: About }],
+        },
+      ],
+      url: '/',
+    })
+    await router.push('/plain')
+    expect(startViewTransition).not.toHaveBeenCalled()
+    await router.push('/gallery')
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
+    await router.push('/gallery/item')
+    expect(startViewTransition).toHaveBeenCalledTimes(2)
+    await router.push('/plain')
+    expect(startViewTransition).toHaveBeenCalledTimes(2)
+
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('push(path, { viewTransition: true }) opts ONE navigation in; meta false still wins', async () => {
+    const startViewTransition = vi.fn((cb: () => void) => {
+      cb()
+    })
+    ;(document as any).startViewTransition = startViewTransition
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+        { path: '/no-vt', component: About, meta: { viewTransition: false } },
+      ],
+      url: '/',
+    })
+    await router.push('/about', { viewTransition: true })
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
+    await router.push('/')
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
+    await router.push('/no-vt', { viewTransition: true })
+    expect(startViewTransition).toHaveBeenCalledTimes(1)
+    delete (document as any).startViewTransition
+    router.destroy()
+  })
+
+  it('the default path makes no matchMedia call (reduced motion is read only when a transition is wanted)', async () => {
+    const prev = (globalThis as { matchMedia?: unknown }).matchMedia
+    const mm = vi.fn(() => ({ matches: false }))
+    ;(globalThis as { matchMedia?: unknown }).matchMedia = mm
+    ;(document as any).startViewTransition = (cb: () => void) => cb()
+    const router = createRouter({
+      routes: [
+        { path: '/', component: Home },
+        { path: '/about', component: About },
+      ],
+      url: '/',
+    })
+    await router.push('/about')
+    expect(mm).not.toHaveBeenCalled()
+    delete (document as any).startViewTransition
+    if (prev === undefined) delete (globalThis as { matchMedia?: unknown }).matchMedia
+    else (globalThis as { matchMedia?: unknown }).matchMedia = prev
     router.destroy()
   })
 
@@ -4678,7 +4775,7 @@ describe('View Transitions API', () => {
       { path: '/no-vt', component: About, meta: { viewTransition: false } },
     ]
 
-    const router = createRouter({ routes: vtRoutes, url: '/' })
+    const router = createRouter({ routes: vtRoutes, url: '/', viewTransition: true })
     await router.push('/no-vt')
     expect(startViewTransition).not.toHaveBeenCalled()
 
@@ -4701,7 +4798,9 @@ describe('View Transitions API', () => {
       { path: '/', component: Home },
       { path: '/about', component: About },
     ]
-    const router = createRouter({ routes: vtRoutes, url: '/about', mode: 'history' })
+    // Opted IN (View Transitions are opt-in, #4857): the exception holds
+    // even then.
+    const router = createRouter({ routes: vtRoutes, url: '/about', mode: 'history', viewTransition: true })
     await router.replace('/about?p=a11y')
     await router.replace('/about?p=a11y&args=x')
     await router.push('/about?p=a11y#top')
@@ -4752,7 +4851,7 @@ describe('View Transitions API', () => {
       { path: '/', component: Home },
       { path: '/about', component: About },
     ]
-    const router = createRouter({ routes: vtRoutes, url: '/' })
+    const router = createRouter({ routes: vtRoutes, url: '/', viewTransition: true })
     await router.push('/about')
 
     expect(startViewTransition).not.toHaveBeenCalled() // animation skipped
@@ -4774,7 +4873,7 @@ describe('View Transitions API', () => {
       { path: '/', component: Home },
       { path: '/about', component: About },
     ]
-    const router = createRouter({ routes: vtRoutes, url: '/' })
+    const router = createRouter({ routes: vtRoutes, url: '/', viewTransition: true })
     await router.push('/about')
 
     expect(startViewTransition).toHaveBeenCalled()
@@ -4793,7 +4892,7 @@ describe('View Transitions API', () => {
       { path: '/about', component: About },
     ]
 
-    const router = createRouter({ routes: vtRoutes, url: '/' })
+    const router = createRouter({ routes: vtRoutes, url: '/', viewTransition: true })
     await router.push('/about')
     expect(router.currentRoute().path).toBe('/about')
     router.destroy()
@@ -4827,6 +4926,7 @@ describe('View Transitions API', () => {
         { path: '/about', component: About },
       ],
       url: '/',
+      viewTransition: true,
     })
 
     // push() MUST settle even though `.finished` never resolves.
@@ -4869,6 +4969,7 @@ describe('View Transitions API', () => {
         { path: '/about', component: About },
       ],
       url: '/',
+      viewTransition: true,
     })
 
     // Navigation still settles without throwing — and reports committed.
@@ -4910,6 +5011,7 @@ describe('View Transitions API', () => {
         { path: '/about', component: About },
       ],
       url: '/',
+      viewTransition: true,
     })
     await expect(router.push('/about')).resolves.toBe('committed')
     expect(router.currentRoute().path).toBe('/about')
@@ -4942,6 +5044,7 @@ describe('View Transitions API', () => {
         { path: '/about', component: About },
       ],
       url: '/',
+      viewTransition: true,
     })
 
     const observed: { to: string; current: string }[] = []
@@ -4985,6 +5088,7 @@ describe('View Transitions API', () => {
         { path: '/about', component: About },
       ],
       url: '/',
+      viewTransition: true,
     })
 
     const observations: number[] = []
@@ -5038,6 +5142,7 @@ describe('View Transitions API', () => {
         { path: '/no-vt', component: About, meta: { viewTransition: false } },
       ],
       url: '/',
+      viewTransition: true,
     })
 
     await router.push('/no-vt')

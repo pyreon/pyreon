@@ -341,6 +341,7 @@ describe('an in-place replace (same page, only the query moved) (#4814)', () => 
       window.history.replaceState(null, '', '/search')
       router = createRouter({
         mode: 'history',
+        viewTransition: true,
         routes: [
           { path: '/search', component: () => h('p', null, 's') },
           { path: '/other', component: () => h('p', null, 'o') },
@@ -807,6 +808,7 @@ describe('the page on screen never sees data loaded for the next route (#4814)',
       window.history.replaceState(null, '', '/')
       router = createRouter({
         mode: 'history',
+        viewTransition: true,
         routes: [
           { path: '/', component: () => h('p', null, 'h') },
           { path: '/p/:id', component: Page, loader: async ({ params }) => ({ p: params.id }) },
