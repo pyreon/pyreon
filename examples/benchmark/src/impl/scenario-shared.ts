@@ -219,12 +219,27 @@ export const TREE_NODES = 2 ** TREE_DEPTH - 1 // 2047
  * a REAL change, never a no-op re-set of the current value. */
 export const CONTEXT_VALUES: readonly string[] = ['alpha', 'bravo', 'charlie', 'delta']
 
-/** Verify the deep tree mounted with the expected leaf count. */
+/**
+ * The context value every arm MOUNTS with. Non-empty on purpose.
+ *
+ * It used to be `''`, and an empty string is not neutral: Solid's `insert`
+ * creates no text node for `''` while Pyreon's text binding (and the Vanilla
+ * floor) creates an empty one, so the arms ended the timed mount with
+ * different DOMs — 1,024 text nodes apart — and the browser's clone/insert
+ * work differed with them. Every arm now ends the mount with the same
+ * elements, the same text nodes and the same text (`verifyTreeMounted` reads
+ * every leaf; the run-level DOM-shape gate in `bench-scenarios.ts` compares
+ * the arms' node-type counts and text hash).
+ */
+export const TREE_INITIAL_VALUE: string = CONTEXT_VALUES[0] as string
+
+/**
+ * Verify the deep tree mounted with the expected leaf count, and that every
+ * leaf renders the initial context value (an arm that mounts empty leaves does
+ * less DOM work than the others and must fail, not post a faster number).
+ */
 export function verifyTreeMounted(container: HTMLElement): void {
-  const leaves = container.querySelectorAll('.leaf')
-  if (leaves.length !== TREE_LEAVES) {
-    throw new Error(`[deep-tree] expected ${TREE_LEAVES} leaves, got ${leaves.length}`)
-  }
+  verifyContextPropagated(container, TREE_INITIAL_VALUE)
 }
 
 /**

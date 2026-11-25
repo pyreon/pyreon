@@ -4,9 +4,11 @@
  * Angular, the TC39 Signals polyfill and Svelte 5 runes.
  *
  * Usage:
- *   bun scripts/bench/core/reactivity.ts              # 3 rounds, bun (JavaScriptCore)
+ *   bun scripts/bench/core/reactivity.ts              # 6 processes per cell, bun (JavaScriptCore)
  *   bun scripts/bench/core/reactivity.ts --runtime node   # children run under node (V8)
- *   bun scripts/bench/core/reactivity.ts --quick      # 1 round, fewer windows (run-all)
+ *   bun scripts/bench/core/reactivity.ts --processes 10   # processes per cell (clusters)
+ *   bun scripts/bench/core/reactivity.ts --sections crw,chain --libs pyreonFolded,alien
+ *   bun scripts/bench/core/reactivity.ts --quick      # 2 processes, fewer windows (run-all smoke)
  *   bun scripts/bench/core/reactivity.ts --json out.json
  *
  * OBJECTIVITY CONTRACT
@@ -29,8 +31,14 @@
  *    checked against an independently computed expected value. A library that
  *    silently no-ops (e.g. Solid's inert SSR build, see 6) fails the run.
  *
- * 5. STATISTICS. Median ns/op over pooled windows, seeded bootstrap CI95,
- *    and a tie marker (🤝) when a CI overlaps the fastest cell's CI.
+ * 5. STATISTICS. Median ns/op over every window, with a CI95 from the
+ *    two-stage CLUSTER bootstrap (`micro-stats.ts` → the shared
+ *    `examples/benchmark/cluster-bootstrap.ts`): resample processes, then
+ *    windows within each. Windows of one process share its JIT and heap state,
+ *    so bootstrapping them as independent draws (the old pooled bootstrap) gave
+ *    intervals too narrow to separate 1–3% differences. A tie marker (🤝)
+ *    when a CI overlaps the fastest cell's CI. `--json` keeps every process's
+ *    raw windows (`processes`), the pooled CV and the between-process CV.
  *
  * 6. BUILDS. NODE_ENV=production is set in the environment before any library
  *    loads (children are spawned with it; libraries are imported dynamically).
@@ -59,6 +67,8 @@
  */
 
 import { spawnSync } from 'node:child_process'
+import { mulberry32 } from '../../../examples/benchmark/cluster-bootstrap.ts'
+import { DEFAULT_PROCESSES, MIN_MEANINGFUL_PROCESSES, summarizeMicroCell } from './micro-stats.ts'
 import { cpus, loadavg, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -2204,31 +2214,6 @@ async function childMain(cell: string, windows: number): Promise<void> {
 
 // ─── Orchestrator ────────────────────────────────────────────────────────────
 
-function mulberry32(seed: number) {
-  let a = seed >>> 0
-  return () => {
-    a = (a + 0x6d2b79f5) | 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
-  }
-}
-function median(xs: number[]): number {
-  const c = [...xs].sort((x, y) => x - y)
-  const m = c.length >> 1
-  return c.length % 2 ? c[m]! : (c[m - 1]! + c[m]!) / 2
-}
-function bootstrapCI95(xs: number[], resamples = 2000): [number, number] {
-  const rnd = mulberry32(0x5eed)
-  const meds: number[] = []
-  for (let r = 0; r < resamples; r++) {
-    const pick: number[] = []
-    for (let i = 0; i < xs.length; i++) pick.push(xs[Math.floor(rnd() * xs.length)]!)
-    meds.push(median(pick))
-  }
-  meds.sort((x, y) => x - y)
-  return [meds[Math.floor(resamples * 0.025)]!, meds[Math.floor(resamples * 0.975)]!]
-}
 function shuffle<T>(xs: T[], rnd: () => number): T[] {
   const a = [...xs]
   for (let i = a.length - 1; i > 0; i--) {
@@ -2277,36 +2262,41 @@ async function orchestrate(): Promise<void> {
   }
 }
 
-async function measureAll(foldedDir: string): Promise<void> {
-  const argv = process.argv.slice(2)
-  const quick = argv.includes('--quick')
-  const rtIdx = argv.indexOf('--runtime')
-  const runtime =
-    rtIdx !== -1
-      ? argv[rtIdx + 1]!
-      : typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
-        ? 'bun'
-        : 'node'
-  const jsonIdx = argv.indexOf('--json')
-  const rounds = quick ? 1 : 3
+/** `--processes`, `--sections`, `--libs`, `--quick` → the cells to measure. */
+function parseCellArgs(argv: string[], quick: boolean) {
+  const argOf = (flag: string): string | undefined => {
+    const i = argv.indexOf(flag)
+    return i === -1 ? undefined : argv[i + 1]
+  }
+  const processesArg = argOf('--processes')
+  const processes = processesArg !== undefined ? Number(processesArg) : quick ? 2 : DEFAULT_PROCESSES
+  if (!Number.isInteger(processes) || processes < 1) {
+    throw new Error(`[reactivity] --processes must be a positive integer, got ${processesArg}`)
+  }
   const windows = quick ? 5 : 10
+  const sectionFilter = argOf('--sections')?.split(',')
+  const libFilter = argOf('--libs')?.split(',') as Lib[] | undefined
+  for (const id of sectionFilter ?? []) {
+    if (!SECTIONS.some((s) => s.id === id)) throw new Error(`[reactivity] unknown section "${id}"`)
+  }
+  for (const l of libFilter ?? []) {
+    if (!LIBS.includes(l)) throw new Error(`[reactivity] unknown lib "${l}"`)
+  }
+  const sections = SECTIONS.filter((s) => !sectionFilter || sectionFilter.includes(s.id)).map((s) => ({
+    ...s,
+    libs: s.libs.filter((l) => !libFilter || libFilter.includes(l)),
+  }))
 
-  const cells: string[] = []
-  for (const s of SECTIONS) for (const l of s.libs) cells.push(`${s.id}|${l}`)
+  return { processes, windows, sections }
+}
 
-  const load0 = loadavg()
-  console.log(`Reactivity Benchmark — ${engineOf(runtime)}`)
-  console.log(`Pyreon vs ${LIBS.filter((l) => !l.startsWith('pyreon')).map((l) => LIB_LABEL[l]).join(' · ')}`)
-  console.log(
-    `${cpus()[0]?.model ?? 'cpu?'} ×${cpus().length} · load ${load0.map((x) => x.toFixed(2)).join(' ')} · ` +
-      `${rounds} round(s) × ${windows} windows per cell, one process per cell, order reshuffled per round`,
-  )
-  console.log('='.repeat(70))
-
-  const pooled = new Map<string, number[]>(cells.map((c) => [c, []]))
+/** Run every cell `processes` times, one child process each, order reshuffled per round. */
+function runCells(cells: string[], processes: number, windows: number, runtime: string, foldedDir: string) {
+  // One array of windows per process, per cell.
+  const perProcess = new Map<string, number[][]>(cells.map((c) => [c, []]))
   const rnd = mulberry32(0xbe1c4)
   const self = fileURLToPath(import.meta.url)
-  for (let r = 0; r < rounds; r++) {
+  for (let r = 0; r < processes; r++) {
     for (const cell of shuffle(cells, rnd)) {
       const args =
         runtime === 'node'
@@ -2323,21 +2313,57 @@ async function measureAll(foldedDir: string): Promise<void> {
         throw new Error(`[reactivity] cell ${cell} failed (exit ${p.status})`)
       }
       const line = p.stdout.trim().split('\n').pop()!
-      pooled.get(cell)!.push(...(JSON.parse(line) as { samples: number[] }).samples)
+      perProcess.get(cell)!.push((JSON.parse(line) as { samples: number[] }).samples)
     }
   }
 
+  return perProcess
+}
+
+async function measureAll(foldedDir: string): Promise<void> {
+  const argv = process.argv.slice(2)
+  const quick = argv.includes('--quick')
+  const rtIdx = argv.indexOf('--runtime')
+  const runtime =
+    rtIdx !== -1
+      ? argv[rtIdx + 1]!
+      : typeof (globalThis as { Bun?: unknown }).Bun !== 'undefined'
+        ? 'bun'
+        : 'node'
+  const jsonIdx = argv.indexOf('--json')
+  const { processes, windows, sections } = parseCellArgs(argv, quick)
+
+  const cells: string[] = []
+  for (const s of sections) for (const l of s.libs) cells.push(`${s.id}|${l}`)
+
+  const load0 = loadavg()
+  console.log(`Reactivity Benchmark — ${engineOf(runtime)}`)
+  console.log(`Pyreon vs ${LIBS.filter((l) => !l.startsWith('pyreon')).map((l) => LIB_LABEL[l]).join(' · ')}`)
+  console.log(
+    `${cpus()[0]?.model ?? 'cpu?'} ×${cpus().length} · load ${load0.map((x) => x.toFixed(2)).join(' ')} · ` +
+      `${processes} process(es) × ${windows} windows per cell, one process per cell, order reshuffled per round · cluster-bootstrap CI95`,
+  )
+  if (processes < MIN_MEANINGFUL_PROCESSES) {
+    console.log(
+      `⚠ ${processes} process(es) per cell: too few clusters for the CI to carry process-to-process variance — verdicts are provisional`,
+    )
+  }
+  console.log('='.repeat(70))
+
+  const perProcess = runCells(cells, processes, windows, runtime, foldedDir)
+
   const json: Record<string, unknown> = {}
   // Widest row label + 2, so run-all's `label  ops  ns` parser always sees a 2-space gap.
-  const LABEL_W = Math.max(36, ...SECTIONS.flatMap((s) => s.libs.map((l) => `${LIB_LABEL[l]} ${s.label}`.length + 2)))
-  for (const s of SECTIONS) {
-    const stats = s.libs.map((l) => {
-      const xs = pooled.get(`${s.id}|${l}`)!
-      const [lo, hi] = bootstrapCI95(xs)
-      return { lib: l, label: `${LIB_LABEL[l]} ${s.label}`, med: median(xs), lo, hi, n: xs.length }
-    })
+  const LABEL_W = Math.max(36, ...sections.flatMap((s) => s.libs.map((l) => `${LIB_LABEL[l]} ${s.label}`.length + 2)))
+  for (const s of sections) {
+    if (s.libs.length === 0) continue
+    const stats = s.libs.map((l) => ({
+      lib: l,
+      label: `${LIB_LABEL[l]} ${s.label}`,
+      ...summarizeMicroCell(perProcess.get(`${s.id}|${l}`)!),
+    }))
     const best = stats.reduce((a, b) => (b.med < a.med ? b : a))
-    const pyreon = stats.find((x) => x.lib === 'pyreon')!
+    const pyreon = stats.find((x) => x.lib === 'pyreon') ?? stats.find((x) => x.lib === 'pyreonFolded') ?? best
     console.log(`\n── ${s.title} ${'─'.repeat(Math.max(0, 64 - s.title.length - 4))}`)
     // Legacy 3-column rows (run-all.ts parses these): label · ops/sec · median ns/op
     console.log(`${'test'.padEnd(LABEL_W)}${'ops/sec'.padStart(14)}${'avg ns/op'.padStart(14)}`)
@@ -2353,7 +2379,8 @@ async function measureAll(foldedDir: string): Promise<void> {
         const tie = x !== best && x.lo <= best.hi && best.lo <= x.hi
         const mark = x === best ? '🥇' : tie ? '🤝' : '  '
         console.log(
-          `  ${mark} ${LIB_LABEL[x.lib].padEnd(14)} CI95 [${x.lo.toFixed(1)} – ${x.hi.toFixed(1)}] ns  n=${x.n}  ${(x.med / pyreon.med).toFixed(2)}× Pyreon`,
+          `  ${mark} ${LIB_LABEL[x.lib].padEnd(14)} CI95 [${x.lo.toFixed(1)} – ${x.hi.toFixed(1)}] ns  n=${x.n} (${x.processCount} proc)  ` +
+            `CV ${(x.cv * 100).toFixed(1)}% (between-process ${(x.betweenProcessCv * 100).toFixed(1)}%)  ${(x.med / pyreon.med).toFixed(2)}× ${LIB_LABEL[pyreon.lib]}`,
         )
       }
     }
@@ -2372,8 +2399,9 @@ async function measureAll(foldedDir: string): Promise<void> {
           cpu: cpus()[0]?.model,
           loadBefore: load0,
           loadAfter: load1,
-          rounds,
+          processes,
           windows,
+          statistics: 'median over all windows; CI95 = two-stage cluster bootstrap (processes, then windows), 2000 resamples',
           sections: json,
         },
         null,

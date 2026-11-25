@@ -20,7 +20,7 @@ declare module 'virtual:solid2/rows' {
   export function Rows(props: { rows: () => unknown[]; selectedId: () => number | null }): Node
 }
 declare module 'virtual:solid2/tree' {
-  export function createTree(depth: number): { mount(host: HTMLElement): () => void; setValue(v: string): void }
+  export function createTree(depth: number, initial: string): { mount(host: HTMLElement): () => void; setValue(v: string): void }
 }
 declare module 'virtual:solid2/effects' {
   export function createEffectList(

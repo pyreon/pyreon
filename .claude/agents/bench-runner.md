@@ -38,7 +38,14 @@ none. The standings and full protocol are in `.agents/guides/benchmarks/README.m
 
 ## A/B toggles
 
-Reset to a known state first (`git checkout -- <files>`, then apply), and grep a
+Run every A/B between two builds (worktrees at two refs) with the interleaved,
+load-gated runner `scripts/bench/ab/run.ts` and judge it with
+`scripts/bench/ab/analyze.ts` — never a hand-written queue script. Jobs-file format,
+lock, validity and verdict rules: `.agents/guides/benchmarks/README.md`,
+"Interleaved A/B runner". After changing a scenario fixture or arm, run
+`bun bench-scenarios.ts --scenario <id> --gate-only` (DOM-shape gate, no timing).
+
+For an in-tree toggle, reset to a known state first (`git checkout -- <files>`, then apply), and grep a
 variant-unique marker before measuring. `git apply` fails atomically; under
 `2>/dev/null` a failed apply leaves the previous variant in place.
 

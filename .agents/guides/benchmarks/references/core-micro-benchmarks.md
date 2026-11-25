@@ -8,7 +8,7 @@ Bun-run cross-library micro-benchmarks under `scripts/bench/` (`bench:reactivity
 
 - Force `NODE_ENV=production` before any framework value import. Dev mode's always-on reactive-devtools registry dominates otherwise. ESM hoists static imports above a top-level assignment, so use a self-re-exec guard (see `scripts/bench/core/runtime-server.ts`), not an assignment at the top of the file.
 - Resolve competitor imports to the build that does the work. Bare `solid-js` resolves to the inert SSR stub; import `solid-js/dist/solid.js`.
-- One process per cell (op × library), rotated order, pooled windows, median + 95% bootstrap CI, adaptive warmup, a correctness gate before timing, and result sinks so reads cannot be dead-code-eliminated.
+- One process per cell (op × library), rotated order, adaptive warmup, a correctness gate before timing, and result sinks so reads cannot be dead-code-eliminated. The reactivity harness reports the median over all windows with a **cluster-bootstrap** CI95 over processes (`scripts/bench/core/micro-stats.ts`, which imports `examples/benchmark/cluster-bootstrap.ts`); other per-cell-process harnesses that still pool windows overstate certainty the same way and should move to it.
 - Never force GC in bun/JSC micro-benches: `Bun.gc(true)` jettisons compiled code and adds re-tier noise. Pool small samples across process spawns instead.
 - Never run benches concurrently. Stamp machine load before and after.
 - Allocations in a micro-bench must escape, or JSC escape-analyzes them away (a `new Signal()` arm once read an impossible ~1.6 ns).
@@ -40,6 +40,22 @@ Standings are in `BENCHMARKS.md` §8. Pyreon leads effect propagation and batchi
 - **Wide fan-out** is engine-dependent: a loss on V8 (1.76× behind Preact) and a narrow lead on JSC (1.09×). Its sign is sensitive to machine load; check both engines before calling it a regression or a win.
 - Memory: signal 152 B, + computed 913 B, + effect 929 B. Effect-queue flags are created lazily, so idle effects stay lean.
 - Compiled apps use `_bindText` direct-subscriber bindings, not raw `effect()`, which is why DOM `partial update` wins while this bench's raw-effect rows are closer.
+
+### Process count and CI (2026-11-25)
+
+Windows from one process share its JIT tiering and heap layout, so the harness resamples processes first, then windows within each. `--processes N` sets the count (default 6; `--quick` uses 2 and prints that its verdicts are provisional); `--sections` and `--libs` narrow the cells; `--json` keeps every process's windows (`processes`) with the pooled CV, the between-process CV and the within-process CV, which `scripts/bench/ab/analyze.ts` reads.
+
+Why 6: one bun/JSC run of 12 processes × 10 windows for `pyreonFolded` and `alien` on all nine sections (17 cells, load1 2.4–2.8, load5 5.4 → 3.8 from earlier builds). The median between-process CV was 2.4% against a within-process CV of 0.75%; for diamond, effect and cutoff the between-process spread was 4–7× the within-process spread. An A/A test split each cell's 12 processes into two disjoint random groups of k (40 draws per cell) and counted how often the two CI95s came out disjoint, i.e. a false win or loss between identical code:
+
+| k processes | pooled bootstrap (old) | cluster bootstrap | median CI half-width (cluster) |
+| --- | --- | --- | --- |
+| 2 | 24.7% | 16.5% | 0.97% |
+| 3 | 22.9% | 5.6% | 1.41% |
+| 4 | 25.3% | 3.1% | 1.58% |
+| 5 | 23.1% | 1.5% | 1.52% |
+| 6 | 26.0% | 0.4% | 1.49% |
+
+The old harness (3 processes, pooled) called about one identical pair in four a win or a loss; 3 clustered processes still about one in eighteen. At 6 the single-run false rate is under 1% and the CI half-width is about 1.5%, so a gap below roughly 3% reads as a tie. One engine, one run: re-measure under node (`--runtime node`) before relying on it there.
 
 Mechanisms in place (all in `packages/core/reactivity/src/`):
 
