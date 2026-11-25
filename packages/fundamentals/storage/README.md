@@ -192,12 +192,15 @@ import { removeStorage, clearStorage } from '@pyreon/storage'
 removeStorage('theme') // localStorage by default
 removeStorage('step', { type: 'session' })
 removeStorage('locale', { type: 'cookie' })
+await removeStorage('draft', { type: 'indexeddb' }) // resolves once the delete committed
 
 clearStorage('local') // clear all managed localStorage entries
 clearStorage('all') // clear every backend
 ```
 
-`removeStorage` calls `.remove()` on the registered signal (resetting it to default + clearing storage). `clearStorage` walks the registry for that backend and removes every entry. Unmanaged keys in raw storage are NOT touched.
+`removeStorage` calls `.remove()` on the registered signal (resetting it to default + clearing storage). With no registered signal it deletes the raw key; for IndexedDB (`dbName` / `storeName` options) that never creates or upgrades a database or store. `clearStorage` walks the registry for that backend and removes every entry. Unmanaged keys in raw storage are NOT touched by `clearStorage`.
+
+Both return a promise. Local, session and cookie removals are already done when the call returns; the promise matters for IndexedDB, where it resolves once the delete has committed (`useIndexedDB(...).remove()` returns the same promise).
 
 ## Internal `_v` getter contract
 
@@ -226,6 +229,8 @@ Every storage signal wraps a base `signal()` with a facade that **forwards `_v` 
 - **`useMemoryStorage` doesn't persist** — values clear on reload. Useful for SSR, tests, and request-scoped state that should NOT survive navigation.
 - **Don't write via call-shorthand** (`storageSignal(newValue)`) — that's a read with discarded arg. Use `.set(value)`. Caught by the opt-in lint rule `pyreon/no-storage-write-as-call` (auto-fixable).
 - **`onError` fires on both deserialize AND write failures** — a corrupt stored value calls `onError` (return a fallback or void); a `setItem`/cookie/IDB write that fails (quota exceeded, blocked storage) also calls `onError` as a NOTIFICATION (the in-memory signal already updated, so the return is ignored). Without `onError`, both fall back to the pre-existing silent behavior.
+- **A full storage is still readable** — when every write throws `QuotaExceededError`, `useStorage` / `useSessionStorage` still return the value stored before the quota ran out, `.set()` updates the signal (it shows the new value) and reports to `onError`, and `.remove()` still deletes. A failed write never changes the STORED value: the next load reads what was stored before. The same holds for every backend: a cookie the browser refuses (it throws, or silently drops it — over ~4 KB, `sameSite: 'none'` without `secure`; `useCookie` reads the cookie back after writing) and an IndexedDB write whose transaction aborts (how a quota failure arrives) both reach `onError`.
+- **`onError` fires on EVERY failed write.** A storage that can never be written (Safari's legacy private mode has a quota of 0; a disk that stays full) reports each `.set()`, so throttle or de-duplicate any user-facing notification you raise from `onError`.
 
 ## Documentation
 

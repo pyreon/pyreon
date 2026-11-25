@@ -1,0 +1,7 @@
+---
+'@pyreon/calendar': minor
+---
+
+`businessHours` is now read through `@pyreon/schedule`'s `openingWindows`, so the time grid's shading and `constrainTo: 'businessHours'` agree with schedule's `isOpen` minute for minute. Breaking: a `BusinessCalendar` without `weekend` now closes Saturday and Sunday (schedule's default; it was no weekend), a holiday no longer cuts off the previous night's overnight window, and `specialHours` is honoured. A bare `WorkingHours` still opens every weekday it lists. Fixed on the way: a change ending exactly at closing time was refused by `constrainTo: 'businessHours'` (a rounding error in the minutes).
+
+Also breaking: `businessHours` used to be parsed leniently; it is now validated by `@pyreon/schedule`. A malformed value (a weekday key outside 1 to 7, a window list that is not an array, a time that is not a `PlainTime`, an empty window where `from` equals `to`, a holiday that is not a `PlainDate`, a holidays predicate that throws or does not return a boolean, a malformed `specialHours` entry) reports schedule's `[Pyreon]` error when the time grid is computed, and the grid does not render. Hours that open nothing are not an error and shade the whole grid closed: `{}`, `{ hours: {} }`, and a `specialHours` map with no entry or only empty lists (schedule's business-time functions throw "no hours" for the last; a view shows closed instead). A `BusinessCalendar` with neither `hours` nor `specialHours` shades nothing, as before.

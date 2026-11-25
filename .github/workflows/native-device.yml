@@ -1028,7 +1028,7 @@ jobs:
       ANDROID_APPS: ${{ needs.fingerprint.outputs.android-apps || needs.changes.outputs.android-apps || 'all' }}
       # The pinned Gradle distribution (see "Install Gradle"). Job-level so the
       # distribution cache can key on it.
-      GRADLE_VERSION: '9.8.2'
+      GRADLE_VERSION: '9.9.1'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1042,7 +1042,7 @@ jobs:
         uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: '25'
 
       - name: Setup Android SDK
         # First-party action for the SDK command-line tools. Keep `packages`
@@ -1084,7 +1084,7 @@ jobs:
         # Bump GRADLE_SHA256 when bumping GRADLE_VERSION — the official `.sha256`
         # is at services.gradle.org/distributions/gradle-<V>-bin.zip.sha256.
         env:
-          GRADLE_SHA256: '21bd5da2de49b642904077f38c0efdc7778e92b3ed0889392dca61b97e389607'
+          GRADLE_SHA256: 'd8a18a7a841dd5df825d35a685fad6f2d7f12ac0c280e57b67c27b4a520ba228'
         run: |
           set -euo pipefail
           ZIP="$HOME/.cache/pyreon-dl/gradle/gradle-${GRADLE_VERSION}-bin.zip"
@@ -1211,8 +1211,10 @@ jobs:
         #
         # `reactivecircus/android-emulator-runner` is the standard GH
         # Actions emulator-runner. API 33 + google_apis target + x86_64
-        # is the canonical fast-boot combination (default-image,
-        # Google-suggested, no Play services overhead). `disable-animations`
+        # is the canonical fast-boot combination. google_apis DOES ship Google
+        # Play services (no Play Store), which restarts itself once per boot
+        # mid-lane: scripts/native-android-emulator-prep.sh keeps the apps
+        # from depending on it. `disable-animations`
         # cuts test-flake from transitional animations interfering with
         # the assertion timing.
         #
@@ -1266,20 +1268,8 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
-            # Suppress the emulator's ANR / crash dialogs BEFORE anything runs.
-            #
-            # Not a convenience: a `Pixel Launcher isn't responding` ANR dialog
-            # owns the screen under CI load and is NOT back-dismissable, so the
-            # release smoke's BACK + `am start` recovery cannot clear it and
-            # every one of its 20 polls reads a foreign window. The smoke then
-            # correctly reports a HARNESS failure — but the job is red either
-            # way, on a condition that says nothing about the app.
-            #
-            # `hide_error_dialogs` is Android's own switch for automated runs.
-            # It does not weaken the gate: a real app crash is detected from
-            # logcat FATAL and from the app's window never appearing, neither of
-            # which depends on a dialog being drawn.
-            adb shell settings put global hide_error_dialogs 1 || true
+            # No error dialogs; WebView without the Play services font provider (see the script).
+            bash "$GITHUB_WORKSPACE/scripts/native-android-emulator-prep.sh"
             # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
             mkdir -p /tmp/android-logcat
             nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/todomvc.txt' < /dev/null > /dev/null 2>&1 &
@@ -1348,6 +1338,8 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
+            # No error dialogs; WebView without the Play services font provider (see the script).
+            bash "$GITHUB_WORKSPACE/scripts/native-android-emulator-prep.sh"
             # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
             mkdir -p /tmp/android-logcat
             nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/finance.txt' < /dev/null > /dev/null 2>&1 &
@@ -1402,6 +1394,8 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
+            # No error dialogs; WebView without the Play services font provider (see the script).
+            bash "$GITHUB_WORKSPACE/scripts/native-android-emulator-prep.sh"
             # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
             mkdir -p /tmp/android-logcat
             nohup sh -c 'adb logcat -v threadtime -b main,system,crash,events | head -c 67108864 > /tmp/android-logcat/counter.txt' < /dev/null > /dev/null 2>&1 &
@@ -1457,20 +1451,8 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
-            # Suppress the emulator's ANR / crash dialogs BEFORE anything runs.
-            #
-            # Not a convenience: a `Pixel Launcher isn't responding` ANR dialog
-            # owns the screen under CI load and is NOT back-dismissable, so the
-            # release smoke's BACK + `am start` recovery cannot clear it and
-            # every one of its 20 polls reads a foreign window. The smoke then
-            # correctly reports a HARNESS failure — but the job is red either
-            # way, on a condition that says nothing about the app.
-            #
-            # `hide_error_dialogs` is Android's own switch for automated runs.
-            # It does not weaken the gate: a real app crash is detected from
-            # logcat FATAL and from the app's window never appearing, neither of
-            # which depends on a dialog being drawn.
-            adb shell settings put global hide_error_dialogs 1 || true
+            # No error dialogs; WebView without the Play services font provider (see the script).
+            bash "$GITHUB_WORKSPACE/scripts/native-android-emulator-prep.sh"
             nohup bun ../scripts/ws-echo-server.ts > /tmp/ws-echo.log 2>&1 &
             adb reverse tcp:8790 tcp:8790
             # Logcat (capped at 64 MB) and, on failure, the orchestrator's per-test output: both go into android-connected-reports.
@@ -1547,20 +1529,8 @@ jobs:
           # output pipe until the job timeout — observed on main and on
           # PRs, with every test already passed. Only reached on success.
           script: |
-            # Suppress the emulator's ANR / crash dialogs BEFORE anything runs.
-            #
-            # Not a convenience: a `Pixel Launcher isn't responding` ANR dialog
-            # owns the screen under CI load and is NOT back-dismissable, so the
-            # release smoke's BACK + `am start` recovery cannot clear it and
-            # every one of its 20 polls reads a foreign window. The smoke then
-            # correctly reports a HARNESS failure — but the job is red either
-            # way, on a condition that says nothing about the app.
-            #
-            # `hide_error_dialogs` is Android's own switch for automated runs.
-            # It does not weaken the gate: a real app crash is detected from
-            # logcat FATAL and from the app's window never appearing, neither of
-            # which depends on a dialog being drawn.
-            adb shell settings put global hide_error_dialogs 1 || true
+            # No error dialogs; WebView without the Play services font provider (see the script).
+            bash "$GITHUB_WORKSPACE/scripts/native-android-emulator-prep.sh"
             python3 -u -m http.server 8787 --bind 127.0.0.1 --directory "$GITHUB_WORKSPACE/examples/native-tasks/fixtures" > /tmp/fixture-server.log 2>&1 &
             # Readiness poll, NOT a fixed `sleep 1`: the python server can take
             # >1s to bind under CI load; a fixed sleep raced the bind → curl exit
@@ -1615,7 +1585,10 @@ jobs:
       # process logged them (PyreonWebViewRendererGoneTest, which ends the
       # renderer on purpose, other packages and the orchestrator's own
       # force-stops are excluded): one ::warning:: and a job-summary row per
-      # app, signal and test. Diagnostic only (always exits 0).
+      # app, signal and test. A kill caused by ANOTHER package's process dying
+      # (Play services restarting while the app held its font provider) is
+      # reported as `infra`, not as an app failure, and the summary lists the
+      # Play services restarts of each step. Diagnostic only (always exits 0).
       - name: Count process-death signals in the Android logcat
         id: logcat-signals
         if: always()

@@ -17,8 +17,16 @@ import { isPathExempt } from '../../utils/exempt-paths'
  * overrides the field (`{ ...t, done }` in a `.map` callback, `.with(i, {…})`,
  * `.splice(i, 1, {…})`, `xs[i] = {…}`) and a keyed row reading that field. A
  * read with no replacement in sight is fine (items never change identity), and
- * the field-name intersection keeps unrelated spreads quiet. The `by` key field
- * never goes stale; calls (`t.done()`, a per-item signal) are not stale reads.
+ * the field-name intersection keeps unrelated spreads quiet. A value the `by`
+ * key reads never goes stale (a change to it changes the key, so the row is
+ * rebuilt), and the match is by exact PATH: a key on `${t.id}:${t.done}`
+ * covers `t.done`, a key on `t.node.id` covers `t.node.id` but not
+ * `t.node.title`, and `${t.meta}` (an object) does not cover `t.meta.title`.
+ * A key that changes on any replacement (`(t) => t`, `JSON.stringify(t)`)
+ * skips the `<For>`. A key the rule cannot see into (an imported `keyOf`,
+ * `(t) => keyOf(t)`, `keyBy('id')`) keeps reporting, and the message says the
+ * read is safe only if that function reads the field. Calls (`t.done()`, a
+ * per-item signal) are not stale reads.
  *
  * Mirror of the `for-stale-item-field` code in `detectPyreonPatterns`
  * (`@pyreon/compiler`, `stale-for-item.ts`), which feeds `pyreon check`, MCP
@@ -33,6 +41,13 @@ interface Replaced {
   any: boolean
 }
 
+/** What a `by` key reads off its item; see `KeyInfo` in the compiler's `stale-for-item.ts`. */
+interface KeyInfo {
+  paths: Set<string>
+  always: boolean
+  opaque: string | undefined
+}
+
 function unwrap(n: Node): Node {
   let e = n
   while (
@@ -45,6 +60,7 @@ function unwrap(n: Node): Node {
   ) {
     e = e.expression
   }
+
   return e
 }
 
@@ -73,6 +89,7 @@ function keyName(key: Node, computed: boolean): string | undefined {
   if (key.type === 'Literal' && (typeof key.value === 'string' || typeof key.value === 'number')) {
     return String(key.value)
   }
+
   return undefined
 }
 
@@ -138,11 +155,17 @@ function collectReplaced(program: Node): Replaced {
       if (lit?.type === 'ObjectExpression') recordLiteral(lit, out)
     }
   })
+
   return out
 }
 
-const replacedHas = (r: Replaced, field: string, keyField: string | undefined): boolean =>
-  field !== keyField && (r.any || r.fields.has(field))
+/** `path` is the full read (`node.title`); its first segment is the field a replacement overrides. */
+const replacedHas = (r: Replaced, path: string, key: KeyInfo): boolean => {
+  if (key.always || key.paths.has(path)) return false
+  const field = path.split('.')[0] as string
+
+  return r.any || r.fields.has(field)
+}
 
 function bindsName(pattern: Node, name: string): boolean {
   if (!pattern) return false
@@ -204,6 +227,7 @@ function fieldReads(root: Node, rootParent: Node, name: string): Node[] {
       if (!isCallee && !isWrite && !isMethodCallee) out.push(n)
     }
   })
+
   return out
 }
 
@@ -221,56 +245,58 @@ function collectComponents(program: Node): Map<string, Node> {
       if (init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression') out.set(n.id.name, init)
     }
   })
+
   return out
 }
 
-function componentFields(comp: Node, attr: string | null, r: Replaced, keyField: string | undefined): string[] {
+function componentFields(comp: Node, attr: string | null, r: Replaced, key: KeyInfo, parents: Parents): string[] {
   const p = paramIdentifier(comp.params?.[0])
   if (!p || !comp.body) return []
   const found = new Set<string>()
+  const check = (path: string[]): void => {
+    if (path.length > 0 && replacedHas(r, path.join('.'), key)) found.add(path[0] as string)
+  }
   if (p.type === 'Identifier') {
-    // Collect `props.attr.field` by walking with parents.
-    const reads = fieldReads(comp.body, comp, p.name)
-    const readSet = new Set(reads)
-    if (attr === null) {
-      for (const m of reads) if (replacedHas(r, m.property.name, keyField)) found.add(m.property.name)
-    } else {
-      walk(comp.body, comp, (n, parent) => {
-        if (
-          n.type === 'MemberExpression' &&
-          !n.computed &&
-          readSet.has(n.object) &&
-          n.object.property.name === attr &&
-          n.property?.type === 'Identifier'
-        ) {
-          const isCallee = parent?.type === 'CallExpression' && parent.callee === n
-          if (!isCallee && replacedHas(r, n.property.name, keyField)) found.add(n.property.name)
-        }
-      })
+    for (const m of fieldReads(comp.body, comp, p.name)) {
+      const path = memberChain(m.object, parents).path
+      // `props.todo.done` for an attribute; `props.done` for a spread item.
+      if (attr === null) check(path)
+      else if (path[0] === attr) check(path.slice(1))
     }
   } else if (p.type === 'ObjectPattern') {
     for (const el of p.properties ?? []) {
-      const key = patternKey(el)
-      if (key === undefined) continue
+      const k = patternKey(el)
+      if (k === undefined) continue
       if (attr === null) {
-        if (replacedHas(r, key, keyField)) found.add(key)
+        for (const path of bindingPaths(el.value, comp.body, parents)) check([k, ...path])
         continue
       }
-      if (key !== attr) continue
-      const value = paramIdentifier(el.value)
-      if (value?.type === 'Identifier') {
-        for (const m of fieldReads(comp.body, comp, value.name)) {
-          if (replacedHas(r, m.property.name, keyField)) found.add(m.property.name)
-        }
-      } else if (value?.type === 'ObjectPattern') {
-        for (const inner of value.properties ?? []) {
-          const k = patternKey(inner)
-          if (k !== undefined && replacedHas(r, k, keyField)) found.add(k)
-        }
-      }
+      if (k !== attr) continue
+      for (const path of bindingPaths(el.value, comp.body, parents)) check(path)
     }
   }
+
   return [...found]
+}
+
+/** The paths read through a binding: an identifier's member reads, or a nested pattern's leaves. */
+function bindingPaths(binding: Node, body: Node, parents: Parents): string[][] {
+  const b = paramIdentifier(binding)
+  if (b?.type === 'Identifier') {
+    const reads = fieldReads(body, null, b.name).map((m) => memberChain(m.object, parents).path)
+
+    return reads.length > 0 ? reads : [[]]
+  }
+  if (b?.type !== 'ObjectPattern') return []
+  const out: string[][] = []
+  for (const el of b.properties ?? []) {
+    const k = patternKey(el)
+    if (k === undefined) continue
+    const inner = paramIdentifier(el.value)
+    for (const path of inner?.type === 'ObjectPattern' ? bindingPaths(inner, body, parents) : [[]]) out.push([k, ...path])
+  }
+
+  return out
 }
 
 function jsxAttr(opening: Node, name: string): Node | undefined {
@@ -279,26 +305,213 @@ function jsxAttr(opening: Node, name: string): Node | undefined {
   )
 }
 
-function keyFieldOf(byAttr: Node | undefined): string | undefined {
-  const expr = byAttr?.value?.type === 'JSXExpressionContainer' ? unwrap(byAttr.value.expression) : undefined
-  if (!expr || (expr.type !== 'ArrowFunctionExpression' && expr.type !== 'FunctionExpression')) return undefined
-  const p = expr.params?.[0]
-  if (p?.type !== 'Identifier') return undefined
-  let body = expr.body
-  if (body?.type === 'BlockStatement') {
-    body = body.body?.find((s: Node) => s.type === 'ReturnStatement')?.argument
+const WRAPPERS = new Set(['ParenthesizedExpression', 'TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression'])
+
+/** A type position (`typeof t`, an annotation): never a read of the item. */
+const isTypeNode = (n: Node): boolean =>
+  typeof n?.type === 'string' && n.type.startsWith('TS') && !WRAPPERS.has(n.type) && n.type !== 'TSTypeAssertion'
+
+type Parents = Map<Node, Node>
+
+const SCOPES = new Set(['Program', 'BlockStatement', 'StaticBlock', 'TSModuleBlock'])
+
+/**
+ * The function `name` refers to at `from`, by scope: the innermost block or
+ * module that declares it. Undefined when the nearest binding is a parameter,
+ * an import, or anything that is not a function. Mirror of `resolveInScope`.
+ */
+function resolveInScope(from: Node, name: string, parents: Parents): Node | undefined {
+  for (let n = parents.get(from); n; n = parents.get(n)) {
+    if (isFn(n) && (n.params ?? []).some((q: Node) => bindsName(q, name))) return undefined
+    const body = SCOPES.has(n.type) ? n.body : n.type === 'SwitchCase' ? n.consequent : undefined
+    if (!Array.isArray(body)) continue
+    for (const raw of body) {
+      const found = declares(raw, name)
+      if (found !== null) return found
+    }
   }
-  const e = unwrap(body)
-  if (
-    e?.type === 'MemberExpression' &&
-    !e.computed &&
-    e.object?.type === 'Identifier' &&
-    e.object.name === p.name &&
-    e.property?.type === 'Identifier'
-  ) {
-    return e.property.name
-  }
+
   return undefined
+}
+
+/**
+ * What statement `raw` declares under `name`: the function, `undefined` for a
+ * binding that is not one (an import, a non-function const), `null` for none.
+ */
+function declares(raw: Node, name: string): Node | undefined | null {
+  const st = raw.type === 'ExportNamedDeclaration' || raw.type === 'ExportDefaultDeclaration' ? raw.declaration : raw
+  if (!st) return null
+  if (st.type === 'FunctionDeclaration' && st.id?.name === name) return st.body ? st : undefined
+  if (st.type === 'ImportDeclaration' && (st.specifiers ?? []).some((sp: Node) => sp.local?.name === name)) return undefined
+  if (st.type !== 'VariableDeclaration') return null
+  const d = (st.declarations ?? []).find((x: Node) => bindsName(x.id, name))
+  if (!d) return null
+  const init = d.id?.type === 'Identifier' && d.init ? unwrap(d.init) : undefined
+
+  return init?.type === 'ArrowFunctionExpression' || init?.type === 'FunctionExpression' ? init : undefined
+}
+
+/** `n` (an Identifier) sits in expression position: not a property key, a declaration or a type. */
+function isReference(n: Node, parent: Node): boolean {
+  if (!parent) return true
+  if (parent.type === 'MemberExpression' && parent.property === n && !parent.computed) return false
+  if (parent.type === 'Property' && parent.key === n && !parent.computed && !parent.shorthand) return false
+  if (parent.type === 'VariableDeclarator' && parent.id === n) return false
+  if (isFn(parent) && (parent.id === n || (parent.params ?? []).includes(n))) return false
+
+  // Type positions never get here: every walker skips type nodes first.
+  return true
+}
+
+/** `x.name`, `x['name']`, `` x[`name`] `` → `name`; undefined for a dynamic key. */
+function memberName(m: Node): string | undefined {
+  const prop = m.property
+  if (!m.computed) return prop?.type === 'Identifier' ? prop.name : undefined
+  if (prop?.type === 'Literal' && typeof prop.value === 'string') return prop.value
+  if (prop?.type === 'TemplateLiteral' && (prop.expressions ?? []).length === 0) return prop.quasis?.[0]?.value?.cooked
+
+  return undefined
+}
+
+/**
+ * The member path read off `use` (`t.node.id` → `node.id`, through `as`, `!`,
+ * parentheses and `t['done']`), stopping before a method call. Mirror of
+ * `memberChain` in the compiler.
+ */
+function memberChain(use: Node, parents: Parents): { path: string[]; top: Node } {
+  const path: string[] = []
+  let cur = use
+  for (;;) {
+    let parent = parents.get(cur)
+    while (parent && WRAPPERS.has(parent.type)) {
+      cur = parent
+      parent = parents.get(parent)
+    }
+    if (parent?.type !== 'MemberExpression' || parent.object !== cur) break
+    const name = memberName(parent)
+    if (name === undefined) break
+    const grand = parents.get(parent)
+    if (grand?.type === 'CallExpression' && grand.callee === parent) break
+    path.push(name)
+    cur = parent
+  }
+
+  return { path, top: cur }
+}
+
+/**
+ * What the `by` key reads off its item. Mirror of `keyInfoOf` in the
+ * compiler's `stale-for-item.ts`; the shared case table runs both.
+ */
+function keyInfoOf(byAttr: Node | undefined, forEl: Node, parents: Parents, source: string): KeyInfo {
+  const out: KeyInfo = { paths: new Set(), always: false, opaque: undefined }
+  const text = (n: Node): string => {
+    const t = source.slice(n.start, n.end).replace(/\s+/g, ' ')
+
+    return t.length > 40 ? `${t.slice(0, 37)}...` : t
+  }
+  let fn = byAttr?.value?.type === 'JSXExpressionContainer' ? unwrap(byAttr.value.expression) : undefined
+  // `by={}` is a parse error, so a missing expression is a bare `by` attribute.
+  if (!fn) return out
+  if (fn.type === 'Identifier') {
+    const name = fn.name
+    fn = resolveInScope(forEl, name, parents)
+    if (!fn) {
+      out.opaque = name
+      return out
+    }
+  }
+  if (!isFn(fn)) {
+    if (fn.type !== 'Literal' && fn.type !== 'TemplateLiteral') out.opaque = text(fn)
+    return out
+  }
+  const p = paramIdentifier(fn.params?.[0])
+  if (!p || !fn.body) return out
+  // `parents` covers the whole program, the key function's body included.
+  if (p.type === 'Identifier') readsOfItem(p.name, fn.body, out, parents, text)
+  else if (p.type === 'ObjectPattern') patternPaths(p, [], fn.body, out, parents)
+  else out.opaque = 'the key'
+
+  return out
+}
+
+function isUsed(body: Node, name: string): boolean {
+  let used = false
+  walk(body, null, (n, parent) => {
+    if (used || isTypeNode(n)) return false
+    if (n.type === 'Identifier' && n.name === name && isReference(n, parent)) used = true
+  })
+
+  return used
+}
+
+function patternPaths(pattern: Node, prefix: string[], body: Node, out: KeyInfo, parents: Parents): void {
+  for (const el of pattern.properties ?? []) {
+    if (el.type === 'RestElement') {
+      if (el.argument?.type === 'Identifier' && isUsed(body, el.argument.name)) out.opaque ??= 'the key'
+      continue
+    }
+    const k = patternKey(el)
+    if (k === undefined) {
+      out.opaque ??= 'the key'
+      continue
+    }
+    const path = [...prefix, k]
+    const value = paramIdentifier(el.value)
+    if (value?.type === 'ObjectPattern') patternPaths(value, path, body, out, parents)
+    else if (value?.type === 'Identifier') addValuePaths(value.name, path, body, out, parents)
+    else out.opaque ??= 'the key'
+  }
+}
+
+function addValuePaths(name: string, path: string[], body: Node, out: KeyInfo, parents: Parents): void {
+  let bare = false
+  walk(body, null, (n, parent) => {
+    if (isTypeNode(n)) return false
+    if (isFn(n) && (n.params ?? []).some((q: Node) => bindsName(q, name))) return false
+    if (n.type === 'Identifier' && n.name === name && isReference(n, parent)) {
+      const chain = memberChain(n, parents)
+      if (chain.path.length === 0) bare = true
+      else out.paths.add([...path, ...chain.path].join('.'))
+    }
+  })
+  if (bare) out.paths.add(path.join('.'))
+}
+
+function readsOfItem(item: string, body: Node, out: KeyInfo, parents: Parents, text: (n: Node) => string): void {
+  const ret = body.type === 'BlockStatement' ? body.body?.find((s: Node) => s.type === 'ReturnStatement')?.argument : body
+  const returned = unwrap(ret)
+  if (returned?.type === 'Identifier' && returned.name === item) {
+    out.always = true
+    return
+  }
+  walk(body, null, (n, parent) => {
+    if (isTypeNode(n)) return false
+    if (isFn(n) && (n.params ?? []).some((q: Node) => bindsName(q, item))) return false
+    if (n.type !== 'Identifier' || n.name !== item || !isReference(n, parent)) return
+    const chain = memberChain(n, parents)
+    if (chain.path.length > 0) {
+      out.paths.add(chain.path.join('.'))
+      return
+    }
+    const up = parents.get(chain.top)
+    if (up?.type === 'VariableDeclarator' && up.init === chain.top && up.id?.type === 'ObjectPattern') {
+      patternPaths(up.id, [], body, out, parents)
+      return
+    }
+    const callee = up?.type === 'CallExpression' && (up.arguments ?? []).includes(chain.top) ? up.callee : undefined
+    if (
+      callee?.type === 'MemberExpression' &&
+      up.arguments[0] === chain.top &&
+      callee.object?.type === 'Identifier' &&
+      callee.object.name === 'JSON' &&
+      callee.property?.name === 'stringify'
+    ) {
+      out.always = true
+      return
+    }
+    out.opaque ??= callee ? text(callee) : 'the key'
+  })
 }
 
 /**
@@ -319,10 +532,12 @@ function remountsOnListChange(forEl: Node, eachAttr: Node, parentOf: Map<Node, N
       if (holder?.type !== 'JSXExpressionContainer') return false
       const owner = parentOf.get(holder)
       const tag = owner?.type === 'JSXElement' ? owner.openingElement?.name?.name : undefined
+
       return !(tag === 'For' || tag === 'Index')
     }
     n = parentOf.get(n)
   }
+
   return false
 }
 
@@ -355,26 +570,35 @@ export const noStaleForItemField: Rule = {
         const report = (node: Node, message: string): void => {
           context.report({ message, span: getSpan(node) })
         }
-        const tail = (fields: string[]): string =>
-          ` — but this file replaces items under the same \`by\` key (\`{ ...item, ${fields.join(', ')}: … }\`). On the web a keyed <For> keeps that row and runs its callback once per key, so the item is the object the row mounted with and this read keeps the FIRST value (iOS and Android redraw the row). Read the live value by key through a call (\`isDone(t.id)\`), which stays reactive on web and lowers to a lookup on native, or give the field its own signal.`
+        const tail = (fields: string[], opaque: string | undefined): string =>
+          ` — but this file replaces items under the same \`by\` key (\`{ ...item, ${fields.join(', ')}: … }\`). On the web a keyed <For> keeps that row and runs its callback once per key, so the item is the object the row mounted with and this read keeps the FIRST value (iOS and Android redraw the row). Read the live value by key through a call (\`isDone(t.id)\`), which stays reactive on web and lowers to a lookup on native, or give the field its own signal.${opaque !== undefined ? ` (Safe only if \`${opaque}\` reads \`${fields.join('`, `')}\` into the key, which this rule cannot see: inline the key so it can, or disable this line if it does.)` : ''}`
 
-        const checkRow = (fn: Node, keyField: string | undefined): void => {
+        const parents: Parents = new Map()
+        walk(program, null, (n, parent) => {
+          parents.set(n, parent)
+        })
+
+        const checkRow = (fn: Node, key: KeyInfo): void => {
           const p = paramIdentifier(fn.params?.[0])
           if (!p) return
           if (p.type === 'ObjectPattern') {
             for (const el of p.properties ?? []) {
-              const key = patternKey(el)
-              if (key !== undefined && replacedHas(replaced, key, keyField)) {
-                report(el, `<For> row destructures \`${key}\` from its item${tail([key])}`)
+              const k = patternKey(el)
+              if (k === undefined) continue
+              const inner = paramIdentifier(el.value)
+              const leaves = inner?.type === 'ObjectPattern' ? bindingPaths(inner, fn.body, parents) : [[]]
+              if (leaves.some((path) => replacedHas(replaced, [k, ...path].join('.'), key))) {
+                report(el, `<For> row destructures \`${k}\` from its item${tail([k], key.opaque)}`)
               }
             }
+
             return
           }
           if (p.type !== 'Identifier') return
           const item = p.name
           for (const m of fieldReads(fn.body, fn, item)) {
-            if (replacedHas(replaced, m.property.name, keyField)) {
-              report(m, `<For> row reads \`${item}.${m.property.name}\`${tail([m.property.name])}`)
+            if (replacedHas(replaced, memberChain(m.object, parents).path.join('.'), key)) {
+              report(m, `<For> row reads \`${item}.${m.property.name}\`${tail([m.property.name], key.opaque)}`)
             }
           }
           walk(fn.body, fn, (n) => {
@@ -397,20 +621,18 @@ export const noStaleForItemField: Rule = {
                 if (e?.type === 'Identifier' && e.name === item) attrName = null
               }
               if (attrName === undefined) continue
-              const fields = componentFields(comp, attrName, replaced, keyField)
+              const fields = componentFields(comp, attrName, replaced, key, parents)
               if (fields.length > 0) {
                 report(
                   a,
-                  `<For> row passes its item to \`<${tag}>\`, which reads \`${fields.join('`, `')}\` off it${tail(fields)}`,
+                  `<For> row passes its item to \`<${tag}>\`, which reads \`${fields.join('`, `')}\` off it${tail(fields, key.opaque)}`,
                 )
               }
             }
           })
         }
 
-        const parentOf = new Map<Node, Node>()
-        walk(program, null, (n, parent) => {
-          parentOf.set(n, parent)
+        walk(program, null, (n) => {
           if (n.type !== 'JSXElement') return
           const opening = n.openingElement
           if (opening?.name?.type !== 'JSXIdentifier' || opening.name.name !== 'For') return
@@ -418,16 +640,18 @@ export const noStaleForItemField: Rule = {
           if (!eachAttr) return
           const byAttr = jsxAttr(opening, 'by')
           if (!byAttr) return
-          if (remountsOnListChange(n, eachAttr, parentOf)) return
-          const keyField = keyFieldOf(byAttr)
+          if (remountsOnListChange(n, eachAttr, parents)) return
+          const key = keyInfoOf(byAttr, n, parents, source)
+          if (key.always) return
           for (const child of n.children ?? []) {
             if (child.type !== 'JSXExpressionContainer') continue
             const fn = unwrap(child.expression)
-            if (fn?.type === 'ArrowFunctionExpression' || fn?.type === 'FunctionExpression') checkRow(fn, keyField)
+            if (fn?.type === 'ArrowFunctionExpression' || fn?.type === 'FunctionExpression') checkRow(fn, key)
           }
         })
       },
     }
+
     return callbacks
   },
 }

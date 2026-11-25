@@ -13,7 +13,9 @@ on:
   # any base, which reads as "validated" and is not.
   # Re-adding the filter re-opens that hole.
   pull_request:
-    types: [opened, synchronize, reopened]
+    # `ready_for_review`: the job skips drafts, so without it a draft marked
+    # ready got no size comment until its next push.
+    types: [opened, synchronize, reopened, ready_for_review]
     # Only what can move a BUILT lib/ size. This is an advisory comment, not a
     # required check, so a trigger-level filter is safe here (the deadlock the
     # repo's required checks avoid does not apply). Measured 2026-09-22: 64

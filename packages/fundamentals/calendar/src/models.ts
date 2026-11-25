@@ -1,5 +1,6 @@
 import { computed } from '@pyreon/reactivity'
 import type { Computed } from '@pyreon/reactivity'
+import { openingWindows } from '@pyreon/schedule/core'
 import type { BusinessCalendar, WorkingHours } from '@pyreon/schedule/core'
 import { dayOfWeek } from '@pyreon/time/core'
 import type { DayCell, MonthWeek, TimeGridDay, TimeGridModel } from './calendar-types'
@@ -118,28 +119,49 @@ const MIN = 60
 
 /** The opening hours of a day in minutes from midnight (whatever the visible window), or `null` when none are given. */
 export function businessMinutes<Meta>(s: CalState<Meta>, date: PlainDate): { from: number; to: number }[] | null {
-  const found = businessFor(s.options.businessHours, date, { from: 0, to: 1440 })
+  return openMinutes(s.options.businessHours, date)
+}
 
-  return found === null ? null : found.map((w) => ({ from: w.top * 1440, to: (w.top + w.height) * 1440 }))
+/** Minutes from the start of `date` to a wall value on that date or the next (`T00:00` of the next date is 1440). */
+function minuteOf(date: PlainDate, wall: string): number {
+  const tod = Number(wall.slice(11, 13)) * MIN + Number(wall.slice(14, 16)) + (wall.length > 16 ? Number(wall.slice(17)) / 60 : 0)
+
+  return wall.slice(0, 10) === date ? tod : 1440 + tod
+}
+
+/** A `specialHours` map whose every entry is an empty list (or that has none): it opens nothing. A function may open something. */
+function noWindows(special: NonNullable<BusinessCalendar['specialHours']>): boolean {
+  return typeof special === 'object' && special !== null && !Array.isArray(special) && Object.values(special).every((list) => Array.isArray(list) && list.length === 0)
+}
+
+/**
+ * Opening hours of a day in minutes from its midnight (0 to 1440), or `null` when none are given. The windows come from
+ * `@pyreon/schedule`'s `openingWindows`, so the grid shades and `constrainTo` allows exactly what `isOpen` says. A bare
+ * `WorkingHours` is the calendar `{ hours, weekend: [] }` (every weekday it lists is open); a `BusinessCalendar` is read
+ * as schedule reads it (default weekend Saturday and Sunday). Neither `hours` nor `specialHours`: nothing is shaded. Hours
+ * that open nothing (`{}`, `{ hours: {} }`, a `specialHours` map of empty lists): closed all day. Malformed hours throw
+ * schedule's `[Pyreon]` error.
+ */
+function openMinutes(hours: WorkingHours | BusinessCalendar | undefined, date: PlainDate): { from: number; to: number }[] | null {
+  if (hours === undefined) return null
+  const calendar: BusinessCalendar = 'hours' in hours || 'weekend' in hours || 'holidays' in hours || 'specialHours' in hours ? (hours as BusinessCalendar) : { hours: hours as WorkingHours, weekend: [] }
+  if (calendar.hours === undefined) {
+    if (calendar.specialHours === undefined) return null
+    // Hours were given but open nothing: closed all day, as `{ hours: {} }` is. schedule's business-time functions throw
+    // "no hours" here; a render does not throw on data it can read. Malformed entries still reach schedule and throw.
+    if (noWindows(calendar.specialHours)) return []
+  }
+
+  return openingWindows(date, calendar).map((w) => ({ from: minuteOf(date, w.start), to: minuteOf(date, w.end) }))
 }
 
 /** Opening hours of a day as fractions of the visible window, or `null` when none are given. */
 function businessFor(hours: WorkingHours | BusinessCalendar | undefined, date: PlainDate, window: { from: number; to: number }): { top: number; height: number }[] | null {
-  if (hours === undefined) return null
-  const calendar = 'hours' in hours || 'weekend' in hours || 'holidays' in hours ? (hours as BusinessCalendar) : { hours: hours as WorkingHours }
-  const weekday = dayOfWeek(date)
-  const weekend = calendar.weekend ?? []
-  const holiday = typeof calendar.holidays === 'function' ? calendar.holidays(date) : (calendar.holidays ?? []).includes(date)
-  const schedule = calendar.hours
-  if (schedule === undefined) return null
-  if (weekend.includes(weekday) || holiday) return []
-  const minutes = (t: string): number => Number(t.slice(0, 2)) * MIN + Number(t.slice(3, 5))
-  const own = (schedule[weekday] ?? []).map((w) => ({ from: minutes(w.from), to: minutes(w.to) <= minutes(w.from) ? 1440 : minutes(w.to) }))
-  const previous = (((weekday + 5) % 7) + 1) as Weekday
-  const tails = (schedule[previous] ?? []).filter((w) => minutes(w.to) <= minutes(w.from) && minutes(w.to) > 0).map((w) => ({ from: 0, to: minutes(w.to) }))
+  const open = openMinutes(hours, date)
+  if (open === null) return null
   const span = window.to - window.from
 
-  return [...tails, ...own]
+  return open
     .map((w) => ({ from: Math.max(w.from, window.from), to: Math.min(w.to, window.to) }))
     .filter((w) => w.to > w.from)
     .map((w) => ({ top: (w.from - window.from) / span, height: (w.to - w.from) / span }))

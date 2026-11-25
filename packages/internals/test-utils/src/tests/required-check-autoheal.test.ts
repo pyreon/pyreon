@@ -178,6 +178,56 @@ describe('required-check-autoheal — decision', () => {
   })
 })
 
+// The job-level `if:` decides without a runner. Evaluate the REAL expression:
+// translate GitHub's expression syntax to JavaScript (property access on a
+// missing array element yields null in GitHub, undefined with `?.` here; both
+// are falsy, which is all the expression relies on).
+function jobIf(): (wr: Record<string, unknown>) => boolean {
+  const line = text.split('\n').find((l) => /^ {4}if: /.test(l))
+  expect(line).toBeDefined()
+  const js = line!
+    .replace(/^ {4}if: /, '')
+    .replaceAll('github.event.workflow_run', 'wr')
+    // GitHub's object filter `a.*.b` maps over the array; `contains(array, x)`
+    // is membership.
+    .replace(/contains\(wr\.pull_requests\.\*\.head\.sha, wr\.head_sha\)/g, '(wr.pull_requests ?? []).map((p) => p?.head?.sha).includes(wr.head_sha)')
+    .replaceAll('[0].head.sha', '?.[0]?.head?.sha')
+    .replaceAll(' == ', ' === ')
+    .replaceAll(' != ', ' !== ')
+
+  return new Function('wr', `return Boolean(${js})`) as (wr: Record<string, unknown>) => boolean
+}
+
+describe('required-check-autoheal — runner-free skip of superseded runs', () => {
+  const base = { conclusion: 'cancelled', event: 'pull_request', run_attempt: 1, head_sha: 'old' }
+
+  it('skips a run whose PR head (from the event payload) is a newer commit', () => {
+    expect(jobIf()({ ...base, pull_requests: [{ number: 5, head: { sha: 'new' } }] })).toBe(false)
+  })
+
+  it('runs when ANY associated PR has the run as its head, like the script (not only the first)', () => {
+    const prs = [
+      { number: 4, head: { sha: 'other' } },
+      { number: 5, head: { sha: 'old' } },
+    ]
+    expect(jobIf()({ ...base, pull_requests: prs })).toBe(true)
+    expect(jobIf()({ ...base, pull_requests: [prs[0], { number: 6, head: { sha: 'newer' } }] })).toBe(false)
+  })
+
+  it('runs for the current head, and fails safe (runs) when the payload names no PR', () => {
+    expect(jobIf()({ ...base, pull_requests: [{ number: 5, head: { sha: 'old' } }] })).toBe(true)
+    expect(jobIf()({ ...base, pull_requests: [] })).toBe(true)
+    expect(jobIf()({ ...base, conclusion: 'failure', pull_requests: [{ number: 5, head: {} }] })).toBe(true)
+  })
+
+  it('keeps the other bounds: success, a non-PR event and a second attempt never run', () => {
+    const pr = [{ number: 5, head: { sha: 'old' } }]
+    expect(jobIf()({ ...base, conclusion: 'success', pull_requests: pr })).toBe(false)
+    expect(jobIf()({ ...base, event: 'push', pull_requests: pr })).toBe(false)
+    expect(jobIf()({ ...base, run_attempt: 2, pull_requests: pr })).toBe(false)
+  })
+})
+
 describe('required-check-autoheal — attempt bound', () => {
   it('is gated off for attempt 2 at the job level', () => {
     // The `if:` expression is the bound; a rerun of a rerun never reaches the script.

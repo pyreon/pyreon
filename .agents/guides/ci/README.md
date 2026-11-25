@@ -4,17 +4,63 @@ Read before adding or changing a workflow, job, required check, or cache key.
 
 ## Constraint: runner slots, not minutes
 
-- The org is on GitHub's free plan: 20 concurrent jobs org-wide, 5 of them macOS, shared by every open PR. Runner minutes are unmetered on a public repo.
-- PR wall-clock is dominated by queue wait. The levers are job count and DAG depth, not per-job speed.
-- A cell's fixed setup (queue + checkout + `setup-pyreon`, plus Playwright for e2e) is about a minute. Splitting work into more jobs only helps while runners are idle.
+- The org is on GitHub's free plan (`gh api orgs/pyreon --jq .plan.name` → `free`): 20 concurrent jobs org-wide, 5 of them macOS, shared by every open PR. Runner minutes are unmetered on a public repo. Measured peaks agree within timestamp resolution (to the second, so a job finishing and the next starting overlap, and housekeeping jobs last about 6 seconds): 24 Linux and 6 macOS jobs at one instant, 2026-11-16 → 11-23.
+- PR wall-clock is dominated by queue wait. The levers are job count, DAG depth and total demand, not per-job speed.
+- A cell's fixed setup (checkout + `setup-pyreon`, plus Playwright for e2e) is about a minute. Splitting work into more jobs only helps while runners are idle.
+
+## Throughput, measured
+
+`bun scripts/ci-throughput.ts` regenerates every number here (see "Diagnosing slow CI"). Baseline: 2026-11-16 20:00 → 11-23 20:00 UTC (13,310 runs; 11-20 → 11-22 were idle), job-level figures over 2026-11-18 12:00 → 11-23 20:00, where every non-housekeeping run's jobs were fetched (4,112 runs).
+
+| Measure | Value |
+| --- | --- |
+| Time-to-green of a PR commit (first run created → last required workflow green, commits where all five went green) | median 159 min, p90 414 over the week (n = 194); median 248, p90 466 on the busy days of the job-level window (n = 88) |
+| Runner minutes per PR push (every `pull_request` run of the commit) | median 52, p90 238 (macOS p90 75) |
+| A full `ci.yml` run on `main` (green) | 18 jobs, 85 runner-minutes, 23 min of pure-work critical path (max 31), 75 min wall at the median under load |
+| Linux busy share in working hours (fetched jobs only) | 75–85% of 20 slots, hour after hour on 11-18 and 11-19; macOS 60–110% of 5 |
+| Runner minutes in the window | Linux 32,625, macOS 7,646; `pull_request` 33,000 of them, push 3,200, Code Quality 2,400, schedules 1,700 |
+
+Where a green PR commit's time goes. A job is created when its `needs` finish, then waits for a runner (verified on job timestamps), so every DAG level pays a full queue round. Median runner wait per job on PR runs: `Install` 40 min, `Fast Gates` 35, typecheck/test/e2e cells 68–74, `Build` 69, `Test (browser)` 62, `Release Build` 63; the `Test` aggregator, last to finish on 73 of 88 green commits, waited a median 51 minutes for a runner to do 6 seconds of work. Pure work on the same path is about 23 minutes. The other critical-path ends: `iOS — xcodebuild` on 9 commits (59 min of work), the macOS typecheck on 4 (queue median 54–57 min), Android on 2.
+
+Top Linux consumers on PRs (runner-minutes in the window): e2e cells 4,361; Android device lane 3,596; Linux native validate 3,524; test cells 3,035; Code Quality (dynamic) 2,431; `Build` 1,391; bundle-size diff 1,305; typecheck cells 1,179; docs build 1,121; CodeQL 1,099; `Test (browser)` 1,069; `Install` 1,044; `Fast Gates` 864. macOS: iOS 4,986, macOS typecheck 1,735.
+
+Duplicated work: GitHub's Code Quality feature (a repository setting, runs named `Code Quality: PR #N`) analyses every PR push with CodeQL a second time, 7–9 minutes each, 7.5% of all Linux minutes, under the same check name as the required `Analyze (javascript-typescript)`. `ci.yml` builds `lib/` once per run and shares it by cache; the other workflows that need it (native validate, the device lanes, bundle-size diff twice, docs, lathe) each install and rebuild incrementally from the source-hashed cache, because a cache saved by a parallel workflow is not there yet when they start.
+
+Housekeeping (`workflow_run`) runs, before the #4771 trigger fixes: 5,944 of 13,310 runs (45%). `Default Branch Status` 2,809 (774 ran a job, 1,226 were coalesced while pending, 808 skipped), `Required Check Autoheal` 1,578 (509 ran a job; 81 native re-runs happened in the week), `Size Ceiling Status` 831 (660 skipped), `Native Device Nightly Status` 726 (719 skipped). A `workflow_run` run always reports `head_branch: main`, so each skipped follower run started a `Default Branch Status` run too. The jobs that ran cost almost no runner time (138 runner-minutes in the week: 683 `Default Branch Status` jobs 89, 412 autoheal jobs 37, size ceiling 11, nightly 1, about 6 seconds each); the costs are run volume, API calls, and latency: an autoheal job waited a median 82 minutes (p90 212) for a runner before it could re-run anything.
+
+Cancellations: no superseded PR run of any workflow ran to completion (every PR workflow cancels by concurrency). Jobs cancelled before a runner took them are mostly superseded pushes; the macOS "not acquired by Runner" class is what autoheal re-runs.
+
+Failure rates on PR runs (a job that ran steps and failed; none of these was green on a re-run of the same run unless stated): `Build` 24% (coverage steps, size budgets, the Rust-binary compiler suite), Android 9.9% (2 green on re-run), `Test` aggregator 5.4% (follows its members), `Test (browser)` 4.3%, `Fast Gates` 2.7%, test cells 2.0%, iOS 1.9% (1 green on re-run), e2e cells 0.4%, typecheck cells 0.4%; Scaffold, Release Build and the Linux native validate 0. On `main`: `Coverage (Full)` 9 of 33 runs red. Two jobs reached their own timeout in the window (e2e 1, Linux native validate 2): timeouts are not where runner time is lost.
+
+## Throughput levers, ranked
+
+By runner time or wall clock saved against risk, from the measurements above. Every number in this table is from the 2026-11-16 → 11-23 window, taken before these changes; none has been re-measured since. "Landed" items need no setting; the others are the maintainer's switches (runbook under "Merge queue").
+
+| # | Lever | Saves | Risk | What still covers what it stops doing | State |
+| --- | --- | --- | --- | --- | --- |
+| 1 | `Fast Gates` beside `Install` instead of after it | one queue round on every `ci.yml` run: `Fast Gates`' median wait 35 min (p90 115) leaves the critical path | low: a failed Install leaves one cheap job running (0 of 296 failed) | every expensive job still needs both (`check-ci-fail-fast`) | landed with #4771 |
+| 2 | Merge queue, then light PR CI | about 32% of Linux minutes leave the PR (e2e, scaffold, `Test (browser)`, `Release Build`, Linux native validate); the queue adds back about 92 runner-minutes per group: net 2,000–6,000 of 32,600 minutes in the window. Shorter PR critical path; the merge result is tested (the "two green PRs broke `main`" class) | medium: the 2026-11-11 attempt starved; group ejections on heavy-job failures (`Test (browser)` 4.3%) | the queue runs everything the PR skips, on the merged tree; `Build` stays on the PR | maintainer, after the 0.54.0 release |
+| 3 | Turn off GitHub Code Quality | 7.5% of Linux minutes (463 runs × 7–9 min in the window) and one queue entry per PR push; removes the second check named `Analyze (javascript-typescript)` | none for security coverage | `codeql.yml` (security-extended queries) on every PR, push and group | maintainer setting |
+| 4 | `workflow_run` followers filtered to `main`; autoheal decides "superseded" without a runner | run volume, not runner time: about 1,400 follower runs a week and the `Default Branch Status` runs they started, about 330 of 412 autoheal jobs (all of them together used 138 runner-minutes) | low | autoheal's script still checks current head and newest run; the alarm still sees every default-branch run | landed with #4771 |
+| 5 | The `Test` aggregator round | it ends the critical path on 73 of 88 green commits after a median 51-minute wait for 6 seconds of work | high: removing it means requiring fixed-name matrix slots instead (13 required contexts), a protection change and a new failure surface | — | plan only; light PR CI shrinks the wait first |
+| 6 | Build restores the compiler's native binary by input hash on pull requests and merge groups | 37–47 s of cargo build plus the toolchain install on every PR or group `Build` without a Rust change (184 `Build` runs in the window, all events) | low | a miss builds exactly as before; `Assert native binary present` is unchanged; the entry is written only by `Coverage (Full)` on default-branch pushes, and `Build` still compiles on every default-branch push (see Caches) | landed with #4771 |
+| 7 | `Bundle size diff` from `Build`'s size data | 1,305 PR minutes (4%): `Build` already measures the PR and its base | medium: a new comment-posting path in a required job (must stay advisory) | — | plan |
+| 8 | `Deploy Docs` PR build only where the e2e `docs` suite does not already build the site | part of 1,121 PR minutes (3%) | medium: the two selectors cover different paths (Atlas, `packages/ui`) | — | plan |
+| 9 | `Default Branch Status` as one sweep over all watched workflows | the remaining executed runs (after #4) | medium: a 22-workflow sweep per event approaches the job token's 1,000 calls an hour; it must read one repository-wide run listing, not one per workflow | — | plan, low value after #4 |
+| — | Lower job timeouts | nothing measurable: 2 timeouts in a week | — | — | no change |
+| — | Skip heavy jobs on drafts | 3 of 20 open PRs were drafts | — | — | no change |
 
 ## Design rules
 
 - A gate that takes seconds is a step, not a job. A new job needs a written reason it cannot be a step.
-- Keep the graph shallow: Install, then Fast Gates, then expensive fan-out
-  (plus the one aggregator). The extra preflight edge is intentional: it keeps
+- Keep the graph shallow: Install and Fast Gates side by side, then expensive
+  fan-out (plus the one aggregator). Every expensive job needs BOTH: that keeps
   expensive runners idle until cheap deterministic checks prove the commit is
-  worth testing.
+  worth testing. Fast Gates does not wait for Install: a job is created when
+  its `needs` finish and then waits for a runner, so every DAG level costs a
+  full queue round under load (Fast Gates waited a median 35 min, p90 115,
+  after Install's own wait, 2026-11-18 → 11-23). `check-ci-fail-fast` pins
+  both halves.
 - Every gate step inside `Fast Gates` / `Build` runs with `if: ${{ !cancelled() }}`, so one push reports every red gate.
 - Job-level preflight and aggregate verdicts must also respect cancellation.
   `Test` uses `!cancelled()` so failed prerequisites still produce a verdict,
@@ -39,6 +85,7 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - One artifact ⇒ one cache key prefix ⇒ one writer. Duplicate writers fill the 10 GB actions cache and evict the small entries every PR needs.
 - Small content-addressed stores (the native compile-verdict store) are saved from every run, because main's push runs are frequently cancelled.
 - When adding a matrix cell, ask whether it needs its own runner or just its own step. Default: a step. Select cache ownership by membership and key the cache by its stable category, never by a batch name that changes with packing. `native-rest` has exactly one cache writer even when it shares a runner.
+- Every `pull_request` / `pull_request_target` workflow has a workflow-level `concurrency` that cancels a superseded run of the SAME pull request: the group has a per-PR or per-ref part (`github.ref`, `github.head_ref`, `github.event.pull_request.number`; a constant group such as `lint` cancels other PRs' runs), and `cancel-in-progress` evaluates to true for the event (a trigger whose `types:` leave out `synchronize`, such as `[closed]` or `[labeled]`, is exempt: no push supersedes its run, and cancelling a label-driven run on the next label would drop work); a merge-group-aware group keys on `… || github.ref`; a job or step that skips drafts triggers on `ready_for_review` too. `scripts/check-workflow-triggers.ts` (validate-fast) enforces all of it, reading the files structurally and evaluating the conditions with `scripts/workflow-yaml.ts` (a reader for the YAML subset workflows use, checked against Bun's parser on every workflow; an expression it cannot decide fails closed). Measured 2026-11-16 → 11-23: no superseded PR run of any workflow ran to completion.
 - All PR selectors in `ci.yml` use `CI_BASE`, the event's immutable base SHA. Do not fetch a moving base independently in each cell: selection and execution must use the same diff while main advances.
 
 ## `ci.yml` jobs
@@ -46,10 +93,10 @@ Read before adding or changing a workflow, job, required check, or cache key.
 | Level | Job | Contents |
 | --- | --- | --- |
 | 1 | `Install` | install → decide → build `lib/`. Outputs `code`, `affected`, and the batched `typecheck-` / `test-` / `e2e-` / `scaffold-matrix` lists. |
-| 2 | `Fast Gates` | Every lib-free gate: lint, ratchets, docs sync, manifests, export entries, release readiness, doc examples, dependency audit, secrets scan, PR-targets-main. Cheap gates collect all diagnostics. |
-| 3 | `Build` | Every lib-needing gate: examples build, verify-modes, bundle + import budgets, distribution, bin liveness, coverage floor + changed packages, the Rust-binary equivalence run. |
-| 3 | `typecheck (…)`, `test (…)`, `e2e (…)`, `Scaffold Smoke (…)` | Dynamic cells, packed by `scripts/ci-batch.ts` (LPT by measured weight). Sibling cells cancel after the first failure. |
-| 3 | `Test (browser)`, `Release Build`, `bootstrap-exit-codes` | |
+| 1 | `Fast Gates` | Every lib-free gate: lint, ratchets, docs sync, manifests, export entries, release readiness, doc examples, dependency audit, secrets scan, PR-targets-main. Cheap gates collect all diagnostics. |
+| 2 | `Build` | Every lib-needing gate: examples build, verify-modes, bundle + import budgets, distribution, bin liveness, coverage floor + changed packages, the Rust-binary equivalence run. |
+| 2 | `typecheck (…)`, `test (…)`, `e2e (…)`, `Scaffold Smoke (…)` | Dynamic cells, packed by `scripts/ci-batch.ts` (LPT by measured weight). Sibling cells cancel after the first failure. |
+| 2 | `Test (browser)`, `Release Build`, `bootstrap-exit-codes` | |
 | aggregate | `Test` | The single fail-closed aggregator over Install, Fast Gates, and all four matrices (`scripts/ci-aggregate.ts`). It depends on every member so it consumes a runner only for the final verdict. |
 
 - Lib-free vs lib-needing: typecheck, lint and vitest resolve `@pyreon/*` to `src` through the `bun` condition and do not need `lib/`. Exceptions are tests that assert on `lib/` bytes or boot a nested Vite SSR build. A new lib-needing gate goes in `Build`; a lib-free one in `Fast Gates`.
@@ -70,13 +117,14 @@ Read before adding or changing a workflow, job, required check, or cache key.
 - `pr-gates.yml` — `Changeset` and `Diagnose Catalog`. These are label-sensitive (`skip-changeset`, `skip-diagnose-catalog`), so they live apart from `ci.yml`, whose `pull_request` trigger excludes `labeled` (a label would cancel the in-flight run).
 - `native-validate.yml` — `Validate emitted Swift + Kotlin`, `Validate emitted Swift (real-SDK typecheck, macOS)`. Both run when the native path classifier OR the native-compiler dependency graph (`affected.ts --category=native/compiler`) selects them; the device lanes use the path classifier alone.
 - `native-device.yml` — `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug`. After the path classifier, a `Native inputs fingerprint` job (PR only, `continue-on-error`) builds every gated app's emit at head and base and keeps only apps whose fingerprint moved; an empty output (failure, timeout) falls back to the classifier. Input contract and tests: `scripts/native-inputs-fingerprint.ts`, `native-inputs-fingerprint.test.ts`. Triggers on `opened`/`synchronize`/`reopened`, not `labeled`: a label event re-ran the whole device build on the same SHA (19 times in two days, 1,086 macOS runner-minutes). The `native-device` label is read on the next push; `gh workflow run native-device.yml --ref <branch>` proves the current commit at once.
-- `native-device-nightly-status.yml` (`workflow_run` after `Native Device Build`) — keeps the `[native-device] Nightly device build is RED` sticky issue in step with the scheduled run. It was a job inside `native-device.yml` and put a skipped or cancelled row on every PR.
-- `size-ceiling-status.yml` (`workflow_run` after `CI`, pushes to `main` only) — keeps the `[size] main is over a size ceiling` sticky issue in step with the four size steps: three in `Build`, and `Check Site Route Budgets` in the e2e cell that ran the `docs` suite. It reads those steps by name; renaming one needs the same change here. The issue closes only when all four have a `success`: a step that did not run is no verdict.
+- `native-device-nightly-status.yml` (`workflow_run` after `Native Device Build`, `branches: [main]`) — keeps the `[native-device] Nightly device build is RED` sticky issue in step with the scheduled run. It was a job inside `native-device.yml` and put a skipped or cancelled row on every PR.
+- **A `workflow_run` follower filters its trigger with `branches: [main]`** unless it acts on pull request runs (autoheal). A `workflow_run` run always reports `head_branch: main`, whatever started it, so without the filter every pull request run of the followed workflow created a skipped run here, and that run in turn started a `Default Branch Status` run (measured 2026-11-16 → 11-23: 1,379 skipped Size Ceiling / Nightly Status runs, the source of most of Default Branch Status's 808 skipped and 1,226 coalesced runs). `check-main-red-watchlist` enforces the filter.
+- `size-ceiling-status.yml` (`workflow_run` after `CI`, `branches: [main]`, pushes to `main` only) — keeps the `[size] main is over a size ceiling` sticky issue in step with the four size steps: three in `Build`, and `Check Site Route Budgets` in the e2e cell that ran the `docs` suite. It reads those steps by name; renaming one needs the same change here. The issue closes only when all four have a `success`: a step that did not run is no verdict.
 - `main-red-status.yml` (`workflow_run` after every workflow that can run on the default branch) — the alarm for a red default branch; see "Red default branch alarm".
 - `bundle-size-diff.yml` (advisory) — does not run on the release PR (`changeset-release/main`); its job-level `if:` skips it.
 - `lathe-action-selftest.yml` (advisory) — trigger-level `paths:` filter. A trigger filter is allowed only on advisory workflows; a required one needs the always-running decide job.
 - `stacks-bench-smoke.yml` (advisory; PRs touching `examples/stacks-bench/**` except Markdown, weekly, manual) — `npm ci` + production build of the nine full-stack benchmark arms from their own lockfiles and the correctness gate (`bun gate.ts`) on each, the zero arm from npm and again from the workspace. Linux only, no timing and no load generator: it keeps the public benchmark re-runnable, it measures nothing. The arms are outside the bun workspace, so no other job installs or builds them.
-- `real-bench-app-smoke.yml` (advisory; PRs touching `examples/real-bench/app/**` except Markdown, weekly, manual) — `npm ci` + production build of the catalogue-app arms from their own lockfiles, the pyreon arm from the workspace, and the correctness gate (`bun gate.ts`) on each. Linux only, no timing, no throttle, no memory reading: it keeps the arms buildable and correct. The arms are outside the bun workspace, so no other job installs or builds them.
+- `real-bench-app-smoke.yml` (advisory; PRs touching `examples/real-bench/app/**` except Markdown, weekly, manual) — `npm ci` + production build of the catalogue-app arms from their own lockfiles (the pyreon arm included, so the published `@pyreon/*` it pins are gated) and the correctness gate (`bun gate.ts`) on each, then the pyreon arm again from the workspace and the gate on it. Linux only, no timing, no throttle, no memory reading: it keeps the arms buildable and correct. The arms are outside the bun workspace, so no other job installs or builds them.
 - Native lane selection follows package-owned lowering as well as the PMTC
   directories. `native-surface-touched.ts` recognizes plugin source and its own
   selector scripts; `native-plugin-surface.ts` derives the runtime import closure
@@ -99,7 +147,7 @@ Read before adding or changing a workflow, job, required check, or cache key.
   - cancels in-flight runs of PRs that became conflicting. GitHub never dispatches for a conflicting PR, but does not stop a run already in flight. Only a definitive `CONFLICTING` is acted on; `UNKNOWN` is skipped; a failed listing aborts.
   - prunes superseded cache generations on main (`scripts/prune-superseded-caches.ts`).
 - The Android Gradle dependency cache (`gradle-deps-<os>-<hash of the native examples' gradle files>`) is written ONLY on `main`, ONLY on a restore miss, and its key carries no `run_id` — a run-id suffix once kept four identical ~650 MB copies and pushed the repo to 10.39 of its 10 GB, LRU-evicting the small bootstrap caches every lib-needing job depends on. `gradle-deps-` is a pruned family in `prune-superseded-caches.ts`.
-- `required-check-autoheal.yml` — listens to `Native Device Build` and `Native Compiler Validation` and re-runs (`rerun-failed-jobs`, so a green sibling job is not repeated) a completed pull_request run at `run_attempt` 1, with a PR comment naming the cause, in two cases: the run concluded `cancelled`; or it concluded `failure` but EVERY non-successful job never started (conclusion `cancelled`, zero steps, check-run annotation "The job was not acquired by Runner of type hosted even after multiple attempts" — GitHub never assigned a macOS runner, observed 15 minutes after queueing). One genuinely failed job anywhere (a mixed run included) means no rerun: a real failure stays red. Also skipped when the PR head is no longer the run's SHA or a newer run of the workflow exists. Uncertainty (no PR, annotation unreadable) fails closed. The decision script is exercised by `packages/internals/test-utils/src/tests/required-check-autoheal.test.ts`; a `workflow_run` workflow runs only from `main`, so an edit cannot be exercised on its own PR.
+- `required-check-autoheal.yml` — listens to `Native Device Build` and `Native Compiler Validation` and re-runs (`rerun-failed-jobs`, so a green sibling job is not repeated) a completed pull_request run at `run_attempt` 1, with a PR comment naming the cause, in two cases: the run concluded `cancelled`; or it concluded `failure` but EVERY non-successful job never started (conclusion `cancelled`, zero steps, check-run annotation "The job was not acquired by Runner of type hosted even after multiple attempts" — GitHub never assigned a macOS runner, observed 15 minutes after queueing). One genuinely failed job anywhere (a mixed run included) means no rerun: a real failure stays red. Also skipped when the PR head is no longer the run's SHA or a newer run of the workflow exists. Uncertainty (no PR, annotation unreadable) fails closed. The superseded case is decided WITHOUT a runner when the event payload already shows it (`workflow_run.pull_requests[0].head.sha` is the PR's head when the event fires; it differs from the run's `head_sha` after a newer push): before that, every superseded native PR run took a Linux runner here only to be told "superseded" (509 executed heal jobs against 81 re-runs, 2026-11-16 → 11-23). An empty `pull_requests` still runs the job, and the script keeps its own checks. The job-level `if:` is evaluated by `required-check-autoheal.test.ts`. The decision script is exercised by `packages/internals/test-utils/src/tests/required-check-autoheal.test.ts`; a `workflow_run` workflow runs only from `main`, so an edit cannot be exercised on its own PR.
 - `leak-sweep.yml` (advisory) — least-squares heap slope over the perf-dashboard journeys, dev mode only (counters tree-shake in production). A journey over the threshold runs confirmation cycles and is flagged only if the heap keeps growing through them: one allocation step (a hash table doubling once) reads as a slope of a tenth of its size over 15 samples. Rule and derivation: `scripts/perf/leak-verdict.ts`. Locally: `bun run perf:leak-sweep`.
 - `docs-freshness-guard.yml` (push to main, not a PR check) — reruns `gen-docs` + `docs/scripts/gen-all.ts`. Drift from two concurrent merges reds the offending commit and opens or updates an `auto/docs-regen` fix PR (with a changeset when mcp `api-reference.ts` drifted; automerge when `RELEASE_PAT` is set).
 - `published-state.yml` — daily repo-vs-npm check.
@@ -175,7 +223,7 @@ Measured 2026-11-10 → 11-17: 9 to 52 merges a day (41, 52, 13, 13, 9); a succe
 | Known failure here | Not tried. With N green PRs waiting, N−1 of them re-run for each merge: about N²/2 runs to land N | Tried 2026-11-11 without light PR CI: about 120 queued runs, a group waited in the same line, no PR merged in 4 hours |
 | Does not cover | Nothing the PR run covers is lost | macOS typecheck, iOS and Android (skipped in a group); `Coverage (Full)` |
 
-Recommendation: do not turn on strict protection (the 41 and 52 merge days cannot be served serially, and it multiplies exactly the macOS load that is scarcest). Retry the merge queue only together with light PR CI, which exists for this and takes a PR from about 30 jobs to about 8, on a day with fewer than about 40 queued runs, with the canary under "Merge queue" below. Both are the maintainer's switches; nothing here changes them.
+Recommendation: do not turn on strict protection (the 41 and 52 merge days cannot be served serially, and it multiplies exactly the macOS load that is scarcest). Retry the merge queue only together with light PR CI, which exists for this and takes a PR from about 30 jobs to about 9, on a day with fewer than about 40 queued runs, with the canary under "Merge queue" below. Both are the maintainer's switches; nothing here changes them.
 
 ```bash
 # Strict protection ON (both authorities must agree):
@@ -195,42 +243,40 @@ Branch protection pins 15 required contexts in two authorities that must stay id
 
 ## Merge queue
 
-Tried 2026-11-11 and switched off again the same day (ruleset 19416270 has no `merge_queue` rule): with the org's 20-concurrent-job limit and about 120 queued runs, a group's own CI waited in the same line as the PR runs, the oldest group needed more than 5 hours, groups were rebuilt twice, and in 4 hours no PR merged, while the same green PRs merged immediately without the queue. Try it again only with more runner capacity. Prepared, not enabled: `merge_group` events never fire without the rule. Every workflow that owns a required context carries `merge_group`:
+Tried 2026-11-11 without light PR CI and switched off the same day: with about 120 queued runs a group's own CI waited in the same line as the PR runs, the oldest group needed more than 5 hours, and in 4 hours no PR merged. Prepared, not enabled (ruleset 19416270 has no `merge_queue` rule; `merge_group` events never fire without it). Every workflow that owns a required context carries `merge_group`:
 
 | Context | Workflow / job | In a merge group |
 | --- | --- | --- |
-| `Install`, `Fast Gates`, `Build`, `Test`, `Test (browser)`, `Release Build`, `bootstrap-exit-codes` | `ci.yml` | Full matrix, as on `push: main`. Release Build audits advisories against `merge_group.base_sha` (pre-existing ones warn). Labels are absent, so `skip-release-readiness` does not apply, as on `main`. |
+| `Install`, `Fast Gates`, `Build`, `Test`, `Test (browser)`, `Release Build`, `bootstrap-exit-codes` | `ci.yml` | Full matrix, as on `push: main`. Size gates judge ceilings (`PYREON_SIZE_MODE=main`). Release Build audits advisories against `merge_group.base_sha` (pre-existing ones warn). Labels are absent, so `skip-release-readiness` does not apply, as on `main`. |
 | `Changeset`, `Diagnose Catalog` | `pr-gates.yml` | Skipped: both depend only on the PR's diff and labels, which the PR already passed. |
 | `Analyze (javascript-typescript)`, `CodeQL` | `codeql.yml` | Runs. `CodeQL` is posted by code scanning after the upload, so the job cannot skip. |
 | `Validate emitted Swift + Kotlin` | `native-validate.yml` `validate` | Runs when the group's diff (`base_sha` → head) selects it, by the PR rules. |
 | `Validate emitted Swift (real-SDK typecheck, macOS)` | `native-validate.yml` `validate-swift-typecheck` | Skipped. |
-| `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug` | `native-device.yml` | Skipped. |
+| `iOS — xcodebuild (Simulator SDK)`, `Android — gradlew assembleDebug` | `native-device.yml` | Skipped (its `changes` helper too; the lanes' `if:` excludes `merge_group` before anything else, so a skipped `needs` cannot leave them pending). |
 
-- macOS and device lanes skip in the queue because they ran on the PR and a macOS slot wait (p90 144 min, 2026-11-10) at the head of the queue would hold every group behind it. The nightly runs re-prove `main`. To run them in the queue, remove the `merge_group` exclusion from their `if:`.
-- Concurrency keys must be unique per queue ref: `github.event.pull_request.number` is empty in a merge group, so use `… || github.ref`. Never cancel a merge-group run (`cancel-in-progress` is PR-only everywhere).
+Verified by reading every workflow (2026-11-23), not by a live run:
+
+- A skipped job reports `skipped`, which branch protection and the queue accept as passing; only a workflow that never STARTS (a trigger-level filter) leaves a context `Expected`. All five required workflows have unfiltered `merge_group` triggers. The `CodeQL` context needs a code-scanning upload for the group's ref, which the job makes; it is the one context the static gate cannot prove.
+- Concurrency keys are unique per queue ref (`github.ref`, or `… || github.ref` after a PR number; `check-workflow-triggers` fails a merge-group workflow keyed on the PR number alone). A group is never cancelled by another group or by a PR run because each group runs on its own `gh-readonly-queue/main/…` ref, so it is alone in its concurrency group, not because `cancel-in-progress` is PR-only: `codeql.yml` and `pr-gates.yml` set `cancel-in-progress: true` unconditionally, which only ever cancels an older run on the same ref.
+- Housekeeping does not act on groups: `Required Check Autoheal` only on `pull_request` runs; `Default Branch Status` treats `merge_group` as a pull request event; `Cancel CI on conflict` matches runs by PR head SHA, which a group commit never is; `Size Ceiling Status` only on `push`.
+- Two native PRs in one group: the Linux `Validate emitted Swift + Kotlin` runs on the group diff; the macOS typecheck and both device lanes do not (each ran on its own PR against its own base). Their combination is first device-tested by the nightly. Accepted: a device-lane slot wait at the head of the queue (macOS queue p90 113–125 min, 2026-11-16 → 11-23) would hold every group behind it. To run them in the queue, remove the `merge_group` exclusion from their `if:`.
+- `ci-main.yml` (`Coverage (Full)`, `Coverage (Native)`) has no `merge_group`: neither is required. Main's push run stays the backstop.
 - Do not save a cache from a merge group: its ref is deleted, so the entry only evicts others.
-- `ci-main.yml` (`Coverage (Full)`, `Coverage (Native)`) has no `merge_group` trigger: neither is required, so in the queue it would cost about 18 runner-minutes per group for a verdict the queue does not read. Main's push run remains the backstop.
+- GitHub's Code Quality feature (a repository setting, the dynamic `Code Quality: PR #N` runs) posts a check named `Analyze (javascript-typescript)`, the same name as the required context, on every PR push. It does not run on merge-group refs, so the queue reads only `codeql.yml`'s. On a PR the two share the name; whether a cancelled Code Quality run (146 of 847 in the measured week) can block a PR was not verified.
 
-Enable (maintainer, one ruleset change):
+### Recommended queue settings, and why
 
-```bash
-gh api repos/pyreon/pyreon/rulesets/19416270 > rs.json
-jq '{name, target, enforcement, conditions, bypass_actors, rules: (.rules + [{type: "merge_queue", parameters: {merge_method: "SQUASH", grouping_strategy: "ALLGREEN", max_entries_to_build: 3, min_entries_to_merge: 1, max_entries_to_merge: 5, min_entries_to_merge_wait_minutes: 5, check_response_timeout_minutes: 120}}])}' rs.json > rs-queue.json
-gh api -X PUT repos/pyreon/pyreon/rulesets/19416270 --input rs-queue.json
-```
-
-- First canary: one docs-only PR (for example a one-line `.agents/` edit). It exercises the full `ci.yml` matrix, CodeQL with its `CodeQL` upload context, the skipped `pr-gates` jobs, the native-validate decide on a group diff and the skipped device lanes, without a 60-minute native lane. Watch that all 15 contexts report on the `gh-readonly-queue/main/…` head before queueing more.
-- `SQUASH`: the only allowed method; keeps the required linear history.
-- Build concurrency 3: a group costs about 65–85 runner-minutes over about 20 jobs (full `ci.yml`: 18 jobs, 57–61 min; CodeQL 4; Linux native validate 18 when selected). Three groups at their widest take most of the 20 org slots.
-- Merge limits 1–5 with a 5-minute wait: about 25 merges a day; a busy hour batches 2–5 PRs into one full run.
-- Timeout 120 minutes: a full `ci.yml` run takes 10–24 min on idle runners and up to 64 under load (2026-11-10); Linux job queue p90 was about 100 min.
-- Contributors: the merge button becomes "Merge when ready"; auto-merge (`gh pr merge N --auto`) adds the PR to the queue once its checks pass. A group that fails removes its PR with a comment; fix, push, re-queue. `strict` stays off.
-- Changesets: the Version PR and `auto/docs-regen` go through the queue like any PR (`gh pr merge --auto --squash` enqueues). The queue's fast-forward of `main` is a normal push, so `release.yml`, `docs.yml`, `docs-freshness-guard.yml` and main CI trigger as before.
-- Roll back: `gh api repos/pyreon/pyreon/rulesets/19416270 | jq '{name, target, enforcement, conditions, bypass_actors, rules: [.rules[] | select(.type != "merge_queue")]}' > rs-noqueue.json`, then the same PUT with that file. Queued PRs leave the queue; `merge_group` triggers go dormant again. The UI path is Settings → Rules → Rulesets → main branch protection → "Require merge queue".
+| Setting | Value | Reason (measured 2026-11-16 → 11-23) |
+| --- | --- | --- |
+| Merge method | `SQUASH` | The only allowed method; keeps the required linear history. |
+| Grouping (`grouping_strategy`) | `HEADGREEN` ("Only merge non-failing pull requests" off) | Only the group's head commit must pass. It contains every PR of the group, so the tree that lands on `main` is exactly the tree tested. `ALLGREEN` requires each PR's own queue commit to pass too, which builds every entry and removes most of the batching saving. Cost: the intermediate squash commits on `main` are not individually tested (bisecting may land on one). |
+| Build concurrency (`max_entries_to_build`) | `2` | A full group run is 18 Linux jobs, 85 runner-minutes, 23 minutes of pure-work critical path (max 31) on the 12 green main runs measured. Its widest level (typecheck 3, test 3, e2e 4, scaffold 3, Build, Test (browser), Release Build, CodeQL) is about 16 jobs at once: two groups already exceed the org's 20 Linux slots. Raise only if group wall time stays near the pure-work path. |
+| Merge limits | min `1`, max `5`, wait `5` min | 46–66 merges on busy days (4–6 an hour at peak). With one group building for about 30 minutes, 2–3 PRs arrive meanwhile and form the next group, so batching happens without a minimum. |
+| Status check timeout | `120` min | Green main runs took 75 minutes of wall clock at the median under the measured load (pure work 23–31). A timeout ejects every PR in the group, so keep the margin until group wall time is measured with light PR CI on; then lower toward 2× the measured p90. |
 
 ### Light PR CI
 
-Inert until the repository variable `PR_CI_MODE` is `light`. Unset, or any other value, is exactly the behaviour above. Purpose: a PR runs about 8 jobs instead of about 30, and the full matrix runs once per merge group and on `main`, so the full verification applies to the merge RESULT (two individually green PRs can break `main` together because protection is non-strict) and costs one run per group, not one per PR.
+Inert until the repository variable `PR_CI_MODE` is `light`. Unset, or any other value, is exactly the behaviour above. Purpose: a PR runs about 9 jobs instead of about 30, and the full matrix runs once per merge group and on `main`, so the full verification applies to the merge RESULT (two individually green PRs can break `main` together because protection is non-strict) and costs one run per group, not one per PR push.
 
 The switch is `vars.PR_CI_MODE == 'light'` AND `github.event_name == 'pull_request'`. `ci.yml` resolves it once in `Install` (step `Resolve PR CI mode`, output `pr-light`); `native-validate.yml` reads the variable inline. A resolver failure leaves `pr-light` unset, which means the full run (fail-closed).
 
@@ -238,45 +284,73 @@ The switch is `vars.PR_CI_MODE == 'light'` AND `github.event_name == 'pull_reque
 | --- | --- | --- | --- | --- |
 | `Install`, `Fast Gates`, `Test` (aggregator) | runs | runs | runs | cheap, and everything else hangs off them |
 | `typecheck (…)`, `test (…)` cells | affected-filtered | same | full | already affected-filtered on a PR; the unit tests are the main PR signal |
-| `bootstrap-exit-codes` | only when `bootstrap.ts` changed | same | same | rare and about 8 min at most |
+| `Build` (verify-modes, budgets, coverage, rust equivalence) | code PRs | **runs** | full | the job PRs fail most: 46 of 191 PR runs red (2026-11-18 → 11-23), none green on re-run; a coverage step failed in 27, a bundle or import budget in 21, the Rust-binary compiler suite in 7 (one run can fail several). Its PR-only steps judge the PR's own diff (`Coverage (changed packages)`, the size gates' own-growth rule), which a group cannot. In the queue each such failure would eject a group (about 85 runner-minutes) instead of failing a 7-minute job |
+| `bootstrap-exit-codes` | only when `bootstrap.ts` changed | same | same | rare and about 3 min |
 | `Changeset`, `Diagnose Catalog` | runs | runs | skipped | functions of the PR diff and labels; a group cannot decide them |
 | `Analyze (javascript-typescript)`, `CodeQL` | runs | runs | runs | about 4 min; security feedback stays on the PR |
-| `Validate emitted Swift (real-SDK typecheck, macOS)`, `iOS — xcodebuild`, `Android — gradlew` | selected by paths | same | SKIPPED | the PR is their ONLY coverage (the queue skips them), so light mode must not skip them |
-| `e2e (…)` | affected suites | skipped | full | HEAVY, runs in the queue |
-| `Scaffold Smoke (…)` | when selected | skipped | full | HEAVY, runs in the queue |
-| `Build` (verify-modes, budgets, coverage floor, rust equivalence) | code PRs | skipped | full | HEAVY, runs in the queue |
-| `Test (browser)` | code PRs | skipped | full | HEAVY (timeout 35 min), runs in the queue |
-| `Release Build` | code PRs | skipped | full | HEAVY, runs in the queue |
-| `Validate emitted Swift + Kotlin` (Linux) | when the native selectors fire | skipped | when the group's diff selects it | HEAVY (about 18 jobs when selected), runs in the queue |
+| `Validate emitted Swift (real-SDK typecheck, macOS)`, `iOS — xcodebuild`, `Android — gradlew` | selected by paths | same | SKIPPED | the PR is their ONLY coverage, so light mode must not skip them |
+| `e2e (…)` | affected suites | skipped | full | heavy (4,899 runner-minutes, the largest Linux family); 0.4% of PR cell runs fail |
+| `Scaffold Smoke (…)` | when selected | skipped | full | heavy; no PR failure in the window |
+| `Test (browser)` | code PRs | skipped | full | 4.3% of PR runs fail (5 test failures, 3 WebKit/Firefox setup) |
+| `Release Build` | code PRs | skipped | full | no PR failure in the window |
+| `Validate emitted Swift + Kotlin` (Linux) | when the native selectors fire | skipped | when the group's diff selects it | heavy (3,524 PR runner-minutes); no PR failure in the window |
 
-How `e2e` and `Scaffold Smoke` skip: `Install` reports them as unselected (`e2e-has` / `scaffold-has` = `false`, matrices `[]`), the same path a docs-only PR takes, so `scripts/ci-aggregate.ts` accepts their absence and `Test` stays a real verdict. `Build`, `Test (browser)` and `Release Build` carry `needs.install.outputs.pr-light != 'true'` in their `if:`. Concurrency keys and `cancel-in-progress` are unchanged.
+How `e2e` and `Scaffold Smoke` skip: `Install` reports them as unselected (`e2e-has` / `scaffold-has` = `false`, matrices `[]`), the same path a docs-only PR takes, so `scripts/ci-aggregate.ts` accepts their absence and `Test` stays a real verdict. `Test (browser)` and `Release Build` carry `needs.install.outputs.pr-light != 'true'` in their `if:`. Concurrency keys and `cancel-in-progress` are unchanged.
 
-A skipped job reports `skipped`, and a skipped required check counts as passing (GitHub, "Troubleshooting required status checks": a job skipped by a conditional reports Success; a workflow skipped by a trigger filter stays Pending, which is why the required workflows keep unfiltered triggers and skip per job). This guide already relies on the same behaviour for `Changeset` and the device lanes in the queue. NOT verified on this repository in light mode: the first light PR is the proof; see the checklist.
+What light mode moves off the PR: about 10,300 of 32,600 Linux runner-minutes (32%) in the fully measured window 2026-11-18 12:00 → 11-23 20:00. The queue adds one full group run (85 runner-minutes, plus CodeQL 4 and the Linux native validate when the group selects it) per group. With about 88 merges in that window, the net saving is about 2,000–6,000 minutes depending on the batching (one PR per group → two per group). The bigger effect is on queue time: every PR push asks for about a third fewer runner-minutes on a pool that sits at 75–85% busy all working day.
 
-Rules the static gate (`scripts/check-light-pr-ci.ts`, in `validate-fast`) enforces: every workflow that owns a required context has `merge_group`; a job that uses the light condition has `merge_group` and `push` coverage and does not exclude `merge_group` in its own `if:`; a job the queue skips (the table's SKIPPED rows and their `changes` / `fingerprint` helpers) never uses it; a direct `PR_CI_MODE` read is bounded to `pull_request`.
+Rules the static gate (`scripts/check-light-pr-ci.ts`, in `validate-fast`) enforces: every workflow that owns a required context has `merge_group`; a job that uses the light condition has `merge_group` and `push` coverage and does not exclude `merge_group` in its own `if:`; a step inside such a job whose `if:`, evaluated, can run on `pull_request` but not on `merge_group` is rejected (it would otherwise run nowhere before merge; steps are read structurally, whatever key comes first or however the value is quoted); `Build` never uses the light condition; a job the queue skips (the table's SKIPPED rows and their `changes` / `fingerprint` helpers) never uses it; a direct `PR_CI_MODE` read is bounded to `pull_request`.
 
-Flip (maintainer). The queue MUST be on first: in light mode a PR's heavy results come only from the queue, so without it a PR would merge with `Build`, `Test (browser)`, `Release Build` and the e2e suites never having run.
+Known residual risks of light mode: a `Test (browser)`, e2e or scaffold failure is found in the queue, so the author hears of it later and the group it was in is rebuilt; the device lanes and macOS typecheck still run per PR (5 macOS slots) and not in the queue; `Coverage (Full)` stays main-only. A Linux native validation failure (none in the window) is found in the queue.
 
-```bash
-# 1. queue on: the ruleset command under "Enable" above
-# 2. then:
-gh variable set PR_CI_MODE --body light
-```
+### Enablement runbook (maintainer)
 
-Roll back (seconds, no code change): `gh variable delete PR_CI_MODE`, then remove the `merge_queue` rule (see "Roll back" above). PRs pick the variable up on their next push or re-run; an already-finished run keeps its result.
+Order matters: the queue must be on before light mode, and light mode must be off before the queue is removed. In light mode a PR's heavy checks report `skipped`, which counts as passing; without the queue a PR could merge with `Test (browser)`, `Release Build` and the e2e suites never having run.
 
-First-run checklist, on the first PR after the variable is set:
+0. Prerequisites:
+   - The throughput PR that added `check-workflow-triggers` has merged (light mode keeps `Build` on the PR; the housekeeping triggers are filtered).
+   - No open `[main] CI is red` or `[size] main is over a size ceiling` issue: a group is judged against the ceilings (`PYREON_SIZE_MODE=main`) and inherits a red `main`, so every group would fail.
+   - Decide on GitHub Code Quality (Settings → Code security → Code quality). It ran 847 times in the measured week at 7–9 minutes, about 7.5% of all Linux runner-minutes, and duplicates the required check's name. Turning it off loses its non-security quality findings; `codeql.yml`'s security analysis is unaffected.
+   - Pick a quiet hour: `gh api 'repos/pyreon/pyreon/actions/runs?status=queued' --jq .total_count` under about 40.
+1. Queue on, PR CI unchanged (the dry run):
 
-- `Install` log shows `PR_CI_MODE=light`; the PR shows about 8 jobs and all 15 required contexts are present (green or skipped), none `Expected`.
-- `Test` is green with `e2e` and `Scaffold Smoke` absent (it reports unselected, not failed).
-- Queue it: the group runs the full matrix and all 15 contexts report on the `gh-readonly-queue/main/…` head. Watch queue wait: a full group is 65-85 runner-minutes; if it starves again (see the 2026-11-11 history above) roll back.
-- A PR that breaks only a heavy job merges to the queue and fails there, removing itself with a comment: expect the failure feedback to arrive later than before.
-- Known residual risks: the device lanes and macOS typecheck still run per PR (5 macOS slots); the queue skips them; `Coverage` stays main-only.
+   ```bash
+   gh api repos/pyreon/pyreon/rulesets/19416270 > rs.json
+   jq '{name, target, enforcement, conditions, bypass_actors, rules: (.rules + [{type: "merge_queue", parameters: {merge_method: "SQUASH", grouping_strategy: "HEADGREEN", max_entries_to_build: 2, min_entries_to_merge: 1, max_entries_to_merge: 5, min_entries_to_merge_wait_minutes: 5, check_response_timeout_minutes: 120}}])}' rs.json > rs-queue.json
+   gh api -X PUT repos/pyreon/pyreon/rulesets/19416270 --input rs-queue.json
+   gh api repos/pyreon/pyreon/rulesets/19416270 --jq '.rules[] | select(.type == "merge_queue")'
+   ```
+
+   UI equivalent: Settings → Rules → Rulesets → main branch protection → "Require merge queue". Classic protection stays as it is (`strict` off).
+2. Canary: queue one docs-only PR (a one-line `.agents/` edit). It exercises the full `ci.yml` matrix, CodeQL with its `CodeQL` upload context, the skipped `pr-gates` jobs, the native-validate decide on a group diff and the skipped device lanes. Confirm all 15 contexts report on the `gh-readonly-queue/main/…` head (`gh api repos/pyreon/pyreon/commits/<group-head-sha>/check-runs?per_page=100`), none `Expected`.
+3. Run a day with the queue and full PR CI. Watch:
+   - merge-group runs per merged PR: `bun scripts/ci-throughput.ts --days 1` counts `merge_group` runs under `CI`; with `HEADGREEN` it should be at most one per group, well under one per PR on a busy day;
+   - group wall time (`CI` runs with event `merge_group`, run minutes median/p90) against the 120-minute timeout;
+   - every ejection's cause: a flake (re-queue, and record it) or a real interaction between PRs (the queue doing its job).
+   Go on when about 10 PRs merged through the queue with no timeout and no context left `Expected`.
+4. Light PR CI on: `gh variable set PR_CI_MODE --body light`. Open PRs pick it up on their next push. First light PR: `Install` logs `PR_CI_MODE=light`; about 9 jobs; all 15 contexts present (green or skipped); `Test` green with `e2e` and `Scaffold Smoke` reported unselected.
+5. A week later, re-measure (`bun scripts/ci-throughput.ts --json > after.json`) and compare time-to-green, queue p90 and runner-minutes per PR push with the baseline in "Throughput" above. Then consider lowering the status-check timeout toward 2× the measured group p90.
+
+Roll back (in this order):
+
+1. `gh variable delete PR_CI_MODE`. Every open PR whose newest run was light still shows `skipped` heavy checks, which count as passing: keep the queue on until each of them has a full run. A full run is the PR's next push, or a re-run of ALL jobs of its newest `CI` run (`gh run rerun <id>`, never `--failed`: a light-skipped job is `skipped`, not failed, so `--failed` re-runs nothing). Confirm the new run's `Install` log (step `Resolve PR CI mode`) does not print `PR_CI_MODE=light`. The open PRs whose newest `Release Build` check was skipped (light, or a docs-only PR where it is skipped anyway):
+
+   ```bash
+   gh pr list --state open --limit 200 --json number,headRefOid --jq '.[] | "\(.number) \(.headRefOid)"' |
+     while read -r n sha; do
+       c=$(gh api "repos/pyreon/pyreon/commits/$sha/check-runs?check_name=Release%20Build&filter=latest" --jq '.check_runs | max_by(.completed_at // "") | .conclusion // "none"')
+       [ "$c" = skipped ] && echo "#$n"
+     done
+   ```
+2. Then remove the queue: `gh api repos/pyreon/pyreon/rulesets/19416270 | jq '{name, target, enforcement, conditions, bypass_actors, rules: [.rules[] | select(.type != "merge_queue")]}' > rs-noqueue.json && gh api -X PUT repos/pyreon/pyreon/rulesets/19416270 --input rs-noqueue.json`. Queued PRs leave the queue; `merge_group` triggers go dormant.
+
+Contributors and bots once the queue is on: the merge button becomes "Merge when ready"; `gh pr merge N --auto --squash` enqueues once checks pass. A group that fails removes its PR with a comment: fix, push, re-queue. The changeset Version PR (`changeset-release/main`), `auto/docs-regen` and Dependabot PRs go through the queue like any PR; the queue's update of `main` is an ordinary push, so `release.yml`, `docs.yml`, `docs-freshness-guard.yml` and main CI trigger as before. A PR that conflicts with a group ahead is removed (a conflicting PR dispatches no `pull_request` runs at all, so the conflict shows as missing checks once it is back on the PR).
 
 ## Caches
 
 - Downstream `node_modules` restores use the exact lockfile key only. A broad prefix downloads a tree the clean-install fallback must immediately discard to avoid stale peer resolution. The bun tarball cache still uses a prefix safely. The setup action exposes whether it already restored tarballs so scaffold jobs do not download the same store twice.
 - Scaffold CI restores this commit's libraries through setup-pyreon, then sets `PYREON_BOOTSTRAP_SKIP=1` for the smoke step. Each temporary app otherwise changes `bun.lock`, invalidates bootstrap's global hash, and rebuilds every package again. This skips only the root bootstrap; generated-app installs, dependency lifecycle scripts, builds and smoke assertions still run. Local scaffold runs keep the default bootstrap behavior.
+- `compiler-native-bin-<os>-<hash of native/Cargo.lock, native/**/*.toml, native/**/*.rs and scripts/build-native.ts>`: the `@pyreon/compiler` napi binary, keyed by everything `build-native.ts` copies and runs (it builds the whole `native/` directory in a temp dir). `Build` restores it before `setup-pyreon` on pull requests and merge groups (so a `lib/` miss cannot make the bootstrap compile with the runner's cargo first) and skips the toolchain, the registry and the cargo build on a hit. It never saves it: the one writer is `Coverage (Full)` (ci-main.yml), which restores the same key before `setup-pyreon` and, on a default-branch push that missed, builds and saves it (one writer per path, `check-cache-key-sync`). On a default-branch push `Build` does not restore and always compiles. Two reasons: the toolchain is `dtolnay/rust-toolchain` `stable` and deliberately not pinned (release-native.yml and contributors build on the floating stable too, and a `rust-toolchain.toml` pin has no update owner), so with the key not covering the toolchain, the push compile is what shows a new stable breaking the crate, on the first push after it ships rather than only on a Rust-changing PR or at release; and it keeps `Build` the deterministic writer of `cargo-registry-` on the default branch. `build-native.ts` builds outside the tree, so a cache of `packages/core/compiler/native/target` (the step this replaced) never had a path to save: no `cargo-target-*` entry ever existed and every run compiled Rust from scratch (37-47 s).
 - `bun-install-cache-<os>-<lockhash>`: `Install` saves it on main. A PR whose `bun.lock` differs from the base saves its own; everyone else only restores.
 - The macOS native lanes restore and save the content-addressed verdict store, like their Linux twin.
 - `native-validate.yml` hydrates the verdict store from TWO restores, as a union: the default branch's newest store, then the ref's own on top (`snapshot-native-verdict-cache.ts … --merge`). Actions searches the current ref's caches before the default branch's, so one prefix restore gave a pull request its own older store and never main's newer one. Main saves under the `validate` lineage and every other ref under `validate-branch` (`VERDICT_LINEAGE`); the two key prefixes must not be prefixes of each other, or the first restore stops reaching main. Saving never merges: the archive is rebuilt from the live store. `check-ci-fail-fast` rejects a second restore whose hydrate lacks `--merge`.
@@ -316,7 +390,7 @@ First-run checklist, on the first PR after the variable is set:
 - **check-esm-only**: Pyreon ships ESM only. `require` and `default` export conditions are both banned in every published package — `default` lets `require('@pyreon/x')` resolve, which is what the policy forbids. The one exemption is `@pyreon/storybook` (Storybook's preset loader resolves through CJS), pinned by `shipped-preset.test.ts`. Accepted cost: Pyreon is absent from CJS-only toolchains, so `contrib/moltar/` is bun/deno only.
 - **check-doc-claims**: numeric claims in docs must match source. The guarded claim sites live in the `checks` table in `packages/tools/cli/src/doctor/gates/doc-claims.ts`. Write exact numbers there, never "33+", and do not restate a count anywhere unguarded.
 - **check-license-coverage**: every workspace (packages, examples, docs, contrib) carries the root `LICENSE` byte for byte and declares `"license": "MIT"` (`--fix` copies and normalises). It also scans every runtime dependency of every published package: strong copyleft (GPL/AGPL/LGPL/SSPL/BUSL) fails; weak copyleft (MPL/EPL/CDDL/EUPL) fails unless disclosed in `THIRD-PARTY-NOTICES.md`; a dual licence is classified by its weakest half. An absent install store skips the dependency scan loudly.
-- **check-stability-tier**: the 1.0 semver contract. Every published package (plus the 7 compiler binaries) declares `"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"? }` in `package.json`; the README status line is generated from it (`--write`), as are the docs `<PackageBadge>` and the tier table on `stability-and-direction.md` (`docs/scripts/gen-package-stability.ts`). It also fails a Stable package with a required dependency on an Experimental one (unless only its own experimental subpaths import it, or a reasoned `DEPENDENCY_ALLOWLIST` entry covers it; stale entries fail), `@pyreon/meta` re-exporting an Experimental package or a `_` name, and a `@deprecated` JSDoc tag with neither a manifest entry carrying `removeIn` nor a reasoned `DEPRECATED_ALLOWLIST` entry (stale entries fail). A private package (`@pyreon/auth` until it is published) must carry no tier field and no README status line: it makes no promise, the badge says "unpublished", and nothing else would check the field.
+- **check-stability-tier**: the 1.0 semver contract. Every published package (plus the 7 compiler binaries) declares `"pyreon": { "stability": "stable" | "experimental", "experimentalSubpaths"? }` in `package.json`; the README status line is generated from it (`--write`), as are the docs `<PackageBadge>` and the tier table on `stability-and-direction.md` (`docs/scripts/gen-package-stability.ts`). It also fails a Stable package with a required dependency on an Experimental one (unless only its own experimental subpaths import it, or a reasoned `DEPENDENCY_ALLOWLIST` entry covers it; stale entries fail), `@pyreon/meta` re-exporting an Experimental package or a `_` name, and a `@deprecated` JSDoc tag with neither a manifest entry carrying `removeIn` nor a reasoned `DEPRECATED_ALLOWLIST` entry (stale entries fail). A private package (`"private": true`) must carry no tier field and no README status line: it makes no promise, the badge says "unpublished", and nothing else would check the field.
 - **check-native-coverage**: the registry of every package that should reach iOS/Android, each pinned to how it crosses (`pmtc-lowers` = a representative snippet lowers for both targets with zero warnings; `native-container`; `webview-host`). `check-multiplatform-tier` only proves a story is declared; this proves it is true. Companion `check-native-lifecycle-wiring` requires every native container exposing `start()`/`connect()` to be auto-started by both emits or registered manual with a rationale (a never-called `start()` ships frozen at its initial value).
 - **check-manifest-depth**: ratchet on MCP `get_api` density for locked packages.
 - **Diagnose Catalog**: a new or edited user-visible error or warning message in `packages/core/{runtime-dom,runtime-server,core,compiler,router}/src/` must be matched by an `ERROR_PATTERNS` entry in `packages/core/compiler/src/diagnose.ts` (an existing one, or one the PR adds), or the PR carries the `skip-diagnose-catalog` label. The gate reads the messages out of the base and HEAD content of each changed file, so a perf-only change or a moved/reformatted message demands nothing. `diagnoseError` + `ERROR_PATTERNS` live in the browser-safe `@pyreon/compiler/diagnose` subpath with no `typescript` import, so the dev error printer can load them client-side. `compiler/src/tests/diagnose.test.ts` bundles the subpath and asserts no TS-API markers.
@@ -339,6 +413,8 @@ First-run checklist, on the first PR after the variable is set:
 - `@pyreon/zero` and `@pyreon/lint` ship large `coverageExclude` lists (integration code gated by e2e / verify-modes). Check the list before "fixing" low coverage.
 
 ## Diagnosing slow CI
+
+- `bun scripts/ci-throughput.ts` (default: the last 7 days; `--days N`, `--since/--until`, `--json`, `--include-workflow-run` for the housekeeping jobs that ran, `--offline` to re-analyse the cache) prints, per workflow and per job family: runs, runner minutes by OS, work and queue median/p90/max, outcomes (real failure, cancelled while running, cancelled before a runner, skipped); time-to-green and runner minutes per PR head SHA; the job that finished last on each green SHA (the critical path's end); peak concurrency per OS; superseded PR runs that were not cancelled; and the `workflow_run` housekeeping volume. It only reads (`gh api`) and caches completed runs' jobs under `.cache/ci-throughput`, so a re-run costs only new runs. The jobs API is one call per run: a full week (about 7,500 runs that are not housekeeping) needs two rate-limit hours; the newest runs are fetched first and the report says how many it covered.
 
 - Queue vs work per job: `gh api repos/pyreon/pyreon/actions/runs/<id>/jobs`. Exclude `conclusion == "skipped"`. `started_at − created_at` is queue; `completed_at − started_at` is work.
 - A wall clock far above summed work, with queue in the hundreds of minutes, is slot starvation.

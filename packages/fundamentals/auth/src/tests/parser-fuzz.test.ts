@@ -13,7 +13,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import { decodeCbor } from '../cbor'
-import { base64url, derToRaw, verifyAssertion, verifyRegistration } from '../index'
+import { verifyAssertion, verifyRegistration } from '../index'
+import { base64url } from '../pkce'
+import { derToRaw } from '../passkey'
 
 function rng(seed: number): () => number {
   return () => {

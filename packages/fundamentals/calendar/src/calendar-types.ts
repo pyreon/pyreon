@@ -41,7 +41,11 @@ export interface CalendarOptions<Meta = unknown> {
   slot?: Duration
   /** The shortest a block is drawn, in minutes. Default 15. */
   minBlockMinutes?: number
-  /** Opening hours to shade in the time grid. */
+  /**
+   * Opening hours to shade in the time grid (and the limit of `constrainTo: 'businessHours'`). Read through
+   * `@pyreon/schedule`'s `openingWindows`, so it agrees with `isOpen`: a `BusinessCalendar` (default weekend Saturday and
+   * Sunday, `holidays`, `specialHours`) as schedule reads it; a bare `WorkingHours` opens every weekday it lists.
+   */
   businessHours?: WorkingHours | BusinessCalendar
   /** Segments per week row of the month before "+N more". Default 3. */
   monthCapacity?: number

@@ -2559,7 +2559,7 @@ describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, star
     signature: '(date, calendar: BusinessCalendar) => boolean',
     example: `isBusinessDay('2026-11-18', {})   // => true
 isBusinessDay('2026-12-25', { holidays: ['2026-12-25'] })   // => false`,
-    notes: `[EXPERIMENTAL] Not on the calendar's \`weekend\` (default Saturday and Sunday) and not a holiday. Added in v0.53.0.`,
+    notes: `[EXPERIMENTAL] Not on the calendar's \`weekend\` (default Saturday and Sunday) and not a holiday. A date with its own \`specialHours\` entry is a business day when that entry has a window (even on a weekend or holiday), and not one when it is empty. Added in v0.53.0.`,
   },
 
   'schedule/addBusinessDays': {
@@ -2611,6 +2611,13 @@ isOpen('2026-11-20T17:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{
     signature: '(at: PlainDateTime, calendar) => PlainDateTime | null',
     example: `nextOpening('2026-11-20T18:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T09:00'`,
     notes: '[EXPERIMENTAL] The next time the calendar opens, strictly after `at`; `null` when it never opens within ten years. Added in v0.53.0.',
+  },
+
+  'schedule/openingWindows': {
+    signature: '(date: PlainDate, calendar) => Interval[]',
+    example: `openingWindows('2026-12-24', { hours: { 4: [{ from: '09:00', to: '17:00' }] }, specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } })   // => [{ start: '2026-12-24T09:00', end: '2026-12-24T13:00' }]
+openingWindows('2026-11-21', { hours: { 5: [{ from: '22:00', to: '02:00' }] } })   // => [{ start: '2026-11-21T00:00', end: '2026-11-21T02:00' }]`,
+    notes: `[EXPERIMENTAL] The times the calendar is open within one date (midnight to midnight), in order: the same answer \`isOpen\` gives for every moment of it. Includes the tail of an overnight window that started the day before (even when the date itself is closed), and ends a window that runs past midnight at the next day's \`T00:00\`. One interpretation of a calendar for views: \`@pyreon/calendar\` shades business hours with it. Added in v0.53.0.`,
   },
 
   'schedule/nextClosing': {
@@ -2681,9 +2688,15 @@ overlaps({ start: '2026-11-18T09:00', end: '2026-11-18T10:00' }, { start: '2026-
   },
 
   'schedule/BusinessCalendar': {
-    signature: 'interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); timeZone? }',
-    example: `const cal: BusinessCalendar = { holidays: ['2026-12-25'] }`,
-    notes: '[EXPERIMENTAL] Business days and opening hours. No holiday data is shipped: pass a list or a predicate. Added in v0.53.0.',
+    signature: 'interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); specialHours?: SpecialHours; timeZone? }',
+    example: `const cal: BusinessCalendar = { holidays: ['2026-12-25'], specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } }`,
+    notes: '[EXPERIMENTAL] Business days and opening hours. No holiday data is shipped: pass a list or a predicate. `specialHours` gives particular dates their own windows (a shortened day, a Sunday opening); they replace the weekday hours and decide the date over `weekend` and `holidays`. Added in v0.53.0.',
+  },
+
+  'schedule/SpecialHours': {
+    signature: 'type SpecialHours = { [date: PlainDate]: OpeningWindow[] } | ((date: PlainDate) => OpeningWindow[] | undefined)',
+    example: `const special: SpecialHours = { '2026-12-24': [{ from: '09:00', to: '13:00' }], '2026-12-31': [] }`,
+    notes: '[EXPERIMENTAL] Opening windows of particular dates, as a map or a function (`undefined` = the usual hours). An empty list closes the date. Used by every business-day and business-time function. Added in v0.53.0.',
   },
 
   'schedule/WorkingHours': {
@@ -2793,6 +2806,13 @@ isOpen({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')  
     example: `import { nextOpening } from '@pyreon/schedule/fp'
 nextOpening({ hours: { 4: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => '2026-11-19T09:00'`,
     notes: '[EXPERIMENTAL] Value-last `nextOpening`. Added in v0.53.0.',
+  },
+
+  'schedule/fp.openingWindows': {
+    signature: '(calendar) => (date: PlainDate) => Interval[]',
+    example: `import { openingWindows } from '@pyreon/schedule/fp'
+openingWindows({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18')   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T17:00' }]`,
+    notes: '[EXPERIMENTAL] Value-last `openingWindows`. Added in v0.53.0.',
   },
 
   'schedule/fp.nextClosing': {
@@ -3455,14 +3475,14 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
   },
 
   'runtime-dom/_tpl': {
-    signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined, flags?: number): NativeItem',
+    signature: '_tpl(html: string, bind: (root: Element) => (() => void) | undefined, flags?: number, key?: string | number | null): NativeItem',
     example: `// Compiler output for <div class="box">{text()}</div>:
 _tpl("<div class=\\"box\\"> </div>", (__root) => {
   const __t0 = __root.firstChild as Text
   const __d0 = _bindText(text, __t0)
   return () => { __d0() }
 })`,
-    notes: 'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The optional third argument is a bit set the compiler computes: `1` when a template is emitted as a component child (that item is built once but may be torn down and mounted again — `<Show>` re-showing — so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting), and `2` when the template is rooted at a bare SVG element such as `<g>` or `<path>` (the string is parsed inside an `<svg>` wrapper so it lands in the SVG namespace; the compiler decides this from the root tag, so the runtime carries no SVG tag list). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
+    notes: 'Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The optional third argument is a bit set the compiler computes: `1` when a template is emitted as a component child (that item is built once but may be torn down and mounted again — `<Show>` re-showing — so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting), and `2` when the template is rooted at a bare SVG element such as `<g>` or `<path>` (the string is parsed inside an `<svg>` wrapper so it lands in the SVG namespace; the compiler decides this from the root tag, so the runtime carries no SVG tag list). The optional fourth argument is the JSX `key` of a keyed root (`<tr key={row.id}>`, flag `1` always set): the item carries it as `key`, the same field a VNode carries its key in, so the keyed `.map()` reconciler and components reading the keys of their children see it unchanged, and the item builds only when it is mounted (a keyed `.map()` re-runs for every row and mounts only the new keys). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically. See also: _bindText, _bindDirect.',
     mistakes: `- COMPILER-EMITTED — never hand-write \`_tpl()\`; the html string + the bind walks (\`.firstChild\`/\`.nextSibling\` captures) are generated to match the JSX exactly, and a hand-written mismatch corrupts the ref walks
 - The html is parsed + cached per DISTINCT string (module-level) then \`cloneNode(true)\`d — a dynamically-built html string defeats the cache (a \`<template>\` parse per unique string)
 - Bindings run against the CLONE after ALL node references are captured (the two-phase ref-hoist) — this is what keeps a dynamic slot before static siblings from corrupting their walks; the capture-before-mutate ordering is load-bearing, not cosmetic`,
@@ -7045,10 +7065,12 @@ function dispatch(e: EventOf<typeof light>) { light.send(e) }`,
     notes: 'A reactive OIDC sign-in with the SAME surface on web, iOS and Android — the shared-source entry point. Every member is read as a call (`auth.status()`, `auth.subject()`, `auth.claim("email")`, `auth.accessToken()`, `auth.expiresAt()`, `auth.error()`, `auth.isAuthenticated()`), and the strings it returns (status spellings, error codes) are identical on all three targets. On the web it is `createAuth` with browser defaults: pending sign-ins in `sessionStorage` (they must survive the full-page round trip), navigation by `location.assign`, and on the redirect page the callback is completed automatically, with the code scrubbed from the address bar and history first. In shared source it lowers to the native `PyreonOidcAuth`, which runs the system browser, verifies the ID token against the provider keys, refreshes, and keeps the session in the Keychain / Keystore so the app is still signed in after a relaunch. Persistence is the one deliberate divergence: the web holds tokens in memory only, so a reload starts at `signedOut` — storing them in `localStorage` / `sessionStorage` would make any XSS bug a stolen long-lived session. Re-run `signIn()` on load (it completes without a prompt while the provider session lasts) or keep the session server-side behind an HttpOnly cookie (`signSession`). Options must be static (literals or module consts) because native bakes them in. Call it ONCE at the app root and pass `auth` down. See also: createAuth, sessionStorageFlowStore.',
     mistakes: `- Omitting \`nativeRedirectUri\` — a native app cannot receive a redirect to the web page unless it is a claimed universal link / App Link; register an app-scheme redirect with the provider
 - Calling useOidc in several components — each call is its own session object; create one at the root and pass it down
+- Giving two providers the same \`nativeRedirectUri\` (one app scheme) — the compiler warns in one file and the native runtime refuses sign-in unless both send \`iss\`; use one path per provider (\`com.example.app:/oauth/google\`)
 - Building the options at runtime (a prop, a fetch result) — native bakes them at compile time; the call is reported and not emitted
 - Reading \`auth.status\` without calling it — every member is a call on the web
 - Expecting a refresh token without \`offline_access\` in \`scope\` (and, for Google, \`authorizationParams: { access_type: "offline", prompt: "consent" }\`)
 - Forgetting the Android manifest entries for PyreonAuthActivity / PyreonAuthRedirectActivity — without them the redirect never returns to the app
+- Reading \`auth.tokens()?.access_token\` from the lower-level \`createAuth\` for a request — that is the raw response; \`useOidc().accessToken()\` (and native \`accessToken\`) return null once the token has expired
 - Expecting the web session to survive a reload like native does — web tokens live in memory only; re-run \`signIn()\` on load or keep the session server-side behind an HttpOnly cookie, never in \`localStorage\``,
   },
 
@@ -7061,26 +7083,28 @@ function dispatch(e: EventOf<typeof light>) { light.send(e) }`,
   },
 
   'auth/beginAuthorization': {
-    signature: '(meta: OidcMetadata, client: ClientConfig, now?: number) => Promise<{ url: string; flow: PendingFlow }>',
+    signature: '(meta: OidcMetadata, client: ClientConfig, binding: string, now?: number) => Promise<{ url: string; flow: PendingFlow }>',
     example: `const meta = await discover('https://accounts.example')
-const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirectUri: 'https://app.example/cb' })
-// store \`flow\`, then redirect the user to \`url\``,
-    notes: 'Builds the authorization redirect (code flow, S256 PKCE, state, nonce) and returns the `PendingFlow` that must survive the round trip. Persist the flow server-side or in a short-lived HttpOnly cookie — never in localStorage — and delete it after the callback whether or not it succeeded. See also: parseCallback, exchangeCode, discover.',
-    mistakes: `- Storing the PendingFlow in localStorage — it holds the PKCE verifier; keep it server-side or in an HttpOnly cookie
+const binding = createFlowBinding(req.headers.get('cookie'))
+const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirectUri: 'https://app.example/cb' }, binding.value)
+// store \`flow\` under its state, then redirect to \`url\` with Set-Cookie: binding.setCookie`,
+    notes: 'Builds the authorization redirect (code flow, S256 PKCE, state, nonce) and returns the `PendingFlow` that must survive the round trip. The flow records its issuer, client id, redirect URI and the browser `binding` (from `createFlowBinding`), and `parseCallback` checks all of them. Persist the flow server-side — never in localStorage — and delete it after the callback whether or not it succeeded. `createAuth` does all of this for you. See also: parseCallback, exchangeCode, discover.',
+    mistakes: `- Storing the flow without the browser binding check on the way back — anyone holding the callback URL could complete it in another browser (login CSRF); pass the binding to parseCallback
+- Storing the PendingFlow in localStorage — it holds the PKCE verifier; keep it server-side or in an HttpOnly cookie
 - Reusing a flow for a second callback — it is single-use; delete it after the first attempt`,
   },
 
   'auth/parseCallback': {
-    signature: '(callback: string | URL, flow: PendingFlow, meta: OidcMetadata, now?: number) => { code: string }',
-    example: 'const { code } = parseCallback(req.url, flow, meta)',
-    notes: 'Validates the redirect back from the provider in a fixed order — expiry, provider error, state, `iss` (RFC 9207), then the code — and throws an `AuthError` with a stable `code` on any failure. See also: beginAuthorization, exchangeCode.',
+    signature: '(callback: string | URL, flow: PendingFlow, meta: OidcMetadata, binding: string, now?: number) => { code: string }',
+    example: `const { code } = parseCallback(req.url, flow, meta, readFlowBinding(req.headers.get('cookie')) ?? '')`,
+    notes: `Validates the redirect back from the provider in a fixed order — expiry; the flow belongs to this issuer (\`issuer_mismatch\`); it was started in THIS browser (\`unbound_flow\`, the login-CSRF check); the callback arrived at the flow's own redirect URI (\`redirect_mismatch\` — with one redirect URI per provider, the mix-up check that needs no \`iss\`); provider error; state; \`iss\` (RFC 9207); then the code — and throws an \`AuthError\` with a stable \`code\` on any failure. \`callback\` must be the absolute PUBLIC URL the provider redirected to (\`invalid_callback\` for a path; behind a proxy rebuild it from your configured origin). See also: beginAuthorization, exchangeCode.`,
     mistakes: '- Catching AuthError and continuing — every failure means the attempt is untrusted',
   },
 
   'auth/exchangeCode': {
     signature: '(meta: OidcMetadata, client: ClientConfig, flow: PendingFlow, code: string, fetchImpl?: FetchLike) => Promise<TokenResponse>',
     example: 'const tokens = await exchangeCode(meta, client, flow, code)',
-    notes: 'Exchanges the authorization code using the PKCE verifier (public client, no secret) and rejects anything that is not a bearer token response. Redirects from the token endpoint are refused. See also: parseCallback.',
+    notes: 'Exchanges the authorization code using the PKCE verifier (public client, no secret) and rejects anything that is not a bearer token response. A flow started for another client or issuer is refused before any request, and redirects from the token endpoint are refused. See also: parseCallback.',
     mistakes: '- Sending a client secret from a browser or native app — public clients rely on PKCE',
   },
 
@@ -7093,12 +7117,18 @@ const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirect
 
   'auth/createAuth': {
     signature: '(opts: AuthOptions) => Auth',
-    example: `const auth = createAuth({ issuer: google.issuer, client, flows, redirect: (u) => location.assign(u) })
+    example: `// a server (backend-for-frontend): one shared store, one createAuth per request
+const binding = createFlowBinding(req.headers.get('cookie')) // send binding.setCookie with the redirect
+const auth = createAuth({ issuer: google.issuer, client, flows, binding: binding.value, redirect: (u) => respond(u) })
 await auth.signIn()
 // on the callback route:
-await auth.handleCallback(location.href)`,
-    notes: `Reactive auth state machine over the OIDC primitives. Exposes \`status\` (signedOut | signingIn | signedIn | error), \`tokens\`, \`claims\`, \`expiresAt\` and \`error\` as signals plus \`signIn\`, \`handleCallback\`, \`refresh\` and \`signOut\`. Keys come from a cached JWKS that is re-fetched (throttled) when a token names an unknown \`kid\`, so provider key rotation needs no restart. \`refresh()\` keeps the old refresh token when the provider does not rotate it and refuses a refreshed ID token with a different \`sub\`. \`signOut({ endProviderSession: true })\` also redirects to the \`end_session_endpoint\` of the provider with an \`id_token_hint\`; plain \`signOut()\` clears local state only. When the provider returns an ID token, \`handleCallback\` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow's nonce) BEFORE reporting \`signedIn\`, and exposes the verified payload as \`claims\`; a provider that returns an ID token but publishes no \`jwks_uri\` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after \`signOut()\`; pending flows are read-and-deleted from the \`FlowStore\` so a callback URL cannot be replayed, and \`memoryFlowStore\` drops abandoned flows after the 10-minute flow lifetime. See also: beginAuthorization, google, keycloak.`,
-    mistakes: `- Backing the FlowStore with localStorage — it holds the PKCE verifier; use a server store or an HttpOnly cookie
+const back = createAuth({ issuer: google.issuer, client, flows, binding: readFlowBinding(req.headers.get('cookie')), redirect: respond })
+await back.handleCallback(req.url)`,
+    notes: `Reactive auth state machine over the OIDC primitives. Exposes \`status\` (signedOut | signingIn | signedIn | error), \`tokens\`, \`claims\`, \`expiresAt\` and \`error\` as signals plus \`signIn\`, \`handleCallback\`, \`refresh\` and \`signOut\`. Keys come from a cached JWKS that is re-fetched (throttled) when a token names an unknown \`kid\`, so provider key rotation needs no restart. \`refresh()\` keeps the old refresh token when the provider does not rotate it and refuses a refreshed ID token with a different \`sub\`. \`signOut({ endProviderSession: true })\` also redirects to the \`end_session_endpoint\` of the provider with an \`id_token_hint\`; plain \`signOut()\` clears local state only. When the provider returns an ID token, \`handleCallback\` verifies it (signature against the provider JWKS, iss/aud/exp/nbf and this flow's nonce) BEFORE reporting \`signedIn\`, and exposes the verified payload as \`claims\`; a provider that returns an ID token but publishes no \`jwks_uri\` is refused. An epoch counter guarantees a late token exchange can never resurrect a session after \`signOut()\`; pending flows are stored under a key derived from the state, issuer, client id, redirect URI and browser \`binding\`, and read-and-deleted, so a callback URL cannot be replayed, another provider's or client's instance never reads the flow, and a callback from another browser finds nothing (login CSRF). One redirect URI per provider (OAuth mix-up, RFC 9700 §4.4): instances are registered process-wide by redirect URI; two providers may share one only if both send RFC 9207 \`iss\` — a provider known not to is refused at construction (explicit metadata) or at sign-in (\`redirect_shared\`, after discovery), and every callback on a shared URI must carry \`iss\`. \`dispose()\` releases the claim (\`useOidc\` does it with its scope); a disposed instance that signs in again registers again. \`handleCallback\` takes an absolute URL or the request path and query (resolved against the configured redirect origin — what a server behind a TLS-terminating proxy must pass). A redirect URI the matcher refuses (non-ASCII host — use punycode —, \`%2e\`, backslash, whitespace) throws at construction. A refresh that fails because the provider is unreachable or unavailable (\`network_error\`, \`provider_unavailable\`, \`discovery_failed\`, \`jwks_failed\`) keeps the session for a retry with \`status\` \`error\`; any other failure ends it. Concurrent \`refresh()\` calls for one session share one request (a call after a sign-out and new sign-in starts its own), and a refresh never discards a sign-in in flight nor overwrites a newer session. \`memoryFlowStore\` drops abandoned flows after the 10-minute flow lifetime. See also: beginAuthorization, google, keycloak.`,
+    mistakes: `- Leaving out \`binding\` on a server — the flow is then not tied to the browser and an attacker can sign a victim in to the attacker's account (login CSRF); createAuth refuses to start without it unless the store is tab-scoped
+- Pointing two providers at one redirect URI — give each its own (e.g. /auth/callback/github); sharing works only between providers that all send RFC 9207 \`iss\`
+- Passing the server's internal absolute URL behind a proxy (\`http://127.0.0.1:3000/…\`) — it fails with \`redirect_mismatch\`; pass the path and query (\`req.url\` in Node) or the public URL
+- Backing the FlowStore with localStorage — it holds the PKCE verifier; use a server store or an HttpOnly cookie
 - Reading \`auth.status\` without calling it — it is a signal
 - Reading identity from \`auth.tokens()?.id_token\` — that is the raw token; use the verified \`auth.claims()\`
 - Expecting a refresh token without asking for one — request \`offline_access\`, and pass provider params via \`client.authorizationParams\` (Google: \`access_type: offline\`)
@@ -7147,10 +7177,10 @@ if (r.ok) limiter.reset(userId)`,
   },
 
   'auth/verifyIdToken': {
-    signature: '(token: string, keys: readonly Jwk[], meta: OidcMetadata, opts: VerifyOptions) => Promise<IdTokenClaims>',
-    example: `const keys = await fetchJwks(meta)
-const claims = await verifyIdToken(tokens.id_token!, keys, meta, { clientId: client.clientId, nonce: flow.nonce })`,
-    notes: 'Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refused to rule out algorithm confusion), signature against the provider JWKS key chosen by `kid` and the header alg, then `iss`, `aud` (+ `azp` for multi-audience tokens), `exp` and `nbf` with 60 s skew, `sub` and the `nonce` you stored in the pending flow. A token declaring `crit` header extensions is refused (none are understood), and malformed input fails with an `AuthError`, never a raw TypeError. Fetch keys with `fetchJwks(meta)` and cache them server-side; call this on the server, never trust an unverified `id_token`. See also: fetchJwks, exchangeCode.',
+    signature: '(token: string, keys: readonly Jwk[] | JwksCache, meta: OidcMetadata, opts: VerifyOptions) => Promise<IdTokenClaims>',
+    example: `const jwks = createJwksCache(meta)
+const claims = await verifyIdToken(tokens.id_token!, jwks, meta, { clientId: client.clientId, nonce: flow.nonce })`,
+    notes: 'Verifies an OIDC ID token on Web Crypto: algorithm allowlist (RS256 and ES256 only — `none` and every HS* alg are refused to rule out algorithm confusion), signature against a provider key chosen by `kid`, the header alg, `use`, `key_ops` (must allow `verify`) and size (RSA keys under 2048 bits are ignored), then `iss`, `aud`, `azp` (required for multi-audience tokens, and when present it must be this client), `exp` / `nbf` / `iat` with 60 s skew (`maxAge` optionally bounds the age), `sub` and the `nonce` you stored in the pending flow. A token declaring `crit` header extensions is refused, and malformed input fails with an `AuthError`, never a raw TypeError. Pass a `createJwksCache` cache as `keys` and a token that fails against the cached keys (rotation, or no `kid`) triggers one throttled re-fetch. See also: createJwksCache, exchangeCode.',
     mistakes: `- Decoding the id_token payload without verifying the signature — anyone can forge it
 - Skipping the nonce — it binds the token to this login attempt and defeats replay
 - Refetching the JWKS on every request — cache it and refresh only on an unknown \`kid\``,
@@ -7161,16 +7191,16 @@ const claims = await verifyIdToken(tokens.id_token!, keys, meta, { clientId: cli
     example: `import { runStrategy } from '@pyreon/auth/passport'
 const out = await runStrategy(new LocalStrategy(verify), { method: 'POST', url: '/login', body })
 if (out.type === 'success') startSession(out.user)`,
-    notes: 'Passport bridge (`@pyreon/auth/passport`, server only). Runs any Passport strategy — passport-local, passport-oauth2, Keycloak, SAML — without Express or the `passport` package: the strategy is cloned, its `success/fail/redirect/pass/error` hooks are bound to a promise, and the result is a discriminated outcome. Strategies that keep OAuth state in `req.session` write it into the `session` object you pass, so back that with the pending-flow store. Rejects only when the strategy calls `error()` or throws. See also: createAuth, signSession.',
-    mistakes: `- Passing a shared \`session\` object across users — create one per attempt, it carries OAuth state/verifier
+    notes: `Passport bridge (\`@pyreon/auth/passport\`, server only). Runs any Passport strategy — passport-local, passport-oauth2, Keycloak, SAML — without Express or the \`passport\` package: the strategy is cloned, its \`success/fail/redirect/pass/error\` hooks are bound to a promise, and the result is a discriminated outcome. Strategies that keep OAuth state in \`req.session\` (passport-oauth2: state and PKCE verifier) write it into the \`session\` object you pass and check it on the callback — that check is what ties the sign-in to the browser, so \`session\` must be the same browser's session on both requests: persist it server-side keyed by a cookie of that browser (\`createFlowBinding\` / \`readFlowBinding\`), never by the \`state\` from the callback URL (that reopens login CSRF). The bridge itself stores nothing. Rejects only when the strategy calls \`error()\` or throws. See also: createAuth, signSession.`,
+    mistakes: `- Sharing one \`session\` object across browsers, or loading it by the callback's \`state\` — key it by a cookie of the browser (\`readFlowBinding\`), so only the browser that started the sign-in can finish it
 - Treating \`fail\` as an exception — it is a normal outcome (bad credentials); only \`error\` rejects`,
   },
 
   'auth/verifyTotp': {
-    signature: '(secret: string, code: string, opts?: { now?: number; window?: number; lastUsedStep?: number | undefined }) => Promise<{ ok: true; step: number } | { ok: false }>',
+    signature: '(secret: string, code: string, opts?: { period?: number; digits?: number; allowShortSecret?: boolean; now?: number; window?: number; lastUsedStep?: number }) => Promise<{ ok: true; step: number } | { ok: false }>',
     example: `const r = await verifyTotp(user.totpSecret, input, { lastUsedStep: user.lastTotpStep })
 if (r.ok) await save({ lastTotpStep: r.step })`,
-    notes: 'RFC 6238 TOTP second factor (HMAC-SHA1, 6 digits, 30 s) on Web Crypto, verified against the RFC test vectors and compatible with Google Authenticator. Accepts +/-1 step by default and returns the matched step so you can persist it and pass it back as lastUsedStep, which is what rejects replay of a code inside its window. generateTotpSecret() makes a 160-bit base32 setup key; totp() generates a code. See also: createAttemptLimiter, signSession.',
+    notes: 'RFC 6238 TOTP second factor (HMAC-SHA1, default 6 digits and 30 s, both configurable and shared with totp()) on Web Crypto, verified against the RFC test vectors and compatible with Google Authenticator. A secret under 128 bits throws (RFC 4226; `allowShortSecret: true` admits existing 80-bit secrets) — a setup error, not a wrong code. Accepts +/-1 step by default and returns the matched step so you can persist it and pass it back as lastUsedStep, which is what rejects replay of a code inside its window. generateTotpSecret() makes a 160-bit base32 setup key; totp() generates a code. See also: createAttemptLimiter, signSession.',
     mistakes: `- Not storing the returned step: without lastUsedStep a captured code can be replayed for up to 90 s
 - Rate-limiting nothing: six digits is brute-forceable, so limit attempts per account before calling this`,
   },
@@ -7200,8 +7230,156 @@ if (r.ok) await db.credentials.insert({ id: r.credentialId, jwk: r.publicKey, si
     signature: '<S>(opts: GuardOptions<S>) => (path: string) => GuardResult',
     example: `const guard = createGuard({ session: () => user(), loginPath: '/login' })
 guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }`,
-    notes: `Framework-neutral route guard: returns \`true\` or \`{ redirect }\` to the login path carrying an open-redirect-safe \`returnTo\`. Adapt it to a router \`beforeEnter\`. \`safeReturnTo\` accepts only a same-origin path: it rejects \`//\`, backslashes and every control character (browsers strip tab/CR/LF before parsing, so \`/\\t/evil.example\` would otherwise navigate to \`//evil.example\`), then confirms the value resolves to the same origin under the WHATWG URL parser. See also: safeReturnTo.`,
+    notes: 'Framework-neutral route guard: returns `true` or `{ redirect }` to the login path carrying an open-redirect-safe `returnTo`. Adapt it to a router `beforeEnter`. The `returnTo` goes through `safeReturnTo`. See also: safeReturnTo.',
     mistakes: '- Trusting a `returnTo` query param directly — run it through `safeReturnTo`',
+  },
+
+  'auth/safeReturnTo': {
+    signature: '(value: string | null | undefined, fallback?: string) => string',
+    example: `const to = safeReturnTo(new URL(req.url).searchParams.get('returnTo'))
+return Response.redirect(new URL(to, req.url), 303)`,
+    notes: 'Open-redirect guard for a `returnTo` value: returns the value only when it is a same-origin path, else `fallback` (default `/`). It rejects `//`, backslashes and every control character (browsers strip tab/CR/LF before parsing), confirms the value resolves to the same origin under the WHATWG URL parser, and rejects a path that RESOLVES (dot segments) or DECODES (`%2F%2F`, `%5C`, double-encoded) to a protocol-relative `//host`. Returns the normalised path. See also: createGuard.',
+    mistakes: `- Checking only \`startsWith("/")\` — \`//evil.example\`, \`/\\evil.example\` and \`/a/../..//evil.example\` all leave the site`,
+  },
+
+  'auth/createFlowBinding': {
+    signature: '(cookieHeader?: string | null, opts?: { name?: string }) => { value: string; setCookie: string }',
+    example: `const binding = createFlowBinding(req.headers.get('cookie'))
+const auth = createAuth({ issuer, client, flows, binding: binding.value, redirect: (url) => (location = url) })
+await auth.signIn()
+return new Response(null, { status: 302, headers: { location, 'set-cookie': binding.setCookie } })`,
+    notes: `Server side (backend-for-frontend): the browser binding to start a sign-in with, and the \`Set-Cookie\` header for it — a random value in a \`__Host-\` cookie (HttpOnly, Secure, SameSite=Lax, 10 minutes). Pass \`value\` as \`createAuth({ binding })\` and send \`setCookie\` with the redirect to the provider. It reuses the binding the request already carries, so sign-ins started in two tabs do not invalidate each other. Without it, an attacker can start a sign-in, finish it at the provider as themselves and send the callback URL to a victim, who is then signed in to the attacker's account (login CSRF; PKCE does not help because the verifier is on your server). See also: readFlowBinding, createAuth.`,
+    mistakes: `- Using one constant binding for every request — that binds nothing; it must come from the requesting browser's cookie`,
+  },
+
+  'auth/readFlowBinding': {
+    signature: '(cookieHeader: string | null | undefined, opts?: { name?: string }) => string | null',
+    example: `const auth = createAuth({ issuer, client, flows, binding: readFlowBinding(req.headers.get('cookie')), redirect: () => {} })
+await auth.handleCallback(req.url)`,
+    notes: 'Server side: the browser binding a callback request carries (set by `createFlowBinding` when the sign-in started), or null. Pass it as `createAuth({ binding })` on the callback route, or to `parseCallback`; a null binding fails the callback with `unbound_flow`, as does a callback opened in a different browser. See also: createFlowBinding.',
+    mistakes: '- Falling back to a fresh binding when the cookie is missing — the callback must fail, not be re-bound to whoever presents it',
+  },
+
+  'auth/memoryFlowStore': {
+    signature: '() => FlowStore',
+    example: `const flows = memoryFlowStore()
+const auth = createAuth({ issuer, client, flows, binding: createFlowBinding(cookie).value, redirect })`,
+    notes: 'In-process `FlowStore` (tests, single-process servers): flows read-and-deleted by key, expired flows dropped on save, at most 1000 held. A `FlowStore` maps opaque keys (derived from state, issuer, client id, redirect URI and browser binding) to `PendingFlow`s; with several server instances implement it over a shared store whose `take` is atomic (Redis `GETDEL`). See also: createAuth, sessionStorageFlowStore.',
+    mistakes: '- Using it behind a load balancer — a callback landing on another instance fails with `unknown_flow`',
+  },
+
+  'auth/AuthError': {
+    signature: 'class AuthError extends Error { readonly code: string }',
+    example: `try {
+  parseCallback(req.url, flow, meta, binding)
+} catch (e) {
+  if (e instanceof AuthError && e.code === 'provider_error') showCancelled()
+  else throw e
+}`,
+    notes: 'Every failure of the sign-in flow and token checks is an `AuthError` with a stable `code` shared by web, iOS and Android (`unknown_flow`, `unbound_flow`, `redirect_mismatch`, `redirect_shared`, `invalid_redirect_uri`, `invalid_callback`, `provider_unavailable`, `issuer_mismatch`, `state_mismatch`, `provider_error`, `network_error`, `bad_nonce`, `bad_aud`, `bad_azp`, `expired`, `not_yet_valid`, `too_old`, `no_key`, `bad_signature`, …). Messages never contain tokens, codes or verifiers. Branch on `code`, not on the message. See also: createAuth, parseCallback.',
+    mistakes: '- Rendering `message` as HTML — a provider error string is attacker-controlled text',
+  },
+
+  'auth/refreshTokens': {
+    signature: '(meta: OidcMetadata, client: ClientConfig, refreshToken: string, fetchImpl?: FetchLike) => Promise<TokenResponse>',
+    example: `const t = await refreshTokens(meta, client, session.refreshToken)
+session.refreshToken = t.refresh_token ?? session.refreshToken`,
+    notes: 'One refresh-token grant (public client), validated like the code exchange; the provider may rotate the refresh token, so store the one it returns. With rotation and reuse detection, never run two at once for one session — `createAuth().refresh()` already shares one in-flight request. See also: createAuth, exchangeCode.',
+    mistakes: '- Refreshing the same token twice concurrently — a provider with reuse detection revokes the whole token family',
+  },
+
+  'auth/endSessionUrl': {
+    signature: '(meta: OidcMetadata, opts?: { idTokenHint?: string; postLogoutRedirectUri?: string; clientId?: string; state?: string }) => string | null',
+    example: `const url = endSessionUrl(meta, { idTokenHint: tokens.id_token, postLogoutRedirectUri: 'https://app.example/' })
+if (url) location.assign(url)`,
+    notes: 'The RP-initiated logout URL (OpenID Connect RP-Initiated Logout 1.0), or null when the provider advertises no `end_session_endpoint`. Navigate there to end the session AT THE PROVIDER; clearing local state alone leaves the provider session alive. It does not revoke tokens (RFC 7009) — an access or refresh token already issued stays valid until it expires. See also: createAuth.',
+    mistakes: '- Expecting it to revoke tokens — it ends the provider session; revoke refresh tokens at the provider if it supports RFC 7009',
+  },
+
+  'auth/createJwksCache': {
+    signature: '(meta: OidcMetadata, fetchImpl?: FetchLike, opts?: JwksCacheOptions) => JwksCache',
+    example: `const jwks = createJwksCache(meta)
+const claims = await verifyIdToken(idToken, jwks, meta, { clientId: 'bff', nonce })`,
+    notes: `A provider's JWKS, cached for \`maxAgeMs\` (default 1 hour). Concurrent callers share one in-flight fetch, a failed fetch is not cached, and an unknown \`kid\` (or, through \`verifyIdToken\`, a token that fails against the cached keys) triggers a re-fetch throttled to one per \`minRefreshMs\` (default 60 s), so key rotation needs no restart and forged tokens cannot flood the provider. Pass the cache straight to \`verifyIdToken\`. See also: verifyIdToken.`,
+    mistakes: '- Creating a cache per request — it then fetches the JWKS on every verification',
+  },
+
+  'auth/google': {
+    signature: 'Preset',
+    example: `const auth = createAuth({
+  issuer: google.issuer,
+  client: withPreset(google, { clientId: 'app', redirectUri: 'https://app.example/auth/callback/google' }),
+  flows: sessionStorageFlowStore(),
+  redirect: (u) => location.assign(u),
+})`,
+    notes: 'Provider presets: `google` and `keycloak(baseUrl, realm)` are OIDC issuers (discovery) with a default scope; `withPreset(preset, client)` merges the scope into a `ClientConfig`. `github`, `facebook(version)` and `oauth2(issuer, authorize, token)` are plain OAuth2 endpoint sets for `createAuth({ metadata })`. Give each provider its own redirect URI. See also: keycloak, withPreset, github.',
+    mistakes: '- Sharing one redirect URI between two presets — createAuth refuses it (OAuth mix-up)',
+  },
+
+  'auth/keycloak': {
+    signature: '(baseUrl: string, realm: string) => Preset',
+    example: `const kc = keycloak('https://sso.example.com', 'staff')
+const auth = createAuth({ issuer: kc.issuer, client: withPreset(kc, client), flows, binding, redirect })`,
+    notes: 'The OIDC preset for a Keycloak realm: issuer `<baseUrl>/realms/<realm>`, discovered at sign-in. See also: google, withPreset.',
+  },
+
+  'auth/withPreset': {
+    signature: '(preset: Preset, client: ClientConfig) => ClientConfig',
+    example: `const client = withPreset(google, { clientId: 'app', redirectUri: 'https://app.example/auth/callback/google' })`,
+    notes: `Merges a preset's default scope into your client configuration; a \`scope\` you set wins. See also: google, keycloak.`,
+  },
+
+  'auth/facebook': {
+    signature: '(version: string) => OidcMetadata',
+    example: `const auth = createAuth({ metadata: facebook('v20.0'), client, flows, binding, redirect })`,
+    notes: 'Facebook Login endpoints for a pinned Graph API version (plain OAuth2: no ID token). Use with `createAuth({ metadata })`. See also: github, oauth2.',
+  },
+
+  'auth/oauth2': {
+    signature: '(issuer: string, authorizationEndpoint: string, tokenEndpoint: string) => OidcMetadata',
+    example: `const meta = oauth2('https://git.example', 'https://git.example/oauth/authorize', 'https://git.example/oauth/token')`,
+    notes: 'Endpoints for any plain OAuth2 provider (no discovery, no ID token). The endpoints must be https (loopback http for development) — checked where they are used. See also: github, facebook.',
+  },
+
+  'auth/totp': {
+    signature: '(secret: string, opts?: { period?: number; digits?: number; allowShortSecret?: boolean; now?: number }) => Promise<string>',
+    example: 'const code = await totp(secret)',
+    notes: 'The current RFC 6238 code for a base32 secret, with the same `period` / `digits` / `allowShortSecret` options `verifyTotp` takes (defaults 30 s, 6 digits, at least 128-bit secrets). See also: verifyTotp, generateTotpSecret.',
+  },
+
+  'auth/generateTotpSecret': {
+    signature: '() => string',
+    example: `const secret = generateTotpSecret()
+const otpauth = \`otpauth://totp/App:\${email}?secret=\${secret}&issuer=App\``,
+    notes: 'A fresh 160-bit TOTP secret, base32 — the setup key or QR payload an authenticator app scans. Store it server-side, encrypted at rest. See also: verifyTotp, totp.',
+  },
+
+  'auth/passkeyChallenge': {
+    signature: '() => string',
+    example: `const challenge = passkeyChallenge()
+await store.set(userId, challenge)`,
+    notes: 'A fresh 32-byte random WebAuthn challenge (base64url). Store it server-side for the ceremony and use it once. See also: verifyAssertion, verifyRegistration.',
+    mistakes: '- Reusing a challenge — each ceremony needs a new one, consumed on verification',
+  },
+
+  'auth/sessionCookie': {
+    signature: '(name: string, value: string, maxAge?: number) => string',
+    example: `const value = await signSession({ sub: user.id }, opts)
+headers.set('set-cookie', sessionCookie('session', value))`,
+    notes: 'A `Set-Cookie` header value with secure attributes: `__Host-` prefix, Path=/, HttpOnly, Secure, SameSite=Lax, Max-Age (default 8 h). Throws on a name that is not a cookie token, a value with spaces, quotes, commas, semicolons or backslashes, or a negative or fractional Max-Age — anything that could inject attributes. See also: signSession, verifySession.',
+  },
+
+  'auth/generateCodeVerifier': {
+    signature: '() => string',
+    example: `const verifier = generateCodeVerifier()
+const challenge = await codeChallengeS256(verifier)`,
+    notes: 'A 43-character PKCE code verifier (32 random bytes, base64url) — the RFC 7636 minimum length. `codeChallengeS256(verifier)` gives its S256 challenge. `beginAuthorization` uses both; call them yourself only for a custom flow or a test provider. See also: codeChallengeS256, beginAuthorization.',
+  },
+
+  'auth/codeChallengeS256': {
+    signature: '(verifier: string) => Promise<string>',
+    example: 'const challenge = await codeChallengeS256(generateCodeVerifier())',
+    notes: 'The S256 PKCE challenge of a verifier: base64url(SHA-256(verifier)). `plain` is deliberately not offered (RFC 9700 §2.1.1). See also: generateCodeVerifier.',
   },
   // <gen-docs:api-reference:end @pyreon/auth>
 
@@ -7224,7 +7402,7 @@ theme.set('dark') // persists again`,
 - Reading \`.remove()\` return value — it returns void, not the removed value
 - Treating \`.remove()\` as a teardown — it deletes the STORED VALUE and resets the shared signal, and the binding stays alive: a later \`.set()\` persists again and cross-tab updates keep arriving. There is no need to call \`useStorage\` again after \`.remove()\`. The binding is released by its lifecycle: each call holds a refcount that the calling component's (owner scope's) disposal releases, and the entry plus the cross-tab listener go away with the last holder. A call made outside any component holds the key for the page.
 - Evolving the stored shape without \`version\` + \`migrate\` — a user with the OLD shape on disk loads it as-is (or \`onError\`/default if it no longer parses). Bump \`version\` and provide \`migrate\` to transform the old shape; a pre-versioning value is migrated as version \`0\`.
-- Assuming a \`.set()\` that exceeds quota throws — the in-memory signal always updates; the \`setItem\` failure is routed to \`onError\` (a notification) instead of throwing. Provide \`onError\` to surface quota problems to the user.`,
+- Assuming a \`.set()\` that exceeds quota throws — the in-memory signal always updates; the \`setItem\` failure is routed to \`onError\` (a notification) instead of throwing. Provide \`onError\` to surface quota problems to the user. A FULL storage stays readable: the value stored before the quota ran out is what \`useStorage\` returns on the next load, and \`.remove()\` still deletes (#4812). \`onError\` fires on EVERY failed write, so a permanently unwritable storage (legacy Safari private mode, quota 0) reports each \`.set()\` — throttle user-facing notifications.`,
   },
 
   'storage/useCookie': {
@@ -7278,7 +7456,7 @@ const html = await renderToString(<App />)`,
 draft.set({ title: 'New Article', body: 'Content...' })`,
     notes: 'Reactive signal backed by IndexedDB for large data. Writes are debounced to avoid excessive I/O. The signal initializes with `defaultValue` synchronously and hydrates from IndexedDB asynchronously — the value updates reactively once the read completes. Silent init error logging in dev mode. See also: useStorage, useMemoryStorage.',
     mistakes: `- Reading the signal in render and expecting the persisted value on FIRST render — IDB initialization is async. The signal starts at \`defaultValue\`, then the persisted value flows in on the next tick. UIs that need the persisted value before paint should pair with a synchronous fallback (e.g. \`useStorage\` for a small marker).
-- Storing huge blobs without considering quota — IDB has per-origin quotas (~50% of free disk, browser-dependent). Bumping into the quota throws on \`setItem\` async; handle with try/catch around \`.set()\` if the write may exceed.
+- Storing huge blobs without considering quota — IDB has per-origin quotas (~50% of free disk, browser-dependent). A write over the quota aborts its transaction: the signal keeps the new value, the stored value stays the old one, and the error reaches \`onError\` (a try/catch around \`.set()\` catches nothing — the write is debounced and async).
 - Expecting cross-tab sync — IndexedDB does NOT fire storage events. Two tabs writing to the same key will overwrite each other silently. Use \`BroadcastChannel\` alongside if multi-tab consistency matters.
 - Setting the value rapidly in a loop — writes are debounced but unbounded loop assignments still queue. Throttle at the caller for high-frequency mutations.`,
   },
@@ -7298,20 +7476,22 @@ const secret = useEncrypted('api-key', '')`,
   },
 
   'storage/removeStorage': {
-    signature: `removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb' }) => void`,
+    signature: `removeStorage(key: string, options?: { type?: 'local' | 'session' | 'cookie' | 'indexeddb'; dbName?: string; storeName?: string }) => Promise<void>`,
     example: `import { removeStorage } from '@pyreon/storage'
 
 removeStorage('theme')                       // localStorage
 removeStorage('step', { type: 'session' })   // sessionStorage
-removeStorage('locale', { type: 'cookie' })  // deletes the cookie`,
+removeStorage('locale', { type: 'cookie' })  // deletes the cookie
+await removeStorage('draft', { type: 'indexeddb' }) // resolves once deleted (dbName/storeName for a non-default db)`,
     notes: 'Imperatively remove a single key from storage and RESET its signal to the default value. Default backend is `local`; pass `{ type: "session" | "cookie" | "indexeddb" }` for the others. Works whether or not a `useStorage`-family signal is currently registered for the key: a registered key routes through `signal.remove()` (reactive reset + storage delete), an unregistered key clears the raw storage directly (`removeItem` / cookie `max-age=0`). See also: clearStorage, useStorage.',
     mistakes: `- Expecting the signal to read \`undefined\` afterward — \`removeStorage(key)\` RESETS the signal to its \`useStorage\` DEFAULT (a \`useStorage("theme", "light")\` reads \`"light"\` again, not \`undefined\`).
+- Not awaiting an IndexedDB removal before reading the database again — \`removeStorage\` / \`clearStorage\` (and \`useIndexedDB().remove()\`) return a promise that resolves once the delete has committed. Local, session and cookie removals are done when the call returns. An unbound IndexedDB removal never creates or upgrades a database or store.
 - Omitting \`{ type }\` for a non-local backend — it defaults to \`local\`; use \`removeStorage("locale", { type: "cookie" })\` for a cookie, etc.
 - Mixing up the arg shape with \`clearStorage\` — \`removeStorage\` takes the backend in an OPTIONS object (\`{ type }\`), while \`clearStorage\` takes it POSITIONALLY (\`clearStorage("session")\`). The two are asymmetric.`,
   },
 
   'storage/clearStorage': {
-    signature: `clearStorage(type?: 'local' | 'session' | 'cookie' | 'indexeddb' | 'all') => void`,
+    signature: `clearStorage(type?: 'local' | 'session' | 'cookie' | 'indexeddb' | 'all') => Promise<void>`,
     example: `import { clearStorage } from '@pyreon/storage'
 
 clearStorage()          // all MANAGED localStorage entries

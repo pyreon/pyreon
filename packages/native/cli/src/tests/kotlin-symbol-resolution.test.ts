@@ -77,7 +77,7 @@ const REGISTRY: Record<string, string[]> = {
   'kotlinx.serialization': ['Serializable'],
   'kotlinx.serialization.json': ['Json'],
   'kotlinx.coroutines': ['Dispatchers'],
-  'coil.compose': ['AsyncImage'],
+  'coil3.compose': ['AsyncImage'],
 }
 
 // Modifier-chain members (lowercase) by package. Total over any `.name(` or

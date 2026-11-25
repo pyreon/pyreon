@@ -8,7 +8,7 @@
   "share": {
    "template": "home",
    "title": "Your component runs once. Ever.",
-   "sub": "A quarter of React's JavaScript. 2.6× faster at 10,000 rows.",
+   "sub": "About a quarter of React's JavaScript. 2.7× faster at 10,000 rows.",
    "caveat": "synthetic · author-run · M3 Max · pyreon.dev/benchmarks"
   }
  },
@@ -111,16 +111,16 @@
    "title": "Same app. Less code shipped, less work done.",
    "items": [
     {
-     "stat": "4×",
+     "stat": "3.8×",
      "label": "less JavaScript than React 19 for the same app",
-     "detail": "17.2 KB vs 69.6 KB gzip",
+     "detail": "18.5 KB vs 69.6 KB gzip",
      "condition": "same app, gzip -9",
      "source": "record §7 bundle"
     },
     {
-     "stat": "2.6×",
+     "stat": "2.7×",
      "label": "faster than React 19 creating 10,000 rows",
-     "detail": "72.6 ms vs 192.0 ms",
+     "detail": "73.1 ms vs 195.9 ms",
      "condition": "real Chromium, row board",
      "source": "record §1"
     },
@@ -132,7 +132,7 @@
      "source": "record §5 bench:ssr"
     }
    ],
-   "caveat": "synthetic · author-run · M3 Max · record of 2026-11-05",
+   "caveat": "synthetic · author-run · M3 Max · bundle and rows 2026-11-24, SSR 2026-11-05",
    "link": {
     "label": "Every result, including where we lose",
     "href": "/benchmarks"
@@ -169,25 +169,25 @@
     {
      "op": "10,000 rows",
      "rival": "vs React 19",
-     "result": "2.6× faster",
+     "result": "2.7× faster",
      "verdict": "win"
     },
     {
      "op": "10,000 rows",
      "rival": "vs Preact",
-     "result": "3.8× faster",
+     "result": "3.9× faster",
      "verdict": "win"
     },
     {
      "op": "Clear rows",
-     "rival": "vs Vue 3.6 Vapor",
-     "result": "1.11–1.12× faster, both runs",
+     "rival": "vs Octane and Vue 3.6 Vapor",
+     "result": "1.12× faster, both runs",
      "verdict": "win"
     },
     {
-     "op": "Create 1,000, replace, update, swap, remove",
+     "op": "Create 1,000 or 10,000, replace, remove, append",
      "rival": "vs Vue Vapor, Octane, Vue 3",
-     "result": "level with the fastest",
+     "result": "level with the fastest; update and swap split",
      "verdict": "tie"
     }
    ],
@@ -679,7 +679,7 @@
     },
     {
      "title": "Every loss on the page",
-     "text": "Solid mounts deep trees 1.15–1.18× faster and ships a smaller bundle. It's on the benchmarks page, not in a footnote."
+     "text": "Solid keeps a mounted component tree in less memory and ships a smaller bundle. It's on the benchmarks page, not in a footnote."
     },
     {
      "title": "The docs run on it",
@@ -768,20 +768,20 @@
  ],
  "sources": [
   {
-   "claim": "4× less JavaScript (17.2 vs 69.6 KB)",
-   "path": "00-brief/BENCHMARKS-2026-11-05.md §7; facts.md 'Losses' bundle line"
+   "claim": "3.8× less JavaScript (18.5 vs 69.6 KB)",
+   "path": "BENCHMARKS.md 2026-11-24 §7; facts.md 'Losses' bundle line"
   },
   {
-   "claim": "2.6× / 3.8× at create 10,000",
-   "path": "record §1 row board (run 1 figures, two runs); facts.md"
+   "claim": "2.7× / 3.9× at create 10,000",
+   "path": "BENCHMARKS.md 2026-11-24 §1 row board (run 1 figures, two runs)"
   },
   {
    "claim": "SSR 6.5× / 5.7× vs React 19",
    "path": "record §5 bench:ssr, one run; facts.md"
   },
   {
-   "claim": "clear rows 1.11–1.12×, other ops tie",
-   "path": "facts.md row-list board"
+   "claim": "clear rows 1.12×, five other ops tie, partial update and swap split",
+   "path": "BENCHMARKS.md 2026-11-24 §1"
   },
   {
    "claim": "charts 2.5–8.7× vs ECharts 6",

@@ -7,6 +7,18 @@ import { signal } from '@pyreon/reactivity'
 const OLD_SECRET = 'docs-demo-secret-2025-rotate-me-please!!'
 const NEW_SECRET = 'docs-demo-secret-2026-current-signing-key'
 
+// Build the header from the real value, then shorten it for display. sessionCookie rejects a
+// value that is not a valid cookie token (anything typed into the box can be one), so show
+// its refusal instead of throwing inside the render.
+function setCookieHeader(value: string): string {
+  try {
+    const header = sessionCookie('session', value, 600)
+    return value.length > 24 ? header.replace(value, `${value.slice(0, 24)}…`) : header
+  } catch (error) {
+    return (error as Error).message
+  }
+}
+
 /**
  * A signed session cookie — HMAC-SHA-256 over the payload, verified in constant time, with
  * an expiry and a `jti` for revocation. Edit one character of the value and it no longer
@@ -80,7 +92,7 @@ export default function SignedSession() {
         </div>
       </Show>
       <div style={{ wordBreak: 'break-all' }}>
-        Set-Cookie: <code>{() => sessionCookie('session', value().slice(0, 24) + '…', 600)}</code>
+        Set-Cookie: <code>{() => setCookieHeader(value())}</code>
       </div>
     </div>
   )

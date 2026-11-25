@@ -44,7 +44,34 @@ public protocol PyreonAuthBrowser: AnyObject {
 public final class PyreonOidcAuth {
     public private(set) var status: String = PyreonOidcStatus.signedOut
     public private(set) var subject: String?
-    public private(set) var accessToken: String?
+    /// The current access token, or nil while it has expired. Reading an expired token starts its
+    /// refresh (once; after a failed refresh, call `refresh()` to retry) and returns nil, so a
+    /// request never carries a token known to be expired. `freshAccessToken()` awaits the refresh.
+    public var accessToken: String? {
+        start()
+        guard let token = currentAccessToken else { return nil }
+        if isExpired {
+            // At most one automatic refresh per 30 s: a provider issuing tokens that are already
+            // expired (`expires_in` <= 0) must not turn every view-body read into a request.
+            if status == PyreonOidcStatus.signedIn && refreshToken != nil && clock() - lastAutoRefresh >= 30 {
+                lastAutoRefresh = clock()
+                refresh()
+            }
+            return nil
+        }
+        return token
+    }
+
+    /// The access token, refreshed first when it has expired (or nil: signed out, or the refresh
+    /// failed — see `status` / `error`). Use it for requests: it never returns an expired token.
+    public func freshAccessToken() async -> String? {
+        launchRefreshPending = false
+        if (currentAccessToken == nil || isExpired) && refreshToken != nil { await refreshNow() }
+        return isExpired ? nil : currentAccessToken
+    }
+
+    private var isExpired: Bool { expiresAt.map { $0 <= clock() * 1000 } ?? false }
+    private var currentAccessToken: String?
     public private(set) var expiresAt: Double?
     public private(set) var error: String?
     private var claims: [String: String] = [:]
@@ -71,7 +98,26 @@ public final class PyreonOidcAuth {
     /// Bumped by every new attempt and by signOut, so a late result never resurrects a session.
     @ObservationIgnored private var epoch = 0
 
-    private var sessionKey: String { "pyreon.auth.session.\(clientId)" }
+    /// Per client AND issuer: another instance with the same client id at another provider must
+    /// not read, overwrite or delete this one's stored session.
+    private var sessionKey: String { "pyreon.auth.session.\(clientId)|\(issuer)" }
+    /// This instance's claim on its redirect target (see `PyreonRedirectClaims`); released on
+    /// `dispose()` or deinit.
+    @ObservationIgnored private let redirectClaim: PyreonRedirectToken
+    /// Bumped whenever the session itself changes (commit or clear): a refresh applies its result
+    /// only to the session it started from.
+    @ObservationIgnored private var sessionGen = 0
+    /// A restored session expired: refresh it on first use (`start()`), not in the initializer.
+    @ObservationIgnored private var launchRefreshPending = false
+    /// When a read of an expired `accessToken` last started a refresh (seconds since the epoch).
+    @ObservationIgnored private var lastAutoRefresh: TimeInterval = -.infinity
+    /// `signOut()` was called: a session another instance stores is not adopted into this one.
+    @ObservationIgnored private var signedOutExplicitly = false
+    /// The redirect URI cannot be matched safely: every sign-in fails with `invalid_redirect_uri`.
+    @ObservationIgnored private let redirectUriValid: Bool
+    /// Refreshes in flight, PROCESS-WIDE, by session key and the refresh token presented: every
+    /// instance over one stored session shares one request (see refreshNow).
+    private static var inflightRefreshes: [String: _Concurrency.Task<Void, Never>] = [:]
 
     public init(
         issuer: String,
@@ -95,6 +141,14 @@ public final class PyreonOidcAuth {
         self.transport = transport
         self.browser = browser ?? PyreonWebAuthBrowser.makeDefault()
         self.clock = clock
+        self.redirectClaim = PyreonRedirectClaims.shared.claim(redirectUri: redirectUri, issuer: issuer)
+        self.redirectUriValid = PyreonRedirect.target(redirectUri) != nil
+        if !redirectUriValid {
+            // A misconfiguration fails at construction, visibly, not at every sign-in.
+            status = PyreonOidcStatus.error
+            error = PyreonAuthError.invalidRedirectUri.code
+            return
+        }
         rehydrate()
     }
 
@@ -104,12 +158,15 @@ public final class PyreonOidcAuth {
     public func refresh() { _Concurrency.Task { await refreshNow() } }
 
     public func signInNow() async {
+        guard redirectUriValid else { fail(PyreonAuthError.invalidRedirectUri); return }
         epoch += 1
         let my = epoch
         status = PyreonOidcStatus.signingIn
         error = nil
         do {
             let m = try await metadata()
+            redirectClaim.reclaimIfReleased()
+            guard redirectClaim.advertise(iss: m.issParameterSupported) else { throw PyreonAuthError.redirectShared }
             let core = PyreonAuthCore(backend: store)
             let url = try core.begin(authorizationEndpoint: m.authorizationEndpoint, issuer: m.issuer, clientId: clientId,
                                      redirectUri: redirectUri, scope: scope, authorizationParams: authorizationParams)
@@ -138,47 +195,140 @@ public final class PyreonOidcAuth {
     private func complete(_ callback: URL, my: Int) async throws {
         let m = try await metadata()
         let core = PyreonAuthCore(backend: store)
-        let (code, flow) = try core.complete(callback: callback, issuer: m.issuer, issuerParamSupported: m.issParameterSupported)
+        redirectClaim.reclaimIfReleased()
+        _ = redirectClaim.advertise(iss: m.issParameterSupported)
+        // On a redirect URI another provider also uses, only `iss` says who answered: require it.
+        let (code, flow) = try core.complete(callback: callback, issuer: m.issuer,
+                                             issuerParamSupported: m.issParameterSupported || redirectClaim.isShared)
         let t = try await PyreonOidcClient.exchangeCode(m, clientId: clientId, flow: flow, code: code, transport: transport)
         let verified = try await verify(m, t.idToken, nonce: flow.nonce)
         guard my == epoch else { return }
         commit(t, refreshToken: t.refreshToken, claims: verified)
     }
 
+    /// One refresh in flight per instance: with rotating refresh tokens and reuse detection, a
+    /// second concurrent refresh would present the already-rotated token and the provider would
+    /// revoke the whole token family. Concurrent callers await the same request.
+    /// Run the refresh a restored, expired session needs, once. Called on first read of
+    /// `accessToken` and by `signIn`/`refresh`; safe to call from `onAppear`.
+    public func start() {
+        guard launchRefreshPending else { return }
+        launchRefreshPending = false
+        refresh()
+    }
+
+    /// One refresh in flight per stored session, PROCESS-WIDE: with rotating refresh tokens and
+    /// reuse detection, two instances (or two calls) presenting the same token would get the whole
+    /// token family revoked. A caller that finds one running for the same token waits for it and
+    /// adopts the stored result; a refresh always presents the newest stored token.
     public func refreshNow() async {
-        epoch += 1
+        launchRefreshPending = false
+        adoptNewerStoredSession()
+        let key = "\(sessionKey)\u{0}\(refreshToken ?? "")"
+        if let running = Self.inflightRefreshes[key] {
+            await running.value
+            adoptNewerStoredSession()
+            return
+        }
+        let task = _Concurrency.Task { await self.performRefresh() }
+        Self.inflightRefreshes[key] = task
+        await task.value
+        if Self.inflightRefreshes[key] == task { Self.inflightRefreshes[key] = nil }
+    }
+
+    /// Another instance over the same stored session refreshed it (rotating the refresh token):
+    /// take its result instead of presenting the old token.
+    private func adoptNewerStoredSession() {
+        guard let raw = store.read(key: sessionKey),
+              let r = PyreonJose.object(Data(raw.utf8)), (r["issuer"] as? String) == issuer,
+              let stored = r["refreshToken"] as? String, stored != refreshToken,
+              let access = r["accessToken"] as? String, !access.isEmpty,
+              // Only the SAME user's session (another instance refreshed it), never into an
+              // instance that was signed out: that would switch or resurrect a session silently.
+              !signedOutExplicitly,
+              // Both subjects must be KNOWN and equal: two sessions without an ID token (OAuth2
+              // only) cannot be told apart, so they are never adopted.
+              let storedSub = (r["claims"] as? [String: Any])?["sub"] as? String, let mySub = self.subject, storedSub == mySub
+        else { return }
+        sessionGen += 1
+        currentAccessToken = access
+        refreshToken = stored
+        if let id = r["idToken"] as? String { idToken = id }
+        claims = (r["claims"] as? [String: Any])?.compactMapValues { $0 as? String } ?? claims
+        subject = claims["sub"]
+        expiresAt = PyreonJose.number(r["expiresAt"])
+        status = PyreonOidcStatus.signedIn
+    }
+
+    private func performRefresh() async {
+        // A refresh never bumps the epoch, so starting one cannot discard a sign-in in flight. It
+        // applies its result only while nothing else happened: no new attempt or sign-out (the
+        // epoch) and no other commit (the session generation).
         let my = epoch
+        let gen = sessionGen
+        func stillCurrent() -> Bool { my == epoch && gen == sessionGen }
         do {
             guard let current = refreshToken else { throw PyreonAuthError("no_refresh_token", "no refresh token — sign in again") }
             let m = try await metadata()
             let t = try await PyreonOidcClient.refresh(m, clientId: clientId, refreshToken: current, transport: transport)
             // A refreshed ID token carries no nonce (OIDC Core §12.2) but must name the same user.
-            let verified = try await verify(m, t.idToken, nonce: nil)
+            let verified: [String: String]?
+            do {
+                verified = try await verify(m, t.idToken, nonce: nil)
+            } catch let e as PyreonAuthError where PyreonAuthError.transientRefreshCodes.contains(e.code) {
+                // The token endpoint already ROTATED the refresh token: keep (and store) the new one
+                // even though the new ID token cannot be checked right now, or the retry would
+                // present the spent token and a provider with reuse detection would revoke the family.
+                guard stillCurrent() else { return }
+                keepRotated(t, refreshToken: t.refreshToken ?? current, code: e.code)
+                return
+            }
             if let verified, let subject, verified["sub"] != subject {
                 throw PyreonAuthError("subject_changed", "refreshed id_token is for a different user")
             }
-            guard my == epoch else { return }
+            guard stillCurrent() else { return }
             // Providers may rotate the refresh token; keep the old one when they do not.
             commit(t, refreshToken: t.refreshToken ?? current, claims: verified ?? claims)
         } catch {
-            if my == epoch { fail(error) }
+            guard stillCurrent() else { return }
+            // Offline or the provider unavailable: keep the session (and the stored record) for a
+            // retry — status `error` with the code, `refresh()` tries again. Only a refusal (the
+            // refresh token rejected or revoked, a bad ID token) ends the session.
+            if let code = (error as? PyreonAuthError)?.code, PyreonAuthError.transientRefreshCodes.contains(code) {
+                self.error = code
+                status = PyreonOidcStatus.error
+            } else {
+                fail(error)
+            }
         }
     }
+
+    /// Release this instance's claim on its redirect URI. Also done on deinit. The instance is not
+    /// retired: a later `signIn` or callback registers it again.
+    public func dispose() { redirectClaim.release() }
+
+    deinit { redirectClaim.release() }
 
     /// Clear the session. With `endProviderSession`, also end it AT THE PROVIDER (RP-initiated
     /// logout) — otherwise the next sign-in completes without a prompt.
     public func signOut(endProviderSession: Bool = false) {
+        signedOutExplicitly = true
         epoch += 1
         let hint = idToken
         clear()
         status = PyreonOidcStatus.signedOut
         error = nil
-        guard endProviderSession, let meta, let browser,
-              let url = try? PyreonOidcClient.endSessionURL(meta, idTokenHint: hint, clientId: clientId,
-                                                           postLogoutRedirectUri: postLogoutRedirectUri)
-        else { return }
+        guard endProviderSession, let browser else { return }
         let back = postLogoutRedirectUri ?? redirectUri
-        _Concurrency.Task { _ = try? await browser.authorize(url: url, redirectUri: back) }
+        _Concurrency.Task {
+            // A session restored on relaunch was never discovered, so look the provider up now:
+            // skipping the logout there would leave the provider session alive.
+            guard let m = try? await self.metadata(),
+                  let url = try? PyreonOidcClient.endSessionURL(m, idTokenHint: hint, clientId: self.clientId,
+                                                               postLogoutRedirectUri: self.postLogoutRedirectUri)
+            else { return }
+            _ = try? await browser.authorize(url: url, redirectUri: back)
+        }
     }
 
     // MARK: - internals
@@ -203,8 +353,22 @@ public final class PyreonOidcAuth {
         return c.compactMapValues { $0 as? String }
     }
 
+    /// A refresh whose token response succeeded but whose ID token could not be verified yet:
+    /// keep the new tokens (the old claims and logout hint stay) and report the error.
+    private func keepRotated(_ t: PyreonTokenSet, refreshToken: String?, code: String) {
+        sessionGen += 1
+        currentAccessToken = t.accessToken
+        self.refreshToken = refreshToken
+        expiresAt = t.expiresIn.map { (clock() + $0) * 1000 }
+        error = code
+        status = PyreonOidcStatus.error
+        persist()
+    }
+
     private func commit(_ t: PyreonTokenSet, refreshToken: String?, claims: [String: String]?) {
-        accessToken = t.accessToken
+        signedOutExplicitly = false
+        sessionGen += 1
+        currentAccessToken = t.accessToken
         self.refreshToken = refreshToken
         // A refresh response may omit the ID token; the last one stays the logout hint.
         if let id = t.idToken { idToken = id } else if status != PyreonOidcStatus.signedIn { idToken = nil }
@@ -223,7 +387,8 @@ public final class PyreonOidcAuth {
     }
 
     private func clear() {
-        accessToken = nil
+        sessionGen += 1
+        currentAccessToken = nil
         refreshToken = nil
         idToken = nil
         claims = [:]
@@ -235,7 +400,7 @@ public final class PyreonOidcAuth {
     // The session record. Claims were verified before they were stored, and the store is
     // the Keychain, so restoring them does not re-verify an ID token that may have expired.
     private func persist() {
-        var record: [String: Any] = ["issuer": issuer, "accessToken": accessToken ?? "", "claims": claims]
+        var record: [String: Any] = ["issuer": issuer, "accessToken": currentAccessToken ?? "", "claims": claims]
         if let refreshToken { record["refreshToken"] = refreshToken }
         if let idToken { record["idToken"] = idToken }
         if let expiresAt { record["expiresAt"] = expiresAt }
@@ -259,13 +424,15 @@ public final class PyreonOidcAuth {
             _ = store.remove(key: sessionKey)
             return
         }
-        accessToken = access
+        // An expired access token is never exposed; the session waits for its refresh (`start()`).
+        currentAccessToken = expired ? nil : access
         refreshToken = storedRefresh
         idToken = r["idToken"] as? String
         claims = (r["claims"] as? [String: Any])?.compactMapValues { $0 as? String } ?? [:]
         subject = claims["sub"]
         expiresAt = exp
-        status = PyreonOidcStatus.signedIn
-        if expired { refresh() }
+        status = expired ? PyreonOidcStatus.signingIn : PyreonOidcStatus.signedIn
+        // Not refreshed here: an initializer runs for every throwaway instance SwiftUI makes.
+        launchRefreshPending = expired
     }
 }

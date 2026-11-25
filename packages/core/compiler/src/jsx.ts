@@ -1377,6 +1377,10 @@ export function transformJSX_JS(
   // That JSX keeps the h() path: no client template, no `_ssr` string, no
   // rocketstyle collapse — only the reactivity rules every JSX element gets.
   let wrappedJsxDepth = 0
+  // True while `sliceHandlerValue` slices an `on*` / `ref` value: the
+  // exactly-bare skip (`isBareDomBinding`) then covers component props and
+  // children too.
+  let inHandlerSlice = false
   // Preserved template holes in SVG/MathML content (`inForeignContent`) that
   // build JSX. They are walked like every other hole, but under
   // `wrappedJsxDepth`: the JSX keeps the h() path, which mounts each element
@@ -1656,7 +1660,8 @@ export function transformJSX_JS(
       if (attr.type !== 'JSXAttribute' || attr.value?.type !== 'JSXExpressionContainer') continue
       const e = attr.value.expression
       if (!e || e.type === 'JSXEmptyExpression') continue
-      if (e.start === start && e.end === end) return sliceExpr(e)
+      // The whole value is a peeled `on*` handler.
+      if (e.start === start && e.end === end) return sliceHandlerValue(e)
       if (e.type === 'ConditionalExpression' && e.test.start === start && e.test.end === end) {
         return sliceExpr(e.test)
       }
@@ -1914,13 +1919,24 @@ export function transformJSX_JS(
    */
   function wrapWalked(expr: N, open: string, close: string): void {
     replacements.push({ start: expr.start as number, end: expr.start as number, text: open })
+    walkHPath(expr)
+    replacements.push({ start: expr.end as number, end: expr.end as number, text: close })
+  }
+
+  /**
+   * Walk an expression in place with its JSX kept on the h() path
+   * (`wrappedJsxDepth`) — the walk `wrapWalked` runs, with no accessor around
+   * it. Used for a value that BUILDS JSX and is not itself an accessor: a
+   * render prop (`render={() => <Show when={open} />}`), a handler or ref that
+   * builds JSX. Mirrored by `walk_h_path` in the Rust backend.
+   */
+  function walkHPath(expr: N): void {
     wrappedJsxDepth++
     try {
       walkUnslicedExpr(expr)
     } finally {
       wrappedJsxDepth--
     }
-    replacements.push({ start: expr.end as number, end: expr.end as number, text: close })
   }
 
   /** A component prop value that builds JSX: walked, not sliced (see `wrapWalked`). */
@@ -3610,9 +3626,40 @@ export function transformJSX_JS(
    * wrap there.
    */
   function handleJsxSpreadAttribute(attr: N, parentElement: N): void {
-    if (!isComponentElement(parentElement)) return
     const arg = attr.argument
     if (!arg) return
+    const isComponent = isComponentElement(parentElement)
+    // A spread argument that BUILDS JSX (`{...{ render: () => <For each={items}
+    // />}}`) gets the attribute rules per property (`walkSpreadArg`) instead
+    // of one slice, on a component and a DOM element alike (#4797).
+    if (containsJsx(arg)) {
+      const wrapped =
+        isComponent &&
+        !(arg.type === 'CallExpression' && arg.callee?.type === 'Identifier' && arg.callee.name === '_wrapSpread')
+      if (wrapped) {
+        replacements.push({ start: arg.start as number, end: arg.start as number, text: '_wrapSpread(' })
+        needsWrapSpreadImport = true
+      }
+      walkSpreadArg(arg)
+      if (wrapped) replacements.push({ start: arg.end as number, end: arg.end as number, text: ')' })
+
+      return
+    }
+    if (!isComponent) {
+      // A DOM element's spread on the h() path is sliced exactly as the
+      // template path slices it (`_applyProps(el, sliceExpr(arg))`): signals
+      // auto-called (a bare signal property stays bare, `isBareDomSpreadValue`),
+      // prop-derived consts inlined. Left verbatim, a handler in it set the
+      // signal to its own source text (`count.set(count + 1)`) and a
+      // prop-derived const read its setup value. (A spread that builds JSX is
+      // walked above.)
+      const sliced = sliceExpr(arg)
+      if (sliced !== code.slice(arg.start as number, arg.end as number)) {
+        replacements.push({ start: arg.start as number, end: arg.end as number, text: sliced })
+      }
+
+      return
+    }
     // Skip already-wrapped sources (idempotent compilation guard).
     if (
       arg.type === 'CallExpression' &&
@@ -3640,15 +3687,84 @@ export function transformJSX_JS(
    * rule (`initMintsState`) a handler there also read a prop-derived const's
    * SETUP value (`const label = props.label`) where the template element read
    * the live prop. One function for every element path, so they cannot drift.
-   * Nested JSX in the value stays as written (not walked), exactly as inside a
-   * template-path handler. Pushes nothing when the slice is the source text.
+   *
+   * A non-handler value that BUILDS JSX (a render prop,
+   * `render={() => <For each={items}>…</For>}`) is DECLARATIVE: it is walked
+   * instead of sliced (`walkHPath`), so its JSX gets the rules every other JSX
+   * element gets — the auto-call over a slice turned `each={items}` into a
+   * one-time `items()` with no `_rp` (#4797). A template element never
+   * reaches this with such a value (`hasBailAttr`). A handler or `ref` is
+   * IMPERATIVE code that builds JSX at event time; it stays a slice
+   * (`sliceHandlerValue`). Pushes nothing when the slice is the source text.
    */
   function sliceUnwrappedAttrValue(expr: N): void {
+    if (containsJsx(expr)) {
+      walkHPath(expr)
+
+      return
+    }
+    pushSlice(expr, sliceExpr(expr))
+  }
+
+  /**
+   * A spread argument that builds JSX, property by property: an `on*` / `ref`
+   * property's value is a handler (`sliceHandlerValue`), every other part is
+   * walked like a render prop (`walkHPath`). A non-object argument is walked
+   * whole. Mirrored by `walk_spread_arg` in the Rust backend.
+   */
+  function walkSpreadArg(arg: N): void {
+    if (arg.type !== 'ObjectExpression') {
+      walkHPath(arg)
+
+      return
+    }
+    for (const prop of arg.properties as N[]) {
+      if (prop.type !== 'Property') {
+        walkHPath(prop.argument)
+        continue
+      }
+      // `{ items }` keeps the binding: a shorthand value is never auto-called.
+      if (prop.shorthand) continue
+      if (prop.computed) walkHPath(prop.key)
+      const key = prop.key
+      const keyName =
+        prop.computed
+          ? ''
+          : key.type === 'Identifier'
+            ? (key.name as string)
+            : typeof key.value === 'string'
+              ? (key.value as string)
+              : ''
+      if (keyName === 'ref' || EVENT_RE.test(keyName)) pushSlice(prop.value, sliceHandlerValue(prop.value))
+      else walkHPath(prop.value)
+    }
+  }
+
+  function pushSlice(expr: N, sliced: string): void {
     const start = expr.start as number
     const end = expr.end as number
-    const raw = code.slice(start, end)
-    const sliced = sliceExpr(expr)
-    if (sliced !== raw) replacements.push({ start, end, text: sliced })
+    if (sliced !== code.slice(start, end)) replacements.push({ start, end, text: sliced })
+  }
+
+  /**
+   * `sliceExpr` for an `on*` handler or a `ref` value, on every path (h(),
+   * template bind, rocketstyle collapse). Handlers are imperative: JSX they
+   * build is built at event time, so an explicit read there (`row={sel()}`)
+   * is the click-time value, as written. The one difference from a plain
+   * slice: an EXACTLY-BARE signal that is a prop value or child of an element
+   * in that JSX — component or DOM — stays bare (`isBareDomBinding`), so
+   * `show(<For each={items}>…</For>)` passes the signal, as 0.53 did, instead
+   * of a one-time `items()` (#4797). Mirrored by `slice_handler_value` in the
+   * Rust backend.
+   */
+  function sliceHandlerValue(expr: N): string {
+    const prev = inHandlerSlice
+    inHandlerSlice = true
+    try {
+      return sliceExpr(expr)
+    } finally {
+      inHandlerSlice = prev
+    }
   }
 
   function handleJsxAttribute(node: N, parentElement: N): void {
@@ -3658,7 +3774,7 @@ export function transformJSX_JS(
     const expr = node.value.expression
     if (!expr || expr.type === 'JSXEmptyExpression') return
     if (name === 'ref' || EVENT_RE.test(name)) {
-      sliceUnwrappedAttrValue(expr)
+      pushSlice(expr, sliceHandlerValue(expr))
 
       return
     }
@@ -4760,6 +4876,13 @@ export function transformJSX_JS(
 
   /** Detect component functions and register their first param as a props name.
    *  Called inline during the walk when entering a function. */
+  /** Is `prop` a property of an object literal that is a JSX spread argument? */
+  function isSpreadObjectProperty(prop: N): boolean {
+    const obj = findParent(prop)
+
+    return obj?.type === 'ObjectExpression' && findParent(obj)?.type === 'JSXSpreadAttribute'
+  }
+
   function maybeRegisterComponentProps(node: N): void {
     if (
       (node.type === 'FunctionDeclaration' ||
@@ -4778,13 +4901,22 @@ export function transformJSX_JS(
       // reactive, so `{String(row.id)}` gets a wasteful per-row `_bind()`
       // renderEffect instead of a static `textContent` assignment. Signal
       // reads (`row.label()`, `() => row.x`) stay reactive via their own
-      // paths. Attribute-value render functions (`component={(p) => …}`) are
-      // NOT skipped — those can be real inline components receiving props.
+      // paths. The same holds for a function that IS an attribute value
+      // (`children={(item) => …}`, `render={(row) => …}`, `component={(p) =>
+      // …}`) or a property value of a spread object: the receiving component
+      // calls it, so its parameter is whatever that component passes, and the
+      // attribute spelling must compile like the child spelling (#4797).
       if (parent && parent.type === 'JSXExpressionContainer') {
         const grandparent = findParent(parent)
-        if (grandparent && (grandparent.type === 'JSXElement' || grandparent.type === 'JSXFragment'))
+        if (
+          grandparent &&
+          (grandparent.type === 'JSXElement' ||
+            grandparent.type === 'JSXFragment' ||
+            grandparent.type === 'JSXAttribute')
+        )
           return
       }
+      if (parent && parent.type === 'Property' && parent.value === node && isSpreadObjectProperty(parent)) return
       // A defaulted props param (`function C(props = {})`) is an
       // AssignmentPattern in ESTree; the identifier is its `.left`. The Rust
       // backend (oxc) keeps the BindingIdentifier and an initializer, so the
@@ -5805,10 +5937,27 @@ export function transformJSX_JS(
 
   // ── Template emission helpers ─────────────────────────────────────────────
 
+  /**
+   * A non-handler, non-ref attribute value that BUILDS JSX (a render prop on a
+   * DOM element, `title={c() ? <b/> : 'x'}`): the template emit slices the
+   * value into its bind code, where JSX gets no JSX rules (#4797), so the
+   * element bails to the h() path, which walks it (`sliceUnwrappedAttrValue` /
+   * `wrap`). Handlers and refs stay sliced on every path (`sliceHandlerValue`).
+   */
+  function buildsDeclarativeJsx(attr: N, attrName: string): boolean {
+    if (attrName === 'ref' || EVENT_RE.test(attrName) || attr.value?.type !== 'JSXExpressionContainer') return false
+    const e = attr.value.expression
+
+    return !!e && e.type !== 'JSXEmptyExpression' && containsJsx(e)
+  }
+
   function hasBailAttr(node: N, isRoot = false): boolean {
     let sawSpread = false
+    let sawKey = false
     for (const attr of jsxAttrs(node)) {
       if (attr.type === 'JSXSpreadAttribute') {
+        // A spread that builds JSX is walked on the h() path (#4797).
+        if (attr.argument && containsJsx(attr.argument)) return true
         if (isRoot) {
           sawSpread = true
           continue
@@ -5835,10 +5984,65 @@ export function transformJSX_JS(
       // Chromium). The namespace is now resolved in the runtime, so both paths
       // agree; see `foreignAttrNamespace` in runtime-dom's props.ts.
       const attrName = jsxAttrName(attr)
-      if (attrName === 'key' || TPL_PROPERTY_ONLY_ATTRS.has(attrName)) return true
+      if (attrName === 'key') {
+        // KEYED ELEMENTS (see `templateKeyText`). A nested element's key has no
+        // reader — its parent is a DOM element, which never reconciles its
+        // children — so it is dropped, as SSR already drops it. A root's key
+        // rides on the item (`_tpl`'s fourth argument) when it can be emitted
+        // exactly; otherwise the element keeps the h() path.
+        if (isRoot && templateKeyText(attr) === null) return true
+        sawKey = isRoot
+        continue
+      }
+      if (TPL_PROPERTY_ONLY_ATTRS.has(attrName)) return true
+      if (buildsDeclarativeJsx(attr, attrName)) return true
     }
+    // A spread may carry its own `key`, and the JSX runtime's precedence
+    // between it and the written one is not something a template reproduces:
+    // a keyed root with any spread keeps the h() path.
+    if (sawKey && sawSpread) return true
 
     return false
+  }
+
+  /**
+   * The source text of a template ROOT's `key`, emitted as `_tpl`'s fourth
+   * argument, or `null` when the key cannot be emitted exactly (the element
+   * then keeps the h() path).
+   *
+   * Evaluated where the h() path evaluates it — when the item is created — and
+   * copied VERBATIM, as the h() path leaves it (`handleJsxAttribute` skips
+   * `key`: no signal auto-call, no prop inlining). A JSX string keeps the h()
+   * path when it carries `&` (oxc keeps entities literal, esbuild decodes
+   * them), and an expression holding JSX would need the walk the slice skips.
+   * A valueless `key` is `true`, which no list uses as a key.
+   */
+  function templateKeyText(attr: N): string | null {
+    const v = attr.value
+    if (!v) return null
+    if (v.type === 'StringLiteral' || (v.type === 'Literal' && typeof v.value === 'string')) {
+      const s = v.value as string
+      return s.includes('&') ? null : escapeJsString(s)
+    }
+    if (v.type !== 'JSXExpressionContainer') return null
+    const expr = v.expression
+    if (!expr || expr.type === 'JSXEmptyExpression' || containsJSXInExpr(expr)) return null
+
+    return code.slice(expr.start as number, expr.end as number)
+  }
+
+  /**
+   * A template root's key argument (`, <key>`), or `''` for an unkeyed root.
+   * The LAST `key` wins, as in a JSX props object. `hasBailAttr` has already
+   * refused a root whose key `templateKeyText` cannot emit.
+   */
+  function rootKeyArg(node: N): string {
+    let text: string | null = null
+    for (const attr of jsxAttrs(node)) {
+      if (attr.type === 'JSXAttribute' && jsxAttrName(attr) === 'key') text = templateKeyText(attr)
+    }
+
+    return text === null ? '' : `, ${text}`
   }
 
   /**
@@ -6195,7 +6399,7 @@ export function transformJSX_JS(
       // cleared). One shape for every ref value: callback, object, signal setter.
       needsRef = true
       const d = nextDisp()
-      bindLines.push(`const ${d} = _ref(${varName}, ${sliceExpr(expr)})`)
+      bindLines.push(`const ${d} = _ref(${varName}, ${sliceHandlerValue(expr)})`)
     }
 
     function emitEventListener(attr: N, attrName: string, varName: string): void {
@@ -6222,7 +6426,7 @@ export function transformJSX_JS(
       if (!attr.value || attr.value.type !== 'JSXExpressionContainer') return
       const expr = attr.value.expression
       if (!expr || expr.type === 'JSXEmptyExpression') return
-      const handler = sliceExpr(expr)
+      const handler = sliceHandlerValue(expr)
       if (DELEGATED_EVENTS.has(eventName)) {
         bindLines.push(`${varName}.__ev_${eventName} = ${handler}`)
       } else {
@@ -7253,6 +7457,9 @@ export function transformJSX_JS(
     function attrIsDynamic(attr: N, tag: string): boolean {
       if (attr.type !== 'JSXAttribute') return false
       const name = jsxAttrName(attr)
+      // A key is never written to the element (the root's rides on the item),
+      // so it needs no element ref.
+      if (name === 'key') return false
       if (name === 'ref') return true
       if (EVENT_RE.test(name)) return true
       // `<select value="…">` (plain string form, PZ-09): always emitted as a
@@ -7734,8 +7941,17 @@ export function transformJSX_JS(
     // Third `_tpl` argument, a bit set: 1 = a component child that may be
     // re-mounted, 2 = rooted at a bare SVG element (parsed inside an `<svg>`
     // wrapper by the runtime — see `SVG_ROOT_TAGS`).
-    const tplFlags = (remountable ? 1 : 0) | (SVG_ROOT_TAGS.has(jsxTagName(node)) ? 2 : 0)
-    const remountArg = tplFlags !== 0 ? `, ${tplFlags}` : ''
+    //
+    // A KEYED root passes its key as the fourth argument and is always
+    // re-mountable: the item is a value handed to a reconciler (a keyed
+    // `.map()`) or to a component reading child keys, and both decide WHEN it
+    // mounts. A keyed `.map()` re-runs its callback for every row on each
+    // change and mounts only the new keys, so the item must not clone until
+    // its mount — the re-mountable item builds on first use.
+    const keyArg = rootKeyArg(node)
+    const tplFlags =
+      (remountable || keyArg !== '' ? 1 : 0) | (SVG_ROOT_TAGS.has(jsxTagName(node)) ? 2 : 0)
+    const remountArg = (tplFlags !== 0 ? `, ${tplFlags}` : '') + keyArg
     if (refLines.length === 0 && bindLines.length === 0 && disposerNames.length === 0) {
       return `_tpl("${escaped}", () => null${remountArg})`
     }
@@ -7997,20 +8213,84 @@ export function transformJSX_JS(
     if ((parent.start as number) < sliceStart || (parent.end as number) > sliceEnd) return false
     const owner = findParent(parent)
     if (!owner) return false
+
+    return bareBindingOwnerSkips(owner)
+  }
+
+  /**
+   * Does the JSX position `owner` (the attribute or element holding an
+   * exactly-bare signal container) keep the signal bare? A DOM element's
+   * attribute or child always; inside a handler/ref slice any element's,
+   * component props included: there is no `_rp` machinery in a slice, and the
+   * signal itself is the live form (#4797, see `sliceHandlerValue`).
+   */
+  function bareBindingOwnerSkips(owner: N): boolean {
     if (owner.type === 'JSXAttribute') {
       const opening = findParent(owner)
       if (!opening || opening.type !== 'JSXOpeningElement') return false
+      if (inHandlerSlice) return true
       const name = opening.name
       const tag = name?.type === 'JSXIdentifier' ? (name.name as string) : ''
 
       return tag.length > 0 && !isComponentTag(tag)
     }
-    if (owner.type === 'JSXElement') {
-      const tag = jsxTagName(owner)
-      return tag.length > 0 && !isComponentTag(tag)
-    }
+    if (owner.type !== 'JSXElement') return false
+    if (inHandlerSlice) return true
+    const tag = jsxTagName(owner)
 
-    return false
+    return tag.length > 0 && !isComponentTag(tag)
+  }
+
+  /**
+   * Exactly-bare signal as a property VALUE of an object literal spread onto a
+   * DOM element (`<div {...{ title: count }} />`) stays BARE, for the same
+   * reason as `isBareDomBinding`: a DOM prop treats a function as a live
+   * accessor. One rule for both element paths — the template's
+   * `_applyProps` / `_bindSpread` and the h() path's spread both slice the
+   * argument through `sliceExpr`, and this keeps the bare property live on
+   * both instead of a one-time read on h(). Mirrored by `dom_spread_obj` in
+   * the Rust backend.
+   */
+  /**
+   * A property whose exactly-bare signal value may stay bare in a DOM spread:
+   * a NAMED, non-shorthand key that is not `ref` or an `on*` handler. Those
+   * values are the listener or the ref itself, so a computed there must be read
+   * (a bare `onClick: handlerFor` made the computed the listener). A computed
+   * key's name is unknown, so it is read too. Mirrored by
+   * `is_dom_spread_value_key` in the Rust backend.
+   */
+  function isDomSpreadValueKey(prop: N): boolean {
+    if (prop.shorthand || prop.computed) return false
+    const key = prop.key
+    const name =
+      key.type === 'Identifier' ? (key.name as string) : typeof key.value === 'string' ? (key.value as string) : ''
+
+    return name !== '' && name !== 'ref' && !EVENT_RE.test(name)
+  }
+
+  function isBareDomSpreadValue(node: N): boolean {
+    let cur: N = node
+    let parent = findParent(cur)
+    while (parent && TYPE_LAYERS.has(parent.type as string)) {
+      cur = parent
+      parent = findParent(cur)
+    }
+    if (!parent || parent.type !== 'Property' || parent.value !== cur || !isDomSpreadValueKey(parent)) return false
+    let obj: N = parent
+    let up = findParent(obj)
+    if (!up || up.type !== 'ObjectExpression') return false
+    obj = up
+    up = findParent(obj)
+    while (up && TYPE_LAYERS.has(up.type as string)) {
+      obj = up
+      up = findParent(obj)
+    }
+    if (!up || up.type !== 'JSXSpreadAttribute') return false
+    const opening = findParent(up)
+    const name = opening?.type === 'JSXOpeningElement' ? opening.name : null
+    const tag = name?.type === 'JSXIdentifier' ? (name.name as string) : ''
+
+    return tag.length > 0 && !isComponentTag(tag)
   }
 
   function collectSignalCallIdents(expr: N): { start: number; end: number }[] {
@@ -8119,6 +8399,7 @@ export function transformJSX_JS(
         // Exactly-bare DOM attr/child — leave bare for the runtimes'
         // fine-grained accessor treatment (see isBareDomBinding).
         if (isBareDomBinding(node, start, end)) return
+        if (isBareDomSpreadValue(node)) return
         idents.push({ start: node.start as number, end: node.end as number })
       }
       if (node.type === 'SwitchStatement') {
@@ -8254,6 +8535,15 @@ export function transformJSX_JS(
  * serialization is correct. `<textarea>`/`<title>` are ESCAPABLE raw text
  * (entities decode) and are unaffected.
  */
+/** Value-transparent wrappers (parens and TS type layers). */
+const TYPE_LAYERS = new Set([
+  'ParenthesizedExpression',
+  'TSAsExpression',
+  'TSSatisfiesExpression',
+  'TSNonNullExpression',
+  'TSTypeAssertion',
+])
+
 const RAW_TEXT_ELEMENTS = new Set([
   'script',
   'style',

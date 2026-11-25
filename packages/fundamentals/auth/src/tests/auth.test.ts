@@ -1,18 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import {
-  AuthError,
-  base64url,
-  beginAuthorization,
-  codeChallengeS256,
-  createGuard,
-  discover,
-  exchangeCode,
-  generateCodeVerifier,
-  oauth2,
-  parseCallback,
-  refreshTokens,
-  safeReturnTo,
-} from '../index'
+import { AuthError, beginAuthorization, codeChallengeS256, createGuard, discover, exchangeCode, generateCodeVerifier, oauth2, parseCallback, refreshTokens, safeReturnTo } from '../index'
+import { base64url } from '../pkce'
+import { fetchJwks } from '../jwt'
 import type { OidcMetadata } from '../index'
 
 const meta: OidcMetadata = {
@@ -76,8 +65,32 @@ describe('discover', () => {
   it('a transport failure is network_error, the code every target reports', async () => {
     const down = () => Promise.reject(new TypeError('Failed to fetch'))
     await expect(discover('https://idp.example', down)).rejects.toMatchObject({ code: 'network_error' })
-    const { flow } = await beginAuthorization(meta, client)
+    const { flow } = await beginAuthorization(meta, client, 'b1')
     await expect(exchangeCode(meta, client, flow, 'c', down)).rejects.toMatchObject({ code: 'network_error' })
+  })
+  it('never follows a redirect on a provider call (discovery, token, refresh, JWKS)', async () => {
+    // A redirect would let whoever controls a provider URL bounce the request (with the code,
+    // verifier or refresh token in the body) somewhere else, or swap the signing keys.
+    const seen: { url: string; redirect: RequestRedirect | undefined }[] = []
+    const record = (url: string, init?: RequestInit) => {
+      seen.push({ url, redirect: init?.redirect })
+      if (url.endsWith('openid-configuration')) return json({ ...meta, jwks_uri: 'https://idp.example/jwks' })
+      if (url.endsWith('/jwks')) return json({ keys: [] })
+
+      return json({ access_token: 'at', token_type: 'Bearer' })
+    }
+    const m = await discover('https://idp.example', record)
+    const { flow } = await beginAuthorization(m, client, 'b1')
+    await exchangeCode(m, client, flow, 'c', record)
+    await refreshTokens(m, client, 'rt', record)
+    await fetchJwks(m, record)
+    expect(seen.map((s) => s.url)).toEqual([
+      'https://idp.example/.well-known/openid-configuration',
+      'https://idp.example/token',
+      'https://idp.example/token',
+      'https://idp.example/jwks',
+    ])
+    for (const s of seen) expect(s.redirect, s.url).toBe('error')
   })
   it('fails with an AuthError, not a TypeError, on a malformed document', async () => {
     for (const body of [null, [], 'str', 42, { issuer: 'https://idp.example' }]) {
@@ -90,12 +103,12 @@ describe('explicit metadata — https enforced at use (no discovery ran)', () =>
   const evil = oauth2('http://evil.example', 'http://evil.example/auth', 'http://evil.example/token')
 
   it('refuses an http authorization_endpoint', async () => {
-    await expect(beginAuthorization(evil, client)).rejects.toMatchObject({ code: 'insecure_url' })
+    await expect(beginAuthorization(evil, client, 'b1')).rejects.toMatchObject({ code: 'insecure_url' })
   })
 
   it('never POSTs the code, verifier or refresh token to an http token_endpoint', async () => {
     const httpsAuth = { ...evil, authorization_endpoint: 'https://idp.example/auth' }
-    const { flow } = await beginAuthorization(httpsAuth, client)
+    const { flow } = await beginAuthorization(httpsAuth, client, 'b1')
     let sent = 0
     const fetchImpl = () => {
       sent++
@@ -108,7 +121,7 @@ describe('explicit metadata — https enforced at use (no discovery ran)', () =>
 
   it('still allows loopback http for local development, like discover', async () => {
     const local = oauth2('http://localhost:8080', 'http://localhost:8080/auth', 'http://127.0.0.1:8080/token')
-    const { flow, url } = await beginAuthorization(local, client)
+    const { flow, url } = await beginAuthorization(local, client, 'b1')
     expect(new URL(url).protocol).toBe('http:')
     const tokens = await exchangeCode(local, client, flow, 'code', () => json({ access_token: 'at', token_type: 'Bearer' }))
     expect(tokens.access_token).toBe('at')
@@ -117,7 +130,7 @@ describe('explicit metadata — https enforced at use (no discovery ran)', () =>
 
 describe('authorization round trip', () => {
   it('builds an S256 + state + nonce request', async () => {
-    const { url, flow } = await beginAuthorization(meta, client)
+    const { url, flow } = await beginAuthorization(meta, client, 'b1')
     const p = new URL(url).searchParams
     expect(p.get('response_type')).toBe('code')
     expect(p.get('code_challenge_method')).toBe('S256')
@@ -128,26 +141,26 @@ describe('authorization round trip', () => {
   })
 
   it('adds authorizationParams but never lets them override the security parameters', async () => {
-    const { url } = await beginAuthorization(meta, { ...client, authorizationParams: { prompt: 'consent', access_type: 'offline' } })
+    const { url } = await beginAuthorization(meta, { ...client, authorizationParams: { prompt: 'consent', access_type: 'offline' } }, 'b1')
     const p = new URL(url).searchParams
     expect(p.get('prompt')).toBe('consent')
     expect(p.get('access_type')).toBe('offline')
     for (const k of ['state', 'nonce', 'code_challenge', 'code_challenge_method', 'redirect_uri', 'client_id', 'scope', 'response_type']) {
-      await expect(beginAuthorization(meta, { ...client, authorizationParams: { [k]: 'x' } }), k).rejects.toMatchObject({
+      await expect(beginAuthorization(meta, { ...client, authorizationParams: { [k]: 'x' } }, 'b1'), k).rejects.toMatchObject({
         code: 'reserved_param',
       })
     }
   })
 
   it('accepts a valid callback', async () => {
-    const { flow } = await beginAuthorization(meta, client)
+    const { flow } = await beginAuthorization(meta, client, 'b1')
     const cb = `https://app.example/cb?code=abc&state=${flow.state}&iss=${encodeURIComponent(meta.issuer)}`
-    expect(parseCallback(cb, flow, meta)).toEqual({ code: 'abc' })
+    expect(parseCallback(cb, flow, meta, 'b1')).toEqual({ code: 'abc' })
   })
 
   it('rejects state mismatch, provider error, mix-up, missing code, expiry', async () => {
-    const { flow } = await beginAuthorization(meta, client, 1000)
-    const bad = (q: string, now = 1000) => () => parseCallback(`https://app.example/cb?${q}`, flow, meta, now)
+    const { flow } = await beginAuthorization(meta, client, 'b1', 1000)
+    const bad = (q: string, now = 1000) => () => parseCallback(`https://app.example/cb?${q}`, flow, meta, 'b1', now)
     expect(bad('code=a&state=wrong')).toThrow(AuthError)
     expect(bad(`error=access_denied&state=${flow.state}`)).toThrow(/provider returned/)
     expect(bad(`code=a&state=${flow.state}&iss=https://evil.example`)).toThrow(/mix-up/)
@@ -156,13 +169,13 @@ describe('authorization round trip', () => {
   })
 
   it('requires iss when the provider advertises it', async () => {
-    const { flow } = await beginAuthorization(meta, client)
+    const { flow } = await beginAuthorization(meta, client, 'b1')
     const m = { ...meta, authorization_response_iss_parameter_supported: true }
-    expect(() => parseCallback(`https://app.example/cb?code=a&state=${flow.state}`, flow, m)).toThrow(/omitted it/)
+    expect(() => parseCallback(`https://app.example/cb?code=a&state=${flow.state}`, flow, m, 'b1')).toThrow(/omitted it/)
   })
 
   it('exchanges the code with the verifier and no secret', async () => {
-    const { flow } = await beginAuthorization(meta, client)
+    const { flow } = await beginAuthorization(meta, client, 'b1')
     let body = ''
     const t = await exchangeCode(
       meta,
@@ -181,7 +194,7 @@ describe('authorization round trip', () => {
   })
 
   it('rejects failed or malformed token responses', async () => {
-    const { flow } = await beginAuthorization(meta, client)
+    const { flow } = await beginAuthorization(meta, client, 'b1')
     await expect(exchangeCode(meta, client, flow, 'a', () => json({}, 400))).rejects.toMatchObject({
       code: 'token_exchange_failed',
     })

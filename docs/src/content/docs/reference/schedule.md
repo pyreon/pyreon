@@ -62,6 +62,7 @@ addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00'
 | [`businessTimeBetween`](#businesstimebetween-function-experimental) | function | The working time between two moments as `{ hours, minutes }` (plus seconds when needed); negative when `b` is earlier. |
 | [`isOpen`](#isopen-function-experimental) | function | Is the calendar open at a moment? A window is half-open: open at its `from`, closed at its `to`. |
 | [`nextOpening`](#nextopening-function-experimental) | function | The next time the calendar opens, strictly after `at`; `null` when it never opens within ten years. |
+| [`openingWindows`](#openingwindows-function-experimental) | function | The times the calendar is open within one date (midnight to midnight), in order: the same answer `isOpen` gives for… |
 | [`nextClosing`](#nextclosing-function-experimental) | function | The next time the calendar closes, strictly after `at`. |
 | [`overlaps`](#overlaps-function-experimental) | function | Whether two half-open intervals share time: `[9:00, 10:00)` and `[10:00, 11:00)` do not. |
 | [`intersection`](#intersection-function-experimental) | function | The shared part of two intervals, or `null`. |
@@ -74,6 +75,7 @@ addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00'
 | [`Recurrence`](#recurrence-type-experimental) | type | A repeating rule as plain data. |
 | [`Interval`](#interval-type-experimental) | type | A half-open interval `[start, end)` of date-times, dates or instants. |
 | [`BusinessCalendar`](#businesscalendar-type-experimental) | type | Business days and opening hours. |
+| [`SpecialHours`](#specialhours-type-experimental) | type | Opening windows of particular dates, as a map or a function (`undefined` = the usual hours). |
 | [`WorkingHours`](#workinghours-type-experimental) | type | Opening windows by ISO weekday; absent or empty is closed. |
 | [`CalendarEvent`](#calendarevent-type-experimental) | type | An event for `expandEvents`: one-off, or repeating when it has a `rule` that starts at the event's start. |
 | [`EventInstance`](#eventinstance-type-experimental) | type | One instance of an event inside the window. |
@@ -90,6 +92,7 @@ addBusinessTime('2026-11-20T15:00', { hours: 8 }, { hours: { 1: [{ from: '09:00'
 | [`fp.addBusinessTime`](#fpaddbusinesstime-function-experimental) | function | Value-last `addBusinessTime`. |
 | [`fp.isOpen`](#fpisopen-function-experimental) | function | Value-last `isOpen`. |
 | [`fp.nextOpening`](#fpnextopening-function-experimental) | function | Value-last `nextOpening`. |
+| [`fp.openingWindows`](#fpopeningwindows-function-experimental) | function | Value-last `openingWindows`. |
 | [`fp.nextClosing`](#fpnextclosing-function-experimental) | function | Value-last `nextClosing`. |
 | [`fp.overlaps`](#fpoverlaps-function-experimental) | function | Value-last `overlaps`. |
 | [`fp.intersection`](#fpintersection-function-experimental) | function | Value-last `intersection`. |
@@ -279,7 +282,7 @@ describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, star
 (date, calendar: BusinessCalendar) => boolean
 ```
 
-Not on the calendar's `weekend` (default Saturday and Sunday) and not a holiday.
+Not on the calendar's `weekend` (default Saturday and Sunday) and not a holiday. A date with its own `specialHours` entry is a business day when that entry has a window (even on a weekend or holiday), and not one when it is empty.
 
 **Example**
 
@@ -420,6 +423,23 @@ The next time the calendar opens, strictly after `at`; `null` when it never open
 
 ```tsx
 nextOpening('2026-11-20T18:00', { hours: { 1: [{ from: '09:00', to: '17:00' }], 5: [{ from: '09:00', to: '17:00' }] } })   // => '2026-11-23T09:00'
+```
+
+---
+
+### `openingWindows` `function` — **experimental**
+
+```ts
+(date: PlainDate, calendar) => Interval[]
+```
+
+The times the calendar is open within one date (midnight to midnight), in order: the same answer `isOpen` gives for every moment of it. Includes the tail of an overnight window that started the day before (even when the date itself is closed), and ends a window that runs past midnight at the next day's `T00:00`. One interpretation of a calendar for views: `@pyreon/calendar` shades business hours with it.
+
+**Example**
+
+```tsx
+openingWindows('2026-12-24', { hours: { 4: [{ from: '09:00', to: '17:00' }] }, specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } })   // => [{ start: '2026-12-24T09:00', end: '2026-12-24T13:00' }]
+openingWindows('2026-11-21', { hours: { 5: [{ from: '22:00', to: '02:00' }] } })   // => [{ start: '2026-11-21T00:00', end: '2026-11-21T02:00' }]
 ```
 
 ---
@@ -604,15 +624,31 @@ const slot: Interval = { start: '2026-11-18T09:00', end: '2026-11-18T09:30' }
 ### `BusinessCalendar` `type` — **experimental**
 
 ```ts
-interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); timeZone? }
+interface BusinessCalendar { weekend?: Weekday[]; hours?: WorkingHours; holidays?: PlainDate[] | ((date) => boolean); specialHours?: SpecialHours; timeZone? }
 ```
 
-Business days and opening hours. No holiday data is shipped: pass a list or a predicate.
+Business days and opening hours. No holiday data is shipped: pass a list or a predicate. `specialHours` gives particular dates their own windows (a shortened day, a Sunday opening); they replace the weekday hours and decide the date over `weekend` and `holidays`.
 
 **Example**
 
 ```tsx
-const cal: BusinessCalendar = { holidays: ['2026-12-25'] }
+const cal: BusinessCalendar = { holidays: ['2026-12-25'], specialHours: { '2026-12-24': [{ from: '09:00', to: '13:00' }] } }
+```
+
+---
+
+### `SpecialHours` `type` — **experimental**
+
+```ts
+type SpecialHours = { [date: PlainDate]: OpeningWindow[] } | ((date: PlainDate) => OpeningWindow[] | undefined)
+```
+
+Opening windows of particular dates, as a map or a function (`undefined` = the usual hours). An empty list closes the date. Used by every business-day and business-time function.
+
+**Example**
+
+```tsx
+const special: SpecialHours = { '2026-12-24': [{ from: '09:00', to: '13:00' }], '2026-12-31': [] }
 ```
 
 ---
@@ -882,6 +918,23 @@ Value-last `nextOpening`.
 ```tsx
 import { nextOpening } from '@pyreon/schedule/fp'
 nextOpening({ hours: { 4: [{ from: '09:00', to: '17:00' }] } })('2026-11-18T10:00')   // => '2026-11-19T09:00'
+```
+
+---
+
+### `fp.openingWindows` `function` — **experimental**
+
+```ts
+(calendar) => (date: PlainDate) => Interval[]
+```
+
+Value-last `openingWindows`.
+
+**Example**
+
+```tsx
+import { openingWindows } from '@pyreon/schedule/fp'
+openingWindows({ hours: { 3: [{ from: '09:00', to: '17:00' }] } })('2026-11-18')   // => [{ start: '2026-11-18T09:00', end: '2026-11-18T17:00' }]
 ```
 
 ---

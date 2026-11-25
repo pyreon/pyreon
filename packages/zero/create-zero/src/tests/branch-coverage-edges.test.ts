@@ -92,10 +92,10 @@ describe('package-json — tanstack dep version branches', () => {
 })
 
 describe('package-json — tanstack non-query non-table dep (virtual)', () => {
-  it("uses '^3.17.3' for @tanstack/virtual-core (else of query/table ternary)", () => {
+  it("uses '^3.19.11' for @tanstack/virtual-core (else of query/table ternary)", () => {
     const config = base({ features: ['virtual'] })
     const pkg = JSON.parse(generatePackageJson(config))
-    expect(pkg.dependencies?.['@tanstack/virtual-core']).toBe('^3.17.3')
+    expect(pkg.dependencies?.['@tanstack/virtual-core']).toBe('^3.19.11')
   })
 })
 

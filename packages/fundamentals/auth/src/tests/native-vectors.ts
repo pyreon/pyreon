@@ -78,15 +78,29 @@ export async function generate(): Promise<Vectors> {
     const { kty, n, e, crv, x, y } = (await crypto.subtle.exportKey('jwk', k)) as JsonWebKey
     return { kty, kid, alg, use: 'sig', ...(n ? { n, e } : { crv, x, y }) }
   }
+  const weak = (await crypto.subtle.generateKey(
+    { name: 'RSASSA-PKCS1-v1_5', modulusLength: 1024, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+    true,
+    ['sign', 'verify'],
+  )) as CryptoKeyPair
   const ecPub = await pub(ec.publicKey, 'ek', 'ES256')
+  const rsaPub = await pub(rsa.publicKey, 'rk', 'RS256')
   // ek2: the same EC key published with alg "" and use null — both UNSET, so it still matches.
-  const keys = [await pub(rsa.publicKey, 'rk', 'RS256'), ecPub, { ...ecPub, kid: 'ek2', alg: '', use: null }]
+  // rk-enc: the RSA key restricted to encryption by key_ops, so it may not verify.
+  // weak: a 1024-bit RSA key, under the 2048-bit floor every verifier enforces.
+  const keys = [
+    rsaPub,
+    ecPub,
+    { ...ecPub, kid: 'ek2', alg: '', use: null },
+    { ...rsaPub, kid: 'rk-enc', key_ops: ['encrypt'] },
+    await pub(weak.publicKey, 'weak', 'RS256'),
+  ]
 
   const sign = async (alg: 'RS256' | 'ES256', header: object, claims: object): Promise<string> => {
     const input = `${b64json(header)}.${b64json(claims)}`
     const sig =
       alg === 'RS256'
-        ? await crypto.subtle.sign('RSASSA-PKCS1-v1_5', rsa.privateKey, enc.encode(input))
+        ? await crypto.subtle.sign('RSASSA-PKCS1-v1_5', ((header as { kid?: unknown }).kid === 'weak' ? weak : rsa).privateKey, enc.encode(input))
         : await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, ec.privateKey, enc.encode(input))
     return `${input}.${base64url(new Uint8Array(sig))}`
   }
@@ -119,6 +133,13 @@ export async function generate(): Promise<Vectors> {
     { name: 'wrong issuer', token: await rs({ ...base, iss: 'https://evil.example' }), nonce: 'n1', expect: 'bad_iss' },
     { name: 'wrong audience', token: await rs({ ...base, aud: 'other' }), nonce: 'n1', expect: 'bad_aud' },
     { name: 'multi-audience without azp', token: await rs({ ...base, aud: [clientId, 'other'] }), nonce: 'n1', expect: 'bad_azp' },
+    { name: 'single audience with a foreign azp', token: await rs({ ...base, azp: 'evil-client' }), nonce: 'n1', expect: 'bad_azp' },
+    { name: 'single audience with azp = client', token: await rs({ ...base, azp: clientId }), nonce: 'n1', expect: 'ok' },
+    { name: 'iat in the future', token: await rs({ ...base, iat: now + 61 }), nonce: 'n1', expect: 'not_yet_valid' },
+    { name: 'iat inside the 60s skew', token: await rs({ ...base, iat: now + 30 }), nonce: 'n1', expect: 'ok' },
+    { name: 'iat not a number', token: await rs({ ...base, iat: 'now' }), nonce: 'n1', expect: 'not_yet_valid' },
+    { name: 'key whose key_ops excludes verify', token: await rs(base, { alg: 'RS256', kid: 'rk-enc' }), nonce: 'n1', expect: 'no_key' },
+    { name: 'RSA key under 2048 bits', token: await rs(base, { alg: 'RS256', kid: 'weak' }), nonce: 'n1', expect: 'no_key' },
     { name: 'missing sub', token: await rs(without('sub')), nonce: 'n1', expect: 'bad_token' },
     { name: 'empty sub', token: await rs({ ...base, sub: '' }), nonce: 'n1', expect: 'bad_token' },
     { name: 'alg none', token: `${b64json({ alg: 'none' })}.${b64json(base)}.`, nonce: 'n1', expect: 'bad_alg' },

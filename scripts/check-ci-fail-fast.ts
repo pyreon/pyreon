@@ -106,10 +106,13 @@ export function findCiFailFastViolations(workflow: string, aggregateScript: stri
       'Test aggregate must run after failed prerequisites and respect workflow cancellation',
     )
   }
-  if (
-    jobCondition(jobs.get('fast-gates')) !== "!cancelled() && needs.install.result == 'success'"
-  ) {
-    violations.push('Fast Gates must require Install success and respect workflow cancellation')
+  // Fast Gates starts at level 1, beside Install. Every DAG level costs a full
+  // queue round under load (a job is created when its needs finish, then
+  // waits for a runner: Fast Gates waited a median 35 min, p90 115, on
+  // 2026-11-18 → 11-23), and it reads nothing from Install. The preflight
+  // property is unchanged: every expensive job still needs both.
+  if (/^ {4}needs:/m.test(jobs.get('fast-gates') ?? '') || jobCondition(jobs.get('fast-gates')) !== undefined) {
+    violations.push('Fast Gates must not wait for Install: it runs at level 1, beside it (no needs:, no if:)')
   }
 
   const workflowFailFastMarkers = [
