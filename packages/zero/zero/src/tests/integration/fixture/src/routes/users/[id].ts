@@ -13,8 +13,11 @@ export async function loader(ctx: LoaderContext): Promise<LoaderData> {
 
 export default function UserPage() {
   const data = useLoaderData<LoaderData | undefined>()
-  if (!data) return h('h1', null, 'User Page (no loader data)')
-  return h('h1', { 'data-user-name': data.name }, data.name)
+  return h(
+    'h1',
+    { 'data-user-name': () => data()?.name },
+    () => data()?.name ?? 'User Page (no loader data)',
+  )
 }
 
 export const meta = {

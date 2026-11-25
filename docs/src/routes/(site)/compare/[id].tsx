@@ -17,6 +17,10 @@ export async function loader({ params }: LoaderContext): Promise<CompareView> {
 
 export default function CompareRoute() {
   const view = useLoaderData<CompareView | undefined>()
-  if (!view) return null
-  return <ComparePage view={view} />
+  // An accessor, so the page follows its loader data (a client-only cold
+  // start fills it in after mount) instead of pinning the first read.
+  return () => {
+    const current = view()
+    return current ? <ComparePage view={current} /> : null
+  }
 }

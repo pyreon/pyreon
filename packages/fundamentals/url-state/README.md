@@ -122,8 +122,8 @@ The `UrlRouter` interface is minimal:
 
 ```ts
 interface UrlRouter {
-  replace(path: string): void | Promise<void>
-  push?(path: string): void | Promise<void>
+  replace(path: string, options?: { scroll?: boolean; viewTransition?: boolean }): void | Promise<void>
+  push?(path: string, options?: { scroll?: boolean; viewTransition?: boolean }): void | Promise<void>
   mode?: 'hash' | 'history' | 'memory'
   _base?: string
   _currentPath?: () => string // read in memory mode, where the page URL is not the route
@@ -132,6 +132,15 @@ interface UrlRouter {
 ```
 
 Any object satisfying it works (you don't strictly need `@pyreon/router`).
+
+A url-state write changes only the query, so `@pyreon/router` keeps the route
+component mounted through it (same matched route, same params): a search box
+bound to `useUrlState` keeps its focus and local state on every keystroke.
+url-state passes `{ scroll: false, viewTransition: false }` with every write,
+push or replace, so the router neither scrolls (its `scrollBehavior` is not
+consulted) nor starts a view transition. A route `loader` keyed on the query
+(`loaderKey`) remounts the page when the key changes; data refreshed under the
+same key reaches the page in place through the `useLoaderData()` accessor.
 
 With `currentRoute` present (every `@pyreon/router` instance has it), a navigation
 made through the router — `router.push('/products?page=2')`, a `<RouterLink>`

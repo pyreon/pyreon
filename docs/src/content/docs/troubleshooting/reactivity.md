@@ -275,6 +275,15 @@ A dispatched subscriber can add a third subscriber, promoting the inline slots i
 
 ---
 
+### Reading `useLoaderData()` once in the component body (#4814)
+
+`useLoaderData<T>()` returns a reactive accessor `() => T`, like `useRoute()` and `useMiddlewareData()`. `RouterView` keeps a page mounted while its record, params and loader key are unchanged, so data that changes under the same key (`router.revalidate()`, `staleWhileRevalidate`, `gcTime: 0`, a server loader re-run on a query-only navigation, a client-only cold start filling in after mount) arrives in place and only reactive readers see it.
+  - Wrong: `const { post } = useLoaderData()` (destructures a function), `const post = useLoaderData()().post` or `if (!data()) return null` in the body (snapshots), `provide(Ctx, data().page)` with a plain context.
+  - Right: `const data = useLoaderData<T>()`, then `{data().title}` in JSX, `<For each={() => data().items} by={…}>`, `<Show when={() => data().post}>`, `useHead(() => ({ title: data().title }))`, an `effect` / `computed`, or return an accessor (`return () => (data() ? <Page view={data()!} /> : null)`) when a whole branch or a plain-context provider depends on it.
+  - Code: `packages/core/router/src/loader.ts:useLoaderData`; the remount rule is `sameDepth` in `router/src/components.tsx`. `pyreon doctor diagnose` teaches the symptoms (`useLoaderData … is not a function`, `Property 'x' does not exist on type '() => T'`).
+
+---
+
 ### A Plain Mode line the compiler cannot give its apparent meaning
 
 Mutating a property of SHALLOW plain state (`state.raw` / a non-literal initializer), assigning to a `derived` value or a prop, a `signalOf(x)` whose `x` is not a plain binding. The pre-pass compiles these but only WARNS in the Vite terminal, and the running app is silently wrong (a mutation that notifies nobody). **Fix**: replace shallow state wholesale (`cfg = { ...cfg, open: true }`) or use a literal initializer for deep state; lift writes to the owner. The same warnings surface in the editor via the `pyreon/plain-mode-footgun` lint rule and in `validate` / `pyreon check` via this detector — all three read the pre-pass itself, so they cannot disagree with the build. Plain files are also covered by the classic reactivity lint rules that opt into `meta.plainLowered` (they run on the file's compiled form).
