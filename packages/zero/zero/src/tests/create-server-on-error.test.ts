@@ -1,6 +1,6 @@
 import type { ServerErrorInfo } from '@pyreon/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _defineActionWithId, _resetActions } from '../actions'
+import { _defineActionWithId, _resetActions } from '../internal'
 import { createServer } from '../entry-server'
 
 // `createServer({ onError })` reaches every server error site zero owns:

@@ -14,7 +14,7 @@ export interface CoreContextValue {
 }
 
 /**
- * Internal reactive context shared across all @pyreon packages.
+ * The core reactive context shared across all @pyreon UI packages.
  * Carries the theme object, mode, and derived dark/light flags.
  *
  * ReactiveContext means useContext() returns `() => CoreContextValue`.
@@ -41,7 +41,7 @@ type ProviderType = Partial<
 >
 
 /**
- * Low-level provider that feeds the internal Pyreon core context with the
+ * Low-level provider that feeds the Pyreon core context with the
  * theme + mode. When no theme is supplied, renders children directly.
  *
  * App code should use `<PyreonUI theme={theme}>`, which handles all context
@@ -100,7 +100,7 @@ function Provider(props: ProviderType): VNodeChild {
   return props.children ?? null
 }
 
-// Mark as native — even though @internal, PyreonUI invokes this internally
+// Mark as native — PyreonUI invokes this itself
 // AND the JSX inside PyreonUI's body still routes through the active jsx()
 // runtime (which is the compat one in compat-mode apps). Without the marker,
 // CoreProvider's body runs inside the compat wrapper's runUntracked and its

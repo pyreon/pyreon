@@ -31,7 +31,8 @@
  * sinks, so it cannot reproduce any of this.
  */
 import { transformJSX } from '@pyreon/compiler'
-import { _childText, _fuse, _slot, For, Fragment, h } from '@pyreon/core'
+import { _fuse, _slot, For, Fragment, h } from '@pyreon/core'
+import { _childText } from '@pyreon/core/internal'
 import { _bind, renderEffect, signal } from '@pyreon/reactivity'
 import { renderToStream, renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'

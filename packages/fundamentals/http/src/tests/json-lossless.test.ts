@@ -10,7 +10,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttp } from '../client'
-import { _setSourceTextSupport, losslessJson, parseJsonLossless, stringifyJsonLossless } from '../json'
+import { losslessJson, parseJsonLossless, stringifyJsonLossless } from '../json'
+import { _setSourceTextSupport } from '../internal'
 import { mock } from '../mock'
 import { openNdjsonStream, readNdjson } from '../stream'
 import { toHttpResponse } from '../transport'

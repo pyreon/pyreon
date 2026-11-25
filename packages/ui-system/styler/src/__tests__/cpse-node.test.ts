@@ -17,7 +17,8 @@
 import type { VNode } from '@pyreon/core'
 import { afterEach, describe, expect, it } from 'vitest'
 import { sheet } from '../sheet'
-import { setStyleExtraction, styled } from '../styled'
+import { setStyleExtraction } from '../cpse-state'
+import { styled } from '../styled'
 
 // Fake rewrite with the same shape as unistyle's cpseRewrite: pull every
 // declaration VALUE into a custom property keyed by the prop name.

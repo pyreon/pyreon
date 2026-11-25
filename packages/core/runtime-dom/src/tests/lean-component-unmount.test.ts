@@ -5,7 +5,8 @@
  * teardown still happens — the leak-class contract for lazy allocation.
  */
 import { h, onMount, onUnmount } from '@pyreon/core'
-import { _hasSubscribers, effect, effectScope, onCleanup, renderEffect, signal } from '@pyreon/reactivity'
+import { effect, effectScope, onCleanup, renderEffect, signal } from '@pyreon/reactivity'
+import { _hasSubscribers } from '@pyreon/reactivity/internal'
 import { describe, expect, it } from 'vitest'
 import { mount } from '../index'
 

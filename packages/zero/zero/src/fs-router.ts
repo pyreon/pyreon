@@ -1222,7 +1222,7 @@ export function generateMiddlewareModule(
     }
   }
   if (actionRoutes.length > 0) {
-    imports.push(`import { _registerActionRoutes } from "@pyreon/zero/actions"`)
+    imports.push(`import { _registerActionRoutes } from "@pyreon/zero/internal"`)
   }
 
   return [

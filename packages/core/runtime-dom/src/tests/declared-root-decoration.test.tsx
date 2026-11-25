@@ -21,7 +21,8 @@ import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as dom from '../index'
-import { _declareRootDecoration, hydrateRoot, onHydrationMismatch } from '../index'
+import { hydrateRoot, onHydrationMismatch } from '../index'
+import { _declareRootDecoration } from '../internal'
 
 const underscored = (m: object) => Object.fromEntries(Object.entries(m).filter(([k]) => k.startsWith('_')))
 

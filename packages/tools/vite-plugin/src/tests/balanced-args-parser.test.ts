@@ -20,7 +20,7 @@
  * just not the program the author wrote.
  */
 import { describe, expect, it } from 'vitest'
-import { _extractBalancedArgs, _skipStringLiteral } from '../index'
+import { _extractBalancedArgs, _skipStringLiteral } from '../internal'
 
 /** Extract from just past the opening paren of the FIRST `(` in `code`. */
 const argsOf = (code: string): string | null =>

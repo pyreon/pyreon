@@ -6,7 +6,8 @@
  * plain array.
  */
 import { h } from '@pyreon/core'
-import { __resetReactiveDevtoolsForTesting, computed, signal } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { _bindText, mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { compactGraph, CONSOLE_CAP, createHook, fileBase, type Hook, MOUNTED_IDS_CAP } from './hook'

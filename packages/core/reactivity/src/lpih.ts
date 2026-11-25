@@ -23,9 +23,8 @@ let _seq = 0
  * Canonical filename for the LPIH cache file. Co-located with the
  * project — convention: `<cwd>/.pyreon-lpih.json`. The dot-prefix marks
  * it as a hidden / generated file by filesystem convention; the
- * extension makes its contents grep-able as JSON.
- *
- * @internal — exported for tests + symmetry with the LSP-side default.
+ * extension makes its contents grep-able as JSON. Tools that compose the
+ * path from a different root use it; the LSP's own default must agree with it.
  */
 export const LPIH_DEFAULT_FILENAME = '.pyreon-lpih.json'
 

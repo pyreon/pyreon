@@ -1,7 +1,11 @@
 /**
- * Test hooks: reset the ambient state between tests. Not part of the app API; a `@pyreon/testing` helper will wrap these.
+ * `@pyreon/ambient/testing` — test hooks that reset the ambient state between tests.
  *
- * @example _resetClockState() // in afterEach
+ * Call them in `afterEach`: `resetClockState()` drops every ticker, the `setClock` pin, the provide flag and the
+ * server hand-over; `resetLocaleState()` forgets the memoized runtime locale and zone, the provide flags, the app
+ * defaults and the printed warnings.
+ *
+ * @example resetClockState() // in afterEach
  */
-export { _fireAll, _resetClockState, _tickerStats } from './clock'
-export { _resetLocaleState } from './locale'
+export { resetClockState } from './clock'
+export { resetLocaleState } from './locale'

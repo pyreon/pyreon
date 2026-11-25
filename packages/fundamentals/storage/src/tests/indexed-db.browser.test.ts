@@ -12,7 +12,8 @@
  * page load starts without) while the data stays in the real database.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { _resetDBCache, _resetRegistry, useIndexedDB } from '../index'
+import { useIndexedDB } from '../index'
+import { _resetDBCache, _resetRegistry } from '../internal'
 
 let dbName = ''
 let seq = 0

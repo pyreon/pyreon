@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  _resetRenderers,
   createDocument,
   Document,
   isDocNode,
@@ -11,6 +10,7 @@ import {
   Text,
   unregisterRenderer,
 } from '../index'
+import { _resetRenderers } from '../internal'
 import {
   sanitizeColor,
   sanitizeCss,

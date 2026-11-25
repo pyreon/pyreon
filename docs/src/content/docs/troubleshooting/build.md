@@ -162,7 +162,7 @@ Two copies both skipped `lib`/`dist`/`build` at any depth, so a `src/lib/store.t
 
 ### A scan for a transform's markers must accept every spelling the transform accepts.
 
-The Plain Mode pre-pass recognises `state`/`derived` by import source, so `import { state as s } from '@pyreon/core/plain'` compiles. The signal-export scan now reads the module's own import specifiers (`vite-plugin/src/index.ts:plainMarkerLocalNames`). The transform gate and the prescan must also agree on extensions (`.ts`/`.mts`/`.js`/`.mjs`/`.cjs`/`.cts`). Lock: `vite-plugin/src/tests/plain-mode.test.ts`.
+The Plain Mode pre-pass recognises `state`/`derived` by import source, so `import { state as s } from '@pyreon/core/plain'` compiles. The signal-export scan now reads the module's own import specifiers (`vite-plugin/src/plain-markers.ts:plainMarkerLocalNames`). The transform gate and the prescan must also agree on extensions (`.ts`/`.mts`/`.js`/`.mjs`/`.cjs`/`.cts`). Lock: `vite-plugin/src/tests/plain-mode.test.ts`.
 
 ---
 

@@ -10,9 +10,9 @@ import { h } from '@pyreon/core'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import { DateTime, Num } from '../components'
 import { provideLocale } from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 const tree = () =>
   h(

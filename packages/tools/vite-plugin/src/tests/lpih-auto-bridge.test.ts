@@ -20,12 +20,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import pyreonPlugin, {
-  type PyreonPluginOptions,
-  buildLpihClientScript,
-  resolveLpihCachePath,
-  writeLpihCacheFile,
-} from '../index'
+import pyreonPlugin, { type PyreonPluginOptions } from '../index'
+import { buildLpihClientScript, resolveLpihCachePath, writeLpihCacheFile } from '../lpih-bridge'
 
 type ConfigHook = (
   userConfig: Record<string, unknown>,

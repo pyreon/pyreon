@@ -3358,9 +3358,9 @@ describe('rule options schema', () => {
 // ── CLI --rule-options parser ────────────────────────────────────────────────
 
 describe('parseRuleOptionsOverride (CLI flag parser)', () => {
-  let parser: typeof import('../cli').parseRuleOptionsOverride
+  let parser: typeof import('../cli-helpers').parseRuleOptionsOverride
   beforeAll(async () => {
-    parser = (await import('../cli')).parseRuleOptionsOverride
+    parser = (await import('../cli-helpers')).parseRuleOptionsOverride
   })
 
   it('parses valid `id={"key":[...]}` payload', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { runWithHooks } from '@pyreon/core'
+import { runWithHooks } from '@pyreon/core/internal'
 import { useFlow } from '../use-flow'
 
 describe('useFlow', () => {

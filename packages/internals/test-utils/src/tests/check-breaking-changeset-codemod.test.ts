@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { changesetBumps, changesetProblems } from '../../../../../scripts/check-breaking-changeset-codemod'
 
-const CM = new Map([
-  ['zero-remove-vite-option', '@pyreon/zero'],
-  ['router-thing', '@pyreon/router'],
+const CM = new Map<string, readonly string[]>([
+  ['zero-remove-vite-option', ['@pyreon/zero']],
+  ['router-thing', ['@pyreon/router']],
+  ['multi-package', ['@pyreon/core', '@pyreon/zero']],
 ])
 const cs = (front: string, body: string): string => `---\n${front}\n---\n\n${body}\n`
 
@@ -26,6 +27,10 @@ describe('check-breaking-changeset-codemod', () => {
     expect(changesetProblems('a.md', cs(z, 'Upgrade: none'), CM)).toEqual([])
     expect(changesetProblems('a.md', cs(z, 'Upgrade: codemod zero-remove-vite-option'), CM)).toEqual([])
     expect(changesetProblems('a.md', cs(z, 'Upgrade: manual — rename `foo` to `bar` in every route file'), CM)).toEqual([])
+  })
+
+  it('accepts a codemod that migrates zero among other packages (`alsoMigrates`)', () => {
+    expect(changesetProblems('a.md', cs(`'@pyreon/zero': minor`, 'Upgrade: codemod multi-package'), CM)).toEqual([])
   })
 
   it('rejects an unknown codemod, a codemod for another package, a thin reason, and junk', () => {

@@ -13,7 +13,8 @@
  *    log streams) leaked one signal per key ever accessed.
  */
 import { describe, expect, it } from 'vitest'
-import { _STORE_SIGNAL_CACHE, createResource, createStore } from '../index'
+import { createResource, createStore } from '../index'
+import { _STORE_SIGNAL_CACHE } from '../internal'
 
 describe('createResource — stale-resolution race (#730 Class F shape)', () => {
   it('REGRESSION: slow original + fast refetch — fast result wins, slow ignored', async () => {

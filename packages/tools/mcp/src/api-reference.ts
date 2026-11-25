@@ -1189,26 +1189,9 @@ export const RouterView = nativeCompat(function RouterView(props) {
   provide(RouterContext, ...)
   return <div>{children}</div>
 })`,
-    notes: `Mark a Pyreon framework component as "self-managing" so compat layers (\`@pyreon/{react,preact,vue,solid}-compat\`) skip their wrapping and route the component through Pyreon's mount path. Use on every \`@pyreon/*\` JSX component whose setup body uses \`provide()\` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (\`Symbol.for("pyreon:native-compat")\`), so framework and compat sides share it without an import dependency between them. See also: isNativeCompat, NATIVE_COMPAT_MARKER.`,
+    notes: `Mark a Pyreon framework component as "self-managing" so compat layers (\`@pyreon/{react,preact,vue,solid}-compat\`) skip their wrapping and route the component through Pyreon's mount path. Use on every \`@pyreon/*\` JSX component whose setup body uses \`provide()\` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (\`Symbol.for("pyreon:native-compat")\`), so framework and compat sides share it without an import dependency between them. The compat layers read it through \`isNativeCompat()\` from \`@pyreon/core/compat\`, an internal subpath with no semver promise. See also: createContext, provide.`,
     mistakes: `- Forgetting to mark a new framework JSX export — under compat mode, the component's \`provide()\` / \`onMount()\` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.
 - Marking user-app components — only \`@pyreon/*\` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).`,
-  },
-
-  'core/isNativeCompat': {
-    signature: '(fn: unknown) => boolean',
-    example: `// In a compat layer's jsx-runtime:
-if (isNativeCompat(type)) return h(type, props)
-return wrapCompatComponent(type)(props)`,
-    notes: 'Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. Compat `jsx()` calls this to decide whether to skip the React/Vue/Solid/Preact-style wrapping. Always returns `false` for non-function inputs. See also: nativeCompat, NATIVE_COMPAT_MARKER.',
-  },
-
-  'core/NATIVE_COMPAT_MARKER': {
-    signature: 'symbol',
-    example: `import { NATIVE_COMPAT_MARKER } from '@pyreon/core'
-
-// Equivalent to nativeCompat(MyComponent):
-;(MyComponent as Record<symbol, boolean>)[NATIVE_COMPAT_MARKER] = true`,
-    notes: 'The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framework component. Most callers should use `nativeCompat()` / `isNativeCompat()` instead of touching the symbol directly; exported for advanced cases (e.g., a compat layer that wants to inspect the property without going through the helper). See also: nativeCompat, isNativeCompat.',
   },
 
   'core/Defer': {
@@ -4944,7 +4927,7 @@ const messages = formatErrors(result.issues ?? [], t)`,
     example: `const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
 const { t } = useI18n()
 const form = useForm({
-  fields: [emailField, ageField],
+  initialValues: { email: '', age: 0 },
   schema: toFormValidator(schema, t),
   onSubmit,
 })`,
@@ -5243,7 +5226,7 @@ const parse = wrapStandardSchema(schema)
 const r = parse(input)
 if (r instanceof Promise) throw new Error('async schema unsupported')
 if (r.ok) use(r.value)`,
-    notes: 'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. @internal — most consumers go through extractParseFn. See also: extractParseFn, standardSchemaToValidator.',
+    notes: 'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. Most consumers go through extractParseFn; call this directly when building your own Standard-Schema-derived parser. See also: extractParseFn, standardSchemaToValidator.',
     mistakes: `- Treating it like standardSchemaToValidator — this returns a coerced-value ParseResult, not a form error record
 - Not probing for a Promise return — an async Standard Schema returns a Promise, which is not a valid sync ParseResult`,
   },
@@ -10667,17 +10650,6 @@ HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text`,
     notes: `The two tag allowlists \`@pyreon/elements\`' Element/Text bases dispatch on: \`HTML_TAGS\` is every recognized host tag (used to validate/narrow a \`tag\` prop), \`HTML_TEXT_TAGS\` is the subset of TEXT-flavored tags (\`span\`, \`p\`, \`label\`, \`h1\`-\`h6\`, …) Text defaults \`component\` to when no explicit tag is given.`,
   },
 
-  'ui-core/getThemeEngine / setThemeEngine': {
-    signature: 'getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void',
-    example: `// User code never calls this — it's how @pyreon/unistyle wires itself into
-// <PyreonUI> without ui-core depending on unistyle. Documented here because
-// "theme isn't enriched" / "no CSS variables" debugging starts here: import
-// "@pyreon/unistyle" somewhere in your app to register the real engine.`,
-    notes: `@internal — the registration seam that breaks the \`ui-core ↔ unistyle\` dependency cycle. \`@pyreon/unistyle\` calls \`setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })\` at module load (a side effect its \`package.json\` marks \`sideEffects\` for, so tree-shaking can't drop the registration); \`<PyreonUI>\` reads it lazily via \`getThemeEngine()\` at each use-site, never eagerly at setup. When unistyle is NOT in the module graph (a bare \`@pyreon/rocketstyle\`-only app), \`getThemeEngine()\` returns a minimal FALLBACK — identity \`enrichTheme\`, no CSS vars, no CPSE — and dev-warns ONCE, so \`<PyreonUI>\` degrades instead of crashing. See also: PyreonUI.`,
-    mistakes: `- Seeing an un-enriched theme (missing default breakpoints/spacing, no CSS variables) and not realizing \`@pyreon/unistyle\` was never imported — every styled \`@pyreon\` UI package except bare \`@pyreon/rocketstyle\` pulls it in transitively, but a minimal custom setup can miss it
-- Calling \`setThemeEngine()\` from app code — it is for a THEME ENGINE PACKAGE to register itself (the unistyle precedent); overwriting it from an app silently replaces every consumer's theme resolution`,
-  },
-
   'ui-core/resolveCssVariables': {
     signature: 'resolveCssVariables(): { enabled: boolean; prefix: string; attribute: string }',
     example: `import { resolveCssVariables } from '@pyreon/ui-core'
@@ -11149,15 +11121,6 @@ hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")`,
     notes: 'The FNV-1a non-cryptographic hash styler uses for compact, deduped class names + rule keys. `hash(str)` is the one-shot form → a base-36 string. The streaming trio composes it: `hashUpdate(HASH_INIT, "ab")` folds bytes into a running 32-bit numeric state, `hashFinalize(state)` renders `(state >>> 0).toString(36)`, and `hashUpdate(hashUpdate(HASH_INIT, "ab"), "cd") === hash("abcd")`. Exported for tooling/consumers that need the SAME class-name hash styler emits (e.g. precomputing a class name before injection). Low-level — most apps never call it. See also: createSheet, styled.',
     mistakes: `- Using it for anything security-sensitive — FNV-1a is NON-cryptographic (fast, collision-cheap for CSS keys, NOT collision-resistant against adversarial input).
 - Feeding the base-36 STRING from \`hashFinalize\` back into \`hashUpdate\` — the streaming state is the 32-bit NUMBER; keep folding numbers with \`hashUpdate\` and call \`hashFinalize\` ONCE at the end.`,
-  },
-
-  'styler/setStyleExtraction': {
-    signature: 'setStyleExtraction(enabled: boolean, rewrite?: (cssText: string, varsOut: Record<string, string>) => string) => void',
-    example: `// Apps enable CPSE through ui-core, not this call:
-import { init } from "@pyreon/ui-core"
-init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood`,
-    notes: `Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). \`@pyreon/ui-core\`'s \`init({ styleExtraction: true })\` calls this to enable CPSE and inject the \`cpseRewrite\` function — which lives in \`@pyreon/unistyle\` (styler cannot import unistyle: dep direction), so it is threaded in at init time. When on, the static + SSR resolve path rewrites resolved CSS to hoist per-instance values into custom properties. Apps do NOT call this directly — enable CPSE via the \`@pyreon/ui-core\` init flag; it is exported only so ui-core can wire it. See also: styled, createSheet.`,
-    mistakes: '- Calling `setStyleExtraction(true)` directly to turn on CPSE — without the `rewrite` from `@pyreon/unistyle` (which `@pyreon/ui-core` supplies) it enables the branch with no rewriter. Use `init({ styleExtraction: true })` from `@pyreon/ui-core`.',
   },
   // <gen-docs:api-reference:end @pyreon/styler>
 
@@ -12482,9 +12445,13 @@ toast.promise(fetchData(), {
 
 // Dismiss:
 toast.dismiss(id)  // one
-toast.dismiss()    // all`,
-    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), and `.promise(promise, messages)` for async operation tracking. See also: Toaster.',
+toast.dismiss()    // all
+
+// Read the live queue reactively:
+<span>{() => toast.list().length} notifications</span>`,
+    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), `.promise(promise, messages)` for async operation tracking, and `.list()`, a reactive read of the live queue (`readonly Readonly<Toast>[]`, oldest first) for a notification count or a custom history view. See also: Toaster.',
     mistakes: `- Forgetting to render \`<Toaster />\` — toasts are created but have no visual container to render into
+- Mutating the array \`toast.list()\` returns — it is the queue's own snapshot; change the queue through \`toast()\` / \`toast.update\` / \`toast.dismiss\` / \`toast.remove\`
 - Calling \`toast.update()\` after the toast has been auto-dismissed — the ID is no longer valid, the update is silently ignored
 - Using \`toast.promise()\` with a function instead of a promise — pass the promise directly, not \`() => fetch(...)\`
 - Expecting \`toast.dismiss(id)\` to remove the toast synchronously — it is SOFT (plays the ~200ms leave animation first); reach for \`toast.remove(id)\` when you need it gone instantly
@@ -14264,6 +14231,25 @@ console.log(a()) // 5`,
     mistakes: `- Disagreeing on \`T\` across two callers with the same key — both get the same runtime signal but mismatched compile-time types (author error, no runtime safeguard).
 - Calling \`clearAllSharedSignals()\` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).
 - Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.`,
+  },
+
+  'zero-content/resolvePageLayout': {
+    signature: 'resolvePageLayout(args: { frontmatter: Record<string, unknown>; registry: ContentLayoutRegistry; defaultLayout: ContentLayout }): { layout: ContentLayout; fellBack: boolean; missingName?: string }',
+    example: `import { resolvePageLayout } from '@pyreon/zero-content'
+import DocsLayout from './layouts/docs'
+import LandingLayout from './layouts/landing'
+
+const { layout: Layout, fellBack, missingName } = resolvePageLayout({
+  frontmatter: page.frontmatter,          // e.g. { title: 'Home', layout: 'landing' }
+  registry: { landing: LandingLayout },
+  defaultLayout: DocsLayout,
+})
+if (fellBack) console.warn(\`[content] unknown layout "\${missingName}"\`)
+
+return <Layout>{page.content}</Layout>`,
+    notes: `Pick the layout for one content page from its \`layout:\` frontmatter field. Pure and runtime-agnostic: call it from the route that renders the page, with a \`registry\` you build (usually from \`import.meta.glob('./layouts/*.tsx', { eager: true })\`) and the route's default layout. No \`layout\` field (or an empty one) returns \`defaultLayout\`; a name missing from the registry also returns \`defaultLayout\`, with \`fellBack: true\` and the requested name in \`missingName\` so the route can warn. The plugin does not call it for you: per-page \`layout:\` only takes effect when the route does.`,
+    mistakes: `- Expecting \`layout:\` frontmatter to switch layouts on its own — nothing calls \`resolvePageLayout\` automatically; the rendering route must
+- Ignoring \`fellBack\` — a typo in \`layout:\` silently renders the default layout unless the route reports \`missingName\``,
   },
 
   'zero-content/Details': {
