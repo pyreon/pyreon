@@ -5,6 +5,12 @@ description: "Common library api-shape mistakes in Pyreon and how to fix them."
 
 > **Generated** from `.agents/rules/anti-patterns.md` (the same source as MCP `get_anti_patterns`). Each entry is a real mistake + its fix; where a detector code is listed, the linter / `pyreon doctor` / MCP `validate` catches it automatically.
 
+### A component or editor that injects a `<style>` element with no CSP escape hatch
+
+An inline `<style>` is refused under `style-src` without `'unsafe-inline'` — a console error on every page and no base layout — and the app had no way to avoid it (`@pyreon/toast`'s `<Toaster>` and `@pyreon/rich-text`'s placeholder rule plus TipTap's own base CSS, #4825). Rule: a package that injects a stylesheet takes a `nonce` (set on the element BEFORE insertion, since CSP checks it then) and an `injectStyles: false` opt-out, and ships the same rules as a `styles.css` export (`sideEffects: ["**/*.css"]`, listed in `files`) locked equal to the injected string by a test. A third-party engine's own injection counts too (TipTap's `injectCSS` / `injectNonce`). Inline `style` props are fine: runtime-dom applies them through CSSOM, which CSP does not restrict. Tests: `toast/src/tests/csp.browser.test.tsx`, `rich-text/src/tests/csp.browser.test.tsx` (a CSP meta tag; the control case proves the violation fires without the fix). `@pyreon/flow` exports `flowStyles` as a string for the app to place and does not inject.
+
+---
+
 ### A compat API that sorts its argument into the wrong shape
 
 Vue-compat `watch` treated any non-ref source as a getter, so `watch(reactive(obj), cb)` — Vue's most common form — called the proxy as a function, threw inside the effect, and never fired; `Array.isArray` also took a `reactive([])` for a list of sources. Classify by the real library's order (ref → function → reactive → array of sources) and warn on anything else. Test: `vue-compat/src/tests/watch-reactive-source.test.ts`.

@@ -63,6 +63,18 @@ editor.chain()?.toggleBold().run()
 // onCleanup(() => editor.dispose())
 ```
 
+### Content Security Policy
+
+The editor injects TipTap's base CSS and the placeholder rule as `<style>` elements, which a policy without `'unsafe-inline'` in `style-src` refuses. Pass `nonce`, or set `injectStyles: false` and import the same rules as a file:
+
+```ts
+createRichTextEditor({ placeholder: 'Write…', nonce: cspNonce })
+
+// or
+import '@pyreon/rich-text/styles.css'
+createRichTextEditor({ placeholder: 'Write…', injectStyles: false })
+```
+
 ### Toolbar
 
 ```tsx
