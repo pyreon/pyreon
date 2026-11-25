@@ -15,6 +15,8 @@
  * the RNG at the start of each framework via `resetRng()`.
  */
 
+import { captureDomShape, type DomShape } from '../dom-shape'
+
 export interface BenchResult {
   name: string
   /** Median in ms across `runs` timed samples (warmup excluded). */
@@ -61,6 +63,77 @@ export interface BenchSuite {
    * each one in place of a number.
    */
   gateFailures?: { name: string; error: string }[]
+  /**
+   * The DOM each op left behind, captured after its FIRST iteration (a state
+   * every arm reaches deterministically) when `configureScenarioRun` enabled
+   * capture. `bench-scenarios.ts` compares these across arms and fails the
+   * run when two arms built different DOMs (`dom-shape.ts`).
+   */
+  domShapes?: { name: string; shape: DomShape }[]
+}
+
+/**
+ * Per-page run options, set once by `main.ts` before a scenario runs.
+ *  - `captureDomShapes`: record `suite.domShapes` (one walk per op, untimed).
+ *  - `gateOnly`: run every op exactly ONCE (reset → op → commit → verify, or
+ *    one batch cycle with its probes), capture its DOM shape, and report that
+ *    single untimed-quality sample. For `bench-scenarios.ts --gate-only`,
+ *    which checks correctness and DOM equality without timing anything.
+ */
+let captureShapes = false
+let gateOnly = false
+export function configureScenarioRun(opts: { captureDomShapes: boolean; gateOnly: boolean }): void {
+  captureShapes = opts.captureDomShapes || opts.gateOnly
+  gateOnly = opts.gateOnly
+}
+
+function recordShape(name: string, suite: BenchSuite): void {
+  if (!captureShapes) return
+  ;(suite.domShapes ??= []).push({ name, shape: captureDomShape(suite.container) })
+}
+
+/** `--gate-only`: run the op once (or one batch cycle), verify, record its DOM. */
+async function gateOnlyBench(
+  name: string,
+  suite: BenchSuite,
+  fn: () => void | Promise<void>,
+  options: BenchOptions,
+  K: number,
+): Promise<BenchResult> {
+  let elapsed: number
+  if (K > 1) {
+    // One cycle with the batch's own pre/post probes (K = 1).
+    elapsed = await batchSample(suite, fn, options, 1)
+  } else {
+    if (options.reset) await options.reset()
+    const gate = OP_GATES[name]
+    const gatePre = gate ? gate.pre(suite.container) : undefined
+    const t0 = performance.now()
+    await fn()
+    if (options.commit) await options.commit()
+    suite.container.getBoundingClientRect()
+    elapsed = performance.now() - t0
+    await runVerify(name, suite, options, gate, gatePre)
+  }
+  recordShape(name, suite)
+  const result = singleSampleResult(name, elapsed)
+  suite.results.push(result)
+  return result
+}
+
+function singleSampleResult(name: string, elapsed: number): BenchResult {
+  return {
+    name,
+    median: elapsed,
+    p90: elapsed,
+    min: elapsed,
+    max: elapsed,
+    runs: 1,
+    ci95: [elapsed, elapsed],
+    cv: 0,
+    warmupUsed: 0,
+    samples: [elapsed],
+  }
 }
 
 /**
@@ -403,6 +476,7 @@ async function benchBatched(
 ): Promise<BenchResult> {
   for (let w = 0; w < BATCH_WARMUP; w++) {
     await batchSample(suite, fn, options, K)
+    if (w === 0) recordShape(name, suite)
     forceGc()
     await tick()
   }
@@ -610,6 +684,7 @@ export async function bench(
   options: BenchOptions = {},
 ): Promise<BenchResult> {
   const K = options.batchK ?? 0
+  if (gateOnly) return gateOnlyBench(name, suite, fn, options, K)
   if (K > 1) return benchBatched(name, suite, fn, options, K)
   // Adaptive warmup. Track p90 of a rolling STABILIZE_WINDOW.
   // Stop early when two consecutive windows agree within tolerance.
@@ -633,6 +708,9 @@ export async function bench(
     warmupSamples.push(elapsed)
     warmupUsed++
     await runVerify(name, suite, options, gate, gatePre)
+    // After the FIRST iteration only: every arm reaches the same state there,
+    // whereas later iterations depend on the adaptive warmup count.
+    if (warmupUsed === 1) recordShape(name, suite)
     forceGc()
     await tick()
     // Check stabilisation only after we have enough samples.

@@ -8,7 +8,7 @@
  * fail-fast cancel sibling cells after the first real failure.
  */
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export interface JobBlock {
@@ -140,11 +140,6 @@ export function findCiSchedulingViolations(workflow: string, setupAction: string
     .join('\n')
   const jobs = new Map(parseJobBlocks(code).map((job) => [job.name, job.body]))
   const errors: string[] = []
-  if (
-    !code.includes('CI_BASE: ${{ github.event.pull_request.base.sha }}') ||
-    code.includes('origin/${{ github.base_ref }}')
-  )
-    errors.push('all PR selectors must share the immutable event base SHA')
   const install = jobs.get('install') ?? ''
   const scaffold = jobs.get('scaffold-smoke-cell') ?? ''
   if (
@@ -225,6 +220,51 @@ export function findNativeCacheSnapshotViolations(workflow: string): string[] {
   return errors
 }
 
+/**
+ * Every "what did this run change" selector reads its base from
+ * `scripts/diff-base.ts` (on a PR: the merge commit's first parent).
+ *
+ * - No hand-rolled base: the event's `pull_request.base.sha` (stale once main
+ *   moves before GitHub builds the merge ref — #4776), a literal `HEAD^1` /
+ *   `HEAD~1`, or a three-dot diff against a fetched `origin/<base>`.
+ * - No workflow-level `CI_BASE`: it is exported per job by the resolve step.
+ * - A job that reads `CI_BASE` runs `bun scripts/diff-base.ts --github-env`
+ *   before its first read.
+ * - A job that calls `scripts/diff-base.ts` checks out with `fetch-depth` 0 or
+ *   >= 2: the default depth 1 lacks the merge commit's parents (the helper
+ *   then fails loudly — this catches it before a PR does).
+ */
+export function findDiffBaseViolations(workflow: string, file: string): string[] {
+  const code = workflow
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n')
+  const errors: string[] = []
+  const forbidden: [RegExp, string][] = [
+    [/pull_request\.base\.sha/, 'github.event.pull_request.base.sha'],
+    [/HEAD(\^1|~1)\b/, 'a literal HEAD^1 / HEAD~1'],
+    [/origin\/(\$\{\{ *github\.base_ref *\}\}|\$\{?BASE_REF\}?)\.\.\./, 'a three-dot diff against a fetched origin/<base>'],
+  ]
+  for (const [pattern, what] of forbidden) {
+    if (pattern.test(code)) errors.push(`${file}: diff base from ${what}; use scripts/diff-base.ts`)
+  }
+  if (/^ {2}CI_BASE:/m.test(code)) errors.push(`${file}: CI_BASE must be exported per job by scripts/diff-base.ts, not set workflow-wide`)
+  const resolve = 'bun scripts/diff-base.ts --github-env'
+  for (const job of parseJobBlocks(code)) {
+    const firstRead = job.body.search(/\$\{?CI_BASE\b/)
+    if (firstRead !== -1) {
+      const at = job.body.indexOf(resolve)
+      if (at === -1 || at > firstRead) errors.push(`${file}: ${job.name} reads CI_BASE without running \`${resolve}\` first`)
+    }
+    if (job.body.includes('scripts/diff-base.ts')) {
+      const depth = /^\s+fetch-depth:\s*(\d+)/m.exec(job.body)?.[1]
+      if (depth === undefined || (depth !== '0' && Number(depth) < 2))
+        errors.push(`${file}: ${job.name} calls scripts/diff-base.ts on a checkout without its parents (fetch-depth ${depth ?? '1 (default)'}); set fetch-depth: 2 or 0`)
+    }
+  }
+  return errors
+}
+
 /** Superseded coverage PRs must release their lane; main runs must finish. */
 export function findCoverageConcurrencyViolations(workflow: string): string[] {
   const concurrency = /^concurrency:\n((?:[ \t]+[^\n]*\n)*)/m.exec(workflow)?.[1] ?? ''
@@ -247,6 +287,11 @@ if (import.meta.main) {
     ),
     ...findCiFailFastViolations(workflow, aggregate),
     ...findCiSchedulingViolations(workflow, setup),
+    ...readdirSync(join(root, '.github/workflows'))
+      .filter((file) => file.endsWith('.yml'))
+      .flatMap((file) =>
+        findDiffBaseViolations(readFileSync(join(root, '.github/workflows', file), 'utf8'), file),
+      ),
     ...['ci.yml', 'ci-main.yml', 'native-validate.yml'].flatMap((file) =>
       findNativeCacheSnapshotViolations(
         readFileSync(join(root, '.github/workflows', file), 'utf8'),

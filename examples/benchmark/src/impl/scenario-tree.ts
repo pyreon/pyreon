@@ -39,6 +39,13 @@
  * Per-iteration `verify` checks EVERY leaf, not a sample: partial propagation
  * is exactly the failure this scenario exists to catch, and a spot check on the
  * first and last leaf would miss it.
+ *
+ * EQUAL DOM — every arm mounts with the same NON-EMPTY value
+ * (`TREE_INITIAL_VALUE`). With `''` the arms did different work: Solid 1.9 and
+ * 2.0 create no text node for an empty string, Pyreon and Vanilla create 1,024
+ * empty ones, so the mount op compared different DOMs. The mount verify reads
+ * every leaf's text, and `bench-scenarios.ts` fails the run when two arms'
+ * DOM shapes (element / text / comment counts, text hash) differ.
  */
 import { h as ph } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
@@ -88,6 +95,7 @@ import { PyreonDeepTreeTpl } from './scenario-tree-pyreon-tpl'
 import {
   CONTEXT_VALUES,
   TREE_DEPTH,
+  TREE_INITIAL_VALUE,
   verifyContextPropagated,
   verifyTreeMounted,
 } from './scenario-shared'
@@ -120,7 +128,7 @@ function vanillaTarget(): TreeTarget {
       if (vanillaLeafProto === null) {
         vanillaLeafProto = document.createElement('span')
         vanillaLeafProto.className = 'leaf'
-        vanillaLeafProto.appendChild(document.createTextNode(''))
+        vanillaLeafProto.appendChild(document.createTextNode(TREE_INITIAL_VALUE))
         vanillaBranchProto = document.createElement('div')
         vanillaBranchProto.className = 'branch'
       }
@@ -164,7 +172,7 @@ function vanillaTarget(): TreeTarget {
  * Sizes the compiler lead before the compiler work is justified.
  */
 function pyreonTplTarget(mode: 'slot' | 'append'): TreeTarget {
-  const value = signal('')
+  const value = signal(TREE_INITIAL_VALUE)
   return {
     mount(host) {
       return pyreonMount(
@@ -179,7 +187,7 @@ function pyreonTplTarget(mode: 'slot' | 'append'): TreeTarget {
 }
 
 function pyreonTarget(): TreeTarget {
-  const value = signal('')
+  const value = signal(TREE_INITIAL_VALUE)
   return {
     mount(host) {
       return pyreonMount(
@@ -233,7 +241,7 @@ function reactTarget(): TreeTarget {
   let setValueState: ((v: string) => void) | null = null
 
   function App({ onReady }: { onReady: (set: (v: string) => void) => void }) {
-    const [value, setValue] = React.useState('')
+    const [value, setValue] = React.useState(TREE_INITIAL_VALUE)
     // Published DURING render, not from an effect: `useEffect` is passive and
     // runs AFTER commit, so a synchronous `mount()` would return before the
     // setter exists. `setValue`'s identity is stable across renders and this
@@ -310,7 +318,7 @@ function preactTarget(): TreeTarget {
   let setValueState: ((v: string) => void) | null = null
 
   function App({ onReady }: { onReady: (set: (v: string) => void) => void }) {
-    const [value, setValue] = preactUseState('')
+    const [value, setValue] = preactUseState(TREE_INITIAL_VALUE)
     // Published during render — see the React target for why an effect is too
     // late for a synchronous mount.
     onReady(setValue)
@@ -377,7 +385,7 @@ const VueNode: ReturnType<typeof defineComponent> = defineComponent({
 })
 
 function vueTarget(): TreeTarget {
-  const value = ref('')
+  const value = ref(TREE_INITIAL_VALUE)
   let app: App | null = null
 
   const Root = defineComponent({
@@ -490,7 +498,7 @@ function SolidNode(props: { depth: number }): Node {
 }
 
 function solidTarget(eagerProps: boolean): TreeTarget {
-  const [value, setValue] = createSignal('')
+  const [value, setValue] = createSignal(TREE_INITIAL_VALUE)
 
   return {
     mount(host) {
@@ -525,7 +533,7 @@ function solidTarget(eagerProps: boolean): TreeTarget {
 // its output level. `mount` and `setValue` each end with one `flush()`.
 
 function solid2Target(): TreeTarget {
-  return solid2CreateTree(TREE_DEPTH)
+  return solid2CreateTree(TREE_DEPTH, TREE_INITIAL_VALUE)
 }
 
 // ─── Svelte ──────────────────────────────────────────────────────────────────
@@ -534,7 +542,7 @@ function svelteTarget(): TreeTarget {
   let app: ReturnType<typeof svelteMount> | null = null
   return {
     mount(host) {
-      setDeepValue('')
+      setDeepValue(TREE_INITIAL_VALUE)
       const a = svelteMount(DeepTree, { target: host, props: { depth: TREE_DEPTH } })
       svelteFlushSync()
       app = a
