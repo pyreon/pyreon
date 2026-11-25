@@ -46,6 +46,7 @@ function startWithLoader(): { stop: () => void; loads: () => number } {
       },
     ],
   })
+
   return { stop, loads: () => loads }
 }
 

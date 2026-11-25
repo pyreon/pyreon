@@ -39,6 +39,7 @@ function shadow(names: string[]): HTMLElement {
   container.id = 'app'
   document.body.appendChild(container)
   planted.push(container)
+
   return container
 }
 
@@ -56,6 +57,7 @@ function startWithLoader(): { stop: () => void; loads: () => number } {
       },
     ],
   })
+
   return { stop, loads: () => loads }
 }
 

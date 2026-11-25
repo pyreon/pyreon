@@ -188,6 +188,7 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
       result[record.path] = data
     }
   }
+
   return result
 }
 
@@ -343,6 +344,7 @@ export function jsonToScriptExpression(json: string): string {
       copied = i
     }
   }
+
   return out + json.slice(copied)
 }
 
@@ -446,5 +448,6 @@ export function hydrateLoaderData(router: RouterInstance, serialized: unknown): 
       setLoaderData(router, record, route, serialized[record.path])
     }
   }
+
   return true
 }

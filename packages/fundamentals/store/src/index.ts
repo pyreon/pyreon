@@ -65,6 +65,7 @@ import {
   _suspendSoleSubscriber,
   _suspendSubscriber,
 } from '@pyreon/reactivity/internal'
+import { isPlainObject } from './plain-object'
 
 // Singleton sentinel — fail-loud detection of duplicate @pyreon/store
 // instances in the same heap. See @pyreon/reactivity/singleton-sentinel for
@@ -95,7 +96,6 @@ export { dehydrateStores, hydrateStores } from './hydration'
 import { _notifyChange } from './devtools-bus'
 import { getRegistry } from './registry'
 import { consumeHydration, markStoreSsrExcluded } from './hydration'
-import { isPlainObject } from './plain-object'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
