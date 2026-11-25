@@ -1348,6 +1348,26 @@ function toNativeCollapse(
 }
 
 /** JS fallback implementation — used when the native binary isn't available. */
+/**
+ * `<select … value=…>` or `<select {...spread}>` (a plain `select` tag with a
+ * `value` attribute, or a spread that may carry one — the compiler cannot see
+ * inside it). Mirrors Rust `has_select_value`.
+ */
+function isSelectWithValue(opening: N): boolean {
+  if (opening.name?.type !== 'JSXIdentifier' || opening.name.name !== 'select') return false
+  for (const a of opening.attributes ?? []) {
+    if (a.type === 'JSXSpreadAttribute') return true
+    if (a.type === 'JSXAttribute' && a.name?.type === 'JSXIdentifier' && a.name.name === 'value') return true
+  }
+
+  return false
+}
+
+/** `<input>`, `<textarea>`, `<select>`: their `value` goes through the runtime `_setValue`. Mirrors Rust `is_value_control_tag`. */
+function isValueControlTag(tag: string): boolean {
+  return tag === 'input' || tag === 'textarea' || tag === 'select'
+}
+
 export function transformJSX_JS(
   code: string,
   filename = 'input.tsx',
@@ -1457,8 +1477,14 @@ export function transformJSX_JS(
   const parentMap = new WeakMap<object, N>()
   const childrenMap = new WeakMap<object, N[]>()
 
+  // A `<select value>` (or `<select {...spread}>`) anywhere in the module: the client emit turns on the
+  // runtime's late-option handling (`_selectWait()`, #4820), so apps without
+  // one never ship it. Mirrors Rust `has_select_value`.
+  let hasSelectValue = false
+
   /** Build parent pointers + cached children arrays for the entire AST. */
   function buildMaps(node: N): void {
+    if (node.type === 'JSXOpeningElement' && !hasSelectValue && isSelectWithValue(node)) hasSelectValue = true
     const kids: N[] = []
     const keys = Object.keys(node)
     for (let i = 0; i < keys.length; i++) {
@@ -5661,6 +5687,8 @@ export function transformJSX_JS(
       node.type === 'FunctionExpression'
     let scopeShadows: string[] | null = null
     let scopeJsxFnShadows: string[] | null = null
+    // Callback depth to restore on leaving a component nested in a callback.
+    let outerCallbackDepth = -1
     // Block-scope frame for the prop-derived registry (see `propDerivedLog`).
     // A `const` is scoped to its enclosing block / for-head / switch body.
     const propDerivedMark = propDerivedLog.length
@@ -5671,6 +5699,15 @@ export function transformJSX_JS(
       const isCallbackArg =
         parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node)
       if (isCallbackArg) _callbackDepth++
+      else if (_callbackDepth > 0 && isCapitalizedComponent(node, parent)) {
+        // A component declared inside a callback (`test('…', () => { function
+        // Page() {…} })`, a factory passed to a call) is a component body like
+        // any other: its `const s = signal()` / prop-derived consts are tracked
+        // exactly as at module level, so the same component compiles the same
+        // wherever it is declared. Mirrored by `enter_component_body` in Rust.
+        outerCallbackDepth = _callbackDepth
+        _callbackDepth = 0
+      }
       // Register component props (only for non-callback functions with JSX)
       maybeRegisterComponentProps(node)
       // PZ-02: a named function DECLARATION returning JSX is a JSX-returning
@@ -5731,6 +5768,7 @@ export function transformJSX_JS(
       const parent = findParent(node)
       if (parent && parent.type === 'CallExpression' && (parent.arguments ?? []).includes(node))
         _callbackDepth--
+      else if (outerCallbackDepth >= 0) _callbackDepth = outerCallbackDepth
     }
     // Restore signal shadowing
     if (scopeShadows) for (const name of scopeShadows) shadowedSignals.delete(name)
@@ -5791,7 +5829,8 @@ export function transformJSX_JS(
 
   walkNode(program)
 
-  if (replacements.length === 0 && hoists.length === 0) {
+  const needsSelectWait = hasSelectValue && !ssr
+  if (replacements.length === 0 && hoists.length === 0 && !needsSelectWait) {
     return collectLens ? { code, warnings, reactivityLens } : { code, warnings }
   }
 
@@ -5820,6 +5859,10 @@ export function transformJSX_JS(
 
   if (hoists.length > 0) {
     preamble = hoists.map((h) => `const ${h.name} = /*@__PURE__*/ ${h.text};\n`).join('') + preamble
+  }
+
+  if (needsSelectWait) {
+    preamble = `import { _selectWait } from "@pyreon/runtime-dom";\n_selectWait();\n` + preamble
   }
 
   if (needsTplImport) {
@@ -6220,6 +6263,13 @@ export function transformJSX_JS(
     let dispIdx = 0
     let placeholderIdx = 0
     const reactiveBindExprs: string[] = []
+    // The template's REF TAIL (#4764): every ref line, in post-order (an
+    // element's after its children's), emitted after the attribute effects
+    // below, so a ref sees its element's content and computed attributes, as
+    // `mountElement` shows it.
+    const refTail: string[] = []
+    // The disposer the last spread attribute captured (its deferred ref).
+    let spreadDisp = ''
     // Attr expressions whose dependency set is NOT provably stable (#3782):
     // emitted as individual `renderEffect`s (verify-mode dep re-collection).
     const reactiveEffectExprs: string[] = []
@@ -6857,15 +6907,15 @@ export function transformJSX_JS(
         needsSetHtml = true
         return `_setHtml(${varName}, ${expr})`
       }
-      // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
-      // (= applyValueProp), which assigns the property AND establishes
-      // `defaultValue` on the first application. A bare `el.value = v` sets only
-      // the property, and a property assignment never creates the `value`
-      // ATTRIBUTE that `form.reset()` restores from — so a client-mounted form
-      // cleared fields a hydrated one restored. Scoped by TAG: every other
-      // element that owns a `value` property (`<progress>`, `<option>`,
-      // `<select>`, custom elements) keeps the plain property assignment.
-      if (htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea')) {
+      // `<input>`/`<textarea>`/`<select>` `value`: delegate to the runtime
+      // `_setValue` (= applyValueProp). On input/textarea it assigns the
+      // property AND establishes `defaultValue` on the first application (a
+      // bare `el.value = v` never creates the `value` ATTRIBUTE that
+      // `form.reset()` restores from). On a select it records the controlled
+      // value, which the reconcilers re-apply when the options change (#4820).
+      // Scoped by TAG: every other element that owns a `value` property
+      // (`<progress>`, `<option>`, custom elements) keeps the plain assignment.
+      if (htmlAttrName === 'value' && isValueControlTag(tag)) {
         needsSetValue = true
         return `_setValue(${varName}, ${expr})`
       }
@@ -6950,7 +7000,7 @@ export function transformJSX_JS(
               ? ((needsSetStyle = true), `(v) => _setStyle(${varName}, v)`)
               : htmlAttrName === 'dangerouslySetInnerHTML'
                 ? ((needsSetHtml = true), `(v) => _setHtml(${varName}, v)`)
-                : htmlAttrName === 'value' && (tag === 'input' || tag === 'textarea')
+                : htmlAttrName === 'value' && isValueControlTag(tag)
                   ? ((needsSetValue = true), `(v) => _setValue(${varName}, v)`)
                   : DOM_PROPS.has(htmlAttrName)
                     ? `(v) => { ${varName}.${htmlAttrName} = v }`
@@ -7103,12 +7153,14 @@ export function transformJSX_JS(
           // via `_bindSpread`, which disposes each pass's cleanup before the
           // next AND on unmount.
           needsBindSpreadImport = true
-          bindLines.push(`const ${d} = _bindSpread(${varName}, () => (${expr}))`)
+          bindLines.push(`const ${d} = _bindSpread(${varName}, () => (${expr}), 1)`)
         } else {
           // Static spread (`{...props}`) applies once — capture its disposer.
           needsApplyPropsImport = true
-          bindLines.push(`const ${d} = _applyProps(${varName}, ${expr})`)
+          bindLines.push(`const ${d} = _applyProps(${varName}, ${expr}, 1)`)
         }
+        // The spread's `ref` is applied from the ref tail (`.r()`), #4764.
+        spreadDisp = d
 
         return ''
       }
@@ -7120,7 +7172,13 @@ export function transformJSX_JS(
       return attrInitializerToHtml(attr, JSX_TO_HTML_ATTR[attrName] ?? attrName, varName, tag)
     }
 
-    function processAttrs(el: N, varName: string, tag: string, deferredLines: string[]): string {
+    function processAttrs(
+      el: N,
+      varName: string,
+      tag: string,
+      deferredLines: string[],
+      refOut: string[],
+    ): string {
       // Duplicate plain attributes: JSX object semantics — the LAST value
       // wins (`<p id="a" id="b">` ≡ props `{id:"a", id:"b"}` → "b"). The
       // template path must dedupe explicitly: baking both into the HTML
@@ -7137,6 +7195,14 @@ export function transformJSX_JS(
         if (nm) lastPlainIdx.set(nm, i)
       }
       let htmlAttrs = ''
+      // `ref` lines (a literal `ref` and a spread's `.r()`) go to `refOut`,
+      // which joins the template's ref tail after this element's children
+      // (#4764). The h() path calls a ref once the element's children are
+      // mounted (`mountElement`), so a ref that clears or fills its element
+      // runs over the same content in both renderers. Run first, it removed
+      // the `<!>` / `' '` placeholders the children lines then wrote against
+      // (a client mount threw), and a static `_setChild` overwrote what the
+      // ref added.
       for (let i = 0; i < attrs.length; i++) {
         const a = attrs[i]!
         if (a.type === 'JSXAttribute' && jsxAttrName(a)) {
@@ -7167,8 +7233,18 @@ export function transformJSX_JS(
             if (bindLines.length > before) deferredLines.push(...bindLines.splice(before))
             continue
           }
+          if (name === 'ref') {
+            const before = bindLines.length
+            htmlAttrs += processOneAttr(a, varName, tag)
+            if (bindLines.length > before) refOut.push(...bindLines.splice(before))
+            continue
+          }
         }
         htmlAttrs += processOneAttr(a, varName, tag)
+        if (spreadDisp !== '') {
+          refOut.push(`const ${nextDisp()} = ${spreadDisp}.r()`)
+          spreadDisp = ''
+        }
       }
 
       return htmlAttrs
@@ -7871,7 +7947,8 @@ export function transformJSX_JS(
       // `<select value>` — see processAttrs). Appended AFTER processChildren
       // so a `_mountSlot`-mounted option list exists before `el.value` runs.
       const deferredLines: string[] = []
-      const htmlAttrs = processAttrs(el, varName, tag, deferredLines)
+      const elementRefs: string[] = []
+      const htmlAttrs = processAttrs(el, varName, tag, deferredLines, elementRefs)
       // Children are processed BEFORE the opening tag is assembled, because
       // whether this element is a mount hole is only known once its children
       // are classified. Bind-line ORDER is unaffected — `processAttrs` has
@@ -7896,6 +7973,7 @@ export function transformJSX_JS(
       const isHtmlEl = hasDsi && childHtml === '' && !isHole
       let html = `<${tag}${htmlAttrs}${isHole ? ` ${TPL_HOLE_ATTR}` : ''}${isHtmlEl ? ` ${TPL_HTML_ATTR}` : ''}>${childHtml}`
       if (deferredLines.length > 0) bindLines.push(...deferredLines)
+      if (elementRefs.length > 0) refTail.push(...elementRefs)
       if (!VOID_ELEMENTS.has(tag)) html += `</${tag}>`
 
       return html
@@ -7935,6 +8013,7 @@ export function transformJSX_JS(
       needsRenderEffectImportGlobal = true
       bindLines.push(`const ${nextDisp()} = renderEffect(() => { ${body} })`)
     }
+    if (refTail.length > 0) bindLines.push(...refTail)
 
     if (holesOut) holesOut.push(...holeNodes)
 

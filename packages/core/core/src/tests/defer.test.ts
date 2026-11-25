@@ -1,4 +1,7 @@
-import { signal } from '@pyreon/reactivity'
+import { effectScope, setContextOwner, signal } from '@pyreon/reactivity'
+import { ErrorBoundaryContext, runWithHooks } from '../component'
+import { provide } from '../context'
+import { registerErrorHandler } from '../telemetry'
 import { _setupIdleTrigger, _setupVisibleTrigger, Defer } from '../defer'
 import { Fragment, h } from '../h'
 import type { ComponentFn, Props, VNode } from '../types'
@@ -108,35 +111,41 @@ describe('Defer — when (signal-driven)', () => {
     expect(result.type).toBe(Inner)
   })
 
-  test('throws when chunk() rejects (Suspense-style error propagation)', async () => {
-    const consoleSpy = (() => {
-      const orig = console.error
-      console.error = () => {} // silence dev-mode error log
-      return () => {
-        console.error = orig
-      }
-    })()
+  test('with no <ErrorBoundary>, a rejection is reported and logged and the slot renders nothing', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const reported: unknown[] = []
+    const off = registerErrorHandler((ctx) => {
+      reported.push(ctx.error)
+    })
     try {
       const flag = signal(true)
       const vnode = Defer<Props>({
         chunk: () => Promise.reject(new Error('chunk boom')),
         when: flag,
+        fallback: 'loading…',
       })
       await new Promise((r) => setTimeout(r, 0))
-      expect(() => getRenderThunk(vnode)()).toThrow('chunk boom')
+      // Not rethrown from the render accessor (no boundary can catch a reactive
+      // re-run), and not stuck on the loading fallback either.
+      expect(getRenderThunk(vnode)()).toBeNull()
+      expect((reported[0] as Error).message).toBe('chunk boom')
+      expect(String(errorSpy.mock.calls[0]?.[0])).toContain('<Defer> failed to load')
     } finally {
-      consoleSpy()
+      off()
+      errorSpy.mockRestore()
     }
   })
 
-  test('does not console.error in production when chunk() rejects, but still throws', async () => {
-    // Line-level: the `.catch` handler's dev-mode console.error is gated on
-    // `process.env.NODE_ENV !== 'production'`. In production it must skip
-    // the log entirely while still recording the failure (Failed.set) so
-    // the render thunk still throws — Suspense-style error propagation must
-    // not silently swallow the rejection just because logging is off.
+  test('does not console.error in production when chunk() rejects, but still reports it', async () => {
+    // The dev-mode console.error is gated on `process.env.NODE_ENV !==
+    // 'production'`. In production the log is skipped while telemetry still
+    // receives the failure — it is never swallowed silently.
     const origNodeEnv = process.env.NODE_ENV
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const reported: unknown[] = []
+    const off = registerErrorHandler((ctx) => {
+      reported.push(ctx.error)
+    })
     process.env.NODE_ENV = 'production'
     try {
       const flag = signal(true)
@@ -145,11 +154,13 @@ describe('Defer — when (signal-driven)', () => {
         when: flag,
       })
       await new Promise((r) => setTimeout(r, 0))
-      expect(() => getRenderThunk(vnode)()).toThrow('prod boom')
+      expect(getRenderThunk(vnode)()).toBeNull()
+      expect((reported[0] as Error).message).toBe('prod boom')
       expect(errorSpy).not.toHaveBeenCalled()
     } finally {
       if (origNodeEnv === undefined) delete (process.env as { NODE_ENV?: string }).NODE_ENV
       else process.env.NODE_ENV = origNodeEnv
+      off()
       errorSpy.mockRestore()
     }
   })
@@ -380,5 +391,104 @@ describe('_setupVisibleTrigger', () => {
     )
     expect(loaded).toBe(true)
     expect(disconnected).toBe(true)
+  })
+})
+
+describe('Defer — `when` as a value (#4830)', () => {
+  // The compiler turns `when={open}` (a component-local signal or computed)
+  // and `when={open()}` into `_rp(() => open())`, which the renderer exposes as
+  // a GETTER on props: `props.when` is the boolean, not a function. Modelled
+  // here with a getter over a signal, exactly what `makeReactiveProps` builds.
+  test('a getter that returns the boolean triggers the load when it turns true', async () => {
+    const open = signal(false)
+    let calls = 0
+    const props = {
+      chunk: () => {
+        calls++
+        return Promise.resolve({ default: (() => null) as ComponentFn<Props> })
+      },
+    } as { chunk: () => Promise<{ default: ComponentFn<Props> }>; when: unknown }
+    Object.defineProperty(props, 'when', { get: () => open(), enumerable: true, configurable: true })
+    expect(() => Defer<Props>(props)).not.toThrow()
+    expect(calls).toBe(0)
+    open.set(true)
+    expect(calls).toBe(1)
+  })
+
+  test('a static `true` loads immediately, a static `false` never does', () => {
+    let calls = 0
+    const chunk = () => {
+      calls++
+      return new Promise<{ default: ComponentFn<Props> }>(() => {})
+    }
+    Defer<Props>({ chunk, when: false })
+    expect(calls).toBe(0)
+    Defer<Props>({ chunk, when: true })
+    expect(calls).toBe(1)
+  })
+})
+
+describe('Defer — a failed load goes to the enclosing <ErrorBoundary> (#4831)', () => {
+  let prevOwner: ReturnType<typeof setContextOwner> = null
+  beforeEach(() => {
+    prevOwner = setContextOwner(effectScope())
+  })
+  afterEach(() => {
+    setContextOwner(prevOwner)
+  })
+
+  test('a rejection after setup reaches the boundary captured at setup, not the render accessor', async () => {
+    const caught: unknown[] = []
+    provide(ErrorBoundaryContext, (err) => {
+      caught.push(err)
+      return true
+    })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const go = signal(false)
+    const vnode = Defer<Props>({ chunk: () => Promise.reject(new Error('chunk gone')), when: go })
+    // The owner that was current at setup is gone by the time the chunk
+    // rejects — the dispatch must not depend on it.
+    setContextOwner(effectScope())
+    go.set(true)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(caught.map((e) => (e as Error).message)).toEqual(['chunk gone'])
+    // Handled: the slot renders its fallback (none), it does not rethrow.
+    expect(getRenderThunk(vnode)()).toBeNull()
+    expect(errorSpy).not.toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
+  test('a missing chunk reaches the boundary too', () => {
+    const caught: unknown[] = []
+    provide(ErrorBoundaryContext, (err) => {
+      caught.push(err)
+      return true
+    })
+    Defer<Props>({ when: true })
+    expect((caught[0] as Error).message).toContain('has no `chunk` prop')
+  })
+
+  test('a rejection after the Defer unmounted is dropped', async () => {
+    const caught: unknown[] = []
+    provide(ErrorBoundaryContext, (err) => {
+      caught.push(err)
+      return true
+    })
+    let reject!: (e: Error) => void
+    const { hooks } = runWithHooks(
+      () =>
+        Defer<Props>({
+          chunk: () =>
+            new Promise((_, r) => {
+              reject = r
+            }),
+          when: true,
+        }),
+      {},
+    )
+    for (const fn of hooks.unmount ?? []) fn()
+    reject(new Error('late'))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(caught).toEqual([])
   })
 })

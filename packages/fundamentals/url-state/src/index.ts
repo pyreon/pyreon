@@ -49,4 +49,4 @@ export { useUrlState } from './use-url-state'
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type { ArrayFormat, Serializer, UrlStateOptions, UrlStateSignal } from './types'
-export type { UrlRouter } from './url'
+export type { UrlNavigateOptions, UrlRouter } from './url'

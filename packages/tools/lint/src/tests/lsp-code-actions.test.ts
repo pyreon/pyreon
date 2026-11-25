@@ -219,6 +219,27 @@ describe('LSP uses the project’s own config', () => {
     expect(_configFor(file).rules['pyreon/padding-before-return']).toBe('off')
   })
 
+  // #4307 — the VS Code `pyreonLint.preset` setting was declared but never sent
+  // to the server, so choosing a preset changed nothing. The extension now
+  // passes it as `initializationOptions.preset`; it applies only where no
+  // project config exists.
+  it('the editor preset applies to files with no project config, and only there', () => {
+    _handleMessage({
+      jsonrpc: '2.0',
+      id: 99,
+      method: 'initialize',
+      params: { initializationOptions: { preset: 'readable' } },
+    })
+    try {
+      const bare = project(null)
+      const configured = project({ preset: 'recommended' })
+      expect(_configFor(join(bare, 'a.tsx')).rules['pyreon/padding-before-return']).toBe('warn')
+      expect(_configFor(join(configured, 'a.tsx')).rules['pyreon/padding-before-return']).toBe('off')
+    } finally {
+      _handleMessage({ jsonrpc: '2.0', id: 100, method: 'initialize', params: {} })
+    }
+  })
+
   it('an invalid preset name falls back to the default instead of crashing', () => {
     const dir = project({ preset: 'nope' })
     expect(_configFor(join(dir, 'a.ts')).rules['pyreon/no-classname']).toBe('error')

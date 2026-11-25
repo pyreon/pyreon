@@ -206,7 +206,6 @@ const WARN_ALL = {
   'internal-range': 'warning',
   cycle: 'warning',
   'phantom-dep': 'warning',
-  'peer-mismatch': 'warning',
 } as const
 
 describe('scan summary and gate', () => {

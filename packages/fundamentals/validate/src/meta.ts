@@ -16,7 +16,7 @@
  * ArkType schema's call signature all keep working on the result.
  */
 
-import { type FieldMeta, type StandardSchemaV1, META_SLOT, type WithFieldMeta } from './types'
+import { type FieldMeta, type StandardSchemaV1, META_SLOT, type TFn, type WithFieldMeta } from './types'
 
 /**
  * Attach Pyreon field metadata to any Standard Schema. The returned
@@ -118,7 +118,7 @@ export function getMeta<S extends StandardSchemaV1<unknown, unknown>>(
 export function resolveMetaField<S extends StandardSchemaV1<unknown, unknown>>(
   schema: S,
   field: 'label' | 'hint' | 'placeholder',
-  t?: (key: string, params?: Record<string, unknown>) => string,
+  t?: TFn,
 ): string | undefined {
   const meta = getMeta(schema)
   if (!meta) return undefined

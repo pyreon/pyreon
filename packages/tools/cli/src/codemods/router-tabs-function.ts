@@ -1,21 +1,10 @@
-import { createRequire } from 'node:module'
+import { loadTs } from './load-ts'
 import type { Codemod } from './types'
 
 type TS = typeof import('typescript')
 type Node = import('typescript').Node
 type SourceFile = import('typescript').SourceFile
 type Edit = { start: number; end: number; text: string }
-
-/** TypeScript, loaded only when the codemod actually has a candidate file. */
-function loadTs(): TS {
-  try {
-    return createRequire(import.meta.url)('typescript') as TS
-  } catch {
-    throw new Error(
-      '[Pyreon] codemod router-tabs-function needs the `typescript` package. Install it (it is a peer dependency of @pyreon/cli) and re-run `pyreon upgrade`.',
-    )
-  }
-}
 
 /** Local names bound to `name` imported from '@pyreon/router' (aliases included). */
 function routerImportLocals(ts: TS, sf: SourceFile, name: string): Set<string> {
@@ -65,7 +54,7 @@ export const routerTabsFunction: Codemod = {
   matches: (p) => /\.[mc]?[jt]sx?$/.test(p),
   transform(source, relPath) {
     if (!source.includes('@pyreon/router') || !/\btabs\b/.test(source)) return null
-    const ts = loadTs()
+    const ts = loadTs('router-tabs-function')
     const kind = /\.[mc]?tsx$|\.jsx$/.test(relPath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     const sf = ts.createSourceFile(relPath, source, ts.ScriptTarget.ESNext, true, kind)
     const creators = routerImportLocals(ts, sf, 'createRouter')

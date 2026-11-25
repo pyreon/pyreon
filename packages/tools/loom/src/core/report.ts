@@ -7,7 +7,6 @@ import { analyzeGraph, externalUsage } from './graph'
 import {
   detectCycles,
   detectInternalRange,
-  detectPeerMismatch,
   detectPhantoms,
   detectUnused,
   detectVersionDrift,
@@ -140,6 +139,18 @@ function ignoreSource(
   return { ignores: rootIgnores, declaredIn: 'package.json' }
 }
 
+/**
+ * A peer range that misses the workspace copy by a MAJOR is a real contract
+ * break (the retired `peer-mismatch` warning). It is folded into the edge's
+ * `internal-range` finding, so lowering `internal-range` to `info` (adopting
+ * loom while bare ranges are burned down) must not hide it: such a finding
+ * stays at least a warning. An explicit `loom.ignore` entry still wins.
+ */
+function peerMajorFloor(issue: LoomIssue, level: LoomIssue['severity']): LoomIssue['severity'] {
+  if (level === 'info' && issue.code === 'internal-range' && issue.details?.peerMajorMismatch === true) return 'warning'
+  return level
+}
+
 export function buildReport(rootDir: string, options: BuildReportOptions = {}): LoomReport {
   const model = scanWorkspace(rootDir)
   const graph = analyzeGraph(model)
@@ -149,7 +160,6 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
     ...detectVersionDrift(external, model.root.overrides),
     ...detectInternalRange(model),
     ...detectCycles(graph),
-    ...detectPeerMismatch(model),
   ]
   if (!options.noImports) {
     const devPaths = options.settings?.devPaths ?? model.root.devPaths
@@ -163,7 +173,7 @@ export function buildReport(rootDir: string, options: BuildReportOptions = {}): 
   if (severityOverrides) {
     for (const issue of issues) {
       const level = severityOverrides[issue.code]
-      if (level) issue.severity = level
+      if (level) issue.severity = peerMajorFloor(issue, level)
     }
   }
 

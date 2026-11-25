@@ -22,7 +22,7 @@
  *   PYREON_SSG_E2E=1 bun run --cwd packages/zero/zero test ssg-end-to-end
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -51,7 +51,9 @@ export default defineConfig({
   }
   // Best-effort cleanup of dist + synthetic entry.
   await rm(join(SHOWCASE_DIR, 'dist'), { recursive: true, force: true })
-  await rm(join(SHOWCASE_DIR, '__pyreon-zero-ssg-entry.js'), { force: true })
+  for (const f of readdirSync(SHOWCASE_DIR).filter((n) => n.startsWith('__pyreon-zero-ssg-entry'))) {
+    await rm(join(SHOWCASE_DIR, f), { force: true })
+  }
 })
 
 describe('zero SSG end-to-end (against examples/fixtures/ssr-showcase)', () => {
@@ -109,7 +111,8 @@ export default defineConfig({
 
       // 5. Cleanup paths must be gone.
       expect(existsSync(join(distDir, '.zero-ssg-server'))).toBe(false)
-      expect(existsSync(join(SHOWCASE_DIR, '__pyreon-zero-ssg-entry.js'))).toBe(false)
+      // Every synthetic entry, whatever its per-build suffix.
+      expect(readdirSync(SHOWCASE_DIR).filter((f) => f.startsWith('__pyreon-zero-ssg-entry'))).toEqual([])
     },
     120_000,
   )

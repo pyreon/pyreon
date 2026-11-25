@@ -127,7 +127,10 @@ describe('finding + loading', () => {
   })
 
   it('tells the agent how to produce one, and why it is not guessing', () => {
-    expect(MISSING_CATALOG_MESSAGE).toContain('atlas scan')
+    // Scoped (#4307): an unscoped `bunx atlas` runs the unrelated npm package
+    // named "atlas" when @pyreon/atlas is not installed locally.
+    expect(MISSING_CATALOG_MESSAGE).toContain('bunx @pyreon/atlas scan')
+    expect(MISSING_CATALOG_MESSAGE).not.toMatch(/bunx atlas\b/)
     expect(MISSING_CATALOG_MESSAGE).toContain('guess')
   })
 })

@@ -100,7 +100,12 @@ export function detectVersionDrift(external: ExternalUsage[], overrides: Record<
   return issues
 }
 
-/** Internal deps must reference workspace members honestly. */
+/**
+ * Internal deps must reference workspace members honestly. The one owner of
+ * every edge to a workspace member: a `workspace:` pin whose major is gone, or
+ * any non-`workspace:` range (including a peer range, whose major mismatch the
+ * message names).
+ */
 export function detectInternalRange(model: WorkspaceModel): LoomIssue[] {
   const versions = new Map(model.packages.map((p) => [p.name, p.version]))
   const issues: LoomIssue[] = []
@@ -126,13 +131,24 @@ export function detectInternalRange(model: WorkspaceModel): LoomIssue[] {
       } else {
         // A bare semver range on an internal package: installs from registry
         // instead of linking the workspace copy the moment versions slip.
+        // This rule OWNS every non-`workspace:` edge to a workspace member,
+        // peers included. A peer range that also misses the workspace major
+        // says so here; there is no second finding for the same edge (#4391 —
+        // the old `peer-mismatch` warning could only ever fire on an edge this
+        // rule had already reported).
+        const rangeMajor = majorOf(d.range)
+        const actualMajor = majorOf(actual)
+        const peerOffMajor =
+          d.field === 'peerDependencies' && rangeMajor !== null && actualMajor !== null && rangeMajor !== actualMajor
         issues.push({
           code: 'internal-range',
           severity: 'error',
           pkg: p.name,
           dep: d.name,
-          message: `\`${p.name}\` declares workspace member \`${d.name}\` as \`${d.range}\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace`,
-          details: { declared: d.range, actual },
+          message:
+            `\`${p.name}\` declares workspace member \`${d.name}\` as \`${d.range}\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace` +
+            (peerOffMajor ? `; as a peer range it also misses the workspace copy (${actual}) by a major` : ''),
+          details: { declared: d.range, actual, ...(peerOffMajor ? { peerMajorMismatch: true } : {}) },
         })
       }
     }
@@ -266,32 +282,6 @@ export function detectUnused(model: WorkspaceModel, imports: ImportScan): LoomIs
         dep: d.name,
         message: `\`${p.name}\` declares \`${d.name}\` as a dependency but no source file imports it — lexical evidence only (bins/plugins/CSS load without an import statement); verify before removing`,
       })
-    }
-  }
-  return issues
-}
-
-/** Internal peer ranges must match the workspace copy's actual version. */
-export function detectPeerMismatch(model: WorkspaceModel): LoomIssue[] {
-  const versions = new Map(model.packages.map((p) => [p.name, p.version]))
-  const issues: LoomIssue[] = []
-  for (const p of model.packages) {
-    for (const d of p.deps) {
-      if (d.field !== 'peerDependencies') continue
-      const actual = versions.get(d.name)
-      if (actual === undefined || d.range.startsWith('workspace:')) continue
-      const peerMajor = majorOf(d.range)
-      const actualMajor = majorOf(actual)
-      if (peerMajor !== null && actualMajor !== null && peerMajor !== actualMajor) {
-        issues.push({
-          code: 'peer-mismatch',
-          severity: 'warning',
-          pkg: p.name,
-          dep: d.name,
-          message: `\`${p.name}\` peer-requires \`${d.name}\` at \`${d.range}\` but the workspace ships ${actual} — the peer contract and the local reality disagree by a major`,
-          details: { declared: d.range, actual },
-        })
-      }
     }
   }
   return issues

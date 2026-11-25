@@ -9,7 +9,7 @@ describe('onInterrupt', () => {
     vi.restoreAllMocks()
   })
 
-  it('prints the rendered line, then exits 130 by default', () => {
+  it('prints the rendered line, then exits 130 by default (after flushing)', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
     const write = vi.fn()
     const before = process.listenerCount('SIGINT')
@@ -17,31 +17,36 @@ describe('onInterrupt', () => {
     expect(process.listenerCount('SIGINT')).toBe(before + 1)
     process.emit('SIGINT')
     expect(write).toHaveBeenCalledWith('\n! interrupted\n')
-    expect(exit).toHaveBeenCalledWith(130)
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(130))
     // One-shot: the handler removed itself.
     expect(process.listenerCount('SIGINT')).toBe(before)
   })
 
-  it('honours a custom exit code and can print without exiting', () => {
+  it('honours a custom exit code and can print without exiting', async () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
     const write = vi.fn()
     onInterrupt(() => 'a', { write, code: 0 })
     process.emit('SIGINT')
-    expect(exit).toHaveBeenCalledWith(0)
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(0))
 
     exit.mockClear()
     onInterrupt(() => 'b', { write, exit: false })
     process.emit('SIGINT')
     expect(write).toHaveBeenLastCalledWith('\nb\n')
+    await new Promise((r) => setTimeout(r, 10))
     expect(exit).not.toHaveBeenCalled()
   })
 
-  it('writes to stderr when no writer is given, so --json stdout stays valid', () => {
-    vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
-    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  it('writes to stderr when no writer is given, so --json stdout stays valid', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never)
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(((_c: unknown, cb?: unknown) => {
+      if (typeof cb === 'function') queueMicrotask(cb as () => void)
+      return true
+    }) as typeof process.stderr.write)
     onInterrupt(() => 'x')
     process.emit('SIGINT')
     expect(err).toHaveBeenCalledWith('\nx\n')
+    await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(130))
   })
 
   it('the disposer detaches the handler so a later Ctrl-C falls through', () => {

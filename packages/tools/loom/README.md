@@ -19,12 +19,11 @@ loom --version
 | Code | Severity | What it means |
 | --- | --- | --- |
 | `version-drift` | error (cross-major) / warning (same-major) / info (root-overridden) | one external dep declared with different ranges across packages |
-| `internal-range` | error | a workspace member referenced by a bare semver (registry install waiting to happen) or a `workspace:` pin whose major no longer exists |
+| `internal-range` | error | a workspace member referenced by a bare semver (registry install waiting to happen) or a `workspace:` pin whose major no longer exists. It owns every edge to a workspace member, peers included: a bare peer range that also misses the workspace major is this one finding: its message says so, it carries `details.peerMajorMismatch: true`, and it stays at least a warning when `loom.severity` lowers `internal-range` to `info`. The retired `peer-mismatch` code is rejected in config with a message naming its replacement |
 | `cycle` | error | a cycle in the runtime dependency graph between workspace packages, as declared in `package.json` (`dependencies` + `peerDependencies`; dev edges deliberately excluded — shared test utilities legitimately "cycle") |
 | `phantom-dep` | error (published) / warning (private) | shipping source imports a package at RUNTIME that the manifest never declares — hoisting luck |
 | `phantom-type-dep` | info | a `import type` / `.d.ts` import of an undeclared package — erased at build, so consumers are fine, but typecheck rides on hoisting |
 | `prod-import-of-dev-dep` | warning (published) / info (private) | shipping source leans at RUNTIME on a devDependency consumers won't have |
-| `peer-mismatch` | warning | an internal peer range disagreeing with the workspace copy by a major |
 | `unused-dep` | info | a declared dependency no source file imports — lexical evidence only, verify before removing |
 | `stale-ignore` | warning | a `loom.ignore` entry that does nothing: it matches no finding at any severity (the defect it excused is gone, or its `pkg` / `dep` / `code` never matched), or every finding it matches is already taken by an earlier entry (shadowed). An entry for a live `info` finding is not stale. Points at the file the entry is declared in; under `--no-imports` an entry for a lexical code is not judged |
 

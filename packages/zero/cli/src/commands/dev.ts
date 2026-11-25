@@ -1,7 +1,7 @@
 import { reportFailure } from './report'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { createTerm, type Term } from '@pyreon/ansi'
+import { createTerm, exitAfterFlush, type Term } from '@pyreon/ansi'
 import { createServer } from 'vite'
 import { type BannerColor, formatDevHeader, formatReadyLine, renderRouteBanner } from './dev-banner'
 import { loadZeroConfigPort } from './load-config'
@@ -61,7 +61,7 @@ export async function dev(root: string | undefined, options: DevOptions) {
     console.log('')
   } catch (error) {
     reportFailure('zero dev', 'Failed to start the dev server', error)
-    process.exit(1)
+    await exitAfterFlush(1)
   }
 }
 

@@ -110,7 +110,7 @@ describe('a plain attribute after a spread wins (JSX object semantics)', () => {
   it('a plain attribute BEFORE the spread keeps the template (the spread legitimately wins)', () => {
     const out = both('const a = <a rel="noopener" {...p}>x</a>')
     expect(out).toContain('_tpl(')
-    expect(out).toContain('_applyProps(__root, p)')
+    expect(out).toContain('_applyProps(__root, p, 1)')
   })
 })
 

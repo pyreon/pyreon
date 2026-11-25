@@ -17,6 +17,10 @@ export async function loader({ params }: LoaderContext): Promise<MigrateLayerVie
 
 export default function MigrateLayerRoute() {
   const view = useLoaderData<MigrateLayerView | undefined>()
-  if (!view) return null
-  return <MigrateLayerPage view={view} />
+  // An accessor, so the page follows its loader data (a client-only cold
+  // start fills it in after mount) instead of pinning the first read.
+  return () => {
+    const current = view()
+    return current ? <MigrateLayerPage view={current} /> : null
+  }
 }

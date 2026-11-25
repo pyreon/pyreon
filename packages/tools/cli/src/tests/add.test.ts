@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { add, detectPackageManager, normalizePackageName } from '../add'
+import { createTerm } from '@pyreon/ansi'
+import { add, detectPackageManager, devInstallCommand, normalizePackageName, renderAddGuide } from '../add'
 
 let tmp: string
 let logs: string[]
@@ -46,6 +47,26 @@ describe('detectPackageManager', () => {
     const sub = join(tmp, 'apps', 'web')
     mkdirSync(sub, { recursive: true })
     expect(detectPackageManager(sub).name).toBe('pnpm')
+  })
+})
+
+describe('a recipe\'s dev dependencies use the detected package manager', () => {
+  it('spells the dev flag per manager', () => {
+    expect(devInstallCommand('bun', ['vite'])).toBe('bun add -d vite')
+    expect(devInstallCommand('pnpm', ['vite'])).toBe('pnpm add -D vite')
+    expect(devInstallCommand('yarn', ['vite'])).toBe('yarn add -D vite')
+    expect(devInstallCommand('npm', ['vite'])).toBe('npm install -D vite')
+  })
+
+  it('atlas: the dev AND build needs, in the project\'s own manager', () => {
+    const text = renderAddGuide(createTerm({ level: 0, unicode: true }), ['@pyreon/atlas'], {
+      dryRun: true,
+      pm: 'pnpm',
+      elapsedMs: 1,
+    })
+    expect(text).toContain('pnpm add -D vite @pyreon/vite-plugin @pyreon/zero')
+    expect(text).toContain('atlas build')
+    expect(text).not.toContain('bun add')
   })
 })
 

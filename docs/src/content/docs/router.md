@@ -930,6 +930,12 @@ For a **deliberate** full-load link, opt out with any of:
 <a href="/print-view" target="_blank">Print view</a>
 ```
 
+`data-allow-reload` also works on an **ancestor**: every anchor inside the marked element is skipped. Use it for a region whose links are not your router's, such as embedded CMS HTML or a component preview:
+
+```html
+<div data-allow-reload>…third-party markup with its own links…</div>
+```
+
 #### External links
 
 `RouterLink` inspects `to` at runtime and only intercepts **internal** navigations. Anything else is left to the browser, with the right `<a>` attributes applied automatically:
@@ -1559,7 +1565,7 @@ function Users() {
   const users = useLoaderData<User[]>()
   return (
     <ul>
-      {users.map(u => <li>{u.name}</li>)}
+      <For each={users} by={(u) => u.id}>{(u) => <li>{u.name}</li>}</For>
     </ul>
   )
 }
@@ -1579,7 +1585,7 @@ export const loader = async () => ({ posts: await fetchPosts() })
 
 function PostsPage() {
   const data = useLoaderData<LoaderData<typeof loader>>()
-  // data: { posts: Post[] } — inferred from the loader's return type, not
+  // data(): { posts: Post[] } — inferred from the loader's return type, not
   // hand-annotated, so a change to the loader's shape is a type error at
   // every consuming `useLoaderData<LoaderData<typeof loader>>()` call site
   // instead of a silent runtime mismatch.
@@ -1618,6 +1624,21 @@ loader: ({ request }) => {
 - **Cancellation:** When a new navigation starts, the previous navigation's AbortController is aborted. Loaders that check `signal.aborted` or pass `signal` to `fetch()` will be cancelled.
 - **Error handling:** If a loader throws and the route has an `errorComponent`, it is rendered instead of the route component. If no `errorComponent` is defined, the route component renders with `undefined` data.
 - **Data cleanup:** Loader data for routes no longer in the matched stack is pruned after each navigation.
+- **Remounting:** the page is remounted when its matched route, its params or its loader key (`loaderKey`, else path + params) change. A query- or hash-only navigation keeps it mounted. Data that changes under the same key (`router.revalidate()`, `staleWhileRevalidate`, `gcTime: 0`, a server loader) reaches the page in place: `useLoaderData()` returns an accessor, so read `data()` inside JSX, an `effect` or a `computed`. A value read once in the component body does not update.
+
+```tsx
+// A search page that keeps its input focused while its server loader re-runs per keystroke
+const Search = () => {
+  const data = useLoaderData<{ hits: Hit[] }>()
+  const q = useUrlState('q', '')
+  return (
+    <>
+      <input value={q()} onInput={(e) => q.set(e.currentTarget.value)} />
+      <For each={() => data().hits} by={(h) => h.id}>{(h) => <li>{h.title}</li>}</For>
+    </>
+  )
+}
+```
 
 ### Loaders with Route Params
 
@@ -1643,14 +1664,14 @@ const routes = [
 
 function UserProfile() {
   const user = useLoaderData<User>()
-  return <h1>{user.name}</h1>
+  return <h1>{user().name}</h1>
 }
 
 function SearchResults() {
   const results = useLoaderData<SearchResult[]>()
   return (
     <ul>
-      {results.map(r => <li>{r.title}</li>)}
+      <For each={results} by={(r) => r.id}>{(r) => <li>{r.title}</li>}</For>
     </ul>
   )
 }
@@ -1686,7 +1707,7 @@ function OrgLayout() {
   const org = useLoaderData<Organization>()
   return (
     <div>
-      <h1>{org.name}</h1>
+      <h1>{org().name}</h1>
       <RouterView />
     </div>
   )
@@ -1696,9 +1717,7 @@ function OrgMembers() {
   const members = useLoaderData<Member[]>()
   return (
     <ul>
-      {members.map((m) => (
-        <li>{m.name}</li>
-      ))}
+      <For each={members} by={(m) => m.id}>{(m) => <li>{m.name}</li>}</For>
     </ul>
   )
 }
@@ -1949,6 +1968,8 @@ lazy(() => import('./pages/Dashboard').then((m) => m.DashboardPage))
 ```
 
 ## Scroll Behavior
+
+A single navigation can opt out of scrolling and of the view transition: `router.push('/list?page=2', { scroll: false, viewTransition: false })`. A `replace()` that changes only the query (same route, params and hash) defaults to both off, and `@pyreon/url-state` and the `useSearchParams` setters pass both as `false`. With `scroll: false` the `scrollBehavior` below is not consulted.
 
 Control scroll position on navigation:
 
@@ -2658,11 +2679,23 @@ For focus management on route change (moving keyboard focus to the new content),
 
 ## View Transitions API
 
-Route navigations are automatically wrapped in `document.startViewTransition()` when the browser supports the View Transitions API. This provides smooth CSS-driven transitions between pages with zero configuration.
+View Transitions are **opt-in**. Turn them on for the whole router, or for one route (and its children, since `meta` merges down the matched chain):
+
+```ts
+const router = createRouter({ routes, viewTransition: true })
+
+{ path: '/gallery', component: Gallery, meta: { viewTransition: true } }
+```
+
+With it on, a navigation runs inside `document.startViewTransition()` where the browser has the API, and CSS-driven transitions between pages work with no further code.
+
+They are off by default because a transition costs every navigation that runs one. The DOM swap waits for the browser to capture the old page, which happens on the next frame: the new route is in the DOM about 16 ms after the click instead of well under a millisecond. While the cross-fade runs (250 ms by default) the page is not hit-testable, so a click in that window reaches the transition overlay instead of the page. Measured in Chromium on the catalogue app (`examples/real-bench/app`): with transitions on, each route change took 14–17 ms from click to the new DOM; with them off, 0.2–1.6 ms.
+
+**Only when the page changes.** A navigation that moves only the query or the hash (`/products?page=2` → `/products?page=3`) is not animated: it is state bookkeeping — `@pyreon/url-state` through `setUrlRouter`, a filter, a form synced to the URL — that often runs per keystroke, and a transition would snapshot and cross-fade the whole document each time.
 
 **Reduced motion is respected automatically.** When the user's OS is set to *reduce motion* (`@media (prefers-reduced-motion: reduce)`), the router skips the View Transition and swaps the DOM synchronously instead — the navigation still happens, only the fade/slide animation is suppressed. This satisfies [WCAG 2.3.3 "Animation from Interactions"](https://www.w3.org/WAI/WCAG21/Understanding/animation-from-interactions.html) with no configuration. The preference is read per-navigation, so toggling it mid-session takes effect on the next route change.
 
-To opt out for a specific route, set `meta.viewTransition: false`:
+To opt one route out of a router that has them on, set `meta.viewTransition: false`:
 
 ```ts
 {
@@ -2831,7 +2864,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="useParams" type="hook" signature={"useParams<T extends Record<string, string>>(): T"} description="Snapshot of the current route's params (not reactive)." />
 
-<APICard name="useLoaderData" type="hook" signature={"useLoaderData<T>(): T"} description="Read data returned by the current route's loader function." />
+<APICard name="useLoaderData" type="hook" signature={"useLoaderData<T>(): () => T"} description="The current route's loader data as a reactive accessor; it updates in place when the data changes under the same loader key." />
 
 <APICard name="useSearchParams" type="hook" signature={"useSearchParams<T>(defaults?: T): [get: () => T, set: (updates: Partial<T>) => Promise<NavigationResult>]"} description="Reactive read/write access to URL query parameters with optional defaults." />
 

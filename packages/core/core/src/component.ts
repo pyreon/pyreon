@@ -1,4 +1,5 @@
 import { _enterCleanupFrame, _exitCleanupFrame } from '@pyreon/reactivity/internal'
+import { createContext, useContext } from './context'
 import { _peekCurrentHooks, EMPTY_HOOKS, PENDING_HOOKS, setCurrentHooks } from './lifecycle'
 import type { ComponentFn, LifecycleHooks, VNodeChild } from './types'
 
@@ -97,41 +98,43 @@ export function propagateError(err: unknown, hooks: LifecycleHooks): boolean {
   return false
 }
 
-// ─── Error boundary stack ────────────────────────────────────────────────────
-// Module-level stack of active ErrorBoundary handlers (innermost last).
-// ErrorBoundary pushes during its own setup, before children mount, so any child
-// mountComponent error dispatches up to the nearest boundary.
-//
-// Mutation contract: removal is IDENTITY-based (`lastIndexOf + splice`), never
-// position-based (`pop`). Sibling boundaries unmount in renderer-driven order
-// (keyed `<For>` reconciliation, `<Show>` flips, route nav), NOT strict LIFO, so
-// a `pop()` would remove the WRONG frame — orphaning one boundary's handler on
-// the stack while dropping the surviving boundary's. Errors would then route to
-// the orphan, whose signal is already disposed, and vanish silently. Same shape
-// as the `popContext()` bug — see anti-patterns "Position-based pop for stack
-// frames that may be pushed by reactive boundaries".
+// ─── Error boundaries ────────────────────────────────────────────────────────
+// The nearest `<ErrorBoundary>` is resolved through the CONTEXT OWNER CHAIN,
+// which mirrors the component tree: each boundary `provide()`s its handler, and
+// a throw dispatches to `useContext(ErrorBoundaryContext)` from the throwing
+// component's parent owner. This replaced a module-level stack whose top was
+// read at dispatch time. A boundary stays on such a stack until it UNMOUNTS, so
+// the top was simply the last boundary mounted: a component throwing NEXT TO a
+// mounted boundary (not inside it) rendered that sibling's fallback, and a
+// throw that happened after mount (a rejected `<Defer>` chunk, an async
+// component) went to whichever boundary mounted last (#4831).
 
-// Plain module-scope stack. The duplicate-instance bug class is prevented at the
-// bundler layer (`@pyreon/vite-plugin` injects `resolve.dedupe`) and detected at
-// the runtime layer (every package calls `registerSingleton` at module load).
-const _ebStack: ((err: unknown) => boolean)[] = []
+/** A boundary's handler: returns true when it took the error. */
+export type ErrorBoundaryHandler = (err: unknown) => boolean
 
-export function pushErrorBoundary(handler: (err: unknown) => boolean): void {
+/** @internal The nearest enclosing `<ErrorBoundary>`'s handler (owner-chain scoped). */
+export const ErrorBoundaryContext = createContext<ErrorBoundaryHandler | null>(null)
+
+// Legacy hand-pushed handlers (`pushErrorBoundary`) for direct callers outside
+// a component tree. `<ErrorBoundary>` itself no longer pushes here. Removal is
+// IDENTITY-based (`lastIndexOf + splice`), never position-based.
+const _ebStack: ErrorBoundaryHandler[] = []
+
+/**
+ * Push a handler that catches errors when no `<ErrorBoundary>` encloses the
+ * throw. Prefer `<ErrorBoundary>`, which scopes its handler to its subtree.
+ */
+export function pushErrorBoundary(handler: ErrorBoundaryHandler): void {
   _ebStack.push(handler)
 }
 
 /**
- * Remove a SPECIFIC handler from the error-boundary stack by reference
- * identity. Each `ErrorBoundary` registers `onUnmount(() => popErrorBoundary(handler))`
- * with its OWN handler — so unmount in any order (LIFO, FIFO, middle-out)
- * correctly removes the right handler.
+ * Remove a SPECIFIC handler pushed with `pushErrorBoundary` by reference
+ * identity, so removal in any order removes the right one. The no-arg form
+ * pops the last handler.
  */
-export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
+export function popErrorBoundary(handler?: ErrorBoundaryHandler): void {
   if (handler === undefined) {
-    // Back-compat: legacy callers that don't pass a handler get the old
-    // pop-last behaviour. Internal `ErrorBoundary` setup always passes
-    // its handler now; any external direct callers (tests, advanced
-    // consumers) keep working with no-arg form.
     _ebStack.pop()
     return
   }
@@ -140,12 +143,22 @@ export function popErrorBoundary(handler?: (err: unknown) => boolean): void {
 }
 
 /**
- * Dispatch an error to the nearest active ErrorBoundary.
- * Returns true if the boundary handled it, false if none was registered.
+ * The handler of the `<ErrorBoundary>` enclosing the current component (call it
+ * during setup, or under the owner the throw belongs to), else the last
+ * hand-pushed handler, else `null`. Code that fails LATER (a promise rejection)
+ * captures it during setup and calls it then.
+ */
+export function nearestErrorBoundary(): ErrorBoundaryHandler | null {
+  return useContext(ErrorBoundaryContext) ?? _ebStack[_ebStack.length - 1] ?? null
+}
+
+/**
+ * Dispatch an error to the nearest `<ErrorBoundary>` of the current owner.
+ * Returns true if a boundary handled it, false if none did.
  *
  * @internal
  */
 export function dispatchToErrorBoundary(err: unknown): boolean {
-  const handler = _ebStack[_ebStack.length - 1]
+  const handler = nearestErrorBoundary()
   return handler ? handler(err) : false
 }

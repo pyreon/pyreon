@@ -18,7 +18,7 @@ Markdown is parsed via the unified + remark ecosystem (the same battle-tested pi
 There is no standalone use. The integration with `@pyreon/zero` *is* the value:
 
 - Markdown pages route through zero's fs-router
-- View Transitions API enabled by default
+- View Transitions API one export away: `export const meta = { viewTransition: true }` in a layout route turns them on for its pages (the router's transitions are opt-in)
 - Theme + dark mode flow through zero's theme system
 - Per-route LCP optimization inherits from zero's image / font / script-defer stack
 

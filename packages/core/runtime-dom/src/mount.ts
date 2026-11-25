@@ -818,7 +818,11 @@ function mountComponent(
             })
           }
         } catch (err) {
-          const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
+          // Under the component's owner: the boundary is resolved through the
+          // owner chain, and this microtask runs outside it.
+          const handled =
+            propagateError(err, hooks) ||
+            runWithContextOwner(asyncOwner, () => dispatchToErrorBoundary(err))
           if (!handled && process.env.NODE_ENV !== 'production') {
             console.error(`[Pyreon] <${componentName}> threw during async render:`, err)
           }
@@ -826,7 +830,9 @@ function mountComponent(
       })
       .catch((err) => {
         if (cancelled) return
-        const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
+        const handled =
+          propagateError(err, hooks) ||
+          runWithContextOwner(asyncOwner, () => dispatchToErrorBoundary(err))
         if (!handled && process.env.NODE_ENV !== 'production') {
           console.error(`[Pyreon] <${componentName}> async render rejected:`, err)
         }

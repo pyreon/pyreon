@@ -834,7 +834,8 @@ describe('applySelectValueProp', () => {
     const sel = selectWithOptions('a', 'b', 'c')
     const cleanup = applySelectValueProp(sel, { value: 'b' })
     expect(sel.value).toBe('b')
-    expect(cleanup).toBeNull() // static value → no reactive cleanup
+    // static value → no live binding (the shared no-op disposer)
+    expect(cleanup?.name).toBe("_noopDispose")
   })
 
   it('binds a getter-shaped value reactively (re-selects on signal change)', () => {

@@ -5,6 +5,7 @@ import('../lib/index.js')
     process.exitCode = code
   })
   .catch((err) => {
-    console.error(String(err?.message ?? err))
-    process.exit(1)
+    // Exit from the write's callback: an immediate `process.exit` can drop
+    // stderr a pipe has not taken yet (#4799).
+    process.stderr.write(`${String(err?.message ?? err)}\n`, () => process.exit(1))
   })

@@ -16,12 +16,13 @@
  *   - phantom type dependency: http `import type`s from `undici`
  *   - version drift: `zod` ^3.23 (query) vs ^3.22 (auth); `vite` ^5.4 (docs) vs ^6.0
  *   - prod import of a dev dependency: docs imports @acme/test-utils at runtime
- *   - peer mismatch: dashboard peers @acme/ui ^1, the workspace copy is 2.0.0
+ *   - internal range on a peer edge: dashboard peers @acme/ui ^1, the workspace
+ *     copy is 2.0.0 (one internal-range finding that names the major mismatch)
  *   - unused declarations: lodash-es (ui), d3-array (charts), dayjs (web), happy-dom (test-utils)
  *
- * Not `loom build` + an iframe (as the Atlas demo does): `loom build --base`
- * does not forward the base to zero, so the observatory cannot be served from
- * a sub-path (reported to the coordinator; see the slice report).
+ * Not `loom build` + an iframe (as the Atlas demo does): the demo renders the
+ * captured report in the page itself. (`loom build --base` output is servable
+ * from its base since #4637 / #4269, so that is a choice, not a limitation.)
  */
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'

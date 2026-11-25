@@ -1,7 +1,7 @@
 import { signal } from '@pyreon/reactivity'
 import { nativeCompat } from './compat-marker'
-import { popErrorBoundary, pushErrorBoundary } from './component'
-import { onUnmount } from './lifecycle'
+import { ErrorBoundaryContext } from './component'
+import { provide, useContext } from './context'
 import { reportError } from './telemetry'
 import type { VNodeChild, VNodeChildAtom } from './types'
 
@@ -14,10 +14,11 @@ import type { VNodeChild, VNodeChildAtom } from './types'
  * Also reports caught errors to any registered telemetry handlers.
  *
  * How error propagation works:
- * ErrorBoundary pushes a handler onto the module-level boundary stack
- * synchronously during its own setup (before children are mounted).
- * When mountComponent catches a child error, it calls dispatchToErrorBoundary()
- * which invokes the innermost boundary's handler.
+ * ErrorBoundary `provide()`s its handler during setup (before children are
+ * mounted). When mountComponent catches a child error, it calls
+ * dispatchToErrorBoundary(), which resolves the nearest boundary through the
+ * context owner chain, i.e. the component tree. Code that fails after mount
+ * (a rejected `<Defer>` chunk) captures `nearestErrorBoundary()` during setup.
  *
  * Usage:
  *   h(ErrorBoundary, {
@@ -49,43 +50,56 @@ function ErrorBoundary(props: {
   const error = signal<unknown>(null)
   const reset = () => error.set(null)
 
+  // The boundary this one sits in: an error that arrives while this boundary
+  // already shows its fallback (the fallback itself threw) goes there.
+  const outer = useContext(ErrorBoundaryContext)
+
   const handler = (err: unknown): boolean => {
-    if (error.peek() !== null) return false // already in error state — let outer boundary catch it
+    if (error.peek() !== null) return outer ? outer(err) : false
     // Synchronous signal write. The handler fires from inside mountComponent's
     // catch, itself inside the boundary's own mountReactive effect run (the run
-    // that mounted the throwing child). The two-tier flush handles this: the write
-    // enqueues the boundary's run into the effect queue's NEXT pass (the run is
-    // currently being visited), and that pass swaps to the fallback subtree.
+    // that mounted the throwing child), or later from a rejected promise. The
+    // two-tier flush handles both: the write enqueues the boundary's run, and
+    // that run swaps to the fallback subtree.
     error.set(err)
     reportError({ component: 'ErrorBoundary', phase: 'render', error: err, timestamp: Date.now() })
+
     return true
   }
 
-  // Push synchronously — before children are mounted — so child errors see this boundary
-  pushErrorBoundary(handler)
-  // Identity-based pop: pass our own handler reference. Sibling boundaries
-  // can unmount in any order driven by the renderer (keyed `<For>` removal
-  // of a non-last item, `<Show>` flipping on the FIRST of N siblings, route
-  // nav, etc.) — without passing the handler reference, the position-based
-  // `pop()` would remove the WRONG boundary's handler. Same bug class as
-  // #725 (`popContext()` orphaning provider frames under reactive remount).
-  onUnmount(() => popErrorBoundary(handler))
+  // Provided before the children are built, so every descendant (and nothing
+  // else: not a sibling, not a later-mounted unrelated subtree) resolves this
+  // handler through the owner chain. Disposed with the boundary's scope.
+  provide(ErrorBoundaryContext, handler)
 
+  // The boundary's own render runs in a reactive accessor, so a throw from it
+  // never reaches a component catch. Contain it here: a throw from the
+  // children expression (`{() => data.items.length}`) is this boundary's
+  // error; a throw from `fallback` itself (a boundary that rethrows what it
+  // does not handle, like `NotFoundBoundary`) goes to the boundary outside.
   return (): VNodeChildAtom => {
     const err = error()
-    // The error signal is set only by `handler`, fired from mountComponent's
-    // catch during a child mount — so the fallback branch is reachable only
-    // under a renderer (exercised by @pyreon/runtime-dom's ErrorBoundary mount
-    // tests), never from a bare node-side `ErrorBoundary()` call.
-    /* v8 ignore next */
-    if (err != null) return props.fallback(err, reset) as VNodeChildAtom
+    if (err != null) {
+      try {
+        return props.fallback(err, reset) as VNodeChildAtom
+      } catch (fallbackErr) {
+        if (outer?.(fallbackErr)) return null
+        throw fallbackErr
+      }
+    }
     const ch = props.children
-    return (typeof ch === 'function' ? ch() : ch) as VNodeChildAtom
+    if (typeof ch !== 'function') return ch as VNodeChildAtom
+    try {
+      return ch() as VNodeChildAtom
+    } catch (childErr) {
+      handler(childErr)
+      return null
+    }
   }
 }
 
 // Mark as native so compat-mode jsx() runtimes (react/preact/vue/solid-compat)
-// skip wrapCompatComponent — ErrorBoundary uses pushErrorBoundary/onUnmount,
+// skip wrapCompatComponent — ErrorBoundary uses provide/useContext,
 // which need Pyreon's setup frame (compat wrapping breaks dispatchToErrorBoundary).
 // ASSIGNMENT + /* @__PURE__ */ form (not a bare statement): inside a built
 // lib's shared chunk a bare `nativeCompat(X)` call is an unremovable side

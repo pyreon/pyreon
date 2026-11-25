@@ -72,11 +72,11 @@ function Logout() {
 }
 ```
 
-`await router.push(...)` resolves once the new route's DOM commit is done (it awaits `updateCallbackDone`, not the full View-Transition animation) — so you can inspect the new route immediately after.
+`await router.push(...)` resolves once the new route's DOM commit is done (with View Transitions on — `createRouter({ viewTransition: true })` — it awaits `updateCallbackDone`, not the full animation) — so you can inspect the new route immediately after.
 
 ## Loaders, guards, and boundaries
 
-- **Loaders** — `loader: ({ params, request }) => fetchData(params.id)`; read with `useLoaderData()`. `loaderKey` controls cache identity; `gcTime` controls expiry; `router.invalidateLoader(key?)` clears it.
+- **Loaders** — `loader: ({ params, request }) => fetchData(params.id)`; read with `useLoaderData()`, a reactive accessor (`data().items` in JSX, effects or computeds; a body-scope read is a snapshot that misses revalidations). `loaderKey` controls cache identity; `gcTime` controls expiry; `router.invalidateLoader(key?)` clears it.
 - **Redirect from a loader** — `throw redirect('/login')` runs BEFORE the layout renders (SSR returns a real 302/307; CSR replaces). Use this for auth gates instead of an `onMount` push.
 - **404** — `notFound()` in a loader renders the nearest `notFoundComponent` / `_404.tsx` (HTTP 404 under SSR); in a component it triggers the nearest `NotFoundBoundary`.
 - **Pending / error** — `pendingComponent` (with `pendingMs` / `pendingMinMs`) shows while a loader runs; `errorComponent` catches render errors.

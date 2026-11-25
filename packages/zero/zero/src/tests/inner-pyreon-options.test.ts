@@ -58,6 +58,7 @@ describe('the disposition covers every option', () => {
         'lpih',
         'optimizeValidators',
         'plain',
+        'projectContext',
         'ssr',
         'ssrTemplate',
         'templatizeComponentChildren',

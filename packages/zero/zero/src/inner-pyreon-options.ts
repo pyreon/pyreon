@@ -101,6 +101,8 @@ export const INNER_PYREON_OPTION_DISPOSITION: Record<
   lpih: 'drop',
   /** DROP — dev-only throw-time script injection. */
   devErrorPrinter: 'drop',
+  /** DROP — dev-server-only project map; a build never writes it. */
+  projectContext: 'drop',
 }
 
 const FORWARDED = Object.freeze(

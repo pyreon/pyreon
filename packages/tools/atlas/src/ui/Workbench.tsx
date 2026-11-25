@@ -20,7 +20,7 @@ import { batch } from '@pyreon/reactivity'
 import { PyreonUI } from '@pyreon/ui-core'
 import type { WorkbenchCatalog } from './catalog'
 import * as C from './components'
-import { COMPACT_QUERY, createModel } from './model'
+import { COMPACT_QUERY, createModel, type WorkbenchRoute } from './model'
 import { CHROME_TOKENS, chromeThemeCss, THEME_STORAGE_KEY } from './theme'
 import {
   AddonPanel,
@@ -41,6 +41,11 @@ export interface WorkbenchProps {
   title?: string
   /** Brand subtitle beside the title. */
   subtitle?: string
+  /**
+   * The host router that owns the component URL (`atlas dev` / `atlas build`
+   * pass one). Omitted, the selection travels in `?c=`. See `WorkbenchRoute`.
+   */
+  route?: WorkbenchRoute
 }
 
 /**
@@ -102,7 +107,7 @@ export function Workbench(props: WorkbenchProps) {
   // `useX`/`createX` initializer, so this is ONE model shared by every view
   // (see .agents/rules/anti-patterns.md "reactive-props inlining of a
   // stateful factory"; the atlas-workshop e2e is its live regression test).
-  const m = createModel(props.catalog, { title: props.title, subtitle: props.subtitle })
+  const m = createModel(props.catalog, { title: props.title, subtitle: props.subtitle, route: props.route })
   // The workbench IS a dev tool — its model is its public runtime surface. The
   // browser-verify runner (and any embedding host) drives scenarios through
   // it instead of scripting the DOM.

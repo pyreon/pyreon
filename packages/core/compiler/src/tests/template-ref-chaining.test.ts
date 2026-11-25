@@ -136,7 +136,7 @@ describe('template sibling-ref chaining — O(K) walks, not O(K²)', () => {
     // the rest are included so the boundary is the first mutation of ANY kind
     // rather than only the two that happen to be dangerous today.
     const MUTATION =
-      /_mountSlot\(|\.replaceChild\(|_setChild|_setChildAt|_bind|_applyProps|_bindSpread|_set(?:Class|Style|Attr)\(|\.value = |addEventListener/
+      /_mountSlot\(|\.replaceChild\(|_setChild|_setChildAt|_bind|_applyProps|_bindSpread|_set(?:Class|Style|Attr|Value)\(|\.value = |addEventListener/
     for (const src of corpus) {
       const code = t(src)
       // Drop the injected import line: it NAMES the runtime helpers

@@ -11,7 +11,7 @@ import { createHandler, ISLANDS_ONLY_MARKER } from '@pyreon/server'
 import { describe, expect, it } from 'vitest'
 import { createISRHandler } from '../isr'
 
-const Page = () => h('main', null, () => useLoaderData<{ title: string }>()?.title ?? '')
+const Page = () => h('main', null, () => useLoaderData<{ title: string }>()()?.title ?? '')
 
 const routes: RouteRecord[] = [
   {

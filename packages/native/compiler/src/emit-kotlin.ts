@@ -155,6 +155,7 @@ import {
   widenFloatLocals,
   rootedAtExtDecl,
   widenFloatSignals,
+  isValueAccessorForFunction,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinEnumEntry, kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
@@ -10250,7 +10251,14 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       // `safeIdent` converts kebab-case HTML attrs (`data-test`,
       // `aria-label`) to camelCase. Kotlin rejects `-` in named
       // arguments the same way Swift does.
-      argParts.push(`${kotlinIdent(safeIdent(a.name))} = ${emitKotlinExpr(a.value, indent)}`)
+      // An accessor passed uncalled to a `() => T` prop is a VALUE natively (`data`, a signal): pass it as a lambda.
+      const expected = isUserComponent
+        ? _componentPropsMapKotlin.get(e.tag)?.find((p) => p.name === a.name)?.type
+        : undefined
+      const value = emitKotlinExpr(a.value, indent)
+      argParts.push(
+        `${kotlinIdent(safeIdent(a.name))} = ${isValueAccessorForFunction(a.value, expected, _kotlinExprInferCtx) ? `{ ${value} }` : value}`,
+      )
     } else if (a.kind === 'event' && isUserComponent) {
       const propName = `on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`
       argParts.push(`${kotlinIdent(propName)} = ${emitKotlinAction(a.handler, indent)}`)

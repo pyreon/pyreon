@@ -25,7 +25,7 @@ it('loads the requested route instead of adopting static 404 markup and loader d
     },
     component: () => {
       return h('div', null,
-        h('h1', null, () => useLoaderData<{ title: string }>()?.title ?? 'Loading'),
+        h('h1', null, () => useLoaderData<{ title: string }>()()?.title ?? 'Loading'),
         h('button', { onClick: () => { clicks++ } }, 'Click'),
       )
     },

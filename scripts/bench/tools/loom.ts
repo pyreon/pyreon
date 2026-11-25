@@ -33,7 +33,6 @@ import { scanImports } from '../../../packages/tools/loom/src/core/imports'
 import {
   detectCycles,
   detectInternalRange,
-  detectPeerMismatch,
   detectPhantoms,
   detectUnused,
   detectVersionDrift,
@@ -73,7 +72,6 @@ function once(): { row: Row; packages: number; edges: number; specifiers: number
     ...detectVersionDrift(external, model.root.overrides),
     ...detectInternalRange(model),
     ...detectCycles(graph),
-    ...detectPeerMismatch(model),
     ...detectPhantoms(model, imports),
     ...detectUnused(model, imports),
   ]
