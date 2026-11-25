@@ -79,6 +79,9 @@
     "@vitest/browser-playwright": "^5.1.0",
     "happy-dom": "^21.0.4"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

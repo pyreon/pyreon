@@ -18,6 +18,7 @@ runCli(process.argv.slice(2))
     if (code) process.exitCode = code
   })
   .catch((error) => {
-    process.stderr.write(`loom: ${error?.message ?? error}\n`)
-    process.exit(1)
+    // Exit from the write's callback: an immediate `process.exit` can drop
+    // stderr a pipe has not taken yet (#4799).
+    process.stderr.write(`loom: ${error?.message ?? error}\n`, () => process.exit(1))
   })

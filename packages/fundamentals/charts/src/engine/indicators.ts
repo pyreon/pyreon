@@ -41,8 +41,8 @@ export function trend<T>(y: Accessor<T>, options: MarkOptions = {}): Mark<T> {
  * datum (`Mark.transform2`). Three thin lines was the shape the engine could
  * build, not the shape the indicator is.
  *
- * Breaking for anyone destructuring three marks — deliberately, per the
- * repo's pre-1.0 preference for a clean API over a compatibility shim.
+ * Breaking for anyone destructuring three marks — deliberately, made while Pyreon was 0.x, which
+ * preferred a clean API over a compatibility shim.
  */
 export function bollinger<T>(y: Accessor<T>, window: number, k: Double = 2.0, options: MarkOptions = {}): Mark<T>[] {
   // The edge arithmetic lives in the crossing module, so the native emit and

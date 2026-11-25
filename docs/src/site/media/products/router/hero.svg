@@ -101,7 +101,7 @@
 <g class="v2" opacity="0"><text class="m hint" x="490" y="146">&lt;User /&gt;</text>
 <text class="m lab" x="488" y="178" font-size="13">useParams()</text>
 <text class="m code" x="490" y="202" font-size="14">{ id: <tspan class="str">'42'</tspan> }</text>
-<text class="m lab" x="488" y="236" font-size="12">useLoaderData()</text>
+<text class="m lab" x="488" y="236" font-size="12">useLoaderData()()</text>
 <text class="m code" x="490" y="260" font-size="14">{ name: … }</text></g>
 <text class="m hint" x="24" y="344">'/user/:id' → params: { id: string }, typed from the path</text>
 <text class="m hint" x="24" y="372">await router.push() resolves once the new view is in place</text>

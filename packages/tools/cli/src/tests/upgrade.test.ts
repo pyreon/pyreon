@@ -51,6 +51,22 @@ describe('cleanVersion', () => {
     expect(cleanVersion('workspace:*')).toBeNull()
     expect(cleanVersion('latest')).toBeNull()
   })
+
+  it('matches the old regex on mixed input, keeping prerelease and build suffixes', () => {
+    expect(cleanVersion('^1.0.0-rc.0')).toBe('1.0.0-rc.0')
+    expect(cleanVersion('>=1.2.3+build.7 <2')).toBe('1.2.3+build.7')
+    expect(cleanVersion('npm:x@12.3')).toBeNull()
+    expect(cleanVersion('1.2.x || 3.4.5')).toBe('3.4.5')
+    expect(cleanVersion('1.2.3-')).toBe('1.2.3')
+  })
+
+  it('stays linear on a long run of digits (no regex backtracking)', () => {
+    const start = performance.now()
+    expect(cleanVersion(`1.${'0'.repeat(200_000)}`)).toBeNull()
+    // ~1 ms normally; the old unanchored regex takes minutes on this input, so a
+    // generous bound stays stable under coverage instrumentation and CI load.
+    expect(performance.now() - start).toBeLessThan(2000)
+  })
 })
 
 describe('resolveTarget', () => {

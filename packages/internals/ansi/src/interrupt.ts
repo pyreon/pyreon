@@ -1,3 +1,5 @@
+import { exitAfterFlush } from './exit.ts'
+
 /**
  * Ctrl-C for a long run: print what the run got through, as the last line
  * (`! interrupted · 3 of 13 gates · 2.1 s`), and exit 130 (128 + SIGINT),
@@ -26,7 +28,9 @@ export function onInterrupt(render: () => string, opts: InterruptOptions = {}): 
   const handler = (): void => {
     process.off('SIGINT', handler)
     write(`\n${render()}\n`)
-    if (opts.exit ?? true) process.exit(opts.code ?? 130)
+    // Through `exitAfterFlush`: the verdict line above, and a report still
+    // queued on a piped stdout, must not be dropped by an immediate exit.
+    if (opts.exit ?? true) void exitAfterFlush(opts.code ?? 130)
   }
   process.on('SIGINT', handler)
   return () => {

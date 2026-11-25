@@ -84,6 +84,9 @@
     "@vitest/browser-playwright": "^5.1.0",
     "parse5": "^8.1.1"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

@@ -65,6 +65,9 @@
     "robot3": "1.4.0",
     "xstate": "^5.33.4"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

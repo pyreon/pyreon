@@ -17,7 +17,7 @@
   "cssFile": "src/app.css",
   "notes": [
     "Two sources for @pyreon/*, chosen by `bun setup.ts --pyreon=npm|workspace` and recorded in run.json: npm (default) installs the published packages this arm's package-lock.json pins; workspace installs nothing here and resolves the monorepo's built lib/.",
-    "The router's defaults are kept, including View Transitions on navigation where the browser supports them and 'intent' link prefetch (a no-op here: no route has a loader).",
+    "The router's defaults are kept: no View Transitions (they are opt-in) and 'intent' link prefetch (a no-op here: no route has a loader).",
     "Rows render with <For by={id}>; a row reads the favourites Set signal, so a favourite toggle re-runs the 50 visible rows' favourite bindings (no createSelector: the docs' plain shape)."
   ]
 }

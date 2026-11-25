@@ -19,6 +19,9 @@
     "lint": "echo '[native-runtime-kotlin] Kotlin lint (detekt/ktlint) not yet integrated; skipping lint'",
     "typecheck": "bun scripts/check-duplicate-declarations.ts && bun scripts/check-service-coverage.ts && if [ \"$CI\" = \"true\" ]; then echo '[native-runtime-kotlin] skipping typecheck in CI \u2014 kotlinc cold-start + parallel-load timeouts; covered by @pyreon/native-compiler K-FINAL gate (#888) which validates the same K4 stub surface end-to-end'; else bun scripts/verify-all.ts --mode=typecheck; fi"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

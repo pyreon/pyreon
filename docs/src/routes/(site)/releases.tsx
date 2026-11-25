@@ -12,6 +12,10 @@ export async function loader(): Promise<ProjectView> {
 
 export default function ReleasesRoute() {
   const view = useLoaderData<ProjectView | undefined>()
-  if (!view) return null
-  return <ProjectPageView view={view} />
+  // An accessor, so the page follows its loader data (a client-only cold
+  // start fills it in after mount) instead of pinning the first read.
+  return () => {
+    const current = view()
+    return current ? <ProjectPageView view={current} /> : null
+  }
 }

@@ -26,7 +26,6 @@ export type {
 
 // Explicit entries for the published Node binary and programmatic callers.
 export { main, mainWithPlugins } from './cli'
-
 export { check, checkSource, watchCheck } from './check'
 export type { CheckOptions, CheckSourceOptions, CheckResult, CheckFinding } from './check'
 

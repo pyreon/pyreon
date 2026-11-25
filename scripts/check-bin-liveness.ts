@@ -106,7 +106,7 @@ function checkMcpBin(name: string, binRel: string): Promise<Result> {
 // listed?", not "is every bin it declares checked?".
 type Policy = { kind: 'flag'; args: string[]; okExits?: number[]; stderrOk?: boolean } | { kind: 'mcp' }
 const BIN_POLICY: Record<string, Policy> = {
-  'packages/tools/cli/lib/index.js': { kind: 'flag', args: ['--version'] },
+  'packages/tools/cli/bin/pyreon.js': { kind: 'flag', args: ['--version'] },
   'packages/tools/lint/bin/pyreon-lint.js': { kind: 'flag', args: ['--help'] },
   'packages/tools/atlas/bin/atlas.js': { kind: 'flag', args: ['--help'] },
   'packages/tools/loom/bin/loom.js': { kind: 'flag', args: ['--help'] },

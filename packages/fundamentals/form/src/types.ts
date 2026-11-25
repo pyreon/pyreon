@@ -149,7 +149,12 @@ export interface FormState<TValues extends Record<string, unknown>> {
   isSubmitSuccessful: Signal<boolean>
   /** Error thrown by onSubmit (undefined if no error). */
   submitError: Signal<unknown>
-  /** All current form values as a plain object. */
+  /**
+   * All current form values as a plain object. Reactive: reads every field's
+   * value signal (and the registered field set), so a computed/effect/JSX
+   * accessor over it re-runs on any field change. The returned object is
+   * cached and referentially stable between changes.
+   */
   values: () => TValues
   /**
    * Read all current values, or a single field's value (react-hook-form
@@ -160,7 +165,7 @@ export interface FormState<TValues extends Record<string, unknown>> {
     (): TValues
     <K extends keyof TValues>(field: K): TValues[K]
   }
-  /** All current errors as a record. */
+  /** All current errors as a record. Reactive: reads every field's error signal. */
   errors: () => Partial<Record<keyof TValues, ValidationError>>
   /**
    * The dirty fields as a record — only fields whose value differs from

@@ -49,6 +49,8 @@ import {
   _setPropStatic,
   _setStyle,
   _setStyleOnce,
+  _selectWait,
+  _setValue,
   _textSlot,
   bindPolymorphicText,
   hydrateRoot,
@@ -62,7 +64,9 @@ import {
 // walked hole, so it compiles to a template of its own (the binders below).
 
 function stripImports(code: string): string {
-  return code.replace(/^import\s+.*$/gm, '').trim()
+  // The module-level `_selectWait();` the compiler emits for `<select value>`
+  // runs here, chained ahead of the expression this harness returns (it returns undefined).
+  return code.replace(/^import\s+.*$/gm, '').replace(/^_selectWait\(\);$/m, '_selectWait() ||').trim()
 }
 
 const RUNTIME_DEPS = {
@@ -80,6 +84,8 @@ const RUNTIME_DEPS = {
   _setChild,
   _setChildAt,
   _setPropStatic,
+  _setValue,
+  _selectWait,
   bindPolymorphicText,
   _rp,
   _rpd,
@@ -110,6 +116,7 @@ function compileAndMount(source: string, globals: Record<string, unknown> = {}) 
   const container = document.createElement('div')
   document.body.appendChild(container)
   const cleanup = mountChild(result, container)
+
   return { container, cleanup, code }
 }
 
@@ -130,8 +137,9 @@ describe('<select value> — compiled template path', () => {
     )
     // The dead content attribute must NOT be in the template HTML…
     expect(code).not.toContain('<select value=')
-    // …the property set is emitted instead…
-    expect(code).toContain('.value = "b"')
+    // …the property set is emitted instead (through `_setValue`, which also
+    // records the controlled value for a later options change, #4820)…
+    expect(code).toContain('_setValue(__root, "b")')
     // …and the select actually shows b.
     expect(sel(container).value).toBe('b')
   })

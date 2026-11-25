@@ -31,10 +31,12 @@ function fixture(file: string, contents: string): string {
 // call returns.
 async function quiet<T>(fn: () => T | Promise<T>): Promise<T> {
   const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation((() => true) as typeof process.stdout.write)
   try {
     return await fn()
   } finally {
     spy.mockRestore()
+    write.mockRestore()
   }
 }
 
@@ -78,7 +80,11 @@ describe('runCli — the config file’s preset', () => {
     const config = join(root, '.pyreonlintrc.json')
     writeFileSync(config, JSON.stringify({ preset: ['recommended', 'readable'] }))
     const out: string[] = []
-    const spy = vi.spyOn(console, 'log').mockImplementation((s: unknown) => void out.push(String(s)))
+    // Reports go through `writeOut` (`process.stdout.write`), not `console.log` (#4799).
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(((s: unknown) => {
+      out.push(String(s))
+      return true
+    }) as typeof process.stdout.write)
     try {
       await runCli([root, '--config', config, '--format', 'json'])
     } finally {

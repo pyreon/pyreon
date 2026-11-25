@@ -159,7 +159,7 @@ describe('router integration — loaders', () => {
     const el = container()
     let capturedData: unknown
     const DataComp = () => {
-      capturedData = useLoaderData()
+      capturedData = useLoaderData()()
       return h('span', null, 'data-loaded')
     }
     const routes: RouteRecord[] = [
@@ -346,19 +346,19 @@ describe('router integration — layouts persist across child navigation', () =>
 
   test('a parameterised parent layout with its OWN loader: persists on same-param nav, refreshes data on param change', async () => {
     // Parent layout `/users/:id` carries its own loader keyed on the id, with
-    // two children. It reads `useLoaderData()` in its body (the canonical
+    // two children. It reads `useLoaderData()` reactively (the canonical
     // pattern). Two navigation shapes:
     //   • /users/42/profile → /users/42/settings  : SAME id → parent loader
     //     data unchanged → parent MUST NOT re-mount (layout-persistence kept).
     //   • /users/42/settings → /users/99/settings : id 42→99 → parent loader
-    //     re-runs, data changes → parent re-mounts + `useLoaderData()` shows the
+    //     re-runs, its loader key changes → parent re-mounts + shows the
     //     NEW user. Pre-fix the never-re-mounting parent stayed STALE on user-42.
     const Layout = () => {
       const data = useLoaderData()
       return h(
         'div',
         { 'data-testid': 'ulayout' },
-        h('span', { 'data-testid': 'ulayout-data' }, String(data ?? '')),
+        h('span', { 'data-testid': 'ulayout-data' }, () => String(data() ?? '')),
         h(RouterView, {}),
       )
     }

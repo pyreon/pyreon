@@ -61,6 +61,7 @@ export function setSanitizer(fn: SanitizeFn | null): void {
 // fix). `dangerouslySetInnerHTML` stays raw (React semantics) and never
 // needs the sanitizer.
 let _defaultSanitizer: SanitizeFn | null = null
+
 /** @internal Registered by ./sanitizer at module load. */
 export function _setDefaultSanitizer(fn: SanitizeFn): void {
   _defaultSanitizer = fn
@@ -138,6 +139,7 @@ export function applyProps(el: Element, props: Props, skipKey?: string): Cleanup
     return () => {
       for (const c of cleanups) c()
     }
+
   return first
 }
 
@@ -197,6 +199,7 @@ export function applyPropsWithRef(el: Element, props: Props, deferRef?: 1): Defe
   if (!ref) return cleanup ?? NOOP_CLEANUP
   if (typeof ref === 'function') ref(el)
   else ref.current = el
+
   return () => {
     cleanup?.()
     releaseRef(ref)
@@ -271,16 +274,12 @@ export function bindSpread(el: Element, getProps: () => Props, deferRef?: 1): De
  * an option's own `selected` attribute is never clobbered by an absent value.
  */
 export function applySelectValueProp(el: Element, props: Props): Cleanup | null {
-  const descriptor = Object.getOwnPropertyDescriptor(props, 'value')
-  if (descriptor?.get) {
-    const d = _renderBind(() =>
-      applyStaticProp(el, 'value', (props as Record<string, unknown>).value),
-    )
-    // Dev: the setter names the binding; drop the creation site (this file).
-    if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
-    return d
-  }
-  return applyProp(el, 'value', props.value)
+  // One binding for every shape: a compiler getter and an accessor are read
+  // (and tracked) inside it, a static value is applied once.
+  const d = _renderBind(() => applyValueProp(el, (props as Record<string, unknown>).value))
+  // Dev: the setter names the binding; drop the creation site (this file).
+  if (process.env.NODE_ENV !== 'production') _rdLabelBinding(d, null, null, undefined, null)
+  return d
 }
 
 /**
@@ -339,6 +338,7 @@ function applyEventProp(el: Element, key: string, value: unknown): Cleanup | nul
 
   const batched: EventListener = (e) => batch(() => handler(e))
   el.addEventListener(eventName, batched)
+
   return () => el.removeEventListener(eventName, batched)
 }
 
@@ -372,11 +372,13 @@ export function makeEventBinder(
       }
       const handler = value as EventListener
       ;(el as unknown as Record<string, unknown>)[prop] = (e: Event) => batch(() => handler(e))
+
       return () => {
         ;(el as unknown as Record<string, unknown>)[prop] = undefined
       }
     }
   }
+
   return (el, value) => {
     if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.applyEvent')
     if (typeof value !== 'function') {
@@ -386,6 +388,7 @@ export function makeEventBinder(
     const handler = value as EventListener
     const batched: EventListener = (e) => batch(() => handler(e))
     el.addEventListener(eventName, batched)
+
     return () => el.removeEventListener(eventName, batched)
   }
 }
@@ -499,6 +502,7 @@ function applyStaticProp(el: Element, key: string, value: unknown): void {
     } else {
       ;(el as HTMLElement).innerHTML = sanitizeHtml(html)
     }
+
     return
   }
 
@@ -548,6 +552,7 @@ export function applyProp(el: Element, key: string, value: unknown): Cleanup | n
   }
 
   applyStaticProp(el, key, value)
+
   return null
 }
 
@@ -625,6 +630,7 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
       el.style.cssText = value
       cached.css = el.style.cssText
       _prevStyleKeys.delete(el)
+
       return
     }
     // cssText replaces everything — drop any tracked object-mode keys.
@@ -636,6 +642,7 @@ export function applyStyleProp(el: HTMLElement, value: unknown): void {
       _prevStyleText.set(el, { raw: value, css: null })
     }
     _prevStyleKeys.delete(el)
+
     return
   }
 
@@ -770,6 +777,7 @@ export function foreignAttrNamespace(el: Element, key: string): string | null {
   if (key.charCodeAt(0) !== 120 /* 'x' */) return null
   const ns = el.namespaceURI
   if (ns === null || ns === XHTML_NS) return null
+
   return FOREIGN_ATTR_NS[key] ?? null
 }
 
@@ -820,6 +828,7 @@ export function foreignAttrName(el: Element, key: string): string {
   const ns = el.namespaceURI
   if (ns === SVG_NS_URI) return SVG_CASED_ATTRS.has(key) ? key : lower
   if (ns === MATHML_NS_URI) return key === 'definitionURL' ? key : lower
+
   return key
 }
 
@@ -935,6 +944,7 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
     } else {
       removeAttr(el, key)
     }
+
     return
   }
   setAttrNsAware(el, key, String(value))
@@ -948,6 +958,19 @@ export function applyAttrProp(el: Element, key: string, value: unknown): void {
  * with the element — a registry keyed by DOM node is leak class C.
  */
 const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
+
+/**
+ * `<select value>` whose option arrives after mount (#4820) — see
+ * `select-wait.ts`. Installed only by `_selectWait()`, which the compiler
+ * emits for a module that renders `<select value>`, so a plain `mount` carries
+ * just this slot and its call.
+ */
+let selectWaitHook: ((sel: HTMLSelectElement, value: unknown) => void) | null = null
+
+/** @internal Install the late-option handler (`select-wait.ts`). */
+export function _setSelectWaitHook(hook: (sel: HTMLSelectElement, value: unknown) => void): void {
+  selectWaitHook = hook
+}
 
 /**
  * Compiled sink for a DOM PROPERTY binding (`checked`, `selected`, `disabled`,
@@ -967,7 +990,7 @@ const DEFAULT_VALUE_INIT = Symbol('pyreon.defaultValueInit')
 export function applyDomProp(el: Element, key: string, value: unknown): void {
   if (process.env.NODE_ENV !== 'production') _rdNoteTarget(el, 'prop', key)
   if (typeof value === 'function') value = (value as () => unknown)()
-  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
     applyValueProp(el, value)
     return
   }
@@ -1020,9 +1043,10 @@ export function applyDomPropStatic(el: Element, key: string, value: unknown): vo
  * from the initial value, `updateInput` only ever follows an explicit
  * `defaultValue` prop.
  *
- * Scoped to `input`/`textarea`, the only elements with a `defaultValue`.
- * `select` (whose default lives in `<option selected>`) and media `muted` are
- * deliberately NOT normalized here — React, Preact and Solid all diverge
+ * The default is scoped to `input`/`textarea`, the only elements with a
+ * `defaultValue`. A `select` (whose default lives in `<option selected>`) only
+ * gets its value assigned and, if no option matches yet, waits for one
+ * (`select-wait.ts`, #4820). Media `muted` is deliberately NOT normalized here — React, Preact and Solid all diverge
  * identically on both, so matching them is the industry-normal behaviour.
  */
 export function applyValueProp(el: Element, value: unknown): void {
@@ -1034,6 +1058,11 @@ export function applyValueProp(el: Element, value: unknown): void {
   // wrote the closure SOURCE into the box. Inside the compiler's reactive
   // `_bind` wrapper this call is tracked, so the read stays live (#4086).
   if (typeof value === 'function') value = (value as () => unknown)()
+  if (el.tagName === 'SELECT') {
+    if (value != null) node.value = value as string
+    selectWaitHook?.(el as HTMLSelectElement, value)
+    return
+  }
   // Nullish FIRST — the branch `setStaticProp` runs before it ever reaches this
   // helper, and the one the compiled path skipped: `HTMLInputElement.value` is
   // `[LegacyNullToEmptyString]`, which maps `null` → '' but NOT `undefined`, so
@@ -1106,8 +1135,10 @@ function isBlockedUrl(el: Element, key: string, value: unknown): boolean {
     if (process.env.NODE_ENV !== 'production') {
       console.warn(`[Pyreon] Blocked unsafe URL in "${key}" attribute: ${value}`)
     }
+
     return true
   }
+
   return false
 }
 
@@ -1135,6 +1166,7 @@ function isBlockedHandlerAttr(el: Element, key: string, value: unknown): boolean
         `(onClick={fn}) — it binds a real listener instead of serializing a string.`,
     )
   }
+
   return true
 }
 
@@ -1199,7 +1231,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
     // ordinary clear-the-field flow: `<input value={draft()} />` with `draft`
     // going `string | undefined`. Booleans deliberately stay on the generic
     // path below, where SSR also treats them as presence.
-    if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+    if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
       applyValueProp(el, value)
       return
     }
@@ -1223,6 +1255,7 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   if (typeof value === 'boolean') {
     if (value) setAttrNsAware(el, key, '')
     else removeAttr(el, key)
+
     return
   }
 
@@ -1269,7 +1302,9 @@ function setStaticProp(el: Element, key: string, value: unknown): void {
   // after the nullish/boolean branches so those keep their existing attribute
   // semantics, and scoped to the two tags that own a `defaultValue` — every
   // other element keeps the generic (try/catch-guarded) property path below.
-  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+  // A `<select>` too: it reaches here from a spread or `applyProps`, and its
+  // value may need to wait for its option (`select-wait.ts`).
+  if (key === 'value' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
     applyValueProp(el, value)
     return
   }

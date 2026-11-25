@@ -165,6 +165,12 @@ fn is_svg_root_tag(tag: &str) -> bool {
     )
 }
 
+/// `<input>`, `<textarea>`, `<select>`: their `value` goes through the runtime
+/// `_setValue`. Mirrors jsx.ts `isValueControlTag`.
+fn is_value_control_tag(tag: &str) -> bool {
+    tag == "input" || tag == "textarea" || tag == "select"
+}
+
 fn is_void_element(tag: &str) -> bool {
     matches!(
         tag,
@@ -654,6 +660,8 @@ struct Ctx<'a> {
     hoist_idx: u32,
 
     needs_tpl_import: bool,
+    /// A `<select value>` anywhere in the module (see `has_select_value`).
+    has_select_value: bool,
     needs_rp_import: bool,
     needs_rpd_import: bool,
     needs_pk_import: bool,
@@ -951,6 +959,7 @@ impl<'a> Ctx<'a> {
             hoists: Vec::new(),
             hoist_idx: 0,
             needs_tpl_import: false,
+            has_select_value: false,
             needs_rp_import: false,
             needs_rpd_import: false,
             needs_pk_import: false,
@@ -1070,7 +1079,8 @@ impl<'a> Ctx<'a> {
     }
 
     fn build_result(mut self) -> TransformResult {
-        if self.replacements.is_empty() && self.hoists.is_empty() {
+        let needs_select_wait = self.has_select_value && !self.ssr;
+        if self.replacements.is_empty() && self.hoists.is_empty() && !needs_select_wait {
             return TransformResult {
                 code: self.source.to_string(),
                 uses_templates: None,
@@ -1107,6 +1117,12 @@ impl<'a> Ctx<'a> {
                 .map(|h| format!("const {} = /*@__PURE__*/ {};\n", h.name, h.text))
                 .collect();
             result = preamble + &result;
+        }
+
+        // `<select value>` in the module: turn on the runtime's late-option
+        // handling (#4820). Mirrors the JS preamble (below the runtime-dom import).
+        if needs_select_wait {
+            result = format!("import {{ _selectWait }} from \"@pyreon/runtime-dom\";\n_selectWait();\n{}", result);
         }
 
         if self.needs_tpl_import {
@@ -2826,6 +2842,38 @@ fn jsx_tag_name<'a>(el: &'a JSXElement<'a>) -> &'a str {
 
 fn is_self_closing(el: &JSXElement) -> bool {
     el.closing_element.is_none()
+}
+
+/// A `<select … value=…>` or `<select {...spread}>` anywhere in the program (a
+/// plain `select` tag with a `value` attribute or a spread that may carry one).
+/// Mirrors the JS `isSelectWithValue` check in `buildMaps`.
+fn has_select_value(program: &Program) -> bool {
+    struct SelectFinder {
+        found: bool,
+    }
+    impl<'a> Visit<'a> for SelectFinder {
+        fn visit_jsx_opening_element(&mut self, it: &JSXOpeningElement<'a>) {
+            if let JSXElementName::Identifier(name) = &it.name {
+                if name.name.as_str() == "select"
+                    && it.attributes.iter().any(|a| match a {
+                        // A spread may carry `value`; the compiler cannot see inside it.
+                        JSXAttributeItem::SpreadAttribute(_) => true,
+                        JSXAttributeItem::Attribute(attr) => {
+                            matches!(&attr.name, JSXAttributeName::Identifier(n) if n.name.as_str() == "value")
+                        }
+                    })
+                {
+                    self.found = true;
+                }
+            }
+            if !self.found {
+                oxc_ast_visit::walk::walk_jsx_opening_element(self, it);
+            }
+        }
+    }
+    let mut finder = SelectFinder { found: false };
+    finder.visit_program(program);
+    finder.found
 }
 
 /// Does expr contain JSX (element or fragment)?
@@ -4929,6 +4977,7 @@ pub fn transform_jsx(
     );
     ctx.client_tpl_components = client_tpl_components;
     ctx.foreign_holes = collect_foreign_holes(&ret.program);
+    ctx.has_select_value = has_select_value(&ret.program);
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
     if let Some(signals) = known_signals {
@@ -10606,15 +10655,15 @@ fn attr_setter(
         // Mirrors the JS backend's attrSetter (jsx.ts).
         tb.needs_set_html = true;
         format!("_setHtml({}, {})", var_name, expr)
-    } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
-        // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
-        // (= applyValueProp), which assigns the property AND establishes
-        // `defaultValue` on the first application. A bare `el.value = v` sets
-        // only the property, and a property assignment never creates the
-        // `value` ATTRIBUTE that `form.reset()` restores from. Scoped by TAG so
-        // every other element owning a `value` property (`<progress>`,
-        // `<option>`, `<select>`, custom elements) keeps the plain property
-        // assignment. Mirrors the JS backend's attrSetter (jsx.ts).
+    } else if html_attr_name == "value" && is_value_control_tag(tag) {
+        // `<input>`/`<textarea>`/`<select>` `value`: delegate to the runtime
+        // `_setValue` (= applyValueProp). On input/textarea it assigns the
+        // property AND establishes `defaultValue` on the first application; on
+        // a select it records the controlled value the reconcilers re-apply
+        // when the options change (#4820). Scoped by TAG so every other element
+        // owning a `value` property (`<progress>`, `<option>`, custom elements)
+        // keeps the plain property assignment. Mirrors the JS backend's
+        // attrSetter (jsx.ts).
         tb.needs_set_value = true;
         format!("_setValue({}, {})", var_name, expr)
     } else if is_dom_prop(html_attr_name) && !resolve {
@@ -10704,7 +10753,7 @@ fn emit_dynamic_attr(
         } else if html_attr_name == "dangerouslySetInnerHTML" {
             tb.needs_set_html = true;
             format!("(v) => _setHtml({}, v)", var_name)
-        } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
+        } else if html_attr_name == "value" && is_value_control_tag(tag) {
             tb.needs_set_value = true;
             format!("(v) => _setValue({}, v)", var_name)
         } else if is_dom_prop(html_attr_name) {

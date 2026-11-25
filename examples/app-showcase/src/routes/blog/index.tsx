@@ -97,12 +97,12 @@ export default function BlogIndexPage() {
   })
 
   // Reactive accessor for the visible post list. Reads the URL signal
-  // so the compiler tracks it; the filter re-runs only when the tag
-  // changes.
+  // and the loader data, so the filter re-runs when either changes.
   const visible = (): Post[] => {
     const active = tag()
-    if (!active) return data.posts
-    return data.posts.filter((p) => p.tags.includes(active))
+    const all = data().posts
+    if (!active) return all
+    return all.filter((p) => p.tags.includes(active))
   }
 
   return (
@@ -112,13 +112,13 @@ export default function BlogIndexPage() {
           <SidebarLabel>Topics</SidebarLabel>
           <TagButton type="button" onClick={() => tag.set('')} $active={!tag()}>
             <span>All posts</span>
-            <TagCount>{data.posts.length}</TagCount>
+            <TagCount>{data().posts.length}</TagCount>
           </TagButton>
-          <For each={() => data.allTags} by={(name) => name}>
+          <For each={() => data().allTags} by={(name) => name}>
             {(name) => (
               <TagButton type="button" onClick={() => tag.set(name)} $active={tag() === name}>
                 <span>{name}</span>
-                <TagCount>{data.tagCounts[name] ?? 0}</TagCount>
+                <TagCount>{data().tagCounts[name] ?? 0}</TagCount>
               </TagButton>
             )}
           </For>

@@ -15,5 +15,5 @@ export async function loader() {
 
 export default function AccountPage() {
   const data = useLoaderData<{ name: string }>()
-  return <h1>{data.name}</h1>
+  return <h1>{data().name}</h1>
 }

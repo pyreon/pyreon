@@ -37,8 +37,35 @@ const VERSION_RE = /^\d+\.\d+\.\d+(?:[-+].*)?$/
 
 /** Strip a leading range operator (`^`/`~`/`>=`/`=`) to bare `x.y.z`. */
 export function cleanVersion(range: string): string | null {
-  const m = range.match(/\d+\.\d+\.\d+(?:[-+][\w.]+)?/)
-  return m ? m[0] : null
+  // A forward scan, not `/\d+\.\d+\.\d+(?:[-+][\w.]+)?/`: an unanchored regex retries
+  // from every digit, which is quadratic on a long run of digits. Same result: the
+  // first `x.y.z` and its `-pre`/`+build` suffix.
+  const isDigit = (c: number) => c >= 48 && c <= 57
+  const isWord = (c: number) =>
+    isDigit(c) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 46
+  const digitsEnd = (i: number) => {
+    while (i < range.length && isDigit(range.charCodeAt(i))) i++
+    return i
+  }
+  for (let start = 0; start < range.length; start++) {
+    if (!isDigit(range.charCodeAt(start)) || (start > 0 && isDigit(range.charCodeAt(start - 1)))) continue
+    let i = digitsEnd(start)
+    let ok = true
+    for (let part = 0; part < 2 && ok; part++) {
+      if (range.charCodeAt(i) !== 46 || !isDigit(range.charCodeAt(i + 1))) ok = false
+      else i = digitsEnd(i + 1)
+    }
+    if (!ok) continue
+    const sep = range.charCodeAt(i)
+    if ((sep === 45 || sep === 43) && i + 1 < range.length && isWord(range.charCodeAt(i + 1))) {
+      i++
+      while (i < range.length && isWord(range.charCodeAt(i))) i++
+    }
+
+    return range.slice(start, i)
+  }
+
+  return null
 }
 
 /** Compare two `x.y.z[-pre]` versions. -1 / 0 / 1 (a vs b). Prereleases sort below release. */
@@ -57,6 +84,7 @@ export function compareVersions(a: string, b: string): number {
   if (pa.pre === pb.pre) return 0
   if (pa.pre === null) return 1 // release > prerelease
   if (pb.pre === null) return -1
+
   return pa.pre < pb.pre ? -1 : 1
 }
 
@@ -72,6 +100,7 @@ export function resolveTarget(versions: string[], explicit?: string): string | n
   }
   const cleaned = versions.map(cleanVersion).filter((v): v is string => v !== null)
   if (cleaned.length === 0) return null
+
   return cleaned.reduce((max, v) => (compareVersions(v, max) > 0 ? v : max))
 }
 
@@ -93,6 +122,7 @@ export function computeUpgradePlan(
     if (range === want) continue
     changes.push({ name, from: range, to: want })
   }
+
   return changes.sort((a, b) => a.name.localeCompare(b.name))
 }
 
@@ -112,6 +142,7 @@ export function rewriteDeps(
     }
     next[field] = updated
   }
+
   return next
 }
 
@@ -133,6 +164,7 @@ function collectDeclared(pkg: Record<string, unknown> | null): Record<string, st
       }
     }
   }
+
   return declared
 }
 
@@ -184,6 +216,7 @@ export function upgrade(options: UpgradeOptions = {}): number {
           : '  ! No @pyreon/* dependencies found to align — nothing to upgrade.',
       )
     }
+
     return 1
   }
 
@@ -210,6 +243,7 @@ export function upgrade(options: UpgradeOptions = {}): number {
       writeFileSync(pkgPath, `${JSON.stringify(rewriteDeps(pkg, changes), null, 2)}\n`)
     }
     if (options.write) writeCodemods(cwd, pendingCodemods)
+
     return 0
   }
 
@@ -238,6 +272,7 @@ export function upgrade(options: UpgradeOptions = {}): number {
       )
     }
     console.log('')
+
     return 0
   }
 
@@ -254,6 +289,7 @@ export function upgrade(options: UpgradeOptions = {}): number {
     console.log(muted('  Dry run. Re-run with --write to apply, then install:'))
     console.log(muted('    pyreon upgrade --write && bun install'))
     console.log('')
+
     return 0
   }
 
@@ -264,5 +300,6 @@ export function upgrade(options: UpgradeOptions = {}): number {
     console.log(muted('    bun install   # or npm/pnpm/yarn install'))
     console.log('')
   }
+
   return 0
 }

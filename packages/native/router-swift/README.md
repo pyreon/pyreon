@@ -41,7 +41,7 @@ Seven source files under `Sources/PyreonRouter/`:
 | `<Link to="/users/123">Profile</Link>` | `PyreonLink("/users/123") { Text("Profile") }` |
 | `useNavigate()` | `useNavigate(router:)` |
 | `useParams()` | `useParams(router:)` |
-| `useLoaderData<T>()` | `useLoaderData(router:)` |
+| `const data = useLoaderData<T>()`, read as `data().title` | `useLoaderData(router:)` (a non-optional computed property behind a body gate), read as `data.title` |
 | `router.push(path)` | `router.push(path)` |
 | `router.replace(path)` | `router.replace(path)` |
 | `router.back()` / `.forward()` | `router.back()` / `.forward()` |

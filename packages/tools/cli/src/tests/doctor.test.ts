@@ -5,6 +5,7 @@ import * as path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 import { type DoctorOptions, doctor } from '../doctor'
+import { stdoutToConsoleLog } from './stdout-to-console'
 
 function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'pyreon-doctor-'))
@@ -58,12 +59,14 @@ describe('doctor() end-to-end', () => {
   it('runs against an empty dir and prints a clean banner', async () => {
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     const exitCode = await doctor({
       ...defaults(cwd),
       only: ['react-patterns'],
     })
     const out = log.mock.calls.map((c) => c[0]).join('\n')
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
 
     expect(out).toContain('pyreon doctor')
@@ -74,6 +77,7 @@ describe('doctor() end-to-end', () => {
   it('--json emits a DoctorReport object', async () => {
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     await doctor({
       ...defaults(cwd),
       json: true,
@@ -81,6 +85,7 @@ describe('doctor() end-to-end', () => {
     })
     const out = log.mock.calls.map((c) => c[0]).join('')
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
 
     const parsed = JSON.parse(out)
@@ -100,12 +105,14 @@ describe('doctor() end-to-end', () => {
       `export const add = (a: number, b: number) => a + b\n`,
     )
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     const exitCode = await doctor({
       ...defaults(cwd),
       ci: true,
       only: ['react-patterns'],
     })
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
     expect(exitCode).toBe(0)
   })
@@ -116,6 +123,7 @@ describe('doctor() end-to-end', () => {
     // measured nothing must FAIL, not pass (bisect-load-bearing).
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
     const exitCode = await doctor({
       ...defaults(cwd),
@@ -124,6 +132,7 @@ describe('doctor() end-to-end', () => {
     })
     const errOut = err.mock.calls.map((c) => c[0]).join('\n')
     log.mockRestore()
+    stdout.mockRestore()
     err.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
     expect(exitCode).toBeGreaterThan(0)
@@ -158,9 +167,11 @@ describe('doctor() end-to-end', () => {
       `export function useState<T>(v: T) { return [v, () => {}] as const }\n`,
     )
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     await doctor({ ...defaults(cwd), json: true, only: ['react-patterns'] })
     const out = log.mock.calls.map((c) => c[0]).join('')
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
 
     const parsed = JSON.parse(out)
@@ -189,6 +200,7 @@ describe('doctor() end-to-end', () => {
       `it('x', () => { expect(1).toBe(1) })\n`,
     )
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     await doctor({
       ...defaults(cwd),
       json: true,
@@ -196,6 +208,7 @@ describe('doctor() end-to-end', () => {
     })
     const out = log.mock.calls.map((c) => c[0]).join('')
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
 
     const parsed = JSON.parse(out)
@@ -215,6 +228,7 @@ describe('doctor() end-to-end', () => {
       `export const ok = true\n`,
     )
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     await doctor({
       ...defaults(cwd),
       format: 'gha',
@@ -222,6 +236,7 @@ describe('doctor() end-to-end', () => {
     })
     const out = log.mock.calls.map((c) => c[0]).join('\n')
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
 
     expect(out).toContain('::notice::pyreon doctor score:')
@@ -230,6 +245,7 @@ describe('doctor() end-to-end', () => {
   it('gha output warns (not notices a score) when nothing was measured', async () => {
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     await doctor({
       ...defaults(cwd),
       format: 'gha',
@@ -237,6 +253,7 @@ describe('doctor() end-to-end', () => {
     })
     const out = log.mock.calls.map((c) => c[0]).join('\n')
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
 
     expect(out).toContain('::warning::pyreon doctor measured nothing')

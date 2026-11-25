@@ -8,7 +8,7 @@ description: React-compatible hook API that runs on Pyreon's fine-grained reacti
 <PackageBadge name="@pyreon/react-compat" href="/docs/react-compat" />
 
 :::note
-The compat layer is at **near-full public-API parity** with React, not complete parity, and Pyreon is pre-1.0. Check the differences and unsupported APIs on this page before migrating a large app.
+The compat layer is at **near-full public-API parity** with React, not complete parity, and it is [Experimental](/docs/stability-and-direction#two-tiers-stable-and-experimental), so it can change in a minor release. Check the differences and unsupported APIs on this page before migrating a large app.
 :::
 
 ## Installation

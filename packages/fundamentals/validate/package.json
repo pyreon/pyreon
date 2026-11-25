@@ -66,6 +66,9 @@
       "types": "./lib/types/internal.d.ts"
     }
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

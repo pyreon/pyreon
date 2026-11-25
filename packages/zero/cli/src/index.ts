@@ -15,10 +15,11 @@ import { checkRootArg } from './commands/unknown-command'
  * on this path only, so `zero --help` and `--version` stay a small import.
  */
 async function usageError(message: string, fix: string): Promise<never> {
-  const { createTerm, finding } = await import('@pyreon/ansi')
+  const { createTerm, exitAfterFlush, finding } = await import('@pyreon/ansi')
   const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
   console.error(finding(t, { severity: 'error', source: 'zero', message, fix }, { indent: 0, width: t.width }).join('\n'))
-  process.exit(1)
+
+  return exitAfterFlush(1)
 }
 
 // Each command is loaded when it runs: a command module pulls in Vite, the

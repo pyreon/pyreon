@@ -114,7 +114,16 @@ export {
 } from './request-context'
 export { createFetchTransport, fetchTransport, toHttpResponse } from './transport'
 export { type HttpResponsePromise } from './response'
-export { applyPathParams, buildQuery, buildUrl, encodePathParam, isAbsoluteUrl, joinUrl } from './url'
+export {
+  applyPathParams,
+  buildQuery,
+  buildUrl,
+  encodePathParam,
+  isAbsoluteUrl,
+  joinUrl,
+  pathPartEnd,
+  pathPartStart,
+} from './url'
 
 export type {
   ErrorSchemas,

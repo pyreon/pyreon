@@ -15,7 +15,7 @@ export default function PostPage() {
   const post = useLoaderData<Post | null>()
   return (
     <article data-testid="post-page">
-      <h1 data-testid="post-title">{post ? post.title : 'Post not found'}</h1>
+      <h1 data-testid="post-title">{post()?.title ?? 'Post not found'}</h1>
     </article>
   )
 }

@@ -2,7 +2,7 @@
  * Real `pyreon doctor` output for the Tooling demo (DemoTooling.tsx).
  *
  * Captured 2026-11-11 with the worktree's CLI
- * (`bun packages/tools/cli/src/index.ts doctor`, NO_COLOR=1) on a copy of
+ * (`bun packages/tools/cli/src/main.ts doctor`, NO_COLOR=1) on a copy of
  * examples/kanban with one planted file, src/components/ColumnStats.tsx
  * (PLANTED below: destructured props, className, a signal written by
  * calling it, .map() in JSX). The four runs, in order:

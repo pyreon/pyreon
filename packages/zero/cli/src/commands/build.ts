@@ -1,5 +1,6 @@
 import { reportFailure } from './report'
 import { resolve } from 'node:path'
+import { exitAfterFlush } from '@pyreon/ansi'
 import { build as viteBuild } from 'vite'
 
 /**
@@ -55,7 +56,7 @@ export async function build(root: string | undefined) {
     // Keep the stack (and a Rolldown/Vite `frame`/`loc`): the message alone
     // hid WHERE a build failed.
     reportFailure('zero build', 'Build failed', error)
-    process.exit(1)
+    await exitAfterFlush(1)
   }
 }
 

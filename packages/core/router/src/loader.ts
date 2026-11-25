@@ -1,6 +1,8 @@
 import type { Context } from '@pyreon/core'
 import { createContext, useContext } from '@pyreon/core'
+import { type Computed, computed } from '@pyreon/reactivity'
 import type { RouterInstance } from './types'
+import { setLoaderData } from './loader-data-store'
 import { isNotFoundError } from './not-found'
 
 // Dev-mode gate + counter sink. See packages/internals/perf-harness for contract.
@@ -9,11 +11,47 @@ const _countSink = globalThis as { __pyreon_count__?: (name: string, n?: number)
 /**
  * Context frame that holds the loader data for the currently rendered route record.
  * Pushed by RouterView's withLoaderData wrapper before invoking the route component.
+ * RouterView provides a {@link LoaderDataCell}; any other value (a test, a custom
+ * provider) is read as the data itself.
  */
 export const LoaderDataContext: Context<unknown> = createContext<unknown>(undefined)
 
+const CELL: unique symbol = Symbol('pyreon.loaderDataCell')
+
 /**
- * Returns the data resolved by the current route's `loader` function.
+ * What RouterView provides at one depth: the route's loader data as a memoised
+ * reactive read. A page stays mounted while its matched record, params and
+ * loader key are unchanged (#4814); data that changes under the same key (a
+ * revalidation, `staleWhileRevalidate`, `gcTime: 0`, a server loader) arrives
+ * in place through it.
+ * @internal
+ */
+export interface LoaderDataCell {
+  readonly [CELL]: true
+  /** The current data. Notifies only when the data's IDENTITY changes. */
+  read: Computed<unknown>
+}
+
+/** @internal */
+export function createLoaderDataCell(read: () => unknown): LoaderDataCell {
+  // Memoised: the raw read wakes on every navigation tick (`_loadingSignal`,
+  // the route), but consumers re-run only when the data itself changes.
+  return { [CELL]: true, read: computed(read) }
+}
+
+function isLoaderDataCell(value: unknown): value is LoaderDataCell {
+  return typeof value === 'object' && value !== null && (value as Partial<LoaderDataCell>)[CELL] === true
+}
+
+/**
+ * The current route's loader data, as a reactive accessor. Read it inside JSX,
+ * an `effect` or a `computed` and it follows the data: the page is not
+ * remounted when the data changes under the same loader key (a
+ * `router.revalidate()`, a `staleWhileRevalidate` refresh, a `gcTime: 0`
+ * loader, a server loader re-run on a query-only navigation), so inputs keep
+ * their focus and local state survives. A different key (`loaderKey`, else
+ * path + params) is a different resource and remounts the page.
+ *
  * Must be called inside a route component rendered by <RouterView />.
  *
  * @example
@@ -21,11 +59,14 @@ export const LoaderDataContext: Context<unknown> = createContext<unknown>(undefi
  *
  * function Users() {
  *   const users = useLoaderData<User[]>()
- *   return h("ul", null, users.map(u => h("li", null, u.name)))
+ *   return <For each={users} by={(u) => u.id}>{(u) => <li>{u.name}</li>}</For>
  * }
  */
-export function useLoaderData<T = unknown>(): T {
-  return useContext(LoaderDataContext) as T
+export function useLoaderData<T = unknown>(): () => T {
+  const value = useContext(LoaderDataContext)
+  if (isLoaderDataCell(value)) return value.read as () => T
+
+  return () => value as T
 }
 
 /**
@@ -91,7 +132,7 @@ export async function prefetchLoaderData(
           router._loaderNotFound?.set(route.path)
           return
         }
-        router._loaderData.set(r, data)
+        setLoaderData(router, r, route, data)
       }),
   )
 }
@@ -384,9 +425,9 @@ export function hydrateLoaderData(
     seen.set(record.path, n + 1)
     const key = n === 0 ? record.path : `${record.path}#${n}`
     if (Object.hasOwn(serialized, key)) {
-      router._loaderData.set(record, serialized[key])
+      setLoaderData(router, record, route, serialized[key])
     } else if (n > 0 && Object.hasOwn(serialized, record.path)) {
-      router._loaderData.set(record, serialized[record.path])
+      setLoaderData(router, record, route, serialized[record.path])
     }
   }
 }

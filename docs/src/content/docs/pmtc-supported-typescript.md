@@ -88,7 +88,7 @@ The compiler recognises these hook identifiers and emits per-target equivalents:
 
 #### Hooks: warning shapes (PR #1136, A3)
 
-- `useLoaderData<T>()` — **A3 diagnostic** (PR #1235). Emits a warning naming the binding because PMTC has no emit yet; the runtime `PyreonRouter.setLoaderData()` is the only way to populate this signal today. (Real emit lands as Phase B.6.)
+- `const { title } = useLoaderData<T>()` — destructure form unsupported: `useLoaderData<T>()` returns an accessor, so it warns to bind it (`const data = useLoaderData<T>()`) and read `data().title`, which lowers to a non-optional native read populated by the route's `loader`.
 - `const { copy, copied } = useClipboard()` — destructure form unsupported; warns to use `const cb = useClipboard()` instead.
 
 ### ✅ Custom hooks (same file)
@@ -235,7 +235,7 @@ return <RouterProvider router={router}><RouterView /></RouterProvider>
 | `notFoundComponent: Identifier` | ✅ Full | A6 PR #1239 — wildcard-404 fallback |
 | `redirect: '/login'` | 🟡 Phase B6 | Not yet extracted; use `router.redirect('/login')` at runtime |
 | `meta: {...}` / `name: 'x'` | ❌ Silently ignored | Documented as Phase B+ — extra fields drop without diagnostic |
-| `loader: async ({ params }) => …` | ❌ Silently ignored | Compiler skips the field; runtime `useLoaderData<T>()` fires A3 diagnostic instead. Real emit = Phase B6. |
+| `loader: async ({ params }) => …` | 🟡 Partial | A synchronous expression-body loader is auto-emitted (`() => …`, and `(ctx) => ctx.params.id` reads); a block-body loader, or one that uses `ctx` for anything but `params`, warns and the route emits unloaded. |
 
 ### ✅ JSX
 

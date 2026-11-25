@@ -25,7 +25,7 @@ import { pathToFileURL } from 'node:url'
 import { discoverPlugins } from './discover-plugins'
 import { buildPluginWebHosts, materializeBuiltWebHosts, type WebHostTarget } from './web-hosts'
 import { nearestPackageDir } from './native-sources'
-import { createTerm, finding, plural } from '@pyreon/ansi'
+import { createTerm, exitAfterFlush, finding, plural } from '@pyreon/ansi'
 import { explainReport, pluginsReport } from './plugin-commands'
 import {
   buildAllVerdict,
@@ -639,7 +639,7 @@ if (meta.main === true) {
     // here would tear those down — the LSP would die before serving a
     // single request, and `--watch` would run one check then quit.
     if (!argv.includes('--lsp') && !argv.includes('--watch')) {
-      process.exit(code)
+      void exitAfterFlush(code)
     }
   })
 }
