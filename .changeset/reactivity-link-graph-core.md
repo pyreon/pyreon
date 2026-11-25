@@ -1,6 +1,7 @@
 ---
 '@pyreon/reactivity': minor
 '@pyreon/mcp': patch
+'@pyreon/runtime-dom': patch
 ---
 
 A new propagation core for `@pyreon/reactivity`, behind the same API. A write now only marks what may be stale; a read re-evaluates a computed only when a value it read really changed, resolving its dependencies bottom-up. Computeds, effects and render bindings are graph nodes with one small edge object per dependency, so they retain less memory: signal + computed 672 → 504 B and signal + effect 690 → 418 B (node, `NODE_ENV=production`), and a mounted 2,047-component tree 353.5 → 313.1 KB (Chromium). A signal is unchanged at 152 B.
@@ -18,3 +19,5 @@ Changes you can observe:
 Fixed: an effect disposed during its own run now tears down what that run registered after the dispose (its `onCleanup` callbacks and returned cleanup run, its inner effects are disposed); they used to leak, and the inner effects kept running.
 
 Upgrade: nothing to change for documented API. Internal fields changed (`_s1`/`_s` → graph edges in `_subs`, `_dirty` → `_f`); code that read them (tests, devtools) must use `_hasSubscribers` or the public API.
+
+`@pyreon/runtime-dom`: its reactive ranges and keyed lists dispose their boundary effect through the disposer `_effectOwned` now returns (internal), so clearing a list allocates nothing per row for it. Code that never creates a `computed()` no longer ships the computed evaluation code.
