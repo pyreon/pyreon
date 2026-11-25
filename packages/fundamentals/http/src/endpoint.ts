@@ -144,6 +144,14 @@ export type EndpointInput<P extends string> = ([PathParamNames<P>] extends [neve
   form?: FormFields | undefined
   multipart?: MultipartFields | undefined
   body?: BodyInit | null | undefined
+  /**
+   * Also a call option. Listed here so an input that declares ONLY headers or
+   * cookies — an operation whose one parameter is a required header — is still
+   * an input (`api.endpoint<S, V, { headers: { 'x-api-key': string } }>`); a
+   * type with no key in common with this one is not assignable to it.
+   */
+  headers?: EndpointCallOptions['headers']
+  cookies?: EndpointCallOptions['cookies']
 }
 
 /** Per-call options every endpoint accepts, whatever its input type. */

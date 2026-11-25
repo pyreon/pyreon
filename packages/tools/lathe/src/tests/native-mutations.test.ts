@@ -124,13 +124,13 @@ describe('a write is a native MUTATION component', () => {
     expect(notes).toContain(
       'export function CreateNoteMutation(props: { json: NoteInput; children: (mutate: () => void, data: Note | undefined, isPending: boolean, error: Error | null) => unknown })',
     )
-    expect(notes).toContain('const m = useMutation<Note, Error, { json: NoteInput }>(createNote.mutation())')
-    expect(notes).toContain('return () => props.children(() => m.mutate({ json: props.json }), m.data(), m.isPending(), m.error())')
+    expect(notes).toContain('const __m = useMutation<Note, Error, { json: NoteInput }>(createNote.mutation())')
+    expect(notes).toContain('return () => props.children(() => __m.mutate({ json: props.json }), __m.data(), __m.isPending(), __m.error())')
     // Inline body and response are named once; the optional body is still a required prop.
     expect(notes).toContain('export type RenameNoteBody = {')
     expect(notes).toContain('export type RenameNoteResult = {')
     expect(notes).toContain('export function RenameNoteMutation(props: { id: string; json: RenameNoteBody; children:')
-    expect(notes).toContain('m.mutate({ params: { id: props.id }, json: props.json })')
+    expect(notes).toContain('__m.mutate({ params: { id: props.id }, json: props.json })')
     // No content: nothing decoded, no `data` slot.
     expect(notes).toContain(
       'export function DeleteNoteMutation(props: { id: string; children: (mutate: () => void, isPending: boolean, error: Error | null) => unknown })',
@@ -138,7 +138,7 @@ describe('a write is a native MUTATION component', () => {
     expect(notes).toContain('useMutation<unknown, Error, { params: { id: string } }>(deleteNote.mutation())')
     const ops = mod('ops.native.tsx')
     expect(ops).toContain('useMutation<unknown, Error, {}>(logout.mutation())')
-    expect(ops).toContain('props.children(() => m.mutate({}), m.isPending(), m.error())')
+    expect(ops).toContain('props.children(() => __m.mutate({}), __m.isPending(), __m.error())')
     for (const blocked of ['UploadMutation', 'ExportCsvMutation', 'SearchMutation', 'DropDocMutation', 'NoteExistsMutation']) {
       expect(ops).not.toContain(blocked)
     }

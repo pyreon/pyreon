@@ -52,6 +52,7 @@ import {
   inputType,
   type ModelTypes,
   QUERY_HOOK_KEY_OPTION,
+  resolve as resolveType,
   responseTypeOf,
 } from "./operation-types";
 import { modelDoc, operationDoc } from "./jsdoc";
@@ -696,12 +697,53 @@ export { bodyArg } from "./operation-types";
  * reach analysis in `core/generate.ts` reports the operation as web-only by
  * asking this same predicate.
  */
-export function hasNativeDataComponent(op: IrOperation): boolean {
+export function hasNativeDataComponent(op: IrOperation, models: ReadonlyMap<string, IrType>): boolean {
+  return op.method === "GET" && nativeDataBlocker(op, models) === undefined;
+}
+
+/**
+ * Why a read gets NO native data component — or `undefined` when it gets one.
+ * The one place that decides it; the reach report quotes the string verbatim.
+ *
+ * A REQUIRED query parameter becomes a prop and travels as `query`, the way a
+ * path parameter travels as `params`. It used to be left out, so the module
+ * lowered cleanly and every native request was missing it (a 400 on any API
+ * that enforces it) while the reach report said `web+native`.
+ */
+export function nativeDataBlocker(op: IrOperation, models: ReadonlyMap<string, IrType>): string | undefined {
   // `hook: false` turns off query generation for the operation on EVERY
   // target — the native data component is that target's query hook.
-  return (
-    !isMutation(op) && op.hook !== false && typedResponse(op) !== undefined
-  );
+  if (op.hook === false) {
+    return "its hook is turned off (`operations.<id>.hook: false`, `naming.hook` or a plugin), so no native data component is generated.";
+  }
+  const unsent = [
+    ...op.headerParams.map((p) => ["header", p] as const),
+    ...op.cookieParams.map((p) => ["cookie", p] as const),
+  ].find(([, p]) => p.required);
+  if (unsent !== undefined) {
+    return `its required ${unsent[0]} parameter \`${unsent[1].name}\` is not sent by the native data component, which passes path and query parameters only.`;
+  }
+  const owned = new Set(["children", ...op.pathParams.map((p) => p.name)]);
+  for (const p of requiredQuery(op)) {
+    const t = resolveType(p.type, models);
+    const scalar = t.kind === "string" || t.kind === "number" || t.kind === "boolean" || t.kind === "enum";
+    if (!scalar) {
+      return `its required query parameter \`${p.name}\` is ${t.kind === "array" ? "an array" : `a ${t.kind}`}, and the native data component sends scalar query values only.`;
+    }
+    if (ident(p.name) !== p.name || owned.has(p.name)) {
+      return `its required query parameter \`${p.name}\` cannot be a prop of the native data component (${owned.has(p.name) ? "the name is taken" : "not a plain identifier"}).`;
+    }
+    owned.add(p.name);
+  }
+  if (typedResponse(op) === undefined) {
+    return "no typed JSON response (no content, or a media type Lathe cannot type) -- a native query decodes into a declared type, so there is nothing to lower it to.";
+  }
+  return undefined;
+}
+
+/** The query parameters a native data component must send — the required ones. */
+function requiredQuery(op: IrOperation): IrOperation["queryParams"] {
+  return op.queryParams.filter((p) => p.required);
 }
 
 /**
@@ -1456,7 +1498,8 @@ export function emitNativeModules(
       if (dialect.nativeWrap && emitsModelBinding)
         f.import(dialect.nativeWrap.module, dialect.nativeWrap.fn);
     }
-    if (ops.some(hasNativeDataComponent)) f.import("@pyreon/query", "useQuery");
+    const dataOps = ops.filter((op) => hasNativeDataComponent(op, modelTypes));
+    if (dataOps.length > 0) f.import("@pyreon/query", "useQuery");
     const mutationOps = ops.filter(hasNativeMutationComponent);
     if (mutationOps.length > 0) f.import("@pyreon/query", "useMutation");
     const streamOps = ops.filter(hasNativeStreamComponent);
@@ -1555,7 +1598,7 @@ export function emitNativeModules(
     // a standalone hook function is read as a View and emitted verbatim, which
     // produces Swift that does not compile, with no warning at all.
     for (const op of ops) {
-      if (!hasNativeDataComponent(op)) continue;
+      if (!dataOps.includes(op)) continue;
       const response = typedResponse(op);
       const ret = response ? nativeTs(response, modelTypes) : "unknown";
       const name = `${typeIdent(op.id)}Data`;
@@ -1573,36 +1616,46 @@ export function emitNativeModules(
       // — which is what lets it be a bare `props.x` member access rather than
       // the quoted-key form the other emitters need. If that normalization
       // ever moves, this breaks loudly at typecheck rather than silently.
+      // A REQUIRED query parameter is a prop too, sent as `query`; an
+      // optional one is left to the web hook.
+      const query = requiredQuery(op);
       const propsType = [
         ...params.map((p) => `${p.name}: ${tsType(bigintAsNumber(p.type))}`),
+        ...query.map((p) => `${p.name}: ${tsType(bigintAsNumber(p.type))}`),
         `children: (data: ${ret} | undefined) => unknown`,
       ].join("; ");
       // `props.x`, never a destructure: destructuring reads the getter once
       // and freezes the value, which is the single most common way to lose
       // reactivity in Pyreon — and here it would also stop the query
       // re-fetching when the parent passes a new id.
-      const args = params.length
-        ? `({ params: { ${params.map((p) => `${p.name}: props.${p.name}`).join(", ")} } })`
-        : "()";
+      const parts = [
+        ...(params.length ? [`params: { ${params.map((p) => `${p.name}: props.${p.name}`).join(", ")} }`] : []),
+        ...(query.length ? [`query: { ${query.map((p) => `${p.name}: props.${p.name}`).join(", ")} }`] : []),
+      ];
+      const args = parts.length ? `({ ${parts.join(", ")} })` : "()";
+      const propNames = [...params, ...query].map((p) => `\`${p.name}\``);
       f.line();
       f.doc(
         `Fetches \`${endpointSpec(op)}\` and renders it through \`children\`.`,
-        ...(params.length
+        ...(propNames.length
           ? [
               "",
-              `Takes ${params.map((p) => `\`${p.name}\``).join(", ")} as ${params.length === 1 ? "a prop" : "props"} and re-fetches when ${params.length === 1 ? "it changes" : "they change"}.`,
+              `Takes ${propNames.join(", ")} as ${propNames.length === 1 ? "a prop" : "props"} and re-fetches when ${propNames.length === 1 ? "it changes" : "they change"}.`,
             ]
           : []),
       );
       f.line(`export function ${name}(props: { ${propsType} }) {`);
-      f.line(`  const q = useQuery<${ret}>(() => ${op.id}.query${args})`);
+      // `__q`, not `q`: a component's locals and its props share one scope
+      // on Swift (stored properties), and `q` is a common parameter name.
+      // Lathe's identifiers never start with `_`.
+      f.line(`  const __q = useQuery<${ret}>(() => ${op.id}.query${args})`);
       // Returned as an ACCESSOR. A Pyreon component body runs ONCE, so
       // `return props.children(q.data())` read the data at mount — `undefined`
       // — and the rendered output never moved again: on the web the component
       // stayed at its loading state forever. The accessor re-reads `q.data()`
       // in a tracked scope, and PMTC lowers it to the same render-prop view.
       // (`q.data` is a SIGNAL; it is still CALLED inside the accessor.)
-      f.line("  return () => props.children(q.data())");
+      f.line("  return () => props.children(__q.data())");
       f.line("}");
     }
 
@@ -1687,7 +1740,7 @@ export function emitNativeModules(
           : []),
       );
       f.line(`export function ${name}(props: { ${propsType} }) {`);
-      f.line(`  const s = useStream<${item}>(`);
+      f.line(`  const __s = useStream<${item}>(`);
       f.line(`    (ctx) => ${open}((c) => ${op.id}({ ${epArgs} }), { ${streamOpts} }),`);
       // An ACCESSOR, so `enabled` is read in the hook's tracked scope and a
       // flip starts or stops the stream (PMTC joins it to the harness key).
@@ -1695,7 +1748,7 @@ export function emitNativeModules(
       f.line("  )");
       // An ACCESSOR, for the same reason the data component returns one: the
       // body runs once, and `events()` must be re-read as events arrive.
-      f.line("  return () => props.children(s.events())");
+      f.line("  return () => props.children(__s.events())");
       f.line("}");
     }
 
@@ -1771,11 +1824,11 @@ export function emitNativeModules(
       // `unknown` for a write with no typed response: PMTC reads it as "decode
       // nothing", and it is what the endpoint resolves to.
       f.line(
-        `  const m = useMutation<${data ?? "unknown"}, Error, ${vars.length > 0 ? `{ ${vars.join("; ")} }` : "{}"}>(${op.id}.mutation())`,
+        `  const __m = useMutation<${data ?? "unknown"}, Error, ${vars.length > 0 ? `{ ${vars.join("; ")} }` : "{}"}>(${op.id}.mutation())`,
       );
       // An ACCESSOR, for the reason the data component returns one.
       f.line(
-        `  return () => props.children(() => m.mutate(${args.length > 0 ? `{ ${args.join(", ")} }` : "{}"}), ${data !== undefined ? "m.data(), " : ""}m.isPending(), m.error())`,
+        `  return () => props.children(() => __m.mutate(${args.length > 0 ? `{ ${args.join(", ")} }` : "{}"}), ${data !== undefined ? "__m.data(), " : ""}__m.isPending(), __m.error())`,
       );
       f.line("}");
     }

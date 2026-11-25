@@ -1617,7 +1617,7 @@ never touched. Commit the manifest with the rest of the output.
 - **A relative `baseUrl` makes every operation web-only** — PMTC bakes the
   request URL at compile time.
 - **The generated data components need PMTC render-prop support.** Each one
-  returns an accessor, `() => props.children(q.data())`, so it re-renders on
+  returns an accessor, `() => props.children(__q.data())`, so it re-renders on
   the web when the query settles. A body that ran once would stay at its
   loading state. Only a `@pyreon/native-compiler` with render-prop support
   lowers that shape. The verifier compiles each module when `swiftc` /

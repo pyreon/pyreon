@@ -174,7 +174,7 @@ describe('generate', () => {
   it('calls the data signal in a native data component', () => {
     // Result fields are signals. Passing `q.data` uncalled hands the child a
     // function, which renders as the closure source.
-    expect(file(generate(SPEC, native), 'books.native.tsx')).toContain('props.children(q.data())')
+    expect(file(generate(SPEC, native), 'books.native.tsx')).toContain('props.children(__q.data())')
   })
 
   it('emits mock fixtures under `json`, from the /mock subpath', () => {
