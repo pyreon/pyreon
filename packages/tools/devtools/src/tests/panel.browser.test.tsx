@@ -329,8 +329,19 @@ describe('panel against a real Pyreon app', () => {
     const owns = $$('#pd-view-components .sec-h').find((x) => x.textContent === 'owns')
     expect(owns?.nextElementSibling?.textContent).toBe('Created no signal, computed or effect in its setup.')
 
-    key('End') // back to Composer for the tests below
+    key('End') // back to Composer
     await tick()
+    // Composer renders `validity` (a computed that fired when draft was
+    // typed); a later write to the signal it owns is the newer update.
+    const form = appHost.querySelector('form.composer') as HTMLFormElement
+    form.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    const why = await waitFor(() => {
+      const w = $('.why')
+      return w?.textContent?.includes('touched signal changed') ? w : null
+    })
+    expect(why.textContent).not.toContain('validity computed recomputed')
+    const ownsAfter = $$('#pd-view-components .sec-h').find((x) => x.textContent === 'owns')
+    expect(ownsAfter?.nextElementSibling?.querySelector('dd')?.textContent).toBe('signal · 1 write · true')
   })
 
   it('tabs are a keyboard tablist', async () => {

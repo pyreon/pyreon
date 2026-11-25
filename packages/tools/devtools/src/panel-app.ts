@@ -632,11 +632,8 @@ export function createPanelApp(
         why.append(el('b', { text: s.name }), ` ${s.kind === 'derived' ? 'computed' : s.kind} ${s.verb}`)
         if (s.where) why.append(el('span', { class: 'dim', text: ` (${s.where})` }))
       })
-      const lastFire = [...detail.reads, ...detail.owned].reduce<number | null>(
-        (m, r) => (r.lastFire !== null && (m === null || r.lastFire > m) ? r.lastFire : m),
-        null,
-      )
-      why.append(el('div', { class: 'why-foot', text: `${formatAgo(lastFire, detail.now)} · the component itself did not re-run` }))
+      // The time of the fire being explained, so the foot and the chain agree.
+      why.append(el('div', { class: 'why-foot', text: `${formatAgo(detail.cause.target.ts, detail.now)} · the component itself did not re-run` }))
     } else {
       why.append('Mounted once. Nothing it renders as text has updated since.')
     }

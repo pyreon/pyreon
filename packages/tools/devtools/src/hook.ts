@@ -235,9 +235,11 @@ export function createHook(devtools: PyreonDevtools, opts: HookOptions): Hook {
     }
     detail.reads = bound.map(toRead)
     detail.owned = owned.map(toRead)
-    // "Why did this update?" explains what the component shows first; when
-    // none of its text bindings fired, the latest of its own nodes to fire.
-    const pool = detail.reads.some((r) => r.lastFire !== null) ? detail.reads : detail.owned
+    // "Why did this update?" explains the most recent fire among what the
+    // component shows and what it owns. Preferring reads whenever any of them
+    // had fired was wrong: a computed rendered as text fires once at mount, so
+    // a later write to an owned signal was never the answer.
+    const pool = detail.reads.concat(detail.owned.filter((o) => !detail.reads.some((r) => r.id === o.id)))
     const latest = latestFired(pool, reactive.getFires())
     if (latest) detail.cause = compactCause(reactive.getUpdateCause(latest.id))
 

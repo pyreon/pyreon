@@ -209,6 +209,36 @@ describe('createHook', () => {
     expect(JSON.parse(JSON.stringify(detail))).toEqual(detail)
   })
 
+  it('inspect explains a later write to an owned signal, not the mount fire of a text read', () => {
+    const external = signal('a', { name: 'external' })
+    const shown = computed(() => external().toUpperCase(), { name: 'shown' })
+    keepAlive.push(external, shown)
+    let touched: ReturnType<typeof signal<boolean>> | null = null
+    function Field() {
+      touched = signal(false, { name: 'touched' })
+
+      return h('p', { class: 'field' })
+    }
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const h1 = start()
+    h1.handle({ type: 'reactive-activate' })
+    disposeApp = mount(h(Field, null), container)
+    // The computed is evaluated (and so fires) when it is bound, at mount.
+    const text = document.createTextNode('')
+    ;(container.querySelector('p.field') as HTMLElement).append(text)
+    _bindText(shown as unknown as TextSource, text)
+    touched!.set(true)
+    h1.handle({ type: 'get-all' })
+    const field = last('all-result').entries.find((e) => e.name === 'Field')!
+    h1.handle({ type: 'inspect', id: field.id })
+    const { detail } = last('component-detail')
+    expect(detail.reads.map((r) => r.name)).toEqual(['shown'])
+    expect(detail.reads[0]!.lastFire).not.toBeNull()
+    expect(detail.owned.map((r) => r.name)).toEqual(['touched'])
+    expect(detail.cause?.target.name).toBe('touched')
+  })
+
   it('inspect without the reactive bridge still reports props', () => {
     mountApp()
     // A framework without the reactive bridge (older runtime-dom).
