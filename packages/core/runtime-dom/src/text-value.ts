@@ -27,8 +27,9 @@ export function textValue(v: unknown): TextValue {
 /**
  * Has the text changed since `written` (the raw value last written, the
  * server's string on an adopted node's first run, `undefined` on a fresh
- * clone)? Compared raw: `NaN` equals `NaN` and `-0` equals `0`, as their text
- * does. A number against a string (`1` then `'1'`, or a number over adopted
+ * clone)? Compared raw (`-0` equals `0`, as their text does; a re-run that
+ * yields `NaN` again rewrites "NaN", which a signal never notifies anyway). A
+ * number against a string (`1` then `'1'`, or a number over adopted
  * server text) is compared through the DOM's own conversion (`domText`), so a
  * value that keeps its text is never rewritten. That costs one scratch-node
  * write on the type-mixed path only (Chromium ~46 ns, against ~37 ns for the
@@ -37,10 +38,7 @@ export function textValue(v: unknown): TextValue {
 export function textChanged(next: TextValue, written: TextValue | null | undefined): boolean {
   return (
     next !== written &&
-    (typeof next === typeof written
-      ? // NaN is the one value not equal to itself.
-        next === next || written === written
-      : written == null || domText(next) !== domText(written))
+    (typeof next === typeof written || written == null || domText(next) !== domText(written))
   )
 }
 

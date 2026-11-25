@@ -81,7 +81,7 @@ import {
   mountOwned,
   runUnmountHooks,
 } from './mount'
-import { domText, textValue } from './text-value'
+import { domText, textChanged, textValue } from './text-value'
 import { buildRowPlan, findMatchingClose, replayRowPlan, tplAdoptVerify } from './hydration-plan'
 import { releaseRef } from './teardown'
 import type { RowPlan } from './hydration-plan'
@@ -429,8 +429,8 @@ function hydrateSoleAccessorChild(
     first.nextSibling === null
   ) {
     const bound = first as Text
-    const expected = domText(textValue(initial))
-    if (bound.data !== expected) {
+    const expected = textValue(initial)
+    if (textChanged(expected, bound.data)) {
       warnHydrationMismatch('text', expected, bound.data, `${path} > reactive`)
     }
     // The BARE binder is correct here, and this is the one hydrate site where
@@ -813,8 +813,8 @@ function hydrateReactiveChild(
         only.nextSibling === end
       ) {
         const bound = only as Text
-        const expected = domText(textValue(initial))
-        if (bound.data !== expected) {
+        const expected = textValue(initial)
+        if (textChanged(expected, bound.data)) {
           warnHydrationMismatch('text', expected, bound.data, `${path} > reactive`)
         }
         // Polymorphic binding: the accessor may later yield a VNode
