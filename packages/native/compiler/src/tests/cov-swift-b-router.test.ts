@@ -111,14 +111,14 @@ describe('flat dispatch — literal, pattern, redirect and wildcard branches', (
 describe('param-bearing routes — the three invocation shapes', () => {
   it('a component with a TYPED params prop constructs the synthesized struct', () => {
     const { code } = sw(`
-      export function User(props: { params: { id: string } }) { return <Text>{props.params.id}</Text> }
+      export function Member(props: { params: { id: string } }) { return <Text>{props.params.id}</Text> }
       export function App() {
-        const router = createRouter({ routes: [{ path: '/u/:id', component: User }] })
+        const router = createRouter({ routes: [{ path: '/u/:id', component: Member }] })
         return <RouterProvider router={router}><RouterView /></RouterProvider>
       }
     `)
     expect(code).toContain('if let params = PyreonRouter.matchPath(path, "/u/:id") {')
-    expect(code).toMatch(/User\(params: \w+\(id: params\["id"\] \?\? ""\)\)/)
+    expect(code).toMatch(/Member\(params: \w+\(id: params\["id"\] \?\? ""\)\)/)
   })
 
   it('a NUMBER param field coerces through Int(...) ?? 0; a BOOLEAN compares == "true"', () => {
@@ -135,15 +135,15 @@ describe('param-bearing routes — the three invocation shapes', () => {
 
   it('a component with NO params prop is invoked bare, and the branch skips the dict binding', () => {
     const { code } = sw(`
-      export function User() { return <Text>u</Text> }
+      export function Member() { return <Text>u</Text> }
       export function App() {
-        const router = createRouter({ routes: [{ path: '/u/:id', component: User }] })
+        const router = createRouter({ routes: [{ path: '/u/:id', component: Member }] })
         return <RouterProvider router={router}><RouterView /></RouterProvider>
       }
     `)
     expect(code).toContain('PyreonRouter.matchPath(path, "/u/:id") != nil {')
-    expect(code).toContain('User()')
-    expect(code).not.toContain('User(params:')
+    expect(code).toContain('Member()')
+    expect(code).not.toContain('Member(params:')
   })
 })
 

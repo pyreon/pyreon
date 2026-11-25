@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { CHART_ENGINE_DECLARED_NAMES, CHART_ENGINE_STRUCTS } from '../../../../fundamentals/charts/src/native-plugin/engine-structs'
 import { transform, validateKotlin, validateSwiftWithStubs } from './charts-plugin'
 import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
+import { isSwiftReservedName } from '../swift-reserved-rename'
 
 const COLLIDES = `import { PieChart } from '@pyreon/charts/engine'
 interface Slice { value: number; label: string }
@@ -40,14 +41,14 @@ const shadowWarnings = (src: string, target: 'swift' | 'kotlin'): string[] =>
   transform(src, { target }).warnings.filter((w) => w.includes('generated chart engine'))
 
 describe('a user type that shadows a generated chart-engine type warns by name', () => {
-  it('names the type, the mechanism and the fix, on both targets', () => {
-    for (const target of ['swift', 'kotlin'] as const) {
-      const found = shadowWarnings(COLLIDES, target)
-      expect(found).toHaveLength(1)
-      expect(found[0]).toContain('`Slice`')
-      expect(found[0]).toContain('SHADOWS')
-      expect(found[0]).toContain('Rename yours')
-    }
+  // Kotlin only: on Swift every engine type name is reserved (the engine ships in the Swift runtime), so the
+  // compiler renames the user's `Slice` to `Slice_` and there is nothing left to shadow (swift-reserved-rename.ts).
+  it('names the type, the mechanism and the fix (Kotlin)', () => {
+    const found = shadowWarnings(COLLIDES, 'kotlin')
+    expect(found).toHaveLength(1)
+    expect(found[0]).toContain('`Slice`')
+    expect(found[0]).toContain('SHADOWS')
+    expect(found[0]).toContain('Rename yours')
   })
 
   it('stays quiet once the type is renamed, and for a file with no chart import at all', () => {
@@ -57,13 +58,15 @@ describe('a user type that shadows a generated chart-engine type warns by name',
     }
   })
 
-  // The warning is only worth anything if the failure it predicts is real —
-  // and a compile that FAILS is the assertion, so the renamed twin has to pass
-  // in the same breath or the fixture proves nothing about the collision.
-  it.skipIf(!isSwiftcAvailable())('swiftc rejects the shadowed emit by that name and accepts the renamed one', () => {
-    const bad = validateSwiftWithStubs(transform(COLLIDES, { target: 'swift' }).code)
-    expect(bad.ok).toBe(false)
-    expect(bad.error ?? '').toContain("invalid redeclaration of 'Slice'")
+  it('every engine type name is Swift-reserved, so Swift renames the user type instead of warning', () => {
+    expect(CHART_ENGINE_DECLARED_NAMES.filter((n) => !isSwiftReservedName(n))).toEqual([])
+    expect(shadowWarnings(COLLIDES, 'swift')).toEqual([])
+    expect(transform(COLLIDES, { target: 'swift' }).code).toContain('struct Slice_: Codable')
+  })
+
+  it.skipIf(!isSwiftcAvailable())('swiftc accepts the colliding source (renamed) and the renamed twin', () => {
+    const renamed = validateSwiftWithStubs(transform(COLLIDES, { target: 'swift' }).code)
+    expect(renamed.ok, renamed.error ?? '').toBe(true)
     const good = validateSwiftWithStubs(transform(CLEAN, { target: 'swift' }).code)
     expect(good.ok, good.error ?? '').toBe(true)
   })

@@ -5030,9 +5030,13 @@ function tryExtractRoutes(arg: AnyNode | undefined, ctx: ParseCtx): RouteIR[] | 
 /** `Number.<name>` spellings that are the same function as the global `<name>` for a numeric argument. */
 const NUMBER_NAMESPACE_ALIASES: ReadonlySet<string> = new Set(['isNaN', 'isFinite', 'parseInt', 'parseFloat'])
 
-/** Whether the file binds its own `Date` (a class, a const, an import), which the Date lowering must leave alone. */
+/**
+ * Whether the file binds its own `Date` (a class, a const, an import), which the Date lowering must leave alone. On
+ * Swift that binding arrives renamed `Date_` (`swift-reserved-rename.ts` runs before the parse), and it is still the
+ * user's own `Date`: without the second spelling, `.getTime()` on the user's class lowered as a JS Date read.
+ */
 function dateIsShadowed(ctx: ParseCtx): boolean {
-  return /\b(?:class|const|let|var|function|interface|type)\s+Date\b|\bimport\b[^;\n]*\bDate\b/.test(ctx.source)
+  return /\b(?:class|const|let|var|function|interface|type)\s+Date_?\b|\bimport\b[^;\n]*\bDate_?\b/.test(ctx.source)
 }
 
 /** Globals an inline guard may read without capturing anything from the component. */

@@ -24,12 +24,12 @@ import { isSwiftcAvailable, isKotlincAvailable, validateSwift } from '../validat
 const SRC = `import { Stack, Text } from '@pyreon/primitives'
 function Home() { return (<Stack><Text>home</Text></Stack>) }
 function About() { return (<Stack><Text>about</Text></Stack>) }
-function User() { return (<Stack><Text>user</Text></Stack>) }
+function Member() { return (<Stack><Text>user</Text></Stack>) }
 function App() {
   const router = createRouter({ routes: [
     { path: '/', component: Home, loader: () => 1 },
     { path: '/about', component: About },
-    { path: '/users/:id', component: User, loader: () => 2 },
+    { path: '/users/:id', component: Member, loader: () => 2 },
   ] })
   return (<RouterProvider router={router}><RouterView /></RouterProvider>)
 }`
@@ -46,13 +46,13 @@ describe('Phase 3 — per-route loader auto-emit', () => {
     // Inside `.navigationDestination(for:) { path in … }` both the literal
     // `/` and the `:param` route key on the runtime `path` (== currentPath).
     expect(out).toContain('PyreonRouteLoader(path: path, load: { 1 }) { Home() }')
-    expect(out).toContain('PyreonRouteLoader(path: path, load: { 2 }) { User() }')
+    expect(out).toContain('PyreonRouteLoader(path: path, load: { 2 }) { Member() }')
   })
 
   it('Kotlin: routes wrap in PyreonRouteLoader keyed by currentPath', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
     expect(out).toContain('PyreonRouteLoader(path = currentPath, load = { 1L }) { Home() }')
-    expect(out).toContain('PyreonRouteLoader(path = currentPath, load = { 2L }) { User() }')
+    expect(out).toContain('PyreonRouteLoader(path = currentPath, load = { 2L }) { Member() }')
   })
 
   it('a route WITHOUT a loader is NOT wrapped (zero-cost — no behavior change)', () => {
@@ -78,24 +78,24 @@ describe('Phase 3 — per-route loader auto-emit', () => {
 
   // `ctx.params` threading (the detail-screen-by-id pattern). `(ctx) =>
   // …ctx.params.id…` lowers to `params["id"] ?? ""`, read from the dispatch
-  // branch's matchPath binding. The `/users/:id` route's `User` component has
+  // branch's matchPath binding. The `/users/:id` route's `Member` component has
   // NO params prop, so the emit must bind `params` because the LOADER uses it.
   const PARAM_SRC = SRC.replace('loader: () => 2', 'loader: (ctx) => ctx.params.id')
 
   it('Swift: `(ctx) => ctx.params.id` loader binds params + lowers to params["id"]', () => {
     const r = transform(PARAM_SRC, { target: 'swift' })
     expect(r.warnings.some((w) => w.includes('/users/:id'))).toBe(false)
-    // params bound (loader uses it, even though User has no params prop):
+    // params bound (loader uses it, even though Member has no params prop):
     expect(r.code).toContain('let params = PyreonRouter.matchPath(path, "/users/:id")')
     // ctx.params.id lowered to (params["id"] ?? "") inside the loader closure:
-    expect(r.code).toContain('PyreonRouteLoader(path: path, load: { (params["id"] ?? "") }) { User() }')
+    expect(r.code).toContain('PyreonRouteLoader(path: path, load: { (params["id"] ?? "") }) { Member() }')
   })
 
   it('Kotlin: `(ctx) => ctx.params.id` loader binds params + lowers to params["id"]', () => {
     const r = transform(PARAM_SRC, { target: 'kotlin' })
     expect(r.warnings.some((w) => w.includes('/users/:id'))).toBe(false)
     expect(r.code).toContain('val params = PyreonRouter.matchPath(currentPath, "/users/:id")')
-    expect(r.code).toContain('PyreonRouteLoader(path = currentPath, load = { (params["id"] ?: "") }) { User() }')
+    expect(r.code).toContain('PyreonRouteLoader(path = currentPath, load = { (params["id"] ?: "") }) { Member() }')
   })
 
   it.skipIf(!isSwiftcAvailable())('emitted Swift for a param loader parses on real swiftc', () => {

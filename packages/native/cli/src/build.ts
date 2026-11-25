@@ -616,7 +616,21 @@ export function findTsxFiles(sourceDir: string): string[] {
  * single file abort the whole build (matches the canonical compiler-CLI
  * contract — partial-success builds are misleading).
  */
+/**
+ * The Kotlin packages the shipped runtime sources declare. Generated code must live OUTSIDE them: Kotlin resolves a
+ * name to a declaration of the file's own package before a default import, so a generated `data class Error` (or
+ * `Pair`, `Result`, `Color`…) in `com.pyreon.runtime` would shadow `kotlin.Error` in every runtime file that spells it
+ * bare — the Swift name-shadowing class, which a separate package rules out on Kotlin (#4765). Locked against the
+ * runtime sources by `tests/kotlin-runtime-packages.test.ts`.
+ */
+export const RUNTIME_KOTLIN_PACKAGES: readonly string[] = ['com.pyreon.router', 'com.pyreon.runtime']
+
 export function build(options: BuildOptions): BuildResult {
+  if (options.target === 'kotlin' && options.kotlinPackage && RUNTIME_KOTLIN_PACKAGES.includes(options.kotlinPackage)) {
+    throw new Error(
+      `[Pyreon] --kotlin-package=${options.kotlinPackage} is a package of the Pyreon runtime. Generated code in it would shadow the names the runtime sources resolve from kotlin.* (an app model named Error, Pair or Result breaks them). Use a package of your own, e.g. --kotlin-package=com.example.app.generated.`,
+    )
+  }
   const sourceAbs = resolve(options.source)
   const outAbs = resolve(options.out)
   const ext = outputExtension(options.target)

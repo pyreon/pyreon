@@ -18,21 +18,21 @@ import {
   validateSwiftWithStubs,
 } from '../validate'
 
-// The optional-FIELD half (LayoutConfig.yFormat?) and the CALL half are
+// The optional-FIELD half (LayoutCfg.yFormat?) and the CALL half are
 // exercised separately on purpose: calling through an optional field needs
 // the optional-NARROWING lowering (`if (f !== undefined) f(v)` → Swift
 // unwrap), which is its own frontier and its own PR — borrowing it here
 // would couple this feature's compile spec to that one's absence.
 const ENGINE_SHAPE = `
   type Formatter = (v: Double) => string
-  type LayoutConfig = {
+  type LayoutCfg = {
     width: Double
     yFormat?: Formatter
   }
   function fmt(f: Formatter, v: Double): string {
     return f(v)
   }
-  function widthOf(cfg: LayoutConfig): Double {
+  function widthOf(cfg: LayoutCfg): Double {
     return cfg.width
   }
   export function P() {
@@ -50,12 +50,12 @@ describe('function-type alias substitution', () => {
   })
 
   it('drops Codable / @Serializable from a struct carrying one — closures cannot decode', () => {
-    // The engine's LayoutConfig produced "does not conform to protocol
+    // The engine's LayoutCfg produced "does not conform to protocol
     // 'Decodable'" for exactly this shape: the field was an unresolved NAME,
     // so typeContainsFunction could not see the function behind it.
-    expect(swift).toContain('struct LayoutConfig {')
-    expect(swift).not.toContain('struct LayoutConfig: Codable')
-    expect(kotlin).not.toMatch(/@Serializable\ndata class LayoutConfig/)
+    expect(swift).toContain('struct LayoutCfg {')
+    expect(swift).not.toContain('struct LayoutCfg: Codable')
+    expect(kotlin).not.toMatch(/@Serializable\ndata class LayoutCfg/)
   })
 
   it('a helper parameter typed by the alias takes the function type', () => {

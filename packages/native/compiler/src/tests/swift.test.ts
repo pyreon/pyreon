@@ -104,7 +104,8 @@ describe('Pyreon → Swift emit', () => {
 
   it('07 — <Show> conditional', () => {
     expect(emit('07-show.tsx')).toMatchInlineSnapshot(`
-      "struct Toggle: View {
+      "// Pyreon: \`Toggle\` → \`Toggle_\` — the Swift runtime sources compiled into this app spell that name bare, and an app type would shadow it (swift-reserved-rename.ts).
+      struct Toggle_: View {
         @State private var visible: Bool = true
         var body: some View {
           if visible {

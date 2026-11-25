@@ -10,6 +10,12 @@ import { BUILT_IN_PLUGINS } from './built-in-plugins'
 import { moduleTag, withSynthStructSuffix } from './expr-utils'
 import { parsePyreon } from './parse'
 import {
+  renameSwiftReservedNames,
+  sourceSpelling,
+  type SwiftReservedRename,
+  swiftRenameNote,
+} from './swift-reserved-rename'
+import {
   SUPPORTED_PLUGIN_API_VERSIONS,
   type CompilerBackend,
   type CompilerConfig,
@@ -80,6 +86,32 @@ function invoke<T>(owner: string, phase: string, callback: () => T): T {
       `[Pyreon] Native compiler ${owner} failed in ${phase}: ${cause instanceof Error ? cause.message : String(cause)}`,
       { cause },
     )
+  }
+}
+
+/**
+ * Swift: a user type named like a name the runtime sources spell bare shadows it inside the app target, so it is
+ * renamed before anything reads the source (swift-reserved-rename.ts); every later pass, and every plugin, sees the
+ * renamed source. Pyreon's own runtime code (the chart engine) declares those names, so it opts out.
+ */
+function swiftReservedRename(
+  source: string,
+  target: string,
+  filename: string | undefined,
+  runtimeSource: boolean | undefined,
+): { source: string; reserved: SwiftReservedRename | undefined } {
+  const reserved = target === 'swift' && runtimeSource !== true ? renameSwiftReservedNames(source, filename) : undefined
+
+  return { source: reserved?.code ?? source, reserved }
+}
+
+/** The result as the author reads it: the emit names each rename, and a warning names the type as they spelled it. */
+function withSwiftRenames(reserved: SwiftReservedRename | undefined, result: TransformResult): TransformResult {
+  if (reserved === undefined) return result
+
+  return {
+    code: swiftRenameNote(reserved.renamed) + result.code,
+    warnings: result.warnings.map((w) => sourceSpelling(w, reserved.renamed)),
   }
 }
 
@@ -241,9 +273,9 @@ export function createCompiler<Target extends string = never>(
     },
   })
 
-  function run(source: string, options: CompilerOptions<TargetLanguage | Target>): TransformResult {
+  function run(original: string, options: CompilerOptions<TargetLanguage | Target>): TransformResult {
     // Capture declared values once, including class/prototype getters.
-    const { target, filename, fonts } = options
+    const { target, filename, fonts, runtimeSource } = options
     const resolvedOptions = Object.freeze({
       target,
       ...(filename !== undefined ? { filename } : {}),
@@ -255,6 +287,7 @@ export function createCompiler<Target extends string = never>(
         `[Pyreon] Unknown native compiler target "${resolvedOptions.target}". Available targets: ${targets.join(', ')}. Register a backend plugin or choose an available target.`,
       )
     }
+    const { source, reserved } = swiftReservedRename(original, resolvedOptions.target, resolvedOptions.filename, runtimeSource)
     let module = parsePyreon(source, resolvedOptions.filename)
     const warnings: string[] = []
     const context = (owner: string): CompilerContext =>
@@ -334,7 +367,7 @@ export function createCompiler<Target extends string = never>(
       }),
     )
     const known = [...module.warnings, ...warnings, ...emitted.warnings]
-    return {
+    return withSwiftRenames(reserved, {
       code: emitted.code,
       warnings: [
         ...known,
@@ -342,6 +375,6 @@ export function createCompiler<Target extends string = never>(
         ...verbatimPyreonTypeWarnings(module.typeImports, emitted.code, registries.runtimeTypes, known),
         ...verbatimPlatformWarnings(source, emitted.code, resolvedOptions.target, known),
       ],
-    }
+    })
   }
 }

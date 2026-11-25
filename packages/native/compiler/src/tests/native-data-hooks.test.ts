@@ -4,7 +4,7 @@
 // PyreonDatabase / PyreonPushNotifications / PyreonPayments / PyreonMapState /
 // PyreonAuth) shipped this arc; this phase wires the compiler emit so a
 // `.tsx` calling `useGeolocation()` / `useWebSocket(url)` / `useDatabase()` /
-// `usePush()` / `usePayments()` / `useMap()` / `useAuth<User>()` emits the
+// `usePush()` / `usePayments()` / `useMap()` / `useAuth<Member>()` emits the
 // native container instantiation + reactive-field reads on BOTH targets:
 //
 //   Swift  → @State private var x = PyreonX()        (reads bare — @Observable)
@@ -23,7 +23,7 @@ import { transform, validateKotlin } from './first-party-plugins'
 import { isSwiftcAvailable, isKotlincAvailable, validateSwift } from '../validate'
 
 const wrap = (body: string) =>
-  `import { Stack, Text } from '@pyreon/primitives'\ninterface User { id: string; name: string }\nfunction App() {\n${body}\n}`
+  `import { Stack, Text } from '@pyreon/primitives'\ninterface Member { id: string; name: string }\nfunction App() {\n${body}\n}`
 
 describe('Phase 5 — native data/services hook emit', () => {
   it('Swift: each hook emits an @State container instantiation', () => {
@@ -34,7 +34,7 @@ describe('Phase 5 — native data/services hook emit', () => {
   const push = usePush()
   const pay = usePayments()
   const map = useMap()
-  const auth = useAuth<User>()
+  const auth = useAuth<Member>()
   return (<Stack><Text>{loc.latitude}</Text></Stack>)`),
       { target: 'swift' },
     ).code
@@ -46,7 +46,7 @@ describe('Phase 5 — native data/services hook emit', () => {
     expect(out).toContain('@State private var push = PyreonPushNotifications()')
     expect(out).toContain('@State private var pay = PyreonPayments()')
     expect(out).toContain('@State private var map = PyreonMapState()')
-    expect(out).toContain('@State private var auth = PyreonAuth<User>()')
+    expect(out).toContain('@State private var auth = PyreonAuth<Member>()')
   })
 
   it('Kotlin: each hook emits a remembered container', () => {
@@ -57,7 +57,7 @@ describe('Phase 5 — native data/services hook emit', () => {
   const push = usePush()
   const pay = usePayments()
   const map = useMap()
-  const auth = useAuth<User>()
+  const auth = useAuth<Member>()
   return (<Stack><Text>{loc.latitude}</Text></Stack>)`),
       { target: 'kotlin' },
     ).code
@@ -80,13 +80,13 @@ describe('Phase 5 — native data/services hook emit', () => {
     expect(out).toContain('val push = rememberPyreonPushNotifications()')
     expect(out).toContain('val pay = remember { PyreonPayments() }')
     expect(out).toContain('val map = remember { PyreonMapState() }')
-    expect(out).toContain('val auth = remember { PyreonAuth<User>() }')
+    expect(out).toContain('val auth = remember { PyreonAuth<Member>() }')
   })
 
   it('Kotlin: MutableState fields read `.value`; Bool getters read bare', () => {
     const out = transform(
       wrap(`  const loc = useGeolocation()
-  const auth = useAuth<User>()
+  const auth = useAuth<Member>()
   return (<Stack>
     <Text>{loc.latitude}</Text>
     <Text>{loc.isAuthorized}</Text>
@@ -176,9 +176,9 @@ describe('Phase 5 — native data/services hook emit', () => {
   //    apps" claim, at the compile rung. ──
 
   const ARCHETYPE = `import { Stack, Inline, Text, Button } from '@pyreon/primitives'
-interface User { id: string; name: string }
+interface Member { id: string; name: string }
 function FinanceRealtimeApp() {
-  const auth = useAuth<User>()
+  const auth = useAuth<Member>()
   const db = useDatabase()
   const ws = useWebSocket('wss://api/ticks')
   const loc = useGeolocation()
@@ -197,9 +197,9 @@ function FinanceRealtimeApp() {
   </Stack>)
 }`
 
-  // The archetype's `interface User { … }` is now SYNTHESIZED into a struct /
+  // The archetype's `interface Member { … }` is now SYNTHESIZED into a struct /
   // data class by the emit itself (parse.ts:tryStructFromInterface), so the emit
-  // is self-sufficient — no manual `User` prepend (which would now REDECLARE it).
+  // is self-sufficient — no manual `Member` prepend (which would now REDECLARE it).
   it.skipIf(!isSwiftcAvailable())('archetype emits Swift that parses on real swiftc', () => {
     const out = transform(ARCHETYPE, { target: 'swift' }).code
     const r = validateSwift('import SwiftUI\n' + out)

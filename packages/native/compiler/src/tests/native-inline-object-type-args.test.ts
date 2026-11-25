@@ -27,14 +27,14 @@ const resetGroceries = api.endpoint('POST /groceries-reset')
 `
 
 const component = (body: string, jsx: string, extra = ''): string => `${HEADER}${extra}
-export function Page() {
+export function Screen() {
   ${body}
   return <Stack>${jsx}</Stack>
 }`
 
 interface Site {
   src: string
-  /** Substrings both targets' output must contain, after `PageData` etc. are resolved. */
+  /** Substrings both targets' output must contain, after `ScreenData` etc. are resolved. */
   swift: string[]
   kotlin: string[]
   /** Substrings neither may contain — the collapsed / tuple / reused spelling. */
@@ -50,15 +50,15 @@ const SITES: Record<string, Site> = {
       `<Button onPress={() => reset.mutate({})}>Reset</Button><Text>{reset.isError() ? 'error' : reset.status()}</Text>`,
     ),
     swift: [
-      'struct PageData: Codable {',
+      'struct ScreenData: Codable {',
       '  var ok: Bool',
-      '@State private var reset = PyreonMutation<PageData>()',
-      '.decode(PageData.self)',
+      '@State private var reset = PyreonMutation<ScreenData>()',
+      '.decode(ScreenData.self)',
     ],
     kotlin: [
-      'data class PageData(val ok: Boolean)',
-      'remember { PyreonMutation<PageData>() }',
-      'PyreonJson.decode<PageData>(',
+      'data class ScreenData(val ok: Boolean)',
+      'remember { PyreonMutation<ScreenData>() }',
+      'PyreonJson.decode<ScreenData>(',
     ],
     swiftNot: ['PyreonMutation<Bool>', 'decode(Bool.self)'],
   },
@@ -68,16 +68,16 @@ const SITES: Record<string, Site> = {
       `<Text>{q.data()?.title ?? ''}</Text>`,
     ),
     swift: [
-      'struct PageData: Codable {',
+      'struct ScreenData: Codable {',
       '  var id: Int',
       '  var title: String',
-      'PyreonQuery<PageData>(',
-      'decode(PageData.self, from: bytes)',
+      'PyreonQuery<ScreenData>(',
+      'decode(ScreenData.self, from: bytes)',
     ],
     kotlin: [
-      'data class PageData(val id: Long, val title: String)',
-      'PyreonQuery<PageData>(',
-      'PyreonJson.decode<PageData>(body)',
+      'data class ScreenData(val id: Long, val title: String)',
+      'PyreonQuery<ScreenData>(',
+      'PyreonJson.decode<ScreenData>(body)',
     ],
     swiftNot: ['(id: Int, title: String)'],
   },
@@ -87,14 +87,14 @@ const SITES: Record<string, Site> = {
       `<Text>{f.data()?.ok ? 'y' : 'n'}</Text>`,
     ),
     swift: [
-      'struct PageData: Codable {',
-      'PyreonFetch<PageData>()',
-      'decode(PageData.self, from: bytes)',
+      'struct ScreenData: Codable {',
+      'PyreonFetch<ScreenData>()',
+      'decode(ScreenData.self, from: bytes)',
     ],
     kotlin: [
-      'data class PageData(val ok: Boolean)',
-      'PyreonFetch<PageData>()',
-      'PyreonJson.decode<PageData>(body)',
+      'data class ScreenData(val ok: Boolean)',
+      'PyreonFetch<ScreenData>()',
+      'PyreonJson.decode<ScreenData>(body)',
     ],
     swiftNot: ['PyreonFetch<Bool>', 'decode(Bool.self'],
   },
@@ -104,14 +104,14 @@ const SITES: Record<string, Site> = {
       '<Text>{f.isPending()}</Text>',
     ),
     swift: [
-      'struct PageData: Codable {',
+      'struct ScreenData: Codable {',
       '  var items: [String]',
-      'PyreonInfiniteQuery<PageData>(',
-      'decode(PageData.self, from: bytes)',
+      'PyreonInfiniteQuery<ScreenData>(',
+      'decode(ScreenData.self, from: bytes)',
     ],
     kotlin: [
-      'data class PageData(val items: List<String>, val next: String)',
-      'PyreonInfiniteQuery<PageData>(',
+      'data class ScreenData(val items: List<String>, val next: String)',
+      'PyreonInfiniteQuery<ScreenData>(',
     ],
     swiftNot: ['(items: [String], next: String)'],
   },
@@ -122,15 +122,15 @@ const SITES: Record<string, Site> = {
       `const rows = api.endpoint('GET /export', { responseType: 'stream' })`,
     )}`,
     swift: [
-      'struct PageData: Codable {',
+      'struct ScreenData: Codable {',
       '  var message: String',
-      'PyreonStream<PageData>(',
-      'ndjson(PageData.self)',
+      'PyreonStream<ScreenData>(',
+      'ndjson(ScreenData.self)',
     ],
     kotlin: [
-      'data class PageData(val message: String)',
-      'PyreonStream<PageData>(',
-      'PyreonJson.decode<PageData>(line)',
+      'data class ScreenData(val message: String)',
+      'PyreonStream<ScreenData>(',
+      'PyreonJson.decode<ScreenData>(line)',
     ],
     swiftNot: ['PyreonStream<String>', 'ndjson(String.self)'],
   },
@@ -140,8 +140,8 @@ const SITES: Record<string, Site> = {
       `<Text>{s.latest()?.data.message ?? ''}</Text>`,
       `const tail = api.endpoint('GET /tail', { responseType: 'stream' })`,
     )}`,
-    swift: ['struct PageData: Codable {', 'PyreonStream<PyreonSseEvent<PageData>>('],
-    kotlin: ['data class PageData(val message: String)', 'PyreonStream<PyreonSseEvent<PageData>>('],
+    swift: ['struct ScreenData: Codable {', 'PyreonStream<PyreonSseEvent<ScreenData>>('],
+    kotlin: ['data class ScreenData(val message: String)', 'PyreonStream<PyreonSseEvent<ScreenData>>('],
     swiftNot: ['PyreonSseEvent<String>'],
   },
   // Two inline type arguments in one component both derive `<Component>Data`.
@@ -151,26 +151,26 @@ const SITES: Record<string, Site> = {
       `<Text>{q.data()?.title ?? ''}</Text><Text>{m.data()?.ok ? 'y' : 'n'}</Text><Button onPress={() => m.mutate({})}>x</Button>`,
     ),
     swift: [
-      'struct PageData: Codable {\n  var title: String',
-      'struct PageData2: Codable {\n  var ok: Bool',
-      'PyreonQuery<PageData>(',
-      'PyreonMutation<PageData2>()',
+      'struct ScreenData: Codable {\n  var title: String',
+      'struct ScreenData2: Codable {\n  var ok: Bool',
+      'PyreonQuery<ScreenData>(',
+      'PyreonMutation<ScreenData2>()',
     ],
     kotlin: [
-      'data class PageData(val title: String)',
-      'data class PageData2(val ok: Boolean)',
-      'PyreonQuery<PageData>(',
-      'PyreonMutation<PageData2>()',
+      'data class ScreenData(val title: String)',
+      'data class ScreenData2(val ok: Boolean)',
+      'PyreonQuery<ScreenData>(',
+      'PyreonMutation<ScreenData2>()',
     ],
-    kotlinNot: ['PyreonMutation<PageData>()'],
+    kotlinNot: ['PyreonMutation<ScreenData>()'],
   },
   '`JSON.parse(…) as { ok: boolean }`': {
     src: component(
       `const raw = signal('{"ok":true}')\n  const p = computed(() => { try { return JSON.parse(raw()) as { ok: boolean } } catch { return { ok: false } } })`,
       `<Text>{p().ok ? 'y' : 'n'}</Text>`,
     ),
-    swift: ['struct PageData: Codable {', 'PyreonJSON.parse(PageData.self, '],
-    kotlin: ['data class PageData(val ok: Boolean)', 'PyreonJson.parse<PageData>('],
+    swift: ['struct ScreenData: Codable {', 'PyreonJSON.parse(ScreenData.self, '],
+    kotlin: ['data class ScreenData(val ok: Boolean)', 'PyreonJson.parse<ScreenData>('],
     swiftNot: ['parse(Bool.self'],
     kotlinNot: ['parse<Any>('],
   },
@@ -180,14 +180,14 @@ const SITES: Record<string, Site> = {
       '<Button onPress={run}>x</Button><Text>{n()}</Text>',
     ),
     swift: [
-      'struct PageData: Codable {',
-      'var xs: [PageData] = []',
-      'xs.append(PageData(ok: true))',
+      'struct ScreenData: Codable {',
+      'var xs: [ScreenData] = []',
+      'xs.append(ScreenData(ok: true))',
     ],
     kotlin: [
-      'data class PageData(val ok: Boolean)',
-      'val xs: MutableList<PageData> = mutableListOf()',
-      'xs.add(PageData(ok = true))',
+      'data class ScreenData(val ok: Boolean)',
+      'val xs: MutableList<ScreenData> = mutableListOf()',
+      'xs.add(ScreenData(ok = true))',
     ],
     swiftNot: ['[Bool]'],
     kotlinNot: ['MutableList<Any>'],
@@ -197,7 +197,7 @@ const SITES: Record<string, Site> = {
 const AUTH_SRC = `
 import { useAuth } from '@pyreon/hooks'
 import { Stack, Text } from '@pyreon/primitives'
-export function Page() {
+export function Screen() {
   const auth = useAuth<{ id: string }>()
   return <Stack><Text>auth</Text></Stack>
 }`
@@ -205,7 +205,7 @@ export function Page() {
 const LOADER_SRC = `
 import { useLoaderData } from '@pyreon/router'
 import { Stack, Text } from '@pyreon/primitives'
-export function Page() {
+export function Screen() {
   const d = useLoaderData<{ title: string }>()
   return <Stack><Text>{d().title}</Text></Stack>
 }`
@@ -238,8 +238,8 @@ describe('inline object type arguments become named types', () => {
 
   it('useAuth<{ id: string }> is a named user type on Swift (was `PyreonAuth<String>`)', () => {
     const r = transform(AUTH_SRC, { target: 'swift' })
-    expect(r.code).toContain('struct PageData: Codable {\n  var id: String')
-    expect(r.code).toContain('PyreonAuth<PageData>()')
+    expect(r.code).toContain('struct ScreenData: Codable {\n  var id: String')
+    expect(r.code).toContain('PyreonAuth<ScreenData>()')
     expect(r.code).not.toContain('PyreonAuth<String>')
   })
 
@@ -292,8 +292,8 @@ describe('inline object type arguments become named types', () => {
         ),
         { target },
       )
-      expect(r.code).toContain(target === 'swift' ? 'struct PageS: Codable' : 'data class PageS(')
-      expect(r.code).not.toMatch(target === 'swift' ? /struct Page: Codable/ : /data class Page\(/)
+      expect(r.code).toContain(target === 'swift' ? 'struct ScreenS: Codable' : 'data class ScreenS(')
+      expect(r.code).not.toMatch(target === 'swift' ? /struct Screen: Codable/ : /data class Screen\(/)
     },
   )
 })

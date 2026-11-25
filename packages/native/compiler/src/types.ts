@@ -36,6 +36,14 @@ export interface EmitOptions {
    * the bare `__ObjN` names are kept, which is correct for a single file.
    */
   filename?: string
+  /**
+   * The source is Pyreon's OWN runtime code (the chart engine that
+   * `gen-native-engine.ts` compiles into `PyreonChartEngine.swift`), not an
+   * app's. Its declarations are the very names the Swift runtime reserves, so
+   * the reserved-name rename (`swift-reserved-rename.ts`) is skipped. Apps
+   * never set it.
+   */
+  runtimeSource?: boolean | undefined
 }
 
 export interface ComponentIR {

@@ -26,9 +26,9 @@ import { isKotlincAvailable, isSwiftcAvailable } from '../validate'
 const RUNTIME_URL = `
 import { Text } from '@pyreon/primitives'
 import { useQuery } from '@pyreon/query'
-interface User { id: number; name: string }
+interface Member { id: number; name: string }
 export function UserCard({ userId }: { userId: string }) {
-  const q = useQuery<User>(() => ({
+  const q = useQuery<Member>(() => ({
     queryKey: ['user', userId],
     queryFn: () => fetch(\`https://api.example.com/users/\${userId}\`).then((r) => r.json()),
     staleTime: 60000,
@@ -43,7 +43,7 @@ describe('useQuery() — runtime key + templated URL', () => {
     expect(r.warnings).toEqual([])
     // Constructed KEYLESS — the @State default can't read `userId`.
     expect(r.code).toContain(
-      '@State private var q = PyreonQuery<User>(queryKey: "", staleSeconds: 60)',
+      '@State private var q = PyreonQuery<Member>(queryKey: "", staleSeconds: 60)',
     )
     // Harness keyed on the runtime key string; setKey re-points the cache.
     expect(r.code).toContain('.task(id: "user:\\(userId)") {')
@@ -59,7 +59,7 @@ describe('useQuery() — runtime key + templated URL', () => {
     const r = transform(RUNTIME_URL, { target: 'kotlin' })
     expect(r.warnings).toEqual([])
     expect(r.code).toContain(
-      'val q = remember { PyreonQuery<User>(queryKey = "", staleMillis = 60000L) }',
+      'val q = remember { PyreonQuery<Member>(queryKey = "", staleMillis = 60000L) }',
     )
     expect(r.code).toContain('LaunchedEffect("user:${userId}") {')
     expect(r.code).toContain('q.setKey("user:${userId}")')

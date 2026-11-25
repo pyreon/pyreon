@@ -5,7 +5,7 @@ import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftWi
 /**
  * The accumulate-into-a-local shape:
  *
- *     const out: Tick[] = []
+ *     const out: Beat[] = []
  *     while (…) { out.push(…) }
  *     return out
  *
@@ -25,10 +25,10 @@ import { isKotlincAvailable, isSwiftUIAvailable, validateKotlin, validateSwiftWi
  * libraries generally rather than an edge case.
  */
 const SRC = `
-  type Tick = { label: string }
+  type Beat = { label: string }
 
-  function makeTicks(names: string[]): Tick[] {
-    const out: Tick[] = []
+  function makeTicks(names: string[]): Beat[] {
+    const out: Beat[] = []
     for (const n of names) {
       out.push({ label: n })
     }
@@ -46,11 +46,11 @@ describe('an array accumulated by push', () => {
   const kotlin = transform(SRC, { target: 'kotlin' }).code
 
   it('types the empty array from the annotation (Swift)', () => {
-    expect(swift).toContain('var out: [Tick] = []')
+    expect(swift).toContain('var out: [Beat] = []')
   })
 
   it('is VAR, because appending to a Swift array mutates it', () => {
-    expect(swift).not.toContain('let out: [Tick]')
+    expect(swift).not.toContain('let out: [Beat]')
   })
 
   it('maps push to append', () => {
@@ -59,7 +59,7 @@ describe('an array accumulated by push', () => {
   })
 
   it('uses the mutable pair on Kotlin — List has no add, listOf is immutable', () => {
-    expect(kotlin).toContain('val out: MutableList<Tick> = mutableListOf()')
+    expect(kotlin).toContain('val out: MutableList<Beat> = mutableListOf()')
     expect(kotlin).toContain('out.add(')
     expect(kotlin).not.toContain('out.push(')
   })

@@ -18,9 +18,9 @@ const STORE_V2 = `
   import { defineStore } from '@pyreon/store'
   import { signal, computed } from '@pyreon/reactivity'
   import { Stack, Text, Button } from '@pyreon/primitives'
-  type Task = { id: number; title: string; done: boolean }
+  type Todo = { id: number; title: string; done: boolean }
   const useApp = defineStore('app', () => {
-    const tasks = signal<Task[]>([])
+    const tasks = signal<Todo[]>([])
     const nextId = signal<number>(1)
     const remaining = computed(() => tasks().filter((t) => !t.done).length)
     const addTask = (title: string) => {
@@ -54,7 +54,7 @@ describe('store v2 — Swift', () => {
     // filter would have dropped it and broken this body.
     expect(out).toContain('var nextId: Int = 1')
     expect(out).toContain('func addTask(_ title: String)')
-    expect(out).toContain('tasks = (tasks + [Task(id: nextId, title: title, done: false)])')
+    expect(out).toContain('tasks = (tasks + [Todo(id: nextId, title: title, done: false)])')
     // `.update` lowering composes inside store method bodies.
     expect(out).toContain('nextId = pyreonAdd(nextId, 1)')
     expect(out).toContain('func clear() { tasks = [] }')
@@ -81,7 +81,7 @@ describe('store v2 — Kotlin (mirror)', () => {
     expect(out).toContain('val remaining get() = tasks.filter({ t -> !t.done }).length')
     expect(out).toContain('fun addTask(title: String)')
     // kotlinc cannot infer T from `mutableStateOf(listOf())`.
-    expect(out).toContain('var tasks by mutableStateOf<List<Task>>(listOf())')
+    expect(out).toContain('var tasks by mutableStateOf<List<Todo>>(listOf())')
     expect(out).not.toContain('defineStore(')
   })
 
