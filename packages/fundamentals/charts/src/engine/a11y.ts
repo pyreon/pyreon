@@ -203,6 +203,12 @@ export function kindWord(kind: string, m?: ChartMessages | undefined): string {
   if (kind === 'points') return m.kindPoints ?? kind
   if (kind === 'stacked') return m.kindStacked ?? kind
   if (kind === 'grouped') return m.kindGrouped ?? kind
+
+  return otherKindWord(kind, m)
+}
+
+/** `kindWord` for the kinds past the six cartesian ones every chart has. */
+function otherKindWord(kind: string, m: ChartMessages): string {
   if (kind === 'waterfall') return m.kindWaterfall ?? kind
   if (kind === 'band') return m.kindBand ?? kind
   if (kind === 'stackedArea') return m.kindStackedArea ?? kind

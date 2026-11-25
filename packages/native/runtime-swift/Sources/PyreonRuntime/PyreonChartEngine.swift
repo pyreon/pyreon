@@ -14651,6 +14651,10 @@ public func kindWord(_ kind: String, _ m: ChartMessages?) -> String {
     if kind == "grouped" {
       return (m.kindGrouped ?? kind)
     }
+    return otherKindWord(kind, m)
+  }
+
+public func otherKindWord(_ kind: String, _ m: ChartMessages) -> String {
     if kind == "waterfall" {
       return (m.kindWaterfall ?? kind)
     }

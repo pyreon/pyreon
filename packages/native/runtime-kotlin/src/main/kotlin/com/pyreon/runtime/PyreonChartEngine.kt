@@ -11705,6 +11705,10 @@ fun kindWord(kind: String, m: ChartMessages?): String {
     if (kind == "grouped") {
       return (m.kindGrouped ?: kind)
     }
+    return otherKindWord(kind, m)
+  }
+
+fun otherKindWord(kind: String, m: ChartMessages): String {
     if (kind == "waterfall") {
       return (m.kindWaterfall ?: kind)
     }

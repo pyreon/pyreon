@@ -2349,7 +2349,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // from the accessibility tree along with the visual layout.
   // A real table rather than a longer label (see `a11yTableNode`), capped and
   // updated in place.
-  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? a11yInput().messages?.untitled ?? 'Chart data', () => chartRowCount(a11yInput()), () => a11yInput().messages, () => a11yInput().number)
+  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? a11yInput().messages?.untitled ?? 'Chart data', () => chartRowCount(a11yInput()), () => ({ messages: a11yInput().messages, number: a11yInput().number }))
   const table = (): VNode => tableNode
 
 

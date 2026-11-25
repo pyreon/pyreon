@@ -77,7 +77,13 @@ function setCell(el: Element, text: string): void {
  * The clip styles go on a WRAPPER, not the table: a `<table>` uses auto layout
  * and expands to its content regardless of `width: 1px`.
  */
-export function a11yTableNode(read: () => A11yTable, id: string, title: () => string, rowCount?: () => number, messages?: () => ChartMessages | undefined, number?: () => Formatter | undefined): VNode {
+/** The chart's words and digits for the table caption (its `messages`, and its locale's plain number format). */
+export interface TableLocale {
+  messages: ChartMessages | undefined
+  number: Formatter | undefined
+}
+
+export function a11yTableNode(read: () => A11yTable, id: string, title: () => string, rowCount?: () => number, words?: () => TableLocale): VNode {
   const host = signal<HTMLTableElement | null>(null)
   // A LARGE table is filled after the chart's first paint, not before it. At
   // 1k rows its layout was ~9ms of a ~10.5ms first frame — the reason a plain
@@ -134,7 +140,8 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
     const doc = el.ownerDocument
     let caption = el.caption
     if (caption === null) caption = el.createCaption()
-    setCell(caption, tableCaption(title(), t.rows.length, t.total, messages?.(), number?.()))
+    const w = words?.()
+    setCell(caption, tableCaption(title(), t.rows.length, t.total, w?.messages, w?.number))
     let head = el.tHead
     if (head === null) head = el.createTHead()
     const headRow = ensureChildren(head, 'tr', 1)[0]!
@@ -193,7 +200,7 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
   // `dangerouslySetInnerHTML` element's server children are trusted, never
   // re-parsed) and the effect above keeps it current from there. On a pure
   // client mount the payload is empty and the effect builds it, as before.
-  const html = isServer ? tableHtml(read(), title(), messages?.(), number?.()) : ''
+  const html = isServer ? tableHtml(read(), title(), words?.().messages, words?.().number) : ''
 
   return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', dangerouslySetInnerHTML: { __html: html }, ref: (el: HTMLTableElement | null) => {
     host.set(el)
@@ -1320,7 +1327,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
 
   // Derived booleans keep these children mounted across data-only updates.
   // The table owns its effects in a component scope, so disabling it disposes them.
-  const AccessibleTable = (): VNode => a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? localized().messages?.untitled ?? spec.caption, () => chartRowCount(a11yNow()), () => localized().messages, () => localized().number)
+  const AccessibleTable = (): VNode => a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? localized().messages?.untitled ?? spec.caption, () => chartRowCount(a11yNow()), localized)
   const extras: (VNode | (() => VNode | null))[] = [ssrFrameNode, tipNode, liveNode, () => tableOn() ? h(AccessibleTable, null) : null]
 
   return h('div', { style: 'position:relative' }, canvasNode, ...extras)
