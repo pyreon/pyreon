@@ -33,6 +33,11 @@
       "bun": "./src/native-plugin.ts",
       "import": "./lib/native-plugin.js",
       "types": "./lib/native-plugin.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/internal.d.ts"
     }
   },
   "publishConfig": {
@@ -46,7 +51,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pyreon/styler": "workspace:^"
+    "@pyreon/styler": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/manifest": "workspace:*",

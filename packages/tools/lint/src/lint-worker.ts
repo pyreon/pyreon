@@ -1,8 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs'
 import { parentPort, workerData } from 'node:worker_threads'
-import { allRules } from './rules/index'
-import { applyFileFixes, lintFile } from './runner'
-import type { ConfigDiagnostic, LintConfig, LintFileResult } from './types'
+import { type LintWorkerInput, lintSlice } from './lint-slice'
 
 /**
  * Worker entry for the parallel lint path.
@@ -19,46 +16,6 @@ import type { ConfigDiagnostic, LintConfig, LintFileResult } from './types'
  * safe precisely because the partition is by file — no two workers ever touch
  * the same path — and it keeps the fixed source out of the message channel.
  */
-
-export interface LintWorkerInput {
-  files: string[]
-  config: LintConfig
-  fix: boolean
-  quiet: boolean
-}
-
-export interface LintWorkerOutput {
-  files: LintFileResult[]
-  configDiagnostics: ConfigDiagnostic[]
-}
-
-/** Lint one slice. Exported so the logic is testable without spawning. */
-export function lintSlice(input: LintWorkerInput): LintWorkerOutput {
-  const { files, config, fix, quiet } = input
-  const configDiagnostics: ConfigDiagnostic[] = []
-  const results: LintFileResult[] = []
-
-  for (const filePath of files) {
-    let source: string
-    try {
-      source = readFileSync(filePath, 'utf-8')
-    } catch {
-      continue
-    }
-    const fileResult = lintFile(filePath, source, allRules, config, undefined, configDiagnostics)
-
-    if (fix) {
-      const fixed = applyFileFixes(fileResult, source)
-      if (fixed !== undefined) writeFileSync(filePath, fixed, 'utf-8')
-    }
-    if (quiet) {
-      fileResult.diagnostics = fileResult.diagnostics.filter((d) => d.severity === 'error')
-    }
-    results.push(fileResult)
-  }
-
-  return { files: results, configDiagnostics }
-}
 
 if (parentPort) {
   const out = lintSlice(workerData as LintWorkerInput)

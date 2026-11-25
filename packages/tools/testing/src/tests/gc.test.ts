@@ -10,7 +10,8 @@
  * app/fundamentals tests, not core.)
  */
 import { describe, expect, it } from 'vitest'
-import { effect, signal, __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity'
+import { effect, signal } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { expectGarbageCollected, expectNoReactiveLeak } from '../index'
 
 const hasGc = typeof (globalThis as { gc?: () => void }).gc === 'function'

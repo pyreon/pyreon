@@ -3,10 +3,10 @@ import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { DateTime, Num } from '../components'
 import { machineValue } from '../component-helpers'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { provideLocale, setLocale } from '../index'
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 function render(vnode: unknown) {
   const root = document.createElement('div')

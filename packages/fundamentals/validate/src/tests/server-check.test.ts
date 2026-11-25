@@ -2,7 +2,8 @@
 // Client (key not installed): no-op + records `pending`. Server (installed):
 // the registered validator runs, async + context-aware via parseAsync.
 import { afterEach, describe, expect, it } from 'vitest'
-import { installServerCheck, s, uninstallServerCheck } from '../v1'
+import { installServerCheck, uninstallServerCheck } from '../core/registry'
+import { s } from '../v1'
 
 afterEach(() => {
   // Test isolation — the registry is process-global.

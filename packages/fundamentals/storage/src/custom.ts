@@ -1,7 +1,7 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
 import { getEntry, getScopedMap, releaseWithOwner, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { StorageBackend, StorageOptions, StorageSignal } from './types'
-import { deserialize, serialize } from './utils'
+import { attempt, deserialize, serialize } from './utils'
 
 // ─── createStorage ───────────────────────────────────────────────────────────
 
@@ -61,22 +61,15 @@ export function createStorage(
     const storageSig = wrapSignal(sig, {
       set: (value: T) => {
         sig.set(value)
-        try {
-          backend.set(key, serialize(value, options))
-        } catch (e) {
-          // Write failed — signal still updates. Notify `onError` (return ignored).
-          options?.onError?.(e as Error)
-        }
+        // A failed write leaves the signal updated and reaches `onError`.
+        attempt(options, () => backend.set(key, serialize(value, options)))
       },
     }) as unknown as StorageSignal<T>
 
     storageSig.remove = () => {
       sig.set(defaultValue)
-      try {
-        backend.remove(key)
-      } catch {
-        // Remove failed
-      }
+      // A failed remove leaves the signal reset and reaches `onError`.
+      attempt(options, () => backend.remove(key))
     }
 
     setEntry(name, key, storageSig, defaultValue, options)

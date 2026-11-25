@@ -9,31 +9,41 @@ import type {
   VNodeChild,
 } from '@pyreon/core'
 import {
-  _childText,
-  _isStructuralChild,
-  _isVNodeLike,
-  dispatchToErrorBoundary,
   EMPTY_PROPS,
   ForSymbol,
   Fragment,
   makeReactiveProps,
   mergeProps,
   PortalSymbol,
-  propagateError,
   reportError,
-  _devMarkOwnerAlias,
-  _runHooked,
-  _takeHooks,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
 import {
-  _noopDispose,
-  _rdDropBinding,
-  _rdLabelBinding,
+  dispatchToErrorBoundary,
+  propagateError,
+  _childText,
+  _isStructuralChild,
+  _isVNodeLike,
+  _devMarkOwnerAlias,
+  _runHooked,
+  _takeHooks,
+} from '@pyreon/core/internal'
+import {
   batch,
   effectScope,
   getContextOwner,
+  runUntracked,
+  runWithContextOwner,
+  setContextOwner,
+  setCurrentScope,
+  type EffectScope,
+  type RunCapture,
+} from '@pyreon/reactivity'
+import {
+  _noopDispose,
+  _rdDropBinding,
+  _rdLabelBinding,
   _currentScope,
   _devOwner,
   _swapPendingOwner,
@@ -41,16 +51,10 @@ import {
   _closeOwnerFrame,
   _openOwnerFrame,
   _renderBind,
-  runUntracked,
-  runWithContextOwner,
-  setContextOwner,
-  setCurrentScope,
   _captureRun,
   _frameReads,
   _releaseRun,
-  type EffectScope,
-  type RunCapture,
-} from '@pyreon/reactivity'
+} from '@pyreon/reactivity/internal'
 import { setupDelegation } from './delegate'
 import { guardTeardown, releaseRef } from './teardown'
 import { _adoptParkedText, _parkedPending } from './parked-text'

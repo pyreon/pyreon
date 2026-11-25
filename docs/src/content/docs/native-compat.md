@@ -24,7 +24,9 @@ Inside the wrapper, the body runs in `runUntracked` *after* the wrapper's own `b
 ## The marker
 
 ```ts
-import { nativeCompat, isNativeCompat } from '@pyreon/core'
+import { nativeCompat } from '@pyreon/core'
+// Compat-layer plumbing; internal, no semver promise:
+import { isNativeCompat } from '@pyreon/core/compat'
 
 // Tag a component:
 function MyProvider(props) {
@@ -131,6 +133,6 @@ The marker contract has two distinct failure modes, and each test layer catches 
 ## See also
 
 - [`@pyreon/react-compat`](/docs/react-compat) · [`@pyreon/preact-compat`](/docs/preact-compat) · [`@pyreon/vue-compat`](/docs/vue-compat) · [`@pyreon/solid-compat`](/docs/solid-compat) — the four compat layers that read the marker
-- [`@pyreon/core`](/docs/core) — the `nativeCompat` / `isNativeCompat` exports and the broader context system
+- [`@pyreon/core`](/docs/core) — the `nativeCompat` export and the broader context system. `isNativeCompat` and `NATIVE_COMPAT_MARKER` live on `@pyreon/core/compat`, the internal subpath the compat layers import.
 - Source: [`packages/core/core/src/compat-marker.ts`](https://github.com/pyreon/pyreon/blob/main/packages/core/core/src/compat-marker.ts)
 - Anti-pattern: `.agents/rules/anti-patterns.md` — "Pyreon-flavored helper components in compat-mode apps without `nativeCompat()`"

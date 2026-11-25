@@ -26,7 +26,8 @@
  */
 
 import type { ComponentFn } from '@pyreon/core'
-import { _IslandIds, h } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import { _IslandIds } from '@pyreon/core/internal'
 import {
   createRouter,
   hydrateLoaderData,

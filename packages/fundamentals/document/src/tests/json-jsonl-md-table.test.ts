@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  _resetRenderers,
   Code,
   createDocument,
   Divider,
@@ -15,6 +14,7 @@ import {
   Text,
   render,
 } from '../index'
+import { _resetRenderers } from '../internal'
 
 afterEach(() => {
   _resetRenderers()

@@ -86,6 +86,16 @@ formatUnit(72, 'kilometer-per-hour', { locale: 'en-US' })      // "72 km/h"
 formatBytes(1536, { locale: 'en-US' })                         // "1.5 kB"
 ```
 
+Every number formatter takes a number, a bigint, or a decimal string such as `'-1234.5'` (an optional `-`, digits, an optional `.` and digits). A decimal string is formatted exactly, at any size, with no conversion to a binary float; other text `Intl` would read as a number (`'1e3'`, `' 12 '`, `''`) is invalid and gives the fallback. `formatCurrency` also takes a Money from `@pyreon/money` on its own and shows it with the Money's own digits:
+
+```ts
+formatCurrency('12345678901234567.89', 'EUR', { locale: 'en-US' })       // "€12,345,678,901,234,567.89"
+formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' })  // "€9.99"
+currencyFormatter('EUR', { locale: 'en-US' })({ amount: '9.99', currency: 'EUR' }) // "€9.99"
+```
+
+A Money's amount is never rounded to the platform's display digits for its currency, so an ISO currency given other digits with `defineCurrency('ISK', { digits: 2 })` shows them, and a Money displays the same on every engine. A plain number or decimal string with a code uses the engine's display digits for that currency, which differ between engines: `formatCurrency('100.50', 'HUF')` is `HUF 101` in V8 (Node, Chrome) and `HUF 100.50` in JavaScriptCore (Bun, Safari). Format a Money when the digits must not depend on the engine. A custom code `Intl` does not know (`USDT`, `LOYALTY`: 2 to 12 upper-case letters or digits, as `defineCurrency` registers them) is placed where the locale puts a currency code (`USDT 1,234.50` in English, `1.234,50 USDT` in German). A custom code is always shown as the code (`currencyDisplay: 'symbol'` or `'name'` has nothing else to show for it), and a plain number or decimal string with a custom code gets 2 fraction digits, while a Money keeps its own scale. A decimal string beyond the double range (about 1.8e308) is invalid and gives the fallback: every engine would print it as infinity. Ranges of decimal strings and Money values are exact on every engine. V8's own `formatRange` rounds string ends to doubles, so Pyreon lets `Intl` lay out a range only when the nearest doubles print exactly like the ends, which covers every amount up to about 15 significant digits. Beyond that, the two exact ends are joined by the locale's range separator, without merging a shared currency sign or suffix: `12.345.678.901.234.567,11 €–12.345.678.901.234.567,19 €`. A currency next to a Money (`formatCurrency(m, 'EUR')`) throws: the Money carries its currency. `currencyFormatter('EUR')` given a Money in another currency returns the fallback with a dev warning.
+
 Options are the platform's `Intl.NumberFormat` options plus `locale` and `fallback`. A string in place of the options is a preset: `'integer'`, `'plain'`, `'compact'`, `'percent'` for `formatNumber`; a `currencyDisplay` or `'accounting'` for `formatCurrency`; `'short'`, `'narrow'`, `'long'` for `formatUnit`.
 
 `Unit` is a union of the units ECMA-262 sanctions, plus `<unit>-per-<unit>` compounds, so a misspelt unit is a type error.
@@ -162,7 +172,7 @@ formatUnit(100, 'mile', { system: 'auto', locale: 'de', maximumFractionDigits: 1
 formatUnit(30, 'celsius', { system: 'us', locale: 'cs' }) // → "86 °F"
 ```
 
-`convertTo` names the unit; `system` shows the unit a person in that system reads: `'auto'` is the locale's own (in the reactive entry it follows `setLocale` and `provideLocale`, so a binding updates when the language changes), or fix `'metric'`, `'us'` or `'uk'`. `convertTo` wins when both are given. `unitFormatter` is the composable form with the same options and `with`, `from`, `parts` and `range`:
+`convertTo` names the unit; `system` shows the unit a person in that system reads: `'auto'` is the locale's own (in the reactive entry it follows `setLocale` and `provideLocale`, so a binding updates when the language changes), or fix `'metric'`, `'us'` or `'uk'`. `convertTo` wins when both are given. A conversion is arithmetic on a binary float (`Number(value)` times a factor), so a converted decimal string or bigint is no longer exact: `formatUnit('12345678901234567.89', 'meter', { convertTo: 'kilometer' })` shows about 17 significant digits. Without `convertTo` or `system`, a decimal string is formatted exactly. `unitFormatter` is the composable form with the same options and `with`, `from`, `parts` and `range`:
 
 ```ts
 import { unitFormatter } from '@pyreon/format/units'
@@ -692,6 +702,8 @@ formatDateRange('2026-11-28', '2026-12-02', { locale: 'en-US' }) // → "Nov 28 
 formatDateRange('2026-11-15', '2026-11-12', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
 formatDateRange('2026-11-12', '2026-11-12', { locale: 'en-US' }) // → "Nov 12, 2026"
 ```
+
+What collapses is the locale's CLDR interval data, used as `Intl.DateTimeFormat#formatRange` gives it; Pyreon joins no text, so every locale gets its own punctuation and order. That data is not always what a reader of the language expects: Czech numeric and medium dates give `21.10.2026 – 27.10.2026` (CLDR's Czech `yMd` interval repeats the year and drops the spaces that single dates have), while `dateStyle: 'long'` gives `21.–27. 10. 2026`. Engines also ship different CLDR versions (V8 and JavaScriptCore disagree for Slovak and Polish), so compare a range with `Intl`'s own `formatRange` output, never a typed literal.
 
 ### Durations for media and for humans
 

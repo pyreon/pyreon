@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import pyreon, { isPyreonPackageFile } from '../index'
+import pyreon from '../index'
+import { isPyreonPackageFile } from '../pyreon-package-file'
 
 // Production SSR builds fold `process.env.NODE_ENV` to "production" inside
 // `@pyreon/*` package files. Under Node every `process.env` read is a native

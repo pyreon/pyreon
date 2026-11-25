@@ -14,15 +14,13 @@ import vm from 'node:vm'
 import { createContext, h, onMount, onUnmount, provide, Show, useContext } from '@pyreon/core'
 import {
   _bind,
-  _claimContextOwner,
-  _currentScope,
-  _swapPendingOwner,
   effect,
   type EffectScope,
   getCurrentScope,
   onScopeDispose,
   signal,
 } from '@pyreon/reactivity'
+import { _claimContextOwner, _currentScope, _swapPendingOwner } from '@pyreon/reactivity/internal'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { hydrateRoot, mount } from '../index'
 import { compilePlainModule, mountComponent } from './plain-harness'

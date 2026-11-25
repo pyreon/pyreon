@@ -15,7 +15,7 @@
  */
 
 import type { HttpMethod, HttpMiddleware, HttpRequest } from './types'
-import { stringifyJsonLossless } from './json'
+import { stringifyJsonLossless } from './json-lossless'
 import { toHttpResponse } from './transport'
 
 /** One stubbed exchange. */

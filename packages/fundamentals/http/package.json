@@ -63,6 +63,11 @@
       "import": "./lib/native-plugin.js",
       "types": "./lib/types/native-plugin.d.ts"
     },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [

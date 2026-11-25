@@ -1,4 +1,5 @@
-import { UNSAFE_ATTR_NAME_RE, isSafeImageDataUri, isUnsafeUrl, isUrlAttr } from '@pyreon/core'
+import { UNSAFE_ATTR_NAME_RE, isUnsafeUrl, isUrlAttr } from '@pyreon/core'
+import { isSafeImageDataUri } from '@pyreon/core/internal'
 
 /**
  * The attribute guard for BOTH of `@pyreon/head`'s renderers — the SSR

@@ -5,21 +5,21 @@
  * unchanged through the re-exports.)
  */
 import * as ambient from '@pyreon/ambient'
-import { _resetClockState } from '@pyreon/ambient/testing'
+import { resetClockState } from '@pyreon/ambient/testing'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import * as time from '@pyreon/time'
 import { RelativeTime } from '../components'
 import * as format from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { relativeFormatter } from '../index'
 import { relativeFormatter as coreRelativeFormatter } from '../core'
 
 const T0 = Date.UTC(2026, 10, 18, 12, 0, 0)
 
 afterEach(() => {
-  _resetClockState()
-  _resetLocaleState()
+  resetClockState()
+  resetLocaleState()
   vi.useRealTimers()
 })
 

@@ -90,7 +90,8 @@ public fun useParams(): Map<String, String> {
 @Composable
 public inline fun <reified T> useLoaderData(): T? {
     val router = LocalPyreonRouter.current ?: return null
-    return router.loaderData.value[router.currentPath] as? T
+    // The route part, query excluded — the key `setLoaderData` stores under.
+    return router.loaderData.value[router.routePath] as? T
 }
 
 /**

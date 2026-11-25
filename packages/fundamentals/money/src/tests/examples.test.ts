@@ -133,7 +133,7 @@ describe('the published shape', () => {
     const stats = await import('../currency')
 
     expect(spy).not.toHaveBeenCalled()
-    expect(stats._currencyStats()).toEqual({ registered: 0, remembered: 0 })
+    expect(stats._currencyStats()).toEqual({ registered: 0 })
     expect(typeof fresh.money).toBe('function')
     spy.mockRestore()
   })

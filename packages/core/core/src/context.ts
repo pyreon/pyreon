@@ -23,12 +23,12 @@
  */
 
 import {
-  _claimContextOwner,
   type EffectScope,
   getContextOwner,
   runWithContextOwner,
   setSnapshotCapture,
 } from '@pyreon/reactivity'
+import { _claimContextOwner } from '@pyreon/reactivity/internal'
 
 export interface Context<T> {
   readonly id: symbol
@@ -105,6 +105,8 @@ let _contextProvider: () => Map<symbol, unknown>[] = () => _contextStack
 /**
  * Override the context stack provider. Called by @pyreon/runtime-server to
  * inject an AsyncLocalStorage-backed stack that isolates concurrent SSR requests.
+ *
+ * @internal
  */
 export function setContextStackProvider(fn: () => Map<symbol, unknown>[]): void {
   _contextProvider = fn
@@ -126,7 +128,11 @@ export function popContext(): void {
   stack.pop()
 }
 
-/** Current SSR stack length — used by the server renderer as a trim marker. */
+/**
+ * Current SSR stack length — used by the server renderer as a trim marker.
+ *
+ * @internal
+ */
 export function getContextStackLength(): number {
   return getStack().length
 }
@@ -135,6 +141,8 @@ export function getContextStackLength(): number {
  * Remove a specific frame from the stack by reference identity (LIFO match).
  * Retained for direct stack consumers — the `*-compat` layers run their own
  * stack-based provide/inject independent of Pyreon's owner-based context.
+ *
+ * @internal
  */
 export function removeContextFrame(frame: Map<symbol, unknown>): void {
   const stack = getStack()

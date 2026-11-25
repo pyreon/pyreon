@@ -18,16 +18,14 @@ import { mountReactive, query, queryAll } from '@pyreon/test-utils'
 import { BUILT_IN_COMPONENTS } from '../_shared/built-ins'
 import {
   APICard,
-  buildSrcdoc,
   CompatMatrix,
-  deriveApiId,
   PackageBadge,
   Playground,
   PropTable,
   renderCompatCell,
-  renderInstallRows,
   Tabs,
 } from '../index'
+import { buildSrcdoc, deriveApiId, renderInstallRows } from '../internal'
 
 describe('PR-K — built-in component catalogue', () => {
   it('exposes all six new built-ins in BUILT_IN_COMPONENTS', () => {
