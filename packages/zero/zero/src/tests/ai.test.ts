@@ -2,13 +2,12 @@ import { checkLlmsTxtShape, lighthouseLlmsTxtFailures } from '@pyreon/test-utils
 import { describe, expect, it } from 'vitest'
 import {
   aiPlugin,
-  generateAiPluginManifest,
   generateLlmsFullTxt,
   generateLlmsTxt,
-  generateOpenApiSpec,
   inferJsonLd,
   type AiPluginConfig,
 } from '../ai'
+import { generateAiPluginManifest, generateOpenApiSpec } from '../internal-server'
 
 const baseConfig = {
   name: 'Test App',

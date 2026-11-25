@@ -22,7 +22,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { emitSeoOutputs } from '../plugin'
+import { emitSeoOutputs } from '../internal-server'
 
 const TMP = path.join(process.cwd(), 'src', 'tests', '__seo_tmp__')
 let out: string

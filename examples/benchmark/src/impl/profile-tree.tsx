@@ -30,6 +30,8 @@
  *      → H − E is the getter chain alone; A − H the `_rp`/conversion overhead
  *   G  SolidJS, compiler-faithful (template cloneNode + `insert`, getter props —
  *      what `babel-preset-solid@1.9.12` emits; see scenario-tree.ts)
+ *   S  SolidJS 2.0: idiomatic Solid 2 JSX compiled by `@solidjs/compiler`
+ *      (`virtual:solid2/tree`, the deep-tree scenario's Solid 2 arm)
  *   V  Vanilla DOM — the floor
  *
  * NOT part of the timed fair bench — measurement scaffolding only, loaded
@@ -38,6 +40,7 @@
 import { createReactiveContext, h as ph, provide, useContext } from '@pyreon/core'
 import type { VNodeChild } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { createTree as solid2CreateTree } from 'virtual:solid2/tree'
 import { mount as pyreonMount } from '@pyreon/runtime-dom'
 import {
   createContext as solidCreateContext,
@@ -267,7 +270,7 @@ function vanillaBuild(depth: number): Node {
   return div
 }
 
-export const TREE_ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'V'] as const
+export const TREE_ARMS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'S', 'V'] as const
 export type TreeArm = (typeof TREE_ARMS)[number]
 
 export function setupTreeProfile(makeHost: () => HTMLElement): void {
@@ -275,6 +278,7 @@ export function setupTreeProfile(makeHost: () => HTMLElement): void {
   for (const a of TREE_ARMS) hosts[a] = makeHost()
   const pValue = signal('')
   const [sValue] = createSignal('')
+  const solid2Tree = solid2CreateTree(TREE_DEPTH)
   const disposers: Record<string, (() => void) | null> = {}
 
   const mountPyreon = (arm: string, vnode: unknown) => {
@@ -329,6 +333,9 @@ export function setupTreeProfile(makeHost: () => HTMLElement): void {
       hosts.G as HTMLElement,
     )
   }
+  function __mountTreeS(): void {
+    disposers.S = solid2Tree.mount(hosts.S as HTMLElement)
+  }
   function __mountTreeV(): void {
     const root = document.createElement('div')
     root.className = 'tree-root'
@@ -347,6 +354,7 @@ export function setupTreeProfile(makeHost: () => HTMLElement): void {
     H: __mountTreeH,
     I: __mountTreeI,
     J: __mountTreeJ,
+    S: __mountTreeS,
     V: __mountTreeV,
   }
 

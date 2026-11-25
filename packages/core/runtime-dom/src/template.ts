@@ -1,5 +1,6 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { _childText, _isStructuralChild } from '@pyreon/core'
+import { _childText, _isStructuralChild } from '@pyreon/core/internal'
+import { getContextOwner } from '@pyreon/reactivity'
 import {
   _noopDispose,
   _rdCloseBindingFrame,
@@ -7,19 +8,19 @@ import {
   _rdLabelDirect,
   _rdNodeId,
   _rdOpenBindingFrame,
-  getContextOwner,
   _renderBind,
-} from '@pyreon/reactivity'
+} from '@pyreon/reactivity/internal'
 import { _tagTextBinding } from './binding-registry'
 import { _takeParkedRange, hasParkedRange, isMidSlotText, peekParkedRange } from './slot-brands'
 import {
   _adoptParkedText,
   _beginParkBatch,
   _endParkBatch,
-  _parkText,
+  _park,
+  _parkCloser,
   _parkedPending,
   _slotHydrator,
-  _takeParkedText,
+  _takeParked,
 } from './parked-text'
 import {
   _adoptingCompiledBind,
@@ -27,6 +28,7 @@ import {
   _markServerText,
   rangeText,
   reportFirstText,
+  devAdoptedTextWrite,
   reportTextWrite,
 } from './hydration-debug'
 import { bindPolymorphicText, createPolyTextCore, mountChild, mountChildAsUnit, ownByScope, type PolyTextCore } from './mount'
@@ -162,6 +164,8 @@ export function _setChild(node: Element, value: unknown): void {
   // strength of a row whose cell held a string. Both kinds go to the
   // marker-less slot hydrator, which walks the value against the server's
   // child list and adopts it.
+  // A #4599 region is claimed there by identity (see `_park`, `regions.ts`),
+  // or mounted fresh where user code filled it.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
       ownByScope(_slotHydrator(value as never, node, null))
@@ -188,15 +192,11 @@ export function _setChild(node: Element, value: unknown): void {
     // call. A NUMBER is handed to the DOM unconverted (see `_replaceText`).
     const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
     // Dev, adopting: the same write, reported if it changed the server's text
-    // (#4419). A separate block so production keeps exactly the write below.
+    // (#4419). A separate block so production keeps exactly the write below:
+    // neither consumes a #4599 region's mark, so `_settleRegions` treats the
+    // region the same in both builds.
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
-      const before = node.textContent ?? ''
-      if (fc !== null && fc.nodeType === 3 && fc.nextSibling === null) {
-        ;(fc as Text).data = text as string
-      } else {
-        _replaceText(node, text)
-      }
-      reportTextWrite(node, before, 'text')
+      devAdoptedTextWrite(node, fc, text, _replaceText)
 
       return
     }
@@ -756,26 +756,13 @@ export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
   _tplAdoptVerifier = v
 }
 
-/**
- * DECLARED ROOT DECORATION (#4382). A component that adds `class` / `style` to
- * a compiled child element (kinetic's per-item hidden state) does it on the
- * client at mount, and on the server to the root tag of the child's raw HTML
- * (`withRootAttrs`). The server element's root then carries attributes the
- * template's static skeleton does not, and the static-skeleton gate refused
- * it: the item was re-created at hydration instead of adopted.
- *
- * The decorating component declares the decoration on the item it receives,
- * and for that item ONLY the gate leaves the ROOT's `class` and `style` out of
- * the comparison: the declaring component owns them and re-applies them at
- * mount. Every other attribute and every descendant is still compared. Carried
- * on the item (leak class C: never a registry), read once by its adoption.
- */
-const ROOT_DECORATED: unique symbol = Symbol('pyreon.rootDecorated')
+// DECLARED ROOT DECORATION (#4382): the brand `_declareRootDecoration`
+// (`./root-decoration`, exported from `@pyreon/runtime-dom/internal`) sets on
+// an item whose root `class` / `style` its decorating component owns. Read
+// here through the same registry symbol, not an import, so the internal entry
+// shares no chunk with the main one.
+const ROOT_DECORATED: unique symbol = Symbol.for('pyreon.rootDecorated') as never
 type DecoratedItem = NativeItem & { [ROOT_DECORATED]?: true }
-
-export function _declareRootDecoration(item: NativeItem): void {
-  ;(item as DecoratedItem)[ROOT_DECORATED] = true
-}
 
 // The adoption frame's flag (see `_tplAdoptTarget`): set by `__adoptAt`,
 // consumed one-shot by the `buildTpl` it arms.
@@ -1014,14 +1001,22 @@ function sweepHoles(holes: Map<Element, ChildNode | null>): void {
  * The compiler decides the SVG root at build time from the tag (its table is
  * every SVG element name that is not also an HTML one), so the runtime carries
  * no tag list.
+ *
+ * `key` is the JSX `key` of a KEYED root (`<tr key={row.id}>`). The compiler
+ * passes it with `TPL_REMOUNTABLE` set, and the item carries it as `key`, the
+ * field a VNode's key is read from: the keyed list reconciler (`isKeyedArray`,
+ * `keyOfVNode`), hydration's keyed check and components reading their
+ * children's keys all see it unchanged. The item builds at its mount, so a
+ * keyed `.map()` that re-runs for every row and mounts only the new keys
+ * clones nothing for the rows it keeps.
  */
 export function _tpl(
   html: string,
   bind: (el: HTMLElement) => (() => void) | null,
   flags = 0,
+  key: string | number | null = null,
 ): NativeItem {
-  if ((flags & TPL_REMOUNTABLE) !== 0)
-    return new RemountableItem(html, bind, flags & TPL_SVG_ROOT) as unknown as RemountableNativeItem
+  if ((flags & TPL_REMOUNTABLE) !== 0) return new RemountableItem(html, bind, flags & TPL_SVG_ROOT, key)
   if (process.env.NODE_ENV !== 'production') _countSink.__pyreon_count__?.('runtime.tpl')
   let tpl = _tplCache.get(html)
   if (!tpl) {
@@ -1121,9 +1116,10 @@ export function _tpl(
  * revivals, which is what lets a boundary recognize "the same value" and skip an
  * unnecessary teardown.
  *
- * Cost is paid only by children emitted in a component-child position (one
- * object and two closures per mount); `<For>` rows and component roots stay on
- * the plain path.
+ * Cost is paid only by templates emitted in a component-child position and by
+ * keyed roots (one object per item, the disposer closure on first mount);
+ * `<For>` rows and unkeyed component roots stay on the plain path. The class is
+ * `RemountableItem`, below.
  */
 /**
  * A `_tpl` item built with the compiler's re-mountable flag. `__dead` is true once
@@ -1165,16 +1161,15 @@ class RemountableItem {
   private d = false
   /** The stable disposer handed out by `cleanup`, made on first read. */
   private x: (() => void) | null = null
-  /** `_tpl`'s arguments, kept to (re)build. */
-  private h: string
-  private b: (el: HTMLElement) => (() => void) | null
-  private f: number
 
-  constructor(html: string, bind: (el: HTMLElement) => (() => void) | null, flags: number) {
-    this.h = html
-    this.b = bind
-    this.f = flags
-  }
+  constructor(
+    /** `_tpl`'s arguments, kept to (re)build. */
+    private h: string,
+    private b: (el: HTMLElement) => (() => void) | null,
+    private f: number,
+    /** The element's JSX `key` (see `_tpl`), null when it has none. */
+    readonly key: string | number | null,
+  ) {}
 
   private built(): NativeItem {
     return (this.c ??= _tpl(this.h, this.b, this.f))
@@ -1211,7 +1206,7 @@ class RemountableItem {
   __adoptAt(domNode: Element): boolean {
     const inner = this.built()
     // A declaration made on this (outer) item belongs to the build it adopts.
-    if ((this as unknown as DecoratedItem)[ROOT_DECORATED] === true) _declareRootDecoration(inner)
+    if ((this as unknown as DecoratedItem)[ROOT_DECORATED] === true) (inner as DecoratedItem)[ROOT_DECORATED] = true
     return (inner as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
   }
 }
@@ -1239,7 +1234,7 @@ function buildTpl(
     _tplAdoptAllowPlan = false
     _tplRootDecorated = false
     _tplPendingHoles = null
-    // Placeholders parked by this verify and this bind (#4385), swept after it.
+    // What this verify and this bind park (#4385, #4599), settled after it.
     const prevPark = _beginParkBatch()
     if (_tplAdoptVerifier !== null && _tplAdoptVerifier(tpl, html, target, allowPlan, rootDecorated)) {
       const holes = _tplPendingHoles
@@ -1257,7 +1252,8 @@ function buildTpl(
         _tplHoleCursors = holes
         const prevFresh = _freshBind
         _freshBind = false // an ADOPTED node holds server content — keep every read
-        let cleanup: (() => void) | null
+        // Stays `undefined` when the bind throws.
+        let cleanup: (() => void) | null | undefined
         try {
           // Dev: the binders report the server text they correct (#4419).
           cleanup =
@@ -1268,7 +1264,8 @@ function buildTpl(
         } finally {
           _tplHoleCursors = prevHoles
           _freshBind = prevFresh
-          sweepParkedTexts(prevPark)
+          // Settle what this build parked; `cleanup` is unset when the bind threw.
+          sweepParkedTexts(prevPark, cleanup !== undefined)
         }
         _tplAdoptConsumed = true
         if (process.env.NODE_ENV !== 'production')
@@ -1277,8 +1274,8 @@ function buildTpl(
         return { __isNative: true, el: target as HTMLElement, cleanup }
       }
     }
-    // Not adopted: close this build's park batch (nothing it parked is bound).
-    sweepParkedTexts(prevPark)
+    // Not adopted: release what a failed verify parked; nothing is bound.
+    sweepParkedTexts(prevPark, false)
   }
   // (adoption falls through to a normal clone on any verification bail)
   const root = (tpl as CachedTemplate)._root
@@ -1771,7 +1768,7 @@ export function _textSlot(parent: Node, placeholder: Node): Text {
     // is PARKED against the range, so a polymorphic binding adopts the server's
     // nodes through the slot hydrator (which puts a parked range back) instead
     // of re-mounting them; a binding that cannot is swept after the bind.
-    if (parked || (first !== null && !isRangeClose(first))) _parkText(fresh, placeholder as Comment)
+    if (parked || (first !== null && !isRangeClose(first))) _park(fresh, placeholder as Comment)
     // EMPTY range (the accessor rendered ''): nothing to adopt, clear it.
     else clearSlotRange(placeholder as Comment)
 
@@ -1808,16 +1805,19 @@ function clearSlotRange(open: Comment): void {
 }
 
 /**
- * Close a build's park batch and sweep the placeholders no binding adopted
- * (see `_beginParkBatch`): the server content each one stands for is removed,
- * and in dev the rewrite is reported against it.
+ * Close a build's park batch and settle it: regions through the hydration side
+ * (`_parkCloser`), then every #4385 text placeholder no binding adopted. After a
+ * completed bind (`done`) the placeholder's server content is removed and dev
+ * reports the rewrite; after a bind that threw, the mark is only released.
  */
-function sweepParkedTexts(prev: Text[] | null): void {
+function sweepParkedTexts(prev: Node[] | null, done: boolean): void {
   const mine = _endParkBatch(prev)
   if (mine === null) return
+  // Regions first: what is left marked after that is text placeholders.
+  _parkCloser?.(mine, done)
   for (const text of mine) {
-    const open = _takeParkedText(text)
-    if (open === undefined) continue
+    const open = _takeParked(text) as Comment | null | undefined
+    if (open === undefined || !done) continue
     let server = ''
     if (open === null) {
       // Sole slot: every other child of the element is server content.
@@ -1830,7 +1830,7 @@ function sweepParkedTexts(prev: Text[] | null): void {
       if (process.env.NODE_ENV !== 'production') server = _serverTextOfRange(open)
       clearSlotRange(open)
     }
-    if (process.env.NODE_ENV !== 'production') reportTextWrite(text, server, 'reactive')
+    if (process.env.NODE_ENV !== 'production') reportTextWrite(text as Text, server, 'reactive')
   }
 }
 

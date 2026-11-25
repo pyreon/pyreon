@@ -18,40 +18,44 @@
 
 import type { ComponentFn, LazyComponent, LifecycleHooks, RefProp, VNode, VNodeChild } from '@pyreon/core'
 import {
-  _childText,
-  _isVNodeLike,
-  _setSuspenseHydrating,
-  dispatchToErrorBoundary,
   ForSymbol,
   Fragment,
   PortalSymbol,
-  propagateError,
   reportError,
-  _runHooked,
-  _takeHooks,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
 import {
-  _captureRun,
-  _releaseRun,
-  _replayReads,
-  _sampleReads,
+  dispatchToErrorBoundary,
+  propagateError,
+  _childText,
+  _isVNodeLike,
+  _setSuspenseHydrating,
+  _runHooked,
+  _takeHooks,
+} from '@pyreon/core/internal'
+import {
   type EffectScope,
   effectScope,
   getContextOwner,
-  _currentScope,
-  _devOwner,
-  _swapPendingOwner,
-  _abortOwnerFrame,
-  _closeOwnerFrame,
-  _openOwnerFrame,
   type RunCapture,
   type SubscriberHost,
   runWithContextOwner,
   setContextOwner,
   setCurrentScope,
 } from '@pyreon/reactivity'
+import {
+  _captureRun,
+  _releaseRun,
+  _replayReads,
+  _sampleReads,
+  _currentScope,
+  _devOwner,
+  _swapPendingOwner,
+  _abortOwnerFrame,
+  _closeOwnerFrame,
+  _openOwnerFrame,
+} from '@pyreon/reactivity/internal'
 import { setupDelegation } from './delegate'
 import { suspenseAttachOf } from './suspense-boundary'
 import { installDevTools } from './devtools'
@@ -76,10 +80,14 @@ import {
   componentProps,
   mountChild,
   mountOwned,
+  runUnmountHooks,
 } from './mount'
-import { buildRowPlan, replayRowPlan, tplAdoptVerify } from './hydration-plan'
+import { buildRowPlan, findMatchingClose, replayRowPlan, tplAdoptVerify } from './hydration-plan'
+import { releaseRef } from './teardown'
 import type { RowPlan } from './hydration-plan'
-import { _setPendingForAdoption, mountKeyedList, mountReactive } from './nodes'
+import { _detachAsUnit, _setPendingForAdoption, detachNode, mountKeyedList, mountReactive } from './nodes'
+import { _hideRegions, _settleRegions } from './regions'
+import { _park, _setParkHooks, _takeParked } from './parked-text'
 import {
   _holdTplDeferral,
   _setHydrationActive,
@@ -639,7 +647,7 @@ function adoptReactiveRange(
       let c = startMarker.nextSibling
       while (c && c !== a) {
         const nx: ChildNode | null = c.nextSibling
-        c.remove()
+        detachNode(c)
         c = nx
       }
     }
@@ -684,7 +692,7 @@ function adoptReactiveRange(
   // disposes a range WITHOUT destroying its parent would leak one per range.
   return () => {
     cleanup()
-    startMarker.parentNode?.removeChild(startMarker)
+    detachNode(startMarker)
   }
 }
 
@@ -713,9 +721,8 @@ function bindOwnedText(child: () => VNodeChild, text: Text, parentNode: Node): C
   const dispose = bindPolymorphicText(child, text, parentNode)
   return () => {
     dispose()
-    const p = text.parentNode
-    // Skip a DocumentFragment parent (nodeType 11) — mirrors the dispatcher.
-    if (p && p.nodeType !== 11) p.removeChild(text)
+    // `detachNode` skips a DocumentFragment parent, mirroring the dispatcher.
+    detachNode(text)
   }
 }
 
@@ -923,7 +930,7 @@ function adoptUnmarkedRange(
       let c = start.nextSibling
       while (c && c !== a) {
         const nx: ChildNode | null = c.nextSibling
-        c.remove()
+        detachNode(c)
         c = nx
       }
     }
@@ -940,7 +947,7 @@ function adoptUnmarkedRange(
     return [
       () => {
         keyed()
-        end.parentNode?.removeChild(end)
+        detachNode(end)
       },
       after,
     ]
@@ -949,7 +956,7 @@ function adoptUnmarkedRange(
   return [
     () => {
       cleanup()
-      start.parentNode?.removeChild(start)
+      detachNode(start)
     },
     after,
   ]
@@ -1376,6 +1383,81 @@ function hydrateMountHole(
     : hydrateChild(child, start, parent, start)
 }
 
+/** A slot whose extent is its parent's whole child list (see `hydrateMountSlot`). */
+function hydrateWholeList(
+  children: VNodeChild | VNodeChild[],
+  parent: Node,
+  slotPath: string,
+  sweep: boolean,
+): Cleanup {
+  const first = parent.firstChild
+  if (typeof children === 'function') {
+    // SSR rendered nothing into the slot, so there is no region to adopt —
+    // install the boundary a cold mount would have built, at the end of the
+    // (empty) child list.
+    if (first === null) {
+      return mountOverEmpty(children as () => VNodeChild, parent, null, slotPath)
+    }
+    // Synthesize the close SSR elided so the shared adoption core runs on
+    // exactly the shape it gets for a marked range — including the removal
+    // contract, which a direct `hydrateChild` call does NOT carry: its
+    // cleanups dispose bindings only, so the server nodes would survive every
+    // future flip and the region would DUPLICATE on the first re-render.
+    const end = document.createComment('pyreon')
+    parent.appendChild(end)
+    const primed = primeAccessor(children as () => VNodeChild)
+    const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, end, slotPath)
+    end.remove()
+
+    return cleanup
+  }
+  // A literal (non-accessor) value installs no reactive boundary, so it is
+  // walked against the region directly — there is no later render whose
+  // cleanup would have to remove these nodes.
+  const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
+  const [cleanup, rest] = hydrateChild(children, cursor, parent, null, slotPath)
+  // A claimed `_setChild` region (#4599) holds nothing but server nodes, and
+  // the walk inserts its repairs BEFORE its cursor: everything from the cursor
+  // on is server content the value did not claim (`sweepUnclaimed`, which
+  // keeps it when nothing was claimed at all). An unrecorded parent may hold
+  // client nodes there, so it keeps them.
+  if (sweep) sweepUnclaimed(parent, rest)
+
+  return cleanup
+}
+
+/**
+ * `_setChild`'s claim of a #4599 region. A region hidden from user code gets
+ * its nodes back when that code left the element empty. When it did not, the
+ * value mounts fresh after that code's nodes, as on a fresh render, and the
+ * hidden nodes stay marked so a bind that throws later still puts them back.
+ *
+ * The region's cleanup disposes effects without removing nodes: the element
+ * leaves with its template, as the fresh path's `mountChildAsUnit` content
+ * does. Its removals go through `detachNode` inside a `_detachAsUnit` window
+ * for the element. A removing cleanup detached every node of a hydrated row on
+ * unmount, and on a bind that throws (`hydrateComponent` stops the scope and
+ * keeps the server markup) deleted the adopted server nodes.
+ */
+function claimRegion(children: VNodeChild | VNodeChild[], el: Element, region: Node, slotPath: string): Cleanup {
+  if (region.nodeType === 11) {
+    if (el.firstChild !== null) {
+      if (process.env.NODE_ENV !== 'production') (region as { _fellBack?: true })._fellBack = true
+      _park(el, region)
+
+      return mountChild(children, el, null)
+    }
+    el.appendChild(region)
+  }
+  const cleanup = hydrateWholeList(children, el, slotPath, true)
+
+  // The element leaves with its template, so the region's own removals are
+  // redundant: inside the window `detachNode` skips them (O(1): no node is
+  // detached or re-inserted) and only effects are disposed. A bind that throws
+  // later keeps the adopted server markup the same way.
+  return () => _detachAsUnit(el, cleanup)
+}
+
 /**
  * Hydrate a compiled `_mountSlot` against the SSR range its adopted container
  * already holds (see `_mountSlot`). `open` is the live `<!--$-->` marker the
@@ -1389,47 +1471,22 @@ function hydrateMountHole(
  * install, so it is walked against the range directly and the markers removed
  * here.
  */
-function hydrateMountSlot(
-  children: VNodeChild | VNodeChild[],
-  parent: Node,
-  open: Comment | null,
-): Cleanup {
+function hydrateMountSlot(children: VNodeChild | VNodeChild[], parent: Node, open: Comment | null): Cleanup {
   // Dev: mismatch paths below run from the hydration root through the slot's
   // element (`root > div > reactive > b`), as the h() walk spells them; in
   // production they keep the bare `slot` prefix.
+  const slotPath = process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot'
   // MARKER-LESS REGION — the slot was its element's SOLE child, so
   // runtime-server elided the `<!--$-->` pair and the extent is the parent's
   // entire child list. See `_mountSlot` for why a `null` open provably means
   // SOLE rather than merely last.
-  const slotPath = process.env.NODE_ENV !== 'production' ? compiledParentPath(parent) : 'slot'
   if (open === null) {
-    const first = parent.firstChild
-    if (typeof children === 'function') {
-      // SSR rendered nothing into the slot, so there is no region to adopt —
-      // install the boundary a cold mount would have built, at the end of the
-      // (empty) child list.
-      if (first === null) {
-        return mountOverEmpty(children as () => VNodeChild, parent, null, slotPath)
-      }
-      // Synthesize the close SSR elided so the shared adoption core runs on
-      // exactly the shape it gets for a marked range — including the removal
-      // contract, which a direct `hydrateChild` call does NOT carry: its
-      // cleanups dispose bindings only, so the server nodes would survive every
-      // future flip and the region would DUPLICATE on the first re-render.
-      const end = document.createComment('pyreon')
-      parent.appendChild(end)
-      const primed = primeAccessor(children as () => VNodeChild)
-      const cleanup = adoptReactiveRange(primed.acc, primed.initial, parent, first, end, slotPath)
-      end.remove()
-
-      return cleanup
-    }
-    // A literal (non-accessor) value installs no reactive boundary, so it is
-    // walked against the region directly — there is no later render whose
-    // cleanup would have to remove these nodes.
-    const cursor = first === null ? null : first.nodeType === 1 ? first : firstReal(first)
-
-    return hydrateChild(children, cursor, parent, null, slotPath)[0]
+    // A `_setChild` region (#4599) is claimed by identity: only `_setChild`
+    // hands over an element the verifier marked (a template-empty one).
+    const region = _takeParked(parent)
+    return region === undefined
+      ? hydrateWholeList(children, parent, slotPath, false)
+      : claimRegion(children, parent as Element, region as Node, slotPath)
   }
   // A PARKED mid range (see `PARKED_RANGE` in template.ts): the verifier moved
   // this slot's server content out so the compiled refs after it resolved
@@ -1441,20 +1498,7 @@ function hydrateMountSlot(
     return hydrateChild(children, open, parent, null, slotPath)[0]
   }
   // Locate the range end (depth-aware — accessor ranges nest).
-  let close: ChildNode | null = null
-  let depth = 0
-  for (let n: ChildNode | null = open.nextSibling; n; n = n.nextSibling) {
-    if (n.nodeType !== 8) continue
-    const d = (n as Comment).data
-    if (d === '$') depth++
-    else if (d === '/$') {
-      if (depth === 0) {
-        close = n
-        break
-      }
-      depth--
-    }
-  }
+  const close = findMatchingClose(open)
   if (close === null) {
     // No range to adopt (shouldn't reach here — the verifier only admits a
     // container whose slot range is well-formed). Fall back to mounting.
@@ -1514,7 +1558,7 @@ function hydrateChild(
     if (expected === '') {
       const tn = document.createTextNode('')
       parent.insertBefore(tn, domNode ?? anchor)
-      return [() => tn.remove(), domNode]
+      return [() => detachNode(tn), domNode]
     }
     // EXPLICIT whitespace: the cursor has already walked past the server's
     // whitespace node (see `skippedWhitespaceBefore`), so this vnode claims it
@@ -1534,7 +1578,7 @@ function hydrateChild(
           ws.splitText(expected.length)
         }
         claimedWhitespace.add(ws)
-        return [() => ws.remove(), domNode]
+        return [() => detachNode(ws), domNode]
       }
     }
     if (domNode?.nodeType === Node.TEXT_NODE) {
@@ -1542,7 +1586,7 @@ function hydrateChild(
       if (data === expected) {
         const tns = domNode.nextSibling
         return [
-          () => (domNode as Text).remove(),
+          () => detachNode(domNode as Text),
           tns !== null && tns.nodeType === 1 ? tns : firstReal(tns),
         ]
       }
@@ -1553,7 +1597,7 @@ function hydrateChild(
       // (the SSR output came from the same tree), not a heuristic.
       if (data.startsWith(expected)) {
         const rest = (domNode as Text).splitText(expected.length)
-        return [() => (domNode as Text).remove(), rest]
+        return [() => detachNode(domNode as Text), rest]
       }
       // Genuine content mismatch (server/client divergence). REPLACE the
       // stale node and advance past it, exactly as the reactive twin
@@ -1571,7 +1615,7 @@ function hydrateChild(
       parent.insertBefore(tn, domNode)
       domNode.remove()
 
-      return [() => tn.remove(), after]
+      return [() => detachNode(tn), after]
     }
     warnHydrationMismatch('text', 'TextNode', domNode?.nodeType ?? 'null', `${path} > text`)
     // Recover AT THE CURSOR (not at the parent-level anchor) so sibling
@@ -1579,7 +1623,7 @@ function hydrateChild(
     const tn = document.createTextNode(expected)
     parent.insertBefore(tn, domNode ?? anchor)
 
-    return [() => tn.remove(), domNode]
+    return [() => detachNode(tn), domNode]
   }
 
   // NativeItem — output of the compiler's `_tpl()` fast path. `_tpl` HAS a true
@@ -1612,8 +1656,7 @@ function hydrateChild(
       // would detach + reattach, destroying focus/selection for nothing.
       const adoptedCleanup = () => {
         native.cleanup?.()
-        const p = native.el.parentNode
-        if (p && p.nodeType !== 11) p.removeChild(native.el)
+        detachNode(native.el)
       }
 
       return [adoptedCleanup, next]
@@ -1630,8 +1673,7 @@ function hydrateChild(
     }
     const cleanup = () => {
       native.cleanup?.()
-      const p = native.el.parentNode
-      if (p && p.nodeType !== 11 /* DocumentFragment — FW-3 */) p.removeChild(native.el)
+      detachNode(native.el)
     }
 
     return [cleanup, next]
@@ -1795,14 +1837,11 @@ function hydrateElement(
     }
 
     const cleanup = () => {
-      if (ref) {
-        if (typeof ref === 'function') ref(null)
-        else ref.current = null
-      }
+      releaseRef(ref)
       if (propCleanup) propCleanup()
       childCleanup()
       if (valueCleanup) valueCleanup()
-      el.remove()
+      detachNode(el)
     }
 
     // Fast path: an ELEMENT next-sibling is always "real" — skip the scan.
@@ -2076,8 +2115,8 @@ function hydrateSyncOutputInAsyncRange(
   return [
     () => {
       childCleanup()
-      start.remove()
-      end.remove()
+      detachNode(start)
+      detachNode(end)
     },
     after ? firstReal(after) : null,
   ]
@@ -2442,8 +2481,8 @@ function hydrateComponent(
     if (process.env.NODE_ENV !== 'production') _devUnregisterScope(scope)
     scope.stop()
     subtreeCleanup()
-    if (hooks.unmount) for (const fn of hooks.unmount) fn()
-    for (const fn of mountCleanups) fn()
+    runUnmountHooks(hooks.unmount, componentName)
+    runUnmountHooks(mountCleanups, componentName)
   }
 
   return [cleanup, nextDom]
@@ -2481,6 +2520,8 @@ export function hydrateRoot(container: Element, vnode: VNodeChild): () => void {
   )
   // (A compiled text slot whose server content is elements adopts it through
   // this same hydrator: #4385, `parked-text.ts`.)
+  // A ref or spread in an adoption build sees `_setChild` regions empty (#4599).
+  _setParkHooks(_hideRegions, _settleRegions)
   // Install the devtools hook on hydration too, not just `mount()` — otherwise
   // the reactive dev overlay (Ctrl+Shift+R) + `__PYREON_DEVTOOLS__` silently
   // don't exist in SSR/hydrated apps, which is most real Pyreon apps. Idempotent

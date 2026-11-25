@@ -45,10 +45,10 @@ export function changesetBumps(text: string): Record<string, string> {
 }
 
 /**
- * Problems with one changeset. `codemods` maps a registry id to the package
+ * Problems with one changeset. `codemods` maps a registry id to the packages
  * it migrates.
  */
-export function changesetProblems(file: string, text: string, codemods: Map<string, string>): string[] {
+export function changesetProblems(file: string, text: string, codemods: Map<string, readonly string[]>): string[] {
   const bumps = changesetBumps(text)
   const gated = Object.entries(bumps).filter(([pkg, bump]) => GATED_PACKAGES.has(pkg) && bump === 'minor')
   if (gated.length === 0) return []
@@ -65,9 +65,9 @@ export function changesetProblems(file: string, text: string, codemods: Map<stri
   const cm = /^codemod\s+([a-z0-9-]+)\s*$/i.exec(value)
   if (cm) {
     const id = cm[1] as string
-    const pkg = codemods.get(id)
-    if (pkg === undefined) return [`${file}: codemod "${id}" is not in the registry (packages/tools/cli/src/codemods).`]
-    if (!gated.some(([p]) => p === pkg)) return [`${file}: codemod "${id}" migrates ${pkg}, not ${pkgs}.`]
+    const migrates = codemods.get(id)
+    if (migrates === undefined) return [`${file}: codemod "${id}" is not in the registry (packages/tools/cli/src/codemods).`]
+    if (!gated.some(([p]) => migrates.includes(p))) return [`${file}: codemod "${id}" migrates ${migrates.join(', ')}, not ${pkgs}.`]
     return []
   }
   const manual = /^manual\s*[—–-]\s*(.+)$/i.exec(value)
@@ -109,7 +109,7 @@ function main(): void {
     console.warn(`[check-breaking-changeset-codemod] SKIPPED: no origin/${baseRef} ref in this clone.`)
     return
   }
-  const codemods = new Map(CODEMODS.map((c) => [c.id, c.package as string]))
+  const codemods = new Map<string, readonly string[]>(CODEMODS.map((c) => [c.id, [c.package, ...(c.alsoMigrates ?? [])]]))
   const problems = files.flatMap((f) => changesetProblems(f, readFileSync(join(root(), f), 'utf-8'), codemods))
   if (problems.length > 0) {
     console.error('[check-breaking-changeset-codemod] a breaking zero changeset must say how users upgrade:')

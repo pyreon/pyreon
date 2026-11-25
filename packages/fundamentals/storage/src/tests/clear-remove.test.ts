@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  _resetRegistry,
   clearStorage,
   removeStorage,
   useCookie,
   useSessionStorage,
   useStorage,
 } from '../index'
+import { _resetRegistry } from '../internal'
 
 describe('removeStorage — comprehensive', () => {
   beforeEach(() => {

@@ -11,25 +11,30 @@ For the same record as charts you can switch between, product by product, see
 [the benchmarks page](/benchmarks). This guide carries the full tables, the
 method and every command to reproduce them.
 
-**How to read this page.** The numbers come from two runs made on
-**2026-11-05** on an Apple M3 Max (darwin/arm64, bun 1.4.0, node 26.1.0,
-Chromium 156 via Playwright 1.64), against the competitor packages installed at
-npm latest:
+**How to read this page.** The numbers come from three runs on an Apple M3
+Max (darwin/arm64, bun 1.4.0, node 26.1.0), against the competitor packages
+installed at the time:
 
-- the **final pass** on `main` at `779a82f01` (load 1.7–3.8), which measured the
-  row-list board, the scenarios, charts, hydration, scaling, bundle size,
-  reactivity, router, validation, store, http, rx and table;
-- the **overnight run** on `main` at `d47fa5a2f` (load 1.2–3.9), whose figures
-  are kept for everything the final pass did not re-measure: server rendering,
-  TodoMVC, the form benchmark, head, styler, the compiler, the remaining
-  fundamentals packages and the charts and code bundles.
+- the **2026-11-24 refresh** on `fcccee261` (`main` at `a48a7cba1` plus the
+  Solid 2.0 stable arms), in Chromium 159 via Playwright 1.65, which
+  re-measured the row-list board, the core scenarios (deep tree and context,
+  effect list, memo wall), the keyed `.map()` list, the retained heap of one
+  deep tree and the bundle size;
+- the **2026-11-05 final pass** on `main` at `779a82f01` (Chromium 156, load
+  1.7–3.8), kept for dbmon, the library and chart scenarios, hydration,
+  scaling, reactivity, router, validation, store, http, rx and table;
+- the **2026-11-05 overnight run** on `main` at `d47fa5a2f` (load 1.2–3.9),
+  kept for everything neither re-measured: server rendering, TodoMVC, the form
+  benchmark, head, styler, the compiler, the remaining fundamentals packages
+  and the charts and code bundles.
 
 Each section names its run and how many times it was measured. Benches ran
 strictly one at a time, with `NODE_ENV=production`, production builds for every
 browser suite, and a cross-origin-isolated page so the browser clock resolves
 5µs instead of 100µs. Figures are medians with bootstrap 95% confidence
-intervals (for the row-list board, a cluster bootstrap over page loads; see
-[Harness caveats](#harness-caveats)). A result is a **win** only when the intervals do not overlap **in
+intervals (a cluster bootstrap over page loads for everything the refresh
+measured; see [Harness caveats](#harness-caveats)). A per-op median below 10
+clock ticks (50µs) gets no verdict. A result is a **win** only when the intervals do not overlap **in
 both runs**; a cell measured once says "one run". `🤝` marks a statistical tie
 (*could not distinguish*, not *equal*). When two runs disagree, both are
 reported. Absolute times are machine-dependent — **the ratio is the portable
@@ -38,8 +43,9 @@ signal**. The authoritative, complete record is
 the repo root; where this page and that file disagree, the file wins.
 
 **Author-judge caveat, stated up front:** these benchmarks are written and
-judged by the Pyreon authors, and they are synthetic workloads that do not
-predict the performance of your app. The methodology is designed for
+judged by the Pyreon authors, run on one machine in one browser engine
+(Chromium), and they are synthetic workloads that do not predict the
+performance of your app. The methodology is designed for
 objectivity — per-cell process isolation, rotated execution order, correctness
 gates that read the result back before a number is trusted, and competitor code
 compiled through each framework's own compiler at its idiomatic best — but only
@@ -48,97 +54,101 @@ independent reproduction fully resolves author bias. A ready-to-submit
 [krausest/js-framework-benchmark](https://github.com/krausest/js-framework-benchmark)
 is staged in-repo at `contrib/krausest/pyreon-keyed/`.
 
-**Three harness defects limit some verdicts below** (details in
-[Harness caveats](#harness-caveats)): the harness confidence intervals are too
-narrow (the row-list board below is already recomputed with a corrected
-bootstrap; the scenario suites are not), the scenario harness can label a loss as a tie, and the table
-bench prints a stale `table-core` version.
+**Harness notes limit some 2026-11-05 verdicts below** (details in
+[Harness caveats](#harness-caveats)): the scenario rows kept from 2026-11-05
+were pooled before the page-load-aware bootstrap, the scenario harness can label
+a loss as a tie, and the table bench prints a stale `table-core` version.
 
 ## Summary
 
-- **Wins (both runs, or one run where marked):** clear rows on the row-list
-  board, select and partial update
-  vs Octane at every list size (one run), memoization, compiled SSR and
+- **Wins (both runs, or one run where marked):** clear rows and batch-timed
+  select on the row-list board, select and partial update vs Octane at every
+  list size (one run), the memo wall's passthrough update, compiled SSR and
   `renderToString`, an app-shaped hydration page (one run), TodoMVC vs React, a
   12-field form vs six form libraries, `@pyreon/flow` vs React Flow,
   `@pyreon/virtual` vs react-virtual and `@pyreon/charts` vs ECharts (one run
   each), chart updates vs uPlot and Chart.js, the computed diamond, effect
   propagation and batching vs Preact Signals, head, styler, and most
   fundamentals packages.
-- **Statistical ties:** create 1,000, replace, partial update, swap and remove
-  on the row-list board against the Vue 3.6 Vapor release candidate, Octane 0.16 and
-  Vue 3; dbmon; the 1,000-row hydration walk vs Vue; router matching at 50/200
-  routes. **Split** (a win in one run, a tie in the other): create 10,000 and
-  append on the row-list board, context propagation, effect-list updates, and data-table mount and single-cell update
-  vs memoized react-table.
-- **Losses:** swap at 100/1,000 rows in the scaling run, deep component-tree mount (Solid
-  1.15–1.18×), effect-list dispose (Solid, by one clock tick), some line-chart
-  mounts, signal creation, deep computed chains and V8 wide fan-out vs Preact
-  Signals, bundle size, router at 10 routes, and a handful of package
-  micro-ops. All listed at the end.
+- **Statistical ties:** create 1,000, replace, remove, create 10,000 and append
+  on the row-list board against the Vue 3.6 Vapor release candidate, Octane 0.19
+  and Vue 3; deep component-tree mount against Solid 1.9; context propagation,
+  effect-list updates and the memo wall's blocked update; dbmon; the 1,000-row
+  hydration walk vs Vue; router matching at 50/200 routes. **Split** (the two
+  runs disagree): partial update and swap on the row-list board, and data-table
+  mount and single-cell update vs memoized react-table.
+- **Losses:** retained memory per component (a mounted 2,047-component tree
+  holds 1.30× Solid 2.0's heap and about 2.6× Solid 1.9's), the keyed list with
+  conditional slots (`<For>` clear, replace and create; most ops of a plain
+  `.map()`), swap at 100/1,000 rows in the scaling run, some line-chart mounts,
+  signal creation, deep computed chains and V8 wide fan-out vs Preact Signals,
+  bundle size, router at 10 routes, and a handful of package micro-ops. All
+  listed at the end.
 
-**What changed since the overnight version of this page (same day).** The
-final pass withdraws five published losses and adds two. Withdrawn: "memoized
-react-table mounts 1.12× faster" (now a tie, then Pyreon 1.03×); "Preact Signals
-wins the computed diamond" (Pyreon now leads it, 1.30× on V8 and 1.07× on
-JavaScriptCore); "Zod wins invalid scalar strings 1.17×" (Pyreon now leads all
-12 cells, one run); "creating an http client is 1.46× slower than redaxios" and "a store patch with
-a subscriber is 1.3× slower than Zustand" (both now ties). New loss: swap at
-100/1,000 rows in the scaling run, which had been "no verdict"; effect-list
-dispose, a tie in
-one run before, is now Solid's in both. Earlier withdrawals stay
-withdrawn: Pyreon is not outright on create 1,000, replace all or create 10,000, Vapor is not
-outright on replace all, Pyreon does not have the lowest form-benchmark heap,
-and cssVariables theming is 1.13× *slower* than classic mode.
+**What changed in the 2026-11-24 refresh.** The deep-tree mount loss to Solid
+(1.15–1.18×) is gone: it now ties Solid 1.9 in both runs, and a bisect puts the
+change at #4199 (static component props folded at compile time), merged after
+the 2026-11-05 record. "Pyreon ties Preact as the lightest framework" is
+withdrawn: Preact is lighter (3.14 vs 3.21MB). Effect-list dispose is no longer
+a loss but has no verdict (below 10 clock ticks), the memo wall's blocked update
+ties the new Solid 2.0 arm, and the keyed `.map()` list and the deep tree's
+retained heap are published for the first time, both with losses. The bundle
+grew from 17.2 to 18.5KB. The 2026-11-05 withdrawals stay withdrawn: Pyreon is
+not outright on create 1,000, replace all or create 10,000, Vapor is not outright
+on replace all, Pyreon does not have the lowest form-benchmark heap, and
+cssVariables theming is 1.13× *slower* than classic mode.
 
 ## Flagship: keyed row-list DOM benchmark
 
-*Final pass, two runs.* A krausest-style row-list suite in real Chromium, a
-production `vite build` per framework, 100 samples per cell (5 page loads of
-20, order reshuffled every pass). The Pyreon entry is the **idiomatic JSX users
-write**.
+*2026-11-24 refresh, two runs.* A krausest-style row-list suite in real
+Chromium, a production `vite build` per framework, 100 samples per cell (5 page
+loads of 20, order reshuffled every page load). The Pyreon entry is the
+**idiomatic JSX users write**.
 
-| Benchmark | Vanilla | Pyreon | Vue 3.6 Vapor (RC) | Octane | Vue 3 | Solid | Solid 2.0 (RC) | Svelte 5 | React 19 | Preact |
+| Benchmark | Vanilla | Pyreon | Vue 3.6 Vapor (RC) | Octane 0.19 | Vue 3 | Solid 1.9 | Solid 2.0 | Svelte 5 | React 19 | Preact |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Create 1,000 | 6.78 | 7.26 | 🤝 7.35 | 7.47 | 🤝 7.33 | 7.88 | 8.28 | 8.07 | 9.04 | 9.87 |
-| Replace all | 6.69 | 7.13 | 🤝 7.11 | 🤝 7.29 | 7.38 | 7.83 | 8.24 | 8.02 | 8.89 | 9.80 |
-| Partial update | 710µs | 705µs | 🤝 710µs | 🤝 735µs | 1.04 | 1.27 | 1.22 | 810µs | 885µs | 920µs |
-| Select row | 5µs | 10µs | 25µs | 25µs | 380µs | 30µs | 60µs | 325µs | 260µs | 280µs |
-| Swap rows | 790µs | 805µs | 🤝 755µs | 🤝 765µs | 1.06 | 🤝 955µs | 925µs | 1.50 | 6.06 | 995µs |
-| Remove row | 5.73 | 5.70 | 🤝 5.76 | 🤝 5.74 | 5.89 | 🤝 5.76 | 5.83 | 6.35 | 🤝 5.78 | 🤝 5.90 |
-| Clear rows | 90µs | **130µs** | 145µs | 150µs | 255µs | 460µs | 640µs | 335µs | 920µs | 260µs |
-| Create 10,000 | 67.56 | 72.64 | 74.83 | 74.31 | 🤝 73.99 | 78.75 | 82.99 | 87.51 | 192.01 | 278.03 |
-| Append 1k→10k | 12.00 | 13.06 | 62.20 | 🤝 13.25 | 62.83 | 13.71 | 14.54 | 19.25 | 15.22 | 16.35 |
+| Create 1,000 | 6.62 | 7.29 | 🤝 7.25 | 🤝 7.39 | 🤝 7.33 | 8.02 | 8.02 | 8.16 | 9.13 | 10.37 |
+| Replace all | 6.63 | 7.14 | 🤝 7.19 | 🤝 7.09 | 🤝 7.23 | 8.01 | 7.92 | 8.02 | 9.11 | 10.35 |
+| Partial update | 695µs | 680µs | 🤝 680µs | 🤝 680µs | 1.04 | 1.19 | 1.28 | 785µs | 910µs | 935µs |
+| Select row | 5µs | 10µs | 25µs | 25µs | 355µs | 25µs | 70µs | 350µs | 270µs | 285µs |
+| Swap rows | 745µs | 745µs | 🤝 750µs | 🤝 825µs | 1.06 | 🤝 965µs | 835µs | 1.49 | 5.92 | 995µs |
+| Remove row | 5.75 | 5.70 | 🤝 5.64 | 🤝 5.52 | 🤝 5.90 | 🤝 5.79 | 🤝 5.73 | 6.38 | 6.01 | 5.89 |
+| Clear rows | 95µs | **125µs** | 145µs | 140µs | 225µs | 525µs | 295µs | 345µs | 655µs | 260µs |
+| Create 10,000 | 66.80 | 73.09 | 74.38 | 🤝 73.98 | 🤝 73.89 | 78.79 | 79.79 | 87.54 | 195.91 | 283.66 |
+| Append 1k→10k | 11.84 | 13.00 | 62.12 | 🤝 13.24 | 62.88 | 13.87 | 13.98 | 19.68 | 15.62 | 16.93 |
 
 (ms unless noted; first of two runs shown; `🤝` = confidence interval overlaps
-Pyreon's in that run; **bold** = Pyreon outright in both runs.)
+Pyreon's in that run; **bold** = Pyreon outright in both runs.) A batch-timed
+select row (five arms) resolves what the per-op row cannot: Pyreon 1.17µs per
+cycle against Octane 1.84, Solid 2.0 4.46 and Solid 1.9 15µs.
 
-**Verdicts, run 1 / run 2.** These use a cluster bootstrap that resamples whole
-page loads, recomputed from the samples each run saved, because the harness's
-own intervals are too narrow (see [Harness caveats](#harness-caveats)):
+**Verdicts, run 1 / run 2.** Intervals come from a cluster bootstrap that
+resamples whole page loads:
 
-- **Pyreon wins clear rows** in both runs (130 / 135µs vs Vapor 145 / 150µs,
-  1.11–1.12×). It is the only outright win on this board.
-- **Split** on create 10,000 and append: a tie in run 1, a 1.02× win in run 2.
-  Not claimed as wins.
-- **Statistical tie for first** on create 1,000, replace all, partial update,
-  swap rows and remove row, against the Vue 3.6 Vapor release candidate, Octane
-  0.16 and, on some ops, Vue 3, Solid and React.
-- **No verdict** on select row, which sits below 10 clock ticks (the batch
-  instrument below resolves it).
+- **Pyreon wins clear rows** in both runs (125 / 125µs vs Octane and Vapor at
+  140µs, 1.12×) and the **batch-timed select** (1.17 vs Octane 1.84µs, 1.58×).
+- **Statistical tie for first** on create 1,000, replace all, remove row,
+  create 10,000 and append, against the Vue 3.6 Vapor release candidate,
+  Octane 0.19 and Vue 3.
+- **Split**, so not claimed either way: partial update (a tie, then a 1.09× win
+  over Vapor) and swap rows (a tie, then Vapor 1.11× ahead).
+- **No verdict** on the per-op select row, which sits below 10 clock ticks.
 
-On the harness's own (too narrow) intervals, swap read as a 1.07× loss to Vapor
-in run 1, and create 10,000 and append as wins in both runs. Neither reading
-survives the page-load correction, so neither is published.
+**Against Solid 1.9 and Solid 2.0**, Pyreon is faster in both runs on create
+1,000 (1.09–1.10×), replace (1.09–1.12×), partial update (1.75–2.02×), clear
+(2.4–4.2×), create 10,000 (1.08–1.09×) and append (1.05–1.08×); remove row ties
+both, and swap splits.
 
-**Against hand-written Vanilla**, Pyreon costs 0.99–1.09× on every op except
-clear and select row, which is below the clock resolution (create 1.07×, replace 1.07×, partial update 0.99×, swap 1.02×, remove
-0.99×, create 10k 1.08×, append 1.09×), and 1.44× on clear.
+**Against hand-written Vanilla**, Pyreon costs 0.98–1.10× on every op except
+clear and select row, which is below the clock resolution (create 1.10×,
+replace 1.08×, partial update 0.98×, swap 1.00×, remove 0.99×, create 10k
+1.09×, append 1.10×), and 1.32× on clear.
 
-**Retained heap after the suite** (post-GC, MB, the same in both runs): Vanilla
-2.95 · **Pyreon 3.08** · Preact 3.09 · Solid 3.16 · Svelte 3.27 · Vue 3.30 ·
-Solid 2.0 (RC) 3.44 · React 3.50 · Vapor (RC) 4.09 · Octane 4.50. Pyreon and
-Preact are tied as the lightest framework.
+**Retained heap after the suite** (post-GC, MB, every pass of both runs):
+Vanilla 3.00 · **Preact 3.14** · Pyreon 3.21 · Solid 1.9 3.22–3.23 · Svelte
+3.32–3.34 · Vue 3.36 · Solid 2.0 3.52 · React 3.55 · Vapor (RC) 4.14–4.15 ·
+Octane 4.50. Preact is the lightest framework; Pyreon is 0.07MB heavier, level
+with Solid 1.9.
 
 Caveats that travel with these numbers:
 
@@ -149,14 +159,14 @@ Caveats that travel with these numbers:
   operation.
 - `create N rows` is a replace for 19 of 20 samples; only the first sample
   mounts into an empty list.
-- Pyreon and Solid allocate a per-row signal that the plain-object frameworks
-  (Vue, Vapor, Octane) do not.
+- Pyreon and both Solid arms allocate a per-row signal that the plain-object
+  frameworks (Vue, Vapor, Octane) do not.
 
 ### Scaling — select, partial update, swap at 100 → 20,000 rows
 
-*Final pass, one run.* A batch instrument (K operations per timing window)
-resolves per-op cost below the clock tick. It has Pyreon, Octane and Solid arms
-(no Vapor arm).
+*2026-11-05 final pass, one run (Octane 0.16, Solid 1.9.17).* A batch
+instrument (K operations per timing window) resolves per-op cost below the
+clock tick. It has Pyreon, Octane and Solid arms (no Vapor arm).
 
 - **Select** is O(1) for Pyreon and Octane — flat at about 0.43µs vs 0.83µs,
   Pyreon **1.86–2.04×** faster at every size — and O(n) for Solid, which
@@ -176,27 +186,53 @@ window check).
 
 ## Scenarios beyond the row list
 
-*Final pass, two runs, real Chromium, 100 samples per cell.*
+*2026-11-24 refresh, two runs, real Chromium, 100 samples per cell (memo 60).*
 
 | Scenario | Pyreon (run 1 / run 2) | Fastest rival (run 1 / run 2) | Verdict |
 | --- | --- | --- | --- |
-| dbmon tick (100×6 cells, all change) | 1.71 / 1.70ms | Octane 1.74 / 1.68ms | 🤝 tie (Svelte tied too) |
-| mount deep tree (2,047 components) | 3.59 / 3.58ms | Solid 3.06 / 3.10ms | **Solid 1.15–1.18×**; React 🤝 Pyreon |
-| context → 1,024 consumers | 1.87 / 1.89ms | Solid 1.96 / 1.92ms | Pyreon 1.05× in run 1, 🤝 in run 2 |
-| effect list: update 500 | 835 / 797µs | Solid 870 / 880µs | 🤝 in run 1, Pyreon 1.10× in run 2 |
-| effect list: dispose 500 | 50 / 45µs | Solid 45 / 40µs | **Solid 1.11–1.13×** (one clock tick) |
-| memo wall: blocked (300 consumers) | 11 / 11µs | Vue 16 / 16µs | **Pyreon 1.4×** |
-| memo wall: passthrough | 450 / 451µs | Svelte 487 / 487µs | **Pyreon 1.08×** |
+| mount deep tree (2,047 components) | 3.09 / 3.03ms | Solid 1.9 3.03 / 3.02ms | 🤝 tie; Solid 2.0 (1.09–1.11×) and React (1.12–1.15×) slower |
+| context → 1,024 consumers | 1.74 / 1.82ms | Solid 2.0 1.84 / Solid 1.9 1.72ms | 🤝 tie |
+| effect list: update 500 | 880 / 857µs | Solid 2.0 875 / 860µs | 🤝 tie |
+| effect list: dispose 500 | 45 / 45µs | Solid 2.0 45 / 35µs | no verdict (below 10 clock ticks) |
+| memo wall: blocked (300 consumers) | 12.6 / 12.8µs | Solid 2.0 13.0 / 12.9µs | 🤝 tie; Vue 1.25× slower |
+| memo wall: passthrough | 410 / 407µs | Svelte 438 / 437µs | **Pyreon 1.07×** |
+| dbmon tick (100×6 cells, all change) | 1.71 / 1.70ms | Octane 1.74 / 1.68ms | 🤝 tie, Svelte tied too (2026-11-05) |
 
-- **dbmon** changes every value every tick, which removes a signal graph's
-  skip-unchanged advantage by construction; the field converges on the
+- **Deep-tree mount is no longer a loss.** The 2026-11-05 record had Solid
+  1.15–1.18× ahead. Bisecting with two runs per commit puts the change at
+  #4199, which folds static component props at compile time and forwards
+  pass-through getters: the commit before it still loses 1.16–1.17×, #4199
+  ties.
+- **Memory is where the deep tree still loses.** One mounted 2,047-component
+  tree retains 531.7KB in Pyreon, 410.2KB in Solid 2.0 and 202–207KB in Solid
+  1.9 (two runs, median of 7 samples each, no confidence interval): 1.30× and
+  about 2.6×.
+- **Dispose 500** reads 35–50µs for Pyreon and both Solids, under 10 clock
+  ticks, so it gets no verdict; the 2026-11-05 "Solid by one tick" loss is
+  withdrawn as a verdict.
+- **dbmon** (not re-run) changes every value every tick, which removes a signal
+  graph's skip-unchanged advantage by construction; the field converges on the
   DOM-write floor, and it is never quoted as a win for anyone.
-- **Deep-tree mount is Pyreon's clearest loss** — 1.15–1.18× behind Solid;
-  React and Pyreon are a statistical tie.
-- **Dispose 500** sits at two or three clock ticks, and Solid is ahead by one
-  tick in both runs. An earlier on-CPU profile put Pyreon's teardown below
-  Solid's, so the wall-clock gap is not reproduced as JavaScript cost; it is
-  still a loss on this board.
+
+**Keyed list with conditional slots (`maplist`)** — 1,000 rows, a keyed list
+whose rows carry a conditional status cell and an empty-state slot (2026-11-24
+refresh, two runs). Pyreon is measured with `<For>` and with a plain keyed
+`.map()` of JSX rows:
+
+| op | Pyreon `<For>` | Pyreon `.map()` | Fastest rival | Verdict, `<For>` · `.map()` |
+| --- | ---: | ---: | --- | --- |
+| create 1,000 | 10.01ms | 11.47ms | Solid 1.9 9.70ms | loss 1.03× · loss 1.18–1.19× |
+| replace all | 11.44ms | 13.70ms | Solid 2.0 10.80ms | loss 1.05–1.06× · loss 1.27× |
+| update one cell | 445µs | 463µs | Solid 1.9 455µs | 🤝 · 🤝 |
+| toggle one conditional | 460µs | 455µs | Solid 1.9 470µs | 🤝 · 🤝 |
+| swap rows 2 ↔ 999 | 642µs | 1.50ms | Solid 2.0 697µs | 🤝 · loss 2.15–2.25× |
+| remove one row | 7.95ms | 8.88ms | Solid 2.0 7.94ms | 🤝 · loss 1.12–1.13× |
+| clear 1,000 | 490µs | 787µs | Vue 3 335µs | loss 1.46–1.58× · loss 2.34–2.35× |
+
+(first run shown; ratios span both runs.) `<For>` clear trails Vue 3, Solid
+2.0 and Preact; the single-row ops also tie on their batch-timed twins.
+
+*The library scenarios below are from the 2026-11-05 final pass.*
 
 **Flow diagrams — `@pyreon/flow` vs React Flow 12** (500 nodes, 499 edges, one
 run): Pyreon wins every op — mount 1.17× (17.19 vs 20.12ms), drag ×60 7.25×,
@@ -216,7 +252,7 @@ rows, real Chromium, one run): Pyreon wins mount (1.15×), 60 scroll steps
 (1.04×), jump-to-row (1.10×) and unmount (3.25×).
 
 Reproduce: `cd examples/benchmark && bun bench-scenarios.ts --scenario <name>`
-(`dbmon`, `tree`, `effects`, `memo`, `flow`, `table`, `virtual`).
+(`dbmon`, `tree`, `effects`, `memo`, `maplist`, `flow`, `table`, `virtual`).
 
 ## Charts
 
@@ -448,12 +484,11 @@ Reproduce: `cd packages/fundamentals/<pkg> && NODE_ENV=production bun bench/<fil
 
 ## Bundle sizes
 
-*Final pass.* The same keyed-table app built per framework, gzip -9: Vanilla
-3.6KB · **Solid 7.5KB** · Preact 10.1 · Svelte 16.1 · **Pyreon 17.2** (2.30×
-Solid) · Vue 27.4 · Octane 43.1 · React 69.6. Every entry carries the same
-shared runner module. Pyreon was 16.6KB on 2026-10-20 and 17.1KB in the
-overnight run; the bundle-budget history points the first 0.5KB at
-runtime-dom changes for hydration and compiled-accessor correctness.
+*2026-11-24 refresh.* The same keyed-table app built per framework, gzip -9:
+Vanilla 3.6KB · **Solid 7.7KB** · Preact 10.1 · Svelte 16.1 · **Pyreon 18.5**
+(2.41× Solid) · Vue 27.7 · Octane 33.9 · React 69.6. Every entry carries the
+same shared runner module. Pyreon was 16.6KB on 2026-10-20 and 17.2KB on
+2026-11-05; the growth since is not attributed to specific changes.
 
 Every published package's main-entry size and canonical minimal-import size are
 also gated in CI (ceilings in `scripts/size-budgets/`): a pull request that
@@ -490,38 +525,42 @@ isolation, correctness gates). Figures are from the overnight run:
 
 ## Harness caveats
 
-Three defects in the benchmark harnesses were found while publishing the
-2026-11-05 final pass. They are disclosed here rather than fixed silently:
-
-- **The harness confidence intervals are too narrow.** `bench-fair` bootstraps
-  its 100 samples as if they were independent, but they come from 5 page loads
-  of 20, and page-to-page medians differ (on swap, 620–860µs for every
-  framework). A fix that resamples whole page loads is in review (#4129). The
-  row-list verdicts on this page are already recomputed that way from the saved
-  samples. The scenario suites pool their passes the same way and their logs do
-  not keep per-pass samples, so the close scenario verdicts (context,
-  effect-list update and dispose, table mount and single-cell update, the 10k
-  line-chart mounts) stay provisional until they are re-run.
-- **The scenario harness can label a loss as a tie.** It ranks every arm against
-  the leader; when the leader is another Pyreon arm with a wide interval (the
-  columnar chart arm at 1,000,000 points), a loss to a rival is printed as
-  `🤝`. The chart verdicts above are taken against the rival directly.
+- **Page-load-aware intervals.** Since #4129 the harnesses resample whole page
+  loads instead of treating 100 samples from 5 page loads as independent (on
+  swap, per-page medians range from 620 to 860µs for every framework). Every
+  figure the 2026-11-24 refresh measured uses it. The scenario rows kept from
+  2026-11-05 (dbmon, table, charts, flow, virtual) were pooled before it, so
+  their close verdicts (table mount and single-cell update, the 10k line-chart
+  mounts) stay provisional until they are re-run.
+- **No verdict floor in the scenario harness.** It prints a verdict for
+  effect-list dispose at 35–50µs; this page applies the row board's 10-tick
+  floor by hand.
+- **The scenario harness could label a loss as a tie** when the leader was
+  another Pyreon arm with a wide interval (the columnar chart arm at 1,000,000
+  points). The 2026-11-05 chart verdicts above are taken against the rival
+  directly; since #4129 the harness itself judges against the best rival.
 - **A stale version label.** The table bench prints `table-core@9.0.0`; 9.3.1
   is installed and is what runs. Only the label is wrong.
 
 ## What we don't win (the standing list)
 
-Kept current against the 2026-11-05 final pass:
+Kept current against the 2026-11-24 refresh (items 1–3 and 8) and the
+2026-11-05 runs (the rest):
 
-1. **Deep component-tree mount** — 1.15–1.18× behind Solid (3.59 vs 3.06ms);
-   React ties Pyreon.
-2. **Keyed row-list board** — tied for first, not outright, on create 1,000,
-   replace, partial update, swap and remove (Vue 3.6 Vapor release candidate,
-   Octane 0.16, Vue 3); create 10,000 and append win only one of two runs.
-   Clear rows is the only outright win.
-3. **Swap at 100 and 1,000 rows** — Octane 1.12× and 1.10× at the default batch
+1. **Memory per component** — a mounted 2,047-component tree retains 531.7KB
+   in Pyreon against Solid 2.0's 410.2KB and Solid 1.9's 202–207KB; on the
+   row-list board Preact's retained heap is lighter (3.14 vs 3.21MB).
+2. **Keyed list with conditional slots** — `<For>` loses clear 1,000 rows
+   (1.46–1.58× to Vue 3, with Solid 2.0 and Preact also ahead), replace
+   (1.05–1.06×) and create (1.03×); a plain `.map()` of JSX rows loses create,
+   replace, swap, remove and clear (1.12–2.35×).
+3. **Keyed row-list board** — tied for first, not outright, on create 1,000,
+   replace, remove, create 10,000 and append (Vue 3.6 Vapor release candidate,
+   Octane 0.19, Vue 3); partial update and swap split between runs, swap with
+   a 1.11× loss to Vapor in one. Clear rows and batch-timed select are the
+   outright wins.
+4. **Swap at 100 and 1,000 rows** — Octane 1.12× and 1.10× at the default batch
    window, one run; the result moves with the window size.
-4. **Effect-list dispose** — Solid ahead in both runs, by one clock tick.
 5. **Line-chart mounts** — with row-object input, 10k points is 1.17–1.20×
    behind uPlot and 1M points 1.16–1.20× behind Chart.js; with columnar input
    these are ties except one 1.18× loss to uPlot at 10k.
@@ -530,7 +569,7 @@ Kept current against the 2026-11-05 final pass:
 7. **Signal creation** — about 5× slower than Preact on both engines; deep
    computed chains 1.15–1.21× (JSC) to 1.42–1.43× (V8); on V8 also wide fan-out
    by 3–4%.
-8. **Bundle size** — 17.2KB vs Solid 7.5KB, Preact 10.1KB and Svelte 16.1KB for
+8. **Bundle size** — 18.5KB vs Solid 7.7KB, Preact 10.1KB and Svelte 16.1KB for
    the same app.
 9. **Router at 10 routes** (Hono), and individual static/dynamic/splat matches
    against radix3 and find-my-way.
@@ -539,8 +578,8 @@ Kept current against the 2026-11-05 final pass:
     form-benchmark heap (Solid modular-forms is lighter), and table and virtual
     mount under happy-dom, plus table single-cell update and sort against
     memoized rows at some sizes under happy-dom.
-11. **Not wins, despite a good run** — create 10,000 and append on the row-list
-    board, context propagation, effect-list updates, and data-table mount and single-cell update each won one run and tied the
+11. **Not wins, despite a good run** — partial update on the row-list board,
+    and data-table mount and single-cell update, each won one run and tied the
     other.
 12. **Unbundled Node** — any process importing `lib/` without a bundler pays
     about 145ns per dev-gate read.

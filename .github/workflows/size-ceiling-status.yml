@@ -12,11 +12,17 @@ name: Size Ceiling Status
 # A `workflow_run` trigger, not a job in ci.yml: it runs in the default-branch
 # context with `issues: write`, which the Build job (it runs pull request code)
 # must not hold, and pull requests never see a check row for it.
+#
+# `branches: [main]` keeps pull request and merge-queue CI runs from creating
+# a run at all: the job only ever acts on a push to main, and without the
+# filter every pull request CI completion created a skipped run (660 of 831
+# runs, 2026-11-16 → 11-23).
 on:
   workflow_run:
     workflows:
       - CI
     types: [completed]
+    branches: [main]
 
 permissions: {}
 

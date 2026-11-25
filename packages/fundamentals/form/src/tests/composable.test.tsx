@@ -3,38 +3,17 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it, vi } from 'vitest'
-import { field } from '../field'
 import { Form, Submit } from '../form-component'
 import { useField } from '../use-field'
 import { useForm } from '../use-form'
 import { FormProvider } from '../context'
 
-// ─── field() factory ────────────────────────────────────────────────────────
+// ─── useForm with initial values and validators ────────────────────────────
 
-describe('field()', () => {
-  it('creates a FieldDefinition with name, default, and validator', () => {
-    const email = field('email', '', (v) => (!v ? 'Required' : undefined))
-    expect(email.name).toBe('email')
-    expect(email.defaultValue).toBe('')
-    expect(email.validator).toBeDefined()
-  })
-
-  it('creates a FieldDefinition without validator', () => {
-    const name = field('name', 'default')
-    expect(name.name).toBe('name')
-    expect(name.defaultValue).toBe('default')
-    expect(name.validator).toBeUndefined()
-  })
-})
-
-// ─── useForm with fields array ──────────────────────────────────────────────
-
-describe('useForm({ fields })', () => {
-  it('creates form from field definitions', () => {
-    const email = field('email', '')
-    const password = field('password', '')
+describe('useForm({ initialValues, validators })', () => {
+  it('creates a field per initial value', () => {
     const form = useForm({
-      fields: [email, password],
+      initialValues: { email: '', password: '' },
       onSubmit: () => {},
     })
 
@@ -45,9 +24,12 @@ describe('useForm({ fields })', () => {
   })
 
   it('field validators run on submit', async () => {
-    const email = field('email', '', (v: string) => (!v ? 'Required' : undefined))
     const onSubmit = vi.fn()
-    const form = useForm({ fields: [email], onSubmit })
+    const form = useForm({
+      initialValues: { email: '' },
+      validators: { email: (v: string) => (!v ? 'Required' : undefined) },
+      onSubmit,
+    })
 
     await form.handleSubmit()
     expect(onSubmit).not.toHaveBeenCalled()
@@ -55,12 +37,14 @@ describe('useForm({ fields })', () => {
   })
 
   it('cross-field validation works via allValues', async () => {
-    const password = field('password', 'secret')
-    const confirm = field('confirmPassword', 'wrong', (v: string, all: Record<string, unknown>) =>
-      v !== all.password ? 'Must match' : undefined,
-    )
     const onSubmit = vi.fn()
-    const form = useForm({ fields: [password, confirm], onSubmit })
+    const form = useForm({
+      initialValues: { password: 'secret', confirmPassword: 'wrong' },
+      validators: {
+        confirmPassword: (v: string, all: Record<string, unknown>) => (v !== all.password ? 'Must match' : undefined),
+      },
+      onSubmit,
+    })
 
     await form.handleSubmit()
     expect(form.fields.confirmPassword.error()).toBe('Must match')
@@ -72,9 +56,7 @@ describe('useForm({ fields })', () => {
   })
 
   it('values() returns typed snapshot', () => {
-    const name = field('name', 'Alice')
-    const age = field('age', 30)
-    const form = useForm({ fields: [name, age], onSubmit: () => {} })
+    const form = useForm({ initialValues: { name: 'Alice', age: 30 }, onSubmit: () => {} })
 
     const values = form.values()
     expect(values.name).toBe('Alice')
@@ -86,8 +68,7 @@ describe('useForm({ fields })', () => {
 
 describe('useField(name) — context mode', () => {
   it('reads field from FormProvider context', () => {
-    const email = field('email', 'test@example.com')
-    const form = useForm({ fields: [email], onSubmit: () => {} })
+    const form = useForm({ initialValues: { email: 'test@example.com' }, onSubmit: () => {} })
     const ctr = document.createElement('div')
 
     let fieldValue: string | undefined
@@ -102,8 +83,7 @@ describe('useField(name) — context mode', () => {
   })
 
   it('throws when field name not found', () => {
-    const email = field('email', '')
-    const form = useForm({ fields: [email], onSubmit: () => {} })
+    const form = useForm({ initialValues: { email: '' }, onSubmit: () => {} })
     const ctr = document.createElement('div')
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -124,8 +104,7 @@ describe('useField(name) — context mode', () => {
   })
 
   it('register() works from context-based useField', () => {
-    const email = field('email', '')
-    const form = useForm({ fields: [email], onSubmit: () => {} })
+    const form = useForm({ initialValues: { email: '' }, onSubmit: () => {} })
     const ctr = document.createElement('div')
 
     let registerResult: ReturnType<ReturnType<typeof useField>['register']> | undefined
@@ -147,8 +126,7 @@ describe('useField(name) — context mode', () => {
 
 describe('<Form> + <Submit>', () => {
   it('<Form of={form}> provides context and renders <form>', () => {
-    const email = field('email', '')
-    const form = useForm({ fields: [email], onSubmit: () => {} })
+    const form = useForm({ initialValues: { email: '' }, onSubmit: () => {} })
     const ctr = document.createElement('div')
 
     mount(h(Form, { of: form }, h('input', { id: 'test' })), ctr)
@@ -159,8 +137,7 @@ describe('<Form> + <Submit>', () => {
 
   it('<Form> provides context so handleSubmit works', async () => {
     const onSubmit = vi.fn()
-    const email = field('email', 'test@example.com')
-    const form = useForm({ fields: [email], onSubmit })
+    const form = useForm({ initialValues: { email: 'test@example.com' }, onSubmit })
     const ctr = document.createElement('div')
 
     mount(h(Form, { of: form }, h(Submit, {}, 'Go')), ctr)
@@ -172,8 +149,7 @@ describe('<Form> + <Submit>', () => {
   })
 
   it('<Submit> renders with correct type and text', () => {
-    const email = field('email', '')
-    const form = useForm({ fields: [email], onSubmit: () => {} })
+    const form = useForm({ initialValues: { email: '' }, onSubmit: () => {} })
     const ctr = document.createElement('div')
 
     mount(h(Form, { of: form }, h(Submit, {}, 'Login')), ctr)
@@ -186,8 +162,7 @@ describe('<Form> + <Submit>', () => {
   it('isSubmitting signal tracks async onSubmit', async () => {
     let resolveSubmit: () => void
     const submitPromise = new Promise<void>((r) => { resolveSubmit = r })
-    const email = field('email', 'a@b.com')
-    const form = useForm({ fields: [email], onSubmit: () => submitPromise })
+    const form = useForm({ initialValues: { email: 'a@b.com' }, onSubmit: () => submitPromise })
 
     expect(form.isSubmitting()).toBe(false)
 
@@ -202,8 +177,7 @@ describe('<Form> + <Submit>', () => {
   })
 
   it('useField works inside <Form> without explicit form prop', () => {
-    const email = field('email', 'hello@world.com')
-    const form = useForm({ fields: [email], onSubmit: () => {} })
+    const form = useForm({ initialValues: { email: 'hello@world.com' }, onSubmit: () => {} })
     const ctr = document.createElement('div')
 
     let value: string | undefined
@@ -218,8 +192,7 @@ describe('<Form> + <Submit>', () => {
   })
 
   it('useField<T> narrows the type via generic', () => {
-    const age = field('age', 25)
-    const form = useForm({ fields: [age], onSubmit: () => {} })
+    const form = useForm({ initialValues: { age: 25 }, onSubmit: () => {} })
     const ctr = document.createElement('div')
 
     let value: number | undefined
@@ -238,9 +211,7 @@ describe('<Form> + <Submit>', () => {
 
 describe('setInitialValues', () => {
   it('updates field values and clears state', () => {
-    const name = field('name', '')
-    const email = field('email', '')
-    const form = useForm({ fields: [name, email], onSubmit: () => {} })
+    const form = useForm({ initialValues: { name: '', email: '' }, onSubmit: () => {} })
 
     // Simulate user typing
     form.fields.name.setValue('dirty')
@@ -256,9 +227,7 @@ describe('setInitialValues', () => {
   })
 
   it('partial update only affects specified fields', () => {
-    const name = field('name', 'Bob')
-    const email = field('email', 'bob@test.com')
-    const form = useForm({ fields: [name, email], onSubmit: () => {} })
+    const form = useForm({ initialValues: { name: 'Bob', email: 'bob@test.com' }, onSubmit: () => {} })
 
     form.setInitialValues({ email: 'new@test.com' })
 
@@ -292,8 +261,7 @@ describe('reactive initialValues accessor', () => {
 
 describe('disabled / readOnly', () => {
   it('form-level disabled signal is reactive', () => {
-    const name = field('name', 'test')
-    const form = useForm({ fields: [name], onSubmit: () => {} })
+    const form = useForm({ initialValues: { name: 'test' }, onSubmit: () => {} })
 
     expect(form.disabled()).toBe(false)
     form.disabled.set(true)
@@ -301,8 +269,7 @@ describe('disabled / readOnly', () => {
   })
 
   it('field-level disabled is independent', () => {
-    const name = field('name', 'test')
-    const form = useForm({ fields: [name], onSubmit: () => {} })
+    const form = useForm({ initialValues: { name: 'test' }, onSubmit: () => {} })
 
     form.fields.name.disabled.set(true)
     expect(form.fields.name.disabled()).toBe(true)
@@ -310,8 +277,7 @@ describe('disabled / readOnly', () => {
   })
 
   it('register() includes disabled/readOnly computed (form OR field)', () => {
-    const name = field('name', 'test')
-    const form = useForm({ fields: [name], onSubmit: () => {} })
+    const form = useForm({ initialValues: { name: 'test' }, onSubmit: () => {} })
 
     const reg = form.register('name' as never)
     expect(reg.disabled!()).toBe(false)
@@ -328,10 +294,8 @@ describe('disabled / readOnly', () => {
   })
 
   it('disabled fields excluded from submit values', async () => {
-    const name = field('name', 'Alice')
-    const email = field('email', 'alice@test.com')
     const onSubmit = vi.fn()
-    const form = useForm({ fields: [name, email], onSubmit })
+    const form = useForm({ initialValues: { name: 'Alice', email: 'alice@test.com' }, onSubmit })
 
     // Disable email field
     form.fields.email.disabled.set(true)
@@ -343,10 +307,8 @@ describe('disabled / readOnly', () => {
   })
 
   it('readOnly fields included in submit values', async () => {
-    const name = field('name', 'Alice')
-    const email = field('email', 'alice@test.com')
     const onSubmit = vi.fn()
-    const form = useForm({ fields: [name, email], onSubmit })
+    const form = useForm({ initialValues: { name: 'Alice', email: 'alice@test.com' }, onSubmit })
 
     form.fields.email.readOnly.set(true)
 
@@ -357,8 +319,7 @@ describe('disabled / readOnly', () => {
   })
 
   it('<Form disabled> sets form-level disabled', () => {
-    const name = field('name', '')
-    const form = useForm({ fields: [name], onSubmit: () => {} })
+    const form = useForm({ initialValues: { name: '' }, onSubmit: () => {} })
     const ctr = document.createElement('div')
 
     mount(h(Form, { of: form, disabled: true }), ctr)
@@ -366,8 +327,7 @@ describe('disabled / readOnly', () => {
   })
 
   it('<Form readOnly> sets form-level readOnly', () => {
-    const name = field('name', '')
-    const form = useForm({ fields: [name], onSubmit: () => {} })
+    const form = useForm({ initialValues: { name: '' }, onSubmit: () => {} })
     const ctr = document.createElement('div')
 
     mount(h(Form, { of: form, readOnly: true }), ctr)

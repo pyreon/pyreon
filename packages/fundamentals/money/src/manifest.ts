@@ -7,7 +7,7 @@ export default defineManifest({
   title: 'Money',
   tagline: 'Exact amounts of money as plain data: decimal-string amounts, bigint math, nine rounding modes, allocation that never loses a cent',
   description:
-    'A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency\'s minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits come from `Intl` (no table is shipped); `defineCurrency` adds custom ones. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `@pyreon/format` displays a Money.',
+    'A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency\'s minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits are ISO 4217 minor units (ISO 4217 list one is shipped, 178 codes and their minor units, so codes and digits agree on every engine; `Intl` is never asked); `defineCurrency` adds custom currencies or gives an ISO one the digits a payment provider uses. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `formatCurrency(m)` from `@pyreon/format` displays a Money exactly.',
   category: 'universal',
   multiplatform: {
     tier: 'web-only',
@@ -18,7 +18,7 @@ export default defineManifest({
     'Exact: bigint scaled-integer math, never a binary float; a float with floating-point noise throws and says how to fix it',
     'allocate and split: parts sum EXACTLY to the amount; remainder units go to the largest fractional parts, ties to the first',
     'Nine rounding modes named as Intl.NumberFormat roundingMode names, verified against Intl; cash rounding with increments',
-    'Currency digits from Intl (JPY 0, EUR 2, KWD 3) plus bounded defineCurrency; minor-unit converters for Stripe-style APIs',
+    'ISO 4217 currency digits, identical on every engine (JPY 0, EUR 2, HUF 2, KWD 3), plus bounded defineCurrency for custom codes and provider overrides; minor-unit converters for Stripe-style APIs',
     'Exact decimal-string math in @pyreon/money/decimal; value-last forms in @pyreon/money/fp',
     'Zero dependencies; mixing currencies throws with both codes named',
   ],
@@ -72,13 +72,16 @@ round(money('1.23', 'CHF'), { increment: '0.05' })           // => { amount: '1.
 round(money('2.50', 'EUR'), { digits: 0, mode: 'halfEven' }) // => { amount: '2.00', currency: 'EUR' }`, { mistakes: ['`toFixed(2)` as rounding: it works on the binary float, so `(1.005).toFixed(2)` is "1.00". Use `money("1.005", "EUR", { rounding: "halfExpand" })`'] }),
     entry('convert', '(m: Money, to: CurrencyCode, rate: number | string | bigint, options?: { rounding?: RoundingMode }) => Money', 'Convert with a rate (`1 unit of m.currency = rate units of to`), rounded to the target\'s digits. Give the rate as a decimal string. Keep `{ from, to, rate }` next to the result: it is the audit trail.', `convert(money('100.00', 'EUR'), 'USD', '1.0842')   // => { amount: '108.42', currency: 'USD' }
 convert(money('100.00', 'EUR'), 'JPY', '162.5')     // => { amount: '16250', currency: 'JPY' }`),
-    entry('currencyDigits', '(code: CurrencyCode) => number', 'The minor-unit digits of a currency from the platform (`Intl`; no table is shipped) or `defineCurrency`.', `currencyDigits('EUR')                     // => 2
+    entry('currencyDigits', '(code: CurrencyCode) => number', 'The minor-unit digits of a currency: what `defineCurrency` gave it, else its ISO 4217 minor unit. The same on every engine (`Intl` is never asked for digits: V8 reports CLDR display digits, 0 for HUF, IDR, COP, IQD and others, while JavaScriptCore reports ISO 4217).', `currencyDigits('EUR')                     // => 2
 currencyDigits('JPY')                     // => 0
-currencyDigits('KWD')                     // => 3`),
-    entry('isCurrency', '(code: string) => boolean', 'Whether `code` is an upper-case ISO 4217 code the platform knows, or a registered one. Never throws.', `isCurrency('EUR')                         // => true
+currencyDigits('KWD')                     // => 3
+currencyDigits('HUF')                     // => 2`),
+    entry('isCurrency', '(code: string) => boolean', 'Whether `code` is a current ISO 4217 code (list one as amended 2026-09-17, shipped: engines list different codes) or a registered one. Never throws.', `isCurrency('EUR')                         // => true
 isCurrency('eur')                         // => false`),
-    entry('defineCurrency', '(code: string, spec: { digits: number }) => void', 'Register a currency the platform does not know (crypto, points, a test currency). The code is 2 to 12 upper-case letters or digits starting with a letter. Re-registering with the same digits is fine; different digits throw, as does changing an ISO currency. At most 64 are registered.', `defineCurrency('PTS', { digits: 0 })
-currencyDigits('PTS')                     // => 0`),
+    entry('defineCurrency', '(code: string, spec: { digits: number }) => void', 'Register a currency the platform does not know (crypto, points, a test currency), or give an ISO currency the digits your payment provider uses (ISK in hundredths). The code is 2 to 12 upper-case letters or digits starting with a letter. A code is defined once, at startup, in a module both the server and client entries import (each realm has its own registry): the same digits again is fine, different digits throw. At most 64 are registered.', `defineCurrency('PTS', { digits: 0 })
+currencyDigits('PTS')                     // => 0
+defineCurrency('ISK', { digits: 2 })
+fromMinor(12345, 'ISK')                   // => { amount: '123.45', currency: 'ISK' }`),
     typeEntry('Money', 'interface Money { readonly amount: string; readonly currency: CurrencyCode }', 'Exact money as plain data. The amount is canonical decimal text with exactly the currency\'s digits. A Money is structurally the `{ amount, currency }` shape payment APIs and `@pyreon/format` use.', `const price: Money = { amount: '9.99', currency: 'EUR' }`),
     typeEntry('Decimal', 'type Decimal = string', 'Canonical decimal text: optional `-`, digits, optional `.` and digits; no exponent, no `+`, no leading zeros, never `-0`.', `const d: Decimal = '9.90'`),
     typeEntry('CurrencyCode', 'type CurrencyCode = string', 'An ISO 4217 code (`"EUR"`) or a code registered with `defineCurrency`.', `const c: CurrencyCode = 'EUR'`),
@@ -92,7 +95,7 @@ currencyDigits('PTS')                     // => 0`),
     { label: 'Order of rounding', note: 'Rounding each line and then summing is not the same as summing and then rounding. Decide which one the invoice means, state it, and use `allocate` when parts must add up to a total.' },
     { label: 'Limits', note: 'Inputs may have at most 4096 digits (a bigger one, or an exponent that would build one, throws a RangeError that says so). Amounts are bigint internally, so size is otherwise unbounded. The currency registry holds at most 64 custom currencies.' },
     { label: 'Defaults', note: '`divide` of decimals and `ratio` need a scale: 20 digits for `decimal.divide`, 10 for `ratio`, both overridable. `divide(Money, n)` rounds to the currency\'s digits.' },
-    { label: 'Formatting', note: 'This package formats nothing. `@pyreon/format` will take a `{ amount, currency }` directly; until then use `Intl.NumberFormat` with the amount STRING (`new Intl.NumberFormat("en", { style: "currency", currency: "EUR" }).format("9.99")`), which formats decimal strings exactly. `formatCurrency(Number(m.amount), ...)` loses precision for large amounts.' },
+    { label: 'Formatting', note: 'This package formats nothing. `formatCurrency(m)` from `@pyreon/format` takes a Money directly and formats the amount string exactly, with the Money\'s own digits. Never `formatCurrency(Number(m.amount), ...)`: a large amount loses precision as a number.' },
   ],
   since: '0.53.0',
 })

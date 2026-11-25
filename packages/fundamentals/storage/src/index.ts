@@ -54,9 +54,3 @@ export type {
   StorageOptions,
   StorageSignal,
 } from './types'
-
-// ─── Testing ─────────────────────────────────────────────────────────────────
-
-export { _resetDBCache } from './indexed-db'
-export { _resetStorageListener } from './local'
-export { _resetRegistry } from './registry'

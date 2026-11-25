@@ -12,7 +12,8 @@
  * These require a dev/test build — under a production build the reactive graph
  * is tree-shaken away, so they throw a clear error rather than silently pass.
  */
-import { _rdNodeId, activateReactiveDevtools, getReactiveGraph } from '@pyreon/reactivity'
+import { activateReactiveDevtools, getReactiveGraph } from '@pyreon/reactivity'
+import { _rdNodeId } from '@pyreon/reactivity/internal'
 
 function nodeIdOf(target: unknown, what: string): number {
   const id = _rdNodeId(target)

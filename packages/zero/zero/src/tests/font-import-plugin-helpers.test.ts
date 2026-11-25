@@ -12,7 +12,7 @@ import {
   hashFontFilename,
   inferFontMeta,
   parseFontQueryOverrides,
-} from '../font-import-plugin'
+} from '../internal-server'
 
 describe('fontMimeType', () => {
   it.each([

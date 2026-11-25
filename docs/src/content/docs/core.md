@@ -1894,7 +1894,7 @@ function createUniqueId(): string
 | `normalizeStyleValue`, `toKebabCase`, `CSS_UNITLESS` | The style normalization the renderer uses (number → `px` unless unitless). |
 | `reportError(ctx)` | Dispatches an `ErrorContext` to every handler registered with `registerErrorHandler`. |
 | `isUnsafeUrl`, `isUrlAttr`, `URL_ATTRS` | The URL guard used for `href`/`src`-like attributes. |
-| `nativeCompat`, `isNativeCompat` | Marks a component to bypass compat-mode wrapping. See [nativeCompat](/docs/native-compat). |
+| `nativeCompat` | Marks a component to bypass compat-mode wrapping. See [nativeCompat](/docs/native-compat). |
 
 ## Telemetry
 
@@ -1936,6 +1936,20 @@ interface ErrorContext {
   props?: Record<string, unknown>
 }
 ```
+
+#### Errors thrown during unmount
+
+A throw from user code while a component unmounts never stops the rest of the teardown; it is logged and reported, and how it is labelled depends on where the code was registered:
+
+| Thrown by | Logged as | `component` / `phase` |
+| --- | --- | --- |
+| an `onUnmount` hook, or the cleanup an `onMount` callback returned | `[Pyreon] Error in onUnmount hook of <Name>` | `Name` / `'unmount'` |
+| a ref callback receiving `null`, or an object ref's `current` setter | `[Pyreon] Error in ref callback` | `'ref callback'` / `'unmount'` |
+| an `onCleanup` registered inside `onMount`, or inside an `effect()` | `[pyreon] Unhandled effect error` | `'Effect'` / `'effect'` |
+
+The last row goes through the reactivity error handler (`setErrorHandler`), which has no component: `EffectScope.stop()` runs those cleanups and cannot name the component that owns the scope. Use `onUnmount` (or return a cleanup from `onMount`) when the report should carry the component's name.
+
+A ref also receives `null` when a dynamic spread (`<div {...props()}>`) re-applies with a new props object. A throw there is reported with `phase: 'unmount'` too: it is the release of that ref, even though the element stays.
 
 ### Multiple Error Handlers
 
@@ -2199,7 +2213,7 @@ const Accordion = defineComponent(
 
 ## Internal APIs
 
-These APIs are used by the renderer and are not intended for application code.
+These APIs are used by the renderer and are not intended for application code. They live on the internal `@pyreon/core/internal` subpath (no semver promise), together with `setContextStackProvider`, `getContextStackLength`, `removeContextFrame` and `REACTIVE_PROP`.
 
 ### runWithHooks
 

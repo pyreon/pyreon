@@ -234,6 +234,11 @@ describe('a non-preset toast member call is named', () => {
     expect(r.code).not.toContain('toast.update')
   })
 
+  it('`toast.list()` is a real method too, so it gets the follow-up wording', () => {
+    const r = swift(handler('toast.list()'))
+    expect(warn(r)).toContain('`toast.list` has no native lowering yet')
+  })
+
   it('the presets still lower with no warning', () => {
     const r = swift(handler('toast.success("ok")'))
     expect(r.warnings).toEqual([])

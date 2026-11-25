@@ -3,12 +3,12 @@ import { h, popContext } from '@pyreon/core'
 import { effect, signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import * as format from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { _resetWarnings } from '../warn'
 
 const { formatNumber, provideLocale, provideTimeZone, setLocale } = format
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 function render(vnode: VNodeChild) {
   const root = document.createElement('div')

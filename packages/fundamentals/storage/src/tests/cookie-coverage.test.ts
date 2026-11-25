@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { _resetRegistry, setCookieSource, useCookie } from '../index'
+import { setCookieSource, useCookie } from '../index'
+import { _resetRegistry } from '../internal'
 
 describe('useCookie — full coverage', () => {
   beforeEach(() => {

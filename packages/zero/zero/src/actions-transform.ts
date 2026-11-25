@@ -26,6 +26,8 @@ import { createHash } from 'node:crypto'
 import { parseSync } from 'oxc-parser'
 
 const ACTIONS_MODULE = '@pyreon/zero/actions'
+/** Where the rewritten calls' helpers come from — internal, not public API. */
+const INTERNAL_MODULE = '@pyreon/zero/internal'
 const SERVER_FN = '__zeroDefineActionWithId'
 const CLIENT_FN = '__zeroActionStub'
 
@@ -244,5 +246,5 @@ export function transformServerActions(
   const imported = ssr
     ? `_defineActionWithId as ${SERVER_FN}`
     : `_actionStub as ${CLIENT_FN}`
-  return `import { ${imported} } from ${JSON.stringify(ACTIONS_MODULE)};${out}`
+  return `import { ${imported} } from ${JSON.stringify(INTERNAL_MODULE)};${out}`
 }

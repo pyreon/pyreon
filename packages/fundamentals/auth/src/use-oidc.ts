@@ -1,8 +1,9 @@
-import { computed } from '@pyreon/reactivity'
+import { computed, getCurrentScope, onScopeDispose } from '@pyreon/reactivity'
 import { createAuth, memoryFlowStore } from './auth'
 import type { AuthStatus, FlowStore, SignOutOptions } from './auth'
 import { FLOW_TTL_MS } from './oidc'
 import type { FetchLike, PendingFlow } from './oidc'
+import { randomToken } from './pkce'
 
 /**
  * Options for {@link useOidc}. Literal values in shared source also lower to the native
@@ -53,6 +54,7 @@ export interface UseOidcResult {
   subject(): string | null
   /** A verified string claim (`email`, `name`, …) of the signed-in user, or null. */
   claim(name: string): string | null
+  /** The access token, or null — also once it has expired (see `expiresAt()`); `refresh()` gets a new one. */
   accessToken(): string | null
   /** When the access token expires (epoch milliseconds), or null. */
   expiresAt(): number | null
@@ -69,6 +71,10 @@ export interface UseOidcResult {
 
 const FLOW_PREFIX = 'pyreon.auth.flow.'
 const MAX_SESSION_FLOWS = 16
+const TAB_BINDING_KEY = 'pyreon.auth.binding'
+
+// One store per Storage, so every useOidc in a tab shares it (and its redirect-URI claims).
+const sessionStores = new WeakMap<Storage, FlowStore>()
 
 /**
  * A flow store over `sessionStorage` — the default `useOidc` uses in a browser.
@@ -77,12 +83,19 @@ const MAX_SESSION_FLOWS = 16
  * in a browser that round trip is a full page load: an in-memory store is gone when the user
  * comes back, so every sign-in would fail with `unknown_flow`. `sessionStorage` is per tab
  * and cleared when the tab closes — the standard home for a browser client's pending
- * authorization. Entries are read-and-deleted, and expired or excess ones are swept on save.
+ * authorization. Being private to the tab, it also binds every flow to this browser
+ * (`tabScoped`). Entries are read-and-deleted, and expired or excess ones are swept on save.
  */
 export function sessionStorageFlowStore(storage?: Storage): FlowStore {
   const s = storage ?? (typeof sessionStorage !== 'undefined' ? sessionStorage : null)
   if (s === null) throw new Error('[Pyreon] auth: sessionStorageFlowStore needs a browser — pass a Storage, or use memoryFlowStore() on a server')
-  return storageFlowStore(s)
+  let store = sessionStores.get(s)
+  if (store === undefined) {
+    store = storageFlowStore(s)
+    sessionStores.set(s, store)
+  }
+
+  return store
 }
 
 function storageFlowStore(storage: Storage): FlowStore {
@@ -99,20 +112,23 @@ function storageFlowStore(storage: Storage): FlowStore {
       }
       out.push({ key, createdAt })
     }
+
     return out.sort((a, b) => a.createdAt - b.createdAt)
   }
+
   return {
-    save(flow) {
+    tabScoped: true,
+    save(key, flow) {
       let entries = pending()
       for (const e of entries) if (flow.createdAt - e.createdAt > FLOW_TTL_MS) storage.removeItem(e.key)
       entries = pending()
       while (entries.length >= MAX_SESSION_FLOWS) storage.removeItem(entries.shift()!.key)
-      storage.setItem(FLOW_PREFIX + flow.state, JSON.stringify(flow))
+      storage.setItem(FLOW_PREFIX + key, JSON.stringify(flow))
     },
-    take(state) {
-      const key = FLOW_PREFIX + state
-      const raw = storage.getItem(key)
-      storage.removeItem(key)
+    take(key) {
+      const k = FLOW_PREFIX + key
+      const raw = storage.getItem(k)
+      storage.removeItem(k)
       if (raw === null) return null
       try {
         return JSON.parse(raw) as PendingFlow
@@ -123,6 +139,29 @@ function storageFlowStore(storage: Storage): FlowStore {
   }
 }
 
+/**
+ * This tab's flow binding, for a caller-supplied store that is not tab-scoped. Kept in
+ * `sessionStorage` (per tab, unreachable from other sites), random per instance where there is
+ * none (a server render never completes a callback).
+ */
+function tabBinding(): string {
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      let b = sessionStorage.getItem(TAB_BINDING_KEY)
+      if (!b) {
+        b = randomToken()
+        sessionStorage.setItem(TAB_BINDING_KEY, b)
+      }
+
+      return b
+    }
+  } catch {
+    // storage blocked: fall through
+  }
+
+  return randomToken()
+}
+
 const isBrowser = () => typeof location !== 'undefined' && typeof history !== 'undefined'
 
 /** True when `href` is a provider redirect to `redirectUri` (same origin + path, carrying state or an error). */
@@ -131,6 +170,7 @@ export function isRedirectFor(href: string, redirectUri: string): boolean {
     const here = new URL(href)
     const target = new URL(redirectUri, href)
     if (here.origin !== target.origin || here.pathname !== target.pathname) return false
+
     return here.searchParams.has('state') || here.searchParams.has('error')
   } catch {
     return false
@@ -162,6 +202,7 @@ const CALLBACK_PARAMS = ['code', 'state', 'iss', 'error', 'error_description', '
  * // <Text>{auth.isAuthenticated() ? auth.claim('email') : auth.status()}</Text>
  */
 export function useOidc(opts: UseOidcOptions): UseOidcResult {
+  const flows = opts.flows ?? (isBrowser() && typeof sessionStorage !== 'undefined' ? sessionStorageFlowStore() : memoryFlowStore())
   const auth = createAuth({
     issuer: opts.issuer,
     client: {
@@ -170,7 +211,8 @@ export function useOidc(opts: UseOidcOptions): UseOidcResult {
       ...(opts.scope === undefined ? {} : { scope: opts.scope }),
       ...(opts.authorizationParams === undefined ? {} : { authorizationParams: opts.authorizationParams }),
     },
-    flows: opts.flows ?? (isBrowser() && typeof sessionStorage !== 'undefined' ? sessionStorageFlowStore() : memoryFlowStore()),
+    flows,
+    ...(flows.tabScoped ? {} : { binding: tabBinding() }),
     redirect:
       opts.redirect ??
       ((url) => {
@@ -178,6 +220,8 @@ export function useOidc(opts: UseOidcOptions): UseOidcResult {
       }),
     ...(opts.fetch === undefined ? {} : { fetch: opts.fetch }),
   })
+  // Release the redirect-URI claim with the component (a remount, a realm switch, HMR).
+  if (getCurrentScope()) onScopeDispose(() => auth.dispose())
   const errorCode = computed(() => auth.error()?.code ?? null)
 
   if (isBrowser() && isRedirectFor(location.href, opts.redirectUri)) {
@@ -198,7 +242,12 @@ export function useOidc(opts: UseOidcOptions): UseOidcResult {
       const v = auth.claims()?.[name]
       return typeof v === 'string' ? v : null
     },
-    accessToken: () => auth.tokens()?.access_token ?? null,
+    // Never an expired token: once `expiresAt` has passed this is null — call `refresh()` for a new one.
+    accessToken: () => {
+      const exp = auth.expiresAt()
+
+      return exp !== null && exp <= Date.now() ? null : (auth.tokens()?.access_token ?? null)
+    },
     expiresAt: () => auth.expiresAt(),
     error: () => errorCode(),
     signIn: () => auth.signIn(),

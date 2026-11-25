@@ -216,20 +216,17 @@ export { configure, type ValidateConfig } from './core/config'
 // ('email' / 'phone' / …); `@pyreon/validate/server` uses it to upgrade the
 // lightweight client defaults to strict server validation.
 //
-// `installServerCheck` is the heavier, async/context-aware sibling — the
-// registry behind `.serverCheck(key)` (client no-op + `pending`; server runs
-// the installed validator). Registered via `@pyreon/validate/server`'s
-// `registerServerCheck`; install/uninstall exported for tests.
+// The server-check registry behind `.serverCheck(key)` (client no-op +
+// `pending`; server runs the installed validator) is registered through
+// `@pyreon/validate/server`'s `registerServerCheck` / `uninstallServerCheck`;
+// its raw install/get seam is on `@pyreon/validate/internal`.
 export {
   type FormatValidator,
   getFormatValidator,
-  getServerCheck,
   installFormatValidator,
-  installServerCheck,
   resolveFormat,
   type ServerCheckFn,
   uninstallFormatValidator,
-  uninstallServerCheck,
 } from './core/registry'
 // Lightweight (client) format validators — exported for standalone use.
 export { type EmailPrecision, isIPv6, type UrlOpts, validateCreditCard, validateIp, validatePhone } from './primitives/string'

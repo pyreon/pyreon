@@ -35,7 +35,6 @@ describe('gen-docs — styler snapshot', () => {
       'styler/normalizeCSS',
       'styler/resolve',
       'styler/resolveValue',
-      'styler/setStyleExtraction',
       'styler/sheet',
       'styler/styled',
       'styler/useCSS',

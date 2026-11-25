@@ -12,7 +12,9 @@
  *
  * The second half of the issue: `_ssr` dropped `key`, so a group saw unkeyed
  * children on the server while the client compile kept the keyed element on the
- * `h()` path. A keyed element is now never templated on either side.
+ * `h()` path. A keyed element is never lowered to `_ssr` on the server (it stays
+ * a VNode, key included); on the client it is a `_tpl` item carrying the same
+ * `key`, so a group sees the same keys on both sides.
  *
  * The oracle is the SAME source compiled WITHOUT `ssrTemplate` (the `h()` path,
  * which always decorated correctly): both renderers must produce elements with
@@ -182,10 +184,12 @@ describe('compiled literal children of kinetic items keep their hidden state on 
     host.remove()
   })
 
-  it('a keyed literal child of a component stays on the h() path in the SSR emit, as on the client', () => {
+  it('a keyed literal child of a component keeps its key: a VNode on the server, a keyed `_tpl` item on the client', () => {
     const src = `const App = () => <K><li key="a">a</li><li>b</li></K>`
     const ssr = transformJSX(src, 'k.tsx', { ssr: true, ssrTemplate: true }).code
     expect(ssr).toContain('<li key="a">a</li>')
     expect(ssr).toContain('_ssr(["<li>b</li>"])')
+    const client = transformJSX(src, 'k.tsx').code
+    expect(client).toContain('_tpl("<li>a</li>", () => null, 1, "a")')
   })
 })

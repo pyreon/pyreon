@@ -6,7 +6,8 @@
  * exactly as it is in a compiled app. Reset the reactive registry per-test so
  * ids don't collide across cases.
  */
-import { __resetReactiveDevtoolsForTesting, computed, signal } from '@pyreon/reactivity'
+import { computed, signal } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _tagTextBinding, nodesForElement } from '../binding-registry'
 import { _bindText } from '../template'

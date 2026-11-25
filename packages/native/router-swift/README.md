@@ -22,7 +22,7 @@ Seven source files under `Sources/PyreonRouter/`:
 
 | File | What it is |
 |---|---|
-| `PyreonRouter.swift` | The router model — `@Observable`, `path: [String]` stack, `push`/`replace`/`back`/`forward`/`reset`, `redirect`, `params`/`query`, `setQueryParam`, a `routes: [RouteRecord]` table, `beforeEachGuards`/`afterEachHooks`, `loaderData`, and `resolveCurrentChain()` — the nested-route resolver `RouterView` renders against. |
+| `PyreonRouter.swift` | The router model — `@Observable`, `path: [String]` stack of ROUTE paths (no query or fragment — each element is the pushed screen's identity, so a query-only navigation keeps the screen; each entry's query is kept beside it and `currentPath` reassembles the URL, `routePath` is the route alone), `push`/`replace`/`back`/`forward`/`reset`, `redirect`, `params`/`query`, `setQueryParam`, a `routes: [RouteRecord]` table, `beforeEachGuards`/`afterEachHooks`, `loaderData`, and `resolveCurrentChain()` — the nested-route resolver `RouterView` renders against. |
 | `RouteRecord` (in `PyreonRouter.swift`) | One route definition: a `path` pattern (literal segments, `:name`, `:name?`, `:name*` splat), a `component` factory, optional `children` for nested layouts, and an optional `beforeEnter` guard. |
 | `RouterProvider.swift` | Top-level container — wraps `NavigationStack(path:)`, exposes the router via `@Environment(\.pyreonRouter)`. |
 | `RouterView.swift` | Renders the matched route at the current nesting depth (`@Environment(\.routerDepth)`), with a `notFoundComponent` wildcard fallback and a no-routes-configured fallback for apps that wire their own `.navigationDestination(for:)`. |

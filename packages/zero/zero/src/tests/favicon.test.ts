@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { createIcoFromPngs, faviconLinks } from '../favicon'
+import { faviconLinks } from '../favicon'
+import { createIcoFromPngs } from '../internal-server'
 
 describe('createIcoFromPngs', () => {
   it('produces valid ICO header bytes', () => {

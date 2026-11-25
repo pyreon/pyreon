@@ -3,17 +3,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  clusterPathsByLocale,
-  formatLoc,
   generateRobots,
   generateRssFeed,
   generateSitemap,
   jsonLd,
-  resolveHreflangI18n,
   seoPlugin,
-  stripLocalePrefix,
-  toRfc822,
 } from '../seo'
+import {
+  clusterPathsByLocale,
+  formatLoc,
+  resolveHreflangI18n,
+  stripLocalePrefix,
+} from '../internal-server'
+import { toRfc822 } from '../internal'
 
 describe('formatLoc (trailingSlash policy)', () => {
   const origin = 'https://example.com'

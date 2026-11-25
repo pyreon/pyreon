@@ -57,6 +57,7 @@ describe('generateActionManifest', () => {
   it('registers each action id with a lazy import of its module', () => {
     const root = project({ 'src/b.ts': ACTION, 'src/a.ts': ACTION.replace('save', 'load') })
     const out = generateActionManifest(root)
+    expect(out.code).toContain('import { _registerActionModules } from "@pyreon/zero/internal"')
     expect(out.code).toContain('_registerActionModules({')
     expect(out.code).toContain(`() => import(${JSON.stringify(join(root, 'src/a.ts'))})`)
     expect(out.files.size).toBe(2)

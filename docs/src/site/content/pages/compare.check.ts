@@ -3,7 +3,7 @@
 import type { CompareSite } from '../types-site'
 
 export const checked = {
-  "record": "BENCHMARKS.md, 2026-11-05 (copy: 00-brief/BENCHMARKS-2026-11-05.md)",
+  "record": "BENCHMARKS.md, refreshed 2026-11-24 (row board, core scenarios, bundle); the other rows from its 2026-11-05 runs (copy: 00-brief/BENCHMARKS-2026-11-05.md)",
   "caveat": "Synthetic, author-run, Apple M3 Max, real Chromium unless noted. Reproduce: pyreon.dev/docs/benchmarks",
   "order": [
     "react",
@@ -21,21 +21,21 @@ export const checked = {
       "rivalMeasured": "react / react-dom 19.3.1",
       "hook": {
         "eyebrow": "Pyreon vs React",
-        "title": "React ships 4× more JavaScript for the same app.",
+        "title": "React ships 3.8× more JavaScript for the same app.",
         "lede": "Keep JSX, function components and TypeScript. Lose the re-render: a Pyreon component runs once, and a signal updates only the DOM node that reads it, so there is nothing to memoise and no dependency array to get wrong."
       },
       "proof": [
         {
-          "stat": "4×",
-          "label": "less JavaScript: 17.2 KB against React's 69.6 KB for the same keyed-table app (gzip)",
-          "condition": "final pass, sizes are deterministic",
-          "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+          "stat": "3.8×",
+          "label": "less JavaScript: 18.5 KB against React's 69.6 KB for the same keyed-table app (gzip)",
+          "condition": "2026-11-24 refresh, sizes are deterministic",
+          "source": "BENCHMARKS.md 2026-11-24 §7"
         },
         {
-          "stat": "2.6×",
-          "label": "faster to create 10,000 rows: 72.6 ms against 192.0 ms",
-          "condition": "real Chromium, run 1 table of a two-run record; synthetic, author-run",
-          "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 90"
+          "stat": "2.7×",
+          "label": "faster to create 10,000 rows: 73.1 ms against 195.9 ms",
+          "condition": "real Chromium, run 1 table of a two-run refresh (2026-11-24); synthetic, author-run",
+          "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
         },
         {
           "stat": "6.5×",
@@ -50,38 +50,38 @@ export const checked = {
         "rows": [
           {
             "topic": "Bundle, same keyed-table app (gzip)",
-            "pyreon": "17.2 KB",
+            "pyreon": "18.5 KB",
             "rival": "69.6 KB",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+            "source": "BENCHMARKS.md 2026-11-24 §7"
           },
           {
             "topic": "Create 10,000 rows",
-            "pyreon": "72.6 ms",
-            "rival": "192.0 ms (2.6× slower)",
+            "pyreon": "73.1 ms",
+            "rival": "195.9 ms (2.7× slower)",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 90 (run 1)"
+            "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
           },
           {
             "topic": "Swap two rows in 1,000",
-            "pyreon": "805 µs",
-            "rival": "6.06 ms",
+            "pyreon": "745 µs",
+            "rival": "5.92 ms",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 87 (run 1)"
+            "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
           },
           {
             "topic": "Remove a row",
             "pyreon": "5.70 ms",
-            "rival": "5.78 ms; confidence intervals overlap in both runs",
-            "verdict": "tie",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 88 and 101"
+            "rival": "6.01 ms (1.05× slower in both runs)",
+            "verdict": "pyreon",
+            "source": "BENCHMARKS.md 2026-11-24 §1"
           },
           {
             "topic": "Mount a deep tree (2,047 components)",
-            "pyreon": "3.59 / 3.58 ms",
-            "rival": "3.71 / 3.66 ms; a tie in both runs",
-            "verdict": "tie",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+            "pyreon": "3.09 / 3.03 ms",
+            "rival": "3.46 / 3.47 ms (1.12–1.15× slower in both runs)",
+            "verdict": "pyreon",
+            "source": "BENCHMARKS.md 2026-11-24 §2a"
           },
           {
             "topic": "TodoMVC shape: toggle 1,000 / clear 1,000",
@@ -106,10 +106,10 @@ export const checked = {
           },
           {
             "topic": "Retained heap after the row suite",
-            "pyreon": "3.08 MB",
-            "rival": "3.50 MB (one value per run, same in both runs)",
+            "pyreon": "3.21 MB",
+            "rival": "3.55 MB (one value per pass, the same in all ten passes)",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 108"
+            "source": "BENCHMARKS.md 2026-11-24 §1"
           },
           {
             "topic": "Update model",
@@ -209,20 +209,20 @@ export const checked = {
       },
       "sources": [
         {
-          "claim": "Bundle 17.2 KB vs React 69.6 KB, same keyed-table app, gzip -9",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+          "claim": "Bundle 18.5 KB vs React 69.6 KB, same keyed-table app, gzip -9",
+          "path": "BENCHMARKS.md 2026-11-24 §7"
         },
         {
-          "claim": "Create 10,000 rows 72.64 vs 192.01 ms; swap 805 µs vs 6.06 ms; remove 5.70 vs 5.78 ms (run 1 table)",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 83–91"
+          "claim": "Create 10,000 rows 73.09 vs 195.91 ms; swap 745 µs vs 5.92 ms; remove 5.70 vs 6.01 ms (run 1 table)",
+          "path": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
         },
         {
-          "claim": "Remove row is a tie including React",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §1, line 101"
+          "claim": "Remove row: React 1.05× slower, CIs disjoint in both runs",
+          "path": "BENCHMARKS.md 2026-11-24 §1 (verdicts) and the pooled run JSON"
         },
         {
-          "claim": "Deep-tree mount: React ties Pyreon in both runs",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119; §13, line 457"
+          "claim": "Deep-tree mount: React 1.12–1.15× slower than Pyreon in both runs",
+          "path": "BENCHMARKS.md 2026-11-24 §2a"
         },
         {
           "claim": "TodoMVC toggle 2.48×, clear 3.14×, add-100 quoted as 1.14–1.99×",
@@ -237,8 +237,8 @@ export const checked = {
           "path": "00-brief/BENCHMARKS-2026-11-05.md §4, lines 224–231"
         },
         {
-          "claim": "Retained heap Pyreon 3.08 MB vs React 3.50 MB, identical in both runs",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §1, line 108"
+          "claim": "Retained heap Pyreon 3.21 MB vs React 3.55 MB, the same in all ten passes",
+          "path": "BENCHMARKS.md 2026-11-24 §1"
         },
         {
           "claim": "useMemo→computed, useCallback→delete, no dependency arrays",
@@ -455,7 +455,7 @@ export const checked = {
       "id": "solid",
       "route": "/compare/solid",
       "rival": "Solid",
-      "rivalMeasured": "solid-js 1.9.17 (and 2.0.0-rc.15 on the row board)",
+      "rivalMeasured": "solid-js 1.9.19 and Solid 2.0.3 on the browser rows (2026-11-24); solid-js 1.9.17 for server rendering and forms (2026-11-05)",
       "hook": {
         "eyebrow": "Pyreon vs Solid",
         "title": "Same signals as Solid. `renderToString` up to 4.7× faster.",
@@ -475,10 +475,10 @@ export const checked = {
           "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 252–254"
         },
         {
-          "stat": "3.5×",
-          "label": "faster clearing 1,000 rows: 130 µs against 460 µs",
-          "condition": "real Chromium, run 1 table of a two-run record",
-          "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 89"
+          "stat": "4.2×",
+          "label": "faster clearing 1,000 rows than Solid 1.9: 125 µs against 525 µs (Solid 2.0: 295 µs)",
+          "condition": "real Chromium, run 1 table of a two-run refresh (2026-11-24)",
+          "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
         }
       ],
       "table": {
@@ -494,17 +494,17 @@ export const checked = {
           },
           {
             "topic": "Clear 1,000 rows",
-            "pyreon": "130 µs",
-            "rival": "460 µs",
+            "pyreon": "125 µs",
+            "rival": "525 µs (Solid 2.0: 295 µs)",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 89 (run 1)"
+            "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
           },
           {
             "topic": "Create 10,000 rows",
-            "pyreon": "72.64 ms",
-            "rival": "78.75 ms",
+            "pyreon": "73.09 ms",
+            "rival": "78.79 ms (Solid 2.0: 79.79 ms)",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 90 (run 1)"
+            "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
           },
           {
             "topic": "12-field form, four timed operations",
@@ -515,31 +515,31 @@ export const checked = {
           },
           {
             "topic": "Effect list: update 500",
-            "pyreon": "835 / 797 µs",
-            "rival": "870 / 880 µs; a tie in run 1, Pyreon 1.10× in run 2, so not claimed",
+            "pyreon": "880 / 857 µs",
+            "rival": "Solid 2.0 875 / 860 µs, a tie in both runs; Solid 1.9 938 / 955 µs, a tie and then Pyreon 1.11×, so not claimed",
             "verdict": "tie",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 121"
+            "source": "BENCHMARKS.md 2026-11-24 §2a"
           },
           {
             "topic": "Mount a deep tree (2,047 components)",
-            "pyreon": "3.59 / 3.58 ms",
-            "rival": "3.06 / 3.10 ms: Solid 1.15–1.18× faster in both runs",
-            "verdict": "rival",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+            "pyreon": "3.09 / 3.03 ms",
+            "rival": "Solid 1.9 3.03 / 3.02 ms, a tie in both runs; Solid 2.0 3.38 / 3.36 ms (Pyreon 1.09–1.11×)",
+            "verdict": "tie",
+            "source": "BENCHMARKS.md 2026-11-24 §2a"
           },
           {
             "topic": "Bundle, same keyed-table app (gzip)",
-            "pyreon": "17.2 KB",
-            "rival": "7.5 KB: the smallest framework in the record",
+            "pyreon": "18.5 KB",
+            "rival": "7.7 KB: the smallest framework in the record",
             "verdict": "rival",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+            "source": "BENCHMARKS.md 2026-11-24 §7"
           },
           {
-            "topic": "Effect list: dispose 500",
-            "pyreon": "50 / 45 µs",
-            "rival": "45 / 40 µs: Solid 1.11–1.13× faster (one 5 µs clock quantum)",
+            "topic": "Memory of that mounted tree",
+            "pyreon": "531.7 KB retained",
+            "rival": "202.0 / 207.0 KB in Solid 1.9, 410.2 KB in Solid 2.0 (no confidence interval)",
             "verdict": "rival",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 122"
+            "source": "BENCHMARKS.md 2026-11-24 §2b"
           },
           {
             "topic": "Form memory",
@@ -604,8 +604,8 @@ export const checked = {
       "pickTheOther": {
         "title": "When to pick Solid",
         "items": [
-          "Bundle size is the deciding number: the same app is 7.5 KB in Solid and 17.2 KB in Pyreon.",
-          "Your pages mount deep component trees and that cost dominates: Solid is 1.15–1.18× faster there.",
+          "Bundle size is the deciding number: the same app is 7.7 KB in Solid and 18.5 KB in Pyreon.",
+          "Memory per component is your tightest constraint: a mounted 2,047-component tree retains about 2.6× less heap in Solid 1.9 than in Pyreon.",
           "You want a stable 1.x API with a long production record."
         ]
       },
@@ -629,16 +629,16 @@ export const checked = {
           "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 247–254"
         },
         {
-          "claim": "Clear rows 130 vs Solid 460 µs; create 10,000 72.64 vs 78.75 ms (run 1 table)",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 89–90"
+          "claim": "Clear rows 125 vs Solid 1.9 525 / Solid 2.0 295 µs; create 10,000 73.09 vs 78.79 / 79.79 ms (run 1 table)",
+          "path": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
         },
         {
-          "claim": "Deep tree loss 1.15–1.18×; dispose 500 loss 1.11–1.13×; effect update split",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §2, lines 119–122"
+          "claim": "Deep tree ties Solid 1.9 (Solid 2.0 1.09–1.11× slower); effect update ties Solid 2.0; dispose 500 below 10 clock quanta, no verdict; tree heap 531.7 vs 202–207 / 410.2 KB",
+          "path": "BENCHMARKS.md 2026-11-24 §2a, §2b"
         },
         {
-          "claim": "Bundle Solid 7.5 KB vs Pyreon 17.2 KB",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+          "claim": "Bundle Solid 7.7 KB vs Pyreon 18.5 KB",
+          "path": "BENCHMARKS.md 2026-11-24 §7"
         },
         {
           "claim": "form-bench: Pyreon fastest on all four ops; modular-forms heap 2.33 vs 2.42 MB",
@@ -658,18 +658,18 @@ export const checked = {
       "id": "vue",
       "route": "/compare/vue",
       "rival": "Vue",
-      "rivalMeasured": "vue 3.5.44 and Vue 3.6 Vapor 3.6.0-rc.11",
+      "rivalMeasured": "vue 3.5.45 and Vue 3.6 Vapor 3.6.0-rc.11 on the row board, memo wall and bundle (2026-11-24); vue 3.5.44 for SSR, hydration and forms (2026-11-05)",
       "hook": {
         "eyebrow": "Pyreon vs Vue",
-        "title": "Vue's reactivity without `.value`. In 1.6× less JavaScript.",
-        "lede": "Pyreon signals are refs you call: `count()` reads, `count.set()` writes. Components are plain TSX, the same keyed-table app ships 17.2 KB against Vue's 27.4 KB, and compiled SSR came out ahead of Vue 3 at every size we measured."
+        "title": "Vue's reactivity without `.value`. In 1.5× less JavaScript.",
+        "lede": "Pyreon signals are refs you call: `count()` reads, `count.set()` writes. Components are plain TSX, the same keyed-table app ships 18.5 KB against Vue's 27.7 KB, and compiled SSR came out ahead of Vue 3 at every size we measured."
       },
       "proof": [
         {
-          "stat": "1.6×",
-          "label": "less JavaScript: 17.2 KB against Vue's 27.4 KB for the same keyed-table app (gzip)",
-          "condition": "final pass, sizes are deterministic",
-          "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+          "stat": "1.5×",
+          "label": "less JavaScript: 18.5 KB against Vue's 27.7 KB for the same keyed-table app (gzip)",
+          "condition": "2026-11-24 refresh, sizes are deterministic",
+          "source": "BENCHMARKS.md 2026-11-24 §7"
         },
         {
           "stat": "1.68×",
@@ -678,10 +678,10 @@ export const checked = {
           "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–245"
         },
         {
-          "stat": "1.4×",
-          "label": "faster when a memoised value blocks an update (memo wall): 11 µs against 16 µs",
-          "condition": "real Chromium, both runs",
-          "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 123"
+          "stat": "1.25×",
+          "label": "faster when a memoised value blocks an update (memo wall): 12.6 µs against 15.8 µs",
+          "condition": "real Chromium, both runs (2026-11-24); Solid 2.0 ties Pyreon here",
+          "source": "BENCHMARKS.md 2026-11-24 §2a"
         }
       ],
       "table": {
@@ -690,10 +690,10 @@ export const checked = {
         "rows": [
           {
             "topic": "Bundle, same keyed-table app (gzip)",
-            "pyreon": "17.2 KB",
-            "rival": "27.4 KB",
+            "pyreon": "18.5 KB",
+            "rival": "27.7 KB",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+            "source": "BENCHMARKS.md 2026-11-24 §7"
           },
           {
             "topic": "Compiled SSR, 10 / 100 / 1,000 rows",
@@ -704,10 +704,10 @@ export const checked = {
           },
           {
             "topic": "Memo wall: blocked update",
-            "pyreon": "11 / 11 µs",
-            "rival": "16 / 16 µs (Vue was the fastest rival)",
+            "pyreon": "12.6 / 12.8 µs",
+            "rival": "15.8 / 15.9 µs (Pyreon 1.25×; Solid 2.0, now the fastest rival, ties Pyreon)",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 123 (both runs)"
+            "source": "BENCHMARKS.md 2026-11-24 §2a"
           },
           {
             "topic": "Hydration, 320-component page",
@@ -718,10 +718,10 @@ export const checked = {
           },
           {
             "topic": "Row board vs Vue 3: partial update / clear rows",
-            "pyreon": "705 µs / 130 µs",
-            "rival": "1.04 ms / 255 µs",
+            "pyreon": "680 µs / 125 µs",
+            "rival": "1.04 ms / 225 µs",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 85 and 89 (run 1)"
+            "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
           },
           {
             "topic": "12-field form, keystroke with validation",
@@ -732,10 +732,10 @@ export const checked = {
           },
           {
             "topic": "Row board vs Vue 3.6 Vapor (RC)",
-            "pyreon": "Clear rows 1.11–1.12× faster.",
-            "rival": "Create 1,000, replace, partial update, swap and remove: ties in both runs.",
+            "pyreon": "Clear rows 1.12× faster in both runs.",
+            "rival": "Create 1,000, replace, remove, create 10,000 and append: ties in both runs. Partial update and swap split; Vapor was 1.11× ahead on swap in run 2.",
             "verdict": "tie",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 99–101"
+            "source": "BENCHMARKS.md 2026-11-24 §1 (verdicts)"
           },
           {
             "topic": "Hydration, 1,000-row keyed table",
@@ -820,16 +820,16 @@ export const checked = {
       },
       "sources": [
         {
-          "claim": "Bundle Vue 27.4 KB vs Pyreon 17.2 KB (1.59× → 1.6×)",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+          "claim": "Bundle Vue 27.7 KB vs Pyreon 18.5 KB (1.50× → 1.5×)",
+          "path": "BENCHMARKS.md 2026-11-24 §7"
         },
         {
           "claim": "Compiled SSR vs Vue 3: 1.68× / 1.35× / 1.14×, one run, Vue awaited",
           "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–245"
         },
         {
-          "claim": "Memo wall blocked 11 vs Vue 16 µs, win 1.39–1.40× both runs",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 123"
+          "claim": "Memo wall blocked 12.6 / 12.8 vs Vue 15.8 / 15.9 µs, 1.25× both runs; Solid 2.0 ties",
+          "path": "BENCHMARKS.md 2026-11-24 §2a"
         },
         {
           "claim": "App page hydration 4.02 vs Vue 4.47 ms, one run",
@@ -840,12 +840,12 @@ export const checked = {
           "path": "00-brief/BENCHMARKS-2026-11-05.md §4, lines 224–229"
         },
         {
-          "claim": "Vue 3 partial update 1.04 ms, clear 255 µs vs Pyreon 705 / 130 µs (run 1)",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 85, 89"
+          "claim": "Vue 3 partial update 1.04 ms, clear 225 µs vs Pyreon 680 / 125 µs (run 1); CIs disjoint in both runs",
+          "path": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
         },
         {
-          "claim": "Vapor RC ties create 1,000 / replace / partial / swap / remove; Pyreon clear 1.11–1.12×",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 99–101"
+          "claim": "Vapor RC ties create 1,000 / replace / remove / create 10,000 / append; partial and swap split; Pyreon clear 1.12×",
+          "path": "BENCHMARKS.md 2026-11-24 §1 (verdicts)"
         },
         {
           "claim": "vee-validate keystroke (change mode) 2,260 vs 460 µs, one run",
@@ -864,15 +864,15 @@ export const checked = {
       "rivalMeasured": "svelte 5.57.3",
       "hook": {
         "eyebrow": "Pyreon vs Svelte",
-        "title": "2,047 components. Mounted 3× faster than Svelte 5.",
+        "title": "2,047 components. Mounted 3.6× faster than Svelte 5.",
         "lede": "Svelte compiles components into direct DOM updates. So does Pyreon, from plain TSX instead of a `.svelte` file, and its server rendering came out ahead of Svelte 5 at 10, 100 and 1,000 rows. Miss writing `count++`? Plain Mode lets you."
       },
       "proof": [
         {
-          "stat": "3.0×",
-          "label": "faster to mount a 2,047-component tree: 3.59 ms against 10.80 ms",
-          "condition": "real Chromium, run 1 table of a two-run record",
-          "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+          "stat": "3.6×",
+          "label": "faster to mount a 2,047-component tree: 3.09 ms against 11.02 ms",
+          "condition": "real Chromium, run 1 table of a two-run refresh (2026-11-24)",
+          "source": "BENCHMARKS.md 2026-11-24 §2a"
         },
         {
           "stat": "1.55×",
@@ -881,10 +881,10 @@ export const checked = {
           "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243"
         },
         {
-          "stat": "1.9×",
-          "label": "faster swapping two rows in 1,000: 805 µs against 1.50 ms",
-          "condition": "real Chromium, run 1 table",
-          "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 87"
+          "stat": "2.0×",
+          "label": "faster swapping two rows in 1,000: 745 µs against 1.49 ms",
+          "condition": "real Chromium, run 1 table (1.8× in run 2)",
+          "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
         }
       ],
       "table": {
@@ -893,10 +893,10 @@ export const checked = {
         "rows": [
           {
             "topic": "Mount a deep tree (2,047 components)",
-            "pyreon": "3.59 ms",
-            "rival": "10.80 ms",
+            "pyreon": "3.09 ms",
+            "rival": "11.02 ms",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119 (run 1)"
+            "source": "BENCHMARKS.md 2026-11-24 §2a (run 1)"
           },
           {
             "topic": "Compiled SSR, 10 / 100 / 1,000 rows",
@@ -907,24 +907,24 @@ export const checked = {
           },
           {
             "topic": "Create 10,000 rows",
-            "pyreon": "72.64 ms",
-            "rival": "87.51 ms",
+            "pyreon": "73.09 ms",
+            "rival": "87.54 ms",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 90 (run 1)"
+            "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
           },
           {
             "topic": "Swap two rows in 1,000",
-            "pyreon": "805 µs",
-            "rival": "1.50 ms",
+            "pyreon": "745 µs",
+            "rival": "1.49 ms",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §1, line 87 (run 1)"
+            "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
           },
           {
             "topic": "Memo wall: passthrough",
-            "pyreon": "450 / 451 µs",
-            "rival": "487 / 487 µs (Svelte was the fastest rival); Pyreon 1.08× in both runs",
+            "pyreon": "410 / 407 µs",
+            "rival": "438 / 437 µs (Svelte was the fastest rival); Pyreon 1.07× in both runs",
             "verdict": "pyreon",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §2, line 124"
+            "source": "BENCHMARKS.md 2026-11-24 §2a"
           },
           {
             "topic": "12-field form, keystroke (blur mode)",
@@ -942,10 +942,10 @@ export const checked = {
           },
           {
             "topic": "Bundle, same keyed-table app (gzip)",
-            "pyreon": "17.2 KB",
-            "rival": "16.1 KB: Svelte is 1.1 KB smaller",
+            "pyreon": "18.5 KB",
+            "rival": "16.1 KB: Svelte is 2.4 KB smaller",
             "verdict": "rival",
-            "source": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+            "source": "BENCHMARKS.md 2026-11-24 §7"
           },
           {
             "topic": "Authoring",
@@ -1001,7 +1001,7 @@ export const checked = {
       "pickTheOther": {
         "title": "When to pick Svelte",
         "items": [
-          "The smallest output matters more than mount or update cost: the same app is 16.1 KB in Svelte and 17.2 KB in Pyreon.",
+          "The smallest output matters more than mount or update cost: the same app is 16.1 KB in Svelte and 18.5 KB in Pyreon.",
           "You like single-file components with template blocks and scoped CSS.",
           "You want SvelteKit and a stable major version with a long production record."
         ]
@@ -1022,28 +1022,28 @@ export const checked = {
       },
       "sources": [
         {
-          "claim": "Deep tree Svelte 10.80 ms vs Pyreon 3.59 ms (run 1)",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 119"
+          "claim": "Deep tree Svelte 11.02 ms vs Pyreon 3.09 ms (run 1)",
+          "path": "BENCHMARKS.md 2026-11-24 §2a"
         },
         {
           "claim": "Compiled SSR vs Svelte 5: 2.18 / 18.08 / 160.5 vs 1.80 / 11.64 / 109.9 µs, one run",
           "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243"
         },
         {
-          "claim": "Create 10,000 87.51 ms, swap 1.50 ms for Svelte (run 1)",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §1, lines 87, 90"
+          "claim": "Create 10,000 87.54 ms, swap 1.49 ms for Svelte (run 1)",
+          "path": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
         },
         {
-          "claim": "Memo passthrough 450/451 vs Svelte 487/487 µs, 1.08× both runs",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 124"
+          "claim": "Memo passthrough 410 / 407 vs Svelte 438 / 437 µs, 1.07× both runs",
+          "path": "BENCHMARKS.md 2026-11-24 §2a"
         },
         {
           "claim": "dbmon three-way tie including Svelte",
           "path": "00-brief/BENCHMARKS-2026-11-05.md §2, line 118"
         },
         {
-          "claim": "Bundle Svelte 16.1 KB vs Pyreon 17.2 KB",
-          "path": "00-brief/BENCHMARKS-2026-11-05.md §7, line 285"
+          "claim": "Bundle Svelte 16.1 KB vs Pyreon 18.5 KB",
+          "path": "BENCHMARKS.md 2026-11-24 §7"
         },
         {
           "claim": "Felte keystroke blur 700 vs 60 µs, one run",

@@ -1,7 +1,7 @@
 # Pyreon Framework — Complete AI Reference
 
 > Signal-based UI framework for TypeScript. SSR, SSG, islands, SPA.
-> Standard JSX + TypeScript. Fast on the synthetic row-list benchmark, honestly reported (BENCHMARKS.md, 2026-11-05): wins clear rows outright, statistically tied with the fastest frameworks (Vue 3.6 Vapor RC, Octane, Vue 3) on create, replace, partial update, swap and remove; loses deep component-tree mount to Solid (1.15–1.18×); bundle larger than Solid, Preact and Svelte. The record withdraws its own claims when a harness bug is found. See /docs/benchmarks.
+> Standard JSX + TypeScript. Fast on the synthetic row-list benchmark, honestly reported (BENCHMARKS.md, refreshed 2026-11-24): wins clear rows outright, statistically tied with the fastest frameworks (Vue 3.6 Vapor RC, Octane, Vue 3) on create, replace, remove, create 10,000 and append; ties Solid 1.9 on deep component-tree mount; loses on memory (Preact's heap is lighter; a mounted component tree retains more than Solid 1.9 and 2.0) and bundle size (larger than Solid, Preact and Svelte). The record withdraws its own claims when a harness bug is found. See /docs/benchmarks.
 > All packages under @pyreon/* scope.
 
 ## Signals (reactivity)
@@ -1634,7 +1634,7 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 
 ## @pyreon/money — Money
 
-A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits come from `Intl` (no table is shipped); `defineCurrency` adds custom ones. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `@pyreon/format` displays a Money.
+A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits are ISO 4217 minor units (ISO 4217 list one is shipped, 178 codes and their minor units, so codes and digits agree on every engine; `Intl` is never asked); `defineCurrency` adds custom currencies or gives an ISO one the digits a payment provider uses. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `formatCurrency(m)` from `@pyreon/format` displays a Money exactly.
 
 ```typescript
 import { money, add, multiply, allocate, round } from '@pyreon/money'
@@ -1654,7 +1654,7 @@ allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount)   // => ['33.34
 >
 > **Defaults**: `divide` of decimals and `ratio` need a scale: 20 digits for `decimal.divide`, 10 for `ratio`, both overridable. `divide(Money, n)` rounds to the currency's digits.
 >
-> **Formatting**: This package formats nothing. `@pyreon/format` will take a `{ amount, currency }` directly; until then use `Intl.NumberFormat` with the amount STRING (`new Intl.NumberFormat("en", { style: "currency", currency: "EUR" }).format("9.99")`), which formats decimal strings exactly. `formatCurrency(Number(m.amount), ...)` loses precision for large amounts.
+> **Formatting**: This package formats nothing. `formatCurrency(m)` from `@pyreon/format` takes a Money directly and formats the amount string exactly, with the Money's own digits. Never `formatCurrency(Number(m.amount), ...)`: a large amount loses precision as a number.
 
 ## @pyreon/state-tree — State Tree
 
@@ -2251,7 +2251,7 @@ flow.fromJSON({ nodes, edges })    // restore from saved state
 
 ## @pyreon/auth — Authentication
 
-Authentication primitives for Pyreon on Web Crypto + fetch (browsers, Node, Bun, workerd): OIDC/OAuth2 authorization code with S256 PKCE, state, nonce and the RFC 9207 `iss` check; ID-token verification against a cached, rotation-aware JWKS; a reactive `createAuth` state machine with refresh and RP-initiated logout; HMAC cookie sessions with revocation; TOTP; ES256 and RS256 passkeys; an attempt limiter; and an open-redirect-safe route guard. Interop-tested against oidc-provider, a certified OpenID Provider.
+Authentication primitives for Pyreon on Web Crypto + fetch (browsers, Node, Bun, workerd): OIDC/OAuth2 authorization code with S256 PKCE, state and nonce, pending flows bound to their client, redirect URI and browser (login-CSRF and mix-up defence), and the RFC 9207 `iss` check; ID-token verification against a cached, rotation-aware JWKS; a reactive `createAuth` state machine with refresh and RP-initiated logout; HMAC cookie sessions with revocation; TOTP; ES256 and RS256 passkeys; an attempt limiter; and an open-redirect-safe route guard. Interop-tested against oidc-provider, a certified OpenID Provider.
 
 ```typescript
 const auth = useOidc({
@@ -2267,19 +2267,23 @@ const auth = useOidc({
 const auth = createAuth({ issuer, client, flows: sessionStorageFlowStore(), redirect: (u) => location.assign(u) })
 
 const meta = await discover('https://accounts.example')
-const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirectUri: 'https://app.example/cb' })
-// store `flow`, then redirect the user to `url`
+const binding = createFlowBinding(req.headers.get('cookie'))
+const { url, flow } = await beginAuthorization(meta, { clientId: 'app', redirectUri: 'https://app.example/cb' }, binding.value)
+// store `flow` under its state, then redirect to `url` with Set-Cookie: binding.setCookie
 
-const { code } = parseCallback(req.url, flow, meta)
+const { code } = parseCallback(req.url, flow, meta, readFlowBinding(req.headers.get('cookie')) ?? '')
 
 const tokens = await exchangeCode(meta, client, flow, code)
 
 const meta = await discover('https://accounts.example')
 
-const auth = createAuth({ issuer: google.issuer, client, flows, redirect: (u) => location.assign(u) })
+// a server (backend-for-frontend): one shared store, one createAuth per request
+const binding = createFlowBinding(req.headers.get('cookie')) // send binding.setCookie with the redirect
+const auth = createAuth({ issuer: google.issuer, client, flows, binding: binding.value, redirect: (u) => respond(u) })
 await auth.signIn()
 // on the callback route:
-await auth.handleCallback(location.href)
+const back = createAuth({ issuer: google.issuer, client, flows, binding: readFlowBinding(req.headers.get('cookie')), redirect: respond })
+await back.handleCallback(req.url)
 
 const cookie = sessionCookie('session', await signSession({ sub: user.id }, { secrets: [process.env.SESSION_SECRET!] }))
 const session = await verifySession(value, { secrets: [process.env.SESSION_SECRET!] })
@@ -2297,8 +2301,8 @@ if (r.ok) limiter.reset(userId)
 
 const auth = createAuth({ metadata: github, client, flows, redirect })
 
-const keys = await fetchJwks(meta)
-const claims = await verifyIdToken(tokens.id_token!, keys, meta, { clientId: client.clientId, nonce: flow.nonce })
+const jwks = createJwksCache(meta)
+const claims = await verifyIdToken(tokens.id_token!, jwks, meta, { clientId: client.clientId, nonce: flow.nonce })
 
 import { runStrategy } from '@pyreon/auth/passport'
 const out = await runStrategy(new LocalStrategy(verify), { method: 'POST', url: '/login', body })
@@ -2316,6 +2320,68 @@ if (r.ok) await db.credentials.insert({ id: r.credentialId, jwk: r.publicKey, si
 
 const guard = createGuard({ session: () => user(), loginPath: '/login' })
 guard('/account') // true | { redirect: '/login?returnTo=%2Faccount' }
+
+const to = safeReturnTo(new URL(req.url).searchParams.get('returnTo'))
+return Response.redirect(new URL(to, req.url), 303)
+
+const binding = createFlowBinding(req.headers.get('cookie'))
+const auth = createAuth({ issuer, client, flows, binding: binding.value, redirect: (url) => (location = url) })
+await auth.signIn()
+return new Response(null, { status: 302, headers: { location, 'set-cookie': binding.setCookie } })
+
+const auth = createAuth({ issuer, client, flows, binding: readFlowBinding(req.headers.get('cookie')), redirect: () => {} })
+await auth.handleCallback(req.url)
+
+const flows = memoryFlowStore()
+const auth = createAuth({ issuer, client, flows, binding: createFlowBinding(cookie).value, redirect })
+
+try {
+  parseCallback(req.url, flow, meta, binding)
+} catch (e) {
+  if (e instanceof AuthError && e.code === 'provider_error') showCancelled()
+  else throw e
+}
+
+const t = await refreshTokens(meta, client, session.refreshToken)
+session.refreshToken = t.refresh_token ?? session.refreshToken
+
+const url = endSessionUrl(meta, { idTokenHint: tokens.id_token, postLogoutRedirectUri: 'https://app.example/' })
+if (url) location.assign(url)
+
+const jwks = createJwksCache(meta)
+const claims = await verifyIdToken(idToken, jwks, meta, { clientId: 'bff', nonce })
+
+const auth = createAuth({
+  issuer: google.issuer,
+  client: withPreset(google, { clientId: 'app', redirectUri: 'https://app.example/auth/callback/google' }),
+  flows: sessionStorageFlowStore(),
+  redirect: (u) => location.assign(u),
+})
+
+const kc = keycloak('https://sso.example.com', 'staff')
+const auth = createAuth({ issuer: kc.issuer, client: withPreset(kc, client), flows, binding, redirect })
+
+const client = withPreset(google, { clientId: 'app', redirectUri: 'https://app.example/auth/callback/google' })
+
+const auth = createAuth({ metadata: facebook('v20.0'), client, flows, binding, redirect })
+
+const meta = oauth2('https://git.example', 'https://git.example/oauth/authorize', 'https://git.example/oauth/token')
+
+const code = await totp(secret)
+
+const secret = generateTotpSecret()
+const otpauth = `otpauth://totp/App:${email}?secret=${secret}&issuer=App`
+
+const challenge = passkeyChallenge()
+await store.set(userId, challenge)
+
+const value = await signSession({ sub: user.id }, opts)
+headers.set('set-cookie', sessionCookie('session', value))
+
+const verifier = generateCodeVerifier()
+const challenge = await codeChallengeS256(verifier)
+
+const challenge = await codeChallengeS256(generateCodeVerifier())
 ```
 
 ## @pyreon/storage — Reactive Storage
@@ -2616,6 +2682,8 @@ now()                                         // => 1795003200000
 > **Hydration**: The hand-over is read on the first client `now()` and released one macrotask later. Components that first read the clock later than that (lazy islands) see real time and may mismatch against server HTML rendered at the older instant; call `releaseClock()` yourself after your own async hydration if needed.
 >
 > **Tickers are bounded**: `second` and `minute` tickers are always shared. Up to 16 other tickers (custom intervals and per-zone `hour`/`day` tickers) are shared; a reader beyond that gets a private ticker that is stopped with it.
+>
+> **Testing**: Pin the clock with `setClock` and reset between tests with `resetClockState()` and `resetLocaleState()` from `@pyreon/ambient/testing` (in `afterEach`). They drop every ticker, the pin and the hand-over, and forget the memoized runtime locale and zone, the provide flags and the printed warnings.
 >
 > **Peer dependencies**: `@pyreon/core` and `@pyreon/reactivity` are both required peers: the entry imports them when it loads, and every Pyreon app has them. The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
 
@@ -3428,6 +3496,8 @@ const InvertedSection = () => (
 >
 > **System-mode subscription**: `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
 >
+> **Un-enriched theme means unistyle is not loaded**: `@pyreon/unistyle` registers the theme engine (theme enrichment with default breakpoints/spacing, CSS variables, CPSE) into ui-core at module load, so ui-core carries no unistyle dependency. Without it in the module graph — a bare `@pyreon/rocketstyle`-only setup — `<PyreonUI>` falls back to an identity engine and dev-warns once. Missing default breakpoints/spacing or no CSS variables: `import '@pyreon/unistyle'` somewhere reachable from the app (every styled `@pyreon` UI package except bare rocketstyle pulls it in transitively).
+>
 > **Low-level Provider / context**: The package also exports a low-level `Provider` (default export) + `context` from `context.tsx`. It feeds the core theme + mode context and is the path `@pyreon/rocketstyle`'s public `Provider` delegates to, so it is supported and does not warn. App code should still mount `<PyreonUI theme={theme}>`, which sets up every context layer, and read with `useMode()` / `useThemeValue()`.
 
 ## @pyreon/styler — CSS-in-JS
@@ -3548,10 +3618,6 @@ isDynamic("12px")          // false → static, cached
 import { hash, hashUpdate, hashFinalize, HASH_INIT } from "@pyreon/styler"
 hash("color:red")  // e.g. "1a2b3c"
 hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")
-
-// Apps enable CPSE through ui-core, not this call:
-import { init } from "@pyreon/ui-core"
-init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood
 ```
 
 > **css / keyframes return lazy values, not strings**: The `css` tagged template yields a `CSSResult` (resolved on use, never injected by itself); `keyframes` stringifies to an animation NAME and injects its `@keyframes` rule at CALL time; `createGlobalStyle` returns a `ComponentFn` — a fully static template injects at call time, a dynamic one when the component mounts.

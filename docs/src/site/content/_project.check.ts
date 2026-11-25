@@ -672,7 +672,7 @@ export const checked = {
       "why": "Overused, it stops meaning \"this changed\"."
      },
      {
-      "do": "\"2.6× faster than React at 10,000 rows (synthetic, author-run).\"",
+      "do": "\"2.7× faster than React at 10,000 rows (synthetic, author-run).\"",
       "dont": "\"Lightning-fast. Crushes the competition.\"",
       "why": "A number someone can check beats an adjective nobody can."
      },
@@ -721,7 +721,7 @@ export const checked = {
     "path": "00-brief/facts.md \"Identity\""
    },
    {
-    "claim": "2.6× at 10,000 rows",
+    "claim": "2.7× at 10,000 rows",
     "path": "BENCHMARKS.md §1"
    }
   ]

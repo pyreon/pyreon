@@ -66,7 +66,7 @@ export function nativeCompat<T>(fn: T): T {
  * to wrap or pass through.
  *
  * @example
- *   import { isNativeCompat } from '@pyreon/core'
+ *   import { isNativeCompat } from '@pyreon/core/compat'
  *
  *   if (isNativeCompat(type)) return h(type, props)
  *   return wrapCompatComponent(type)(props)

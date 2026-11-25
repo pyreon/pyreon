@@ -2781,6 +2781,19 @@ export const collections = {
       fixCode: '<ErrorBoundary fallback={(err) => <p>Could not load: {String(err)}</p>}>\n  <Widget />\n</ErrorBoundary>',
     }),
   },
+  {
+    // @pyreon/runtime-dom `guardTeardown` (`teardown.ts`): user code that ran
+    // while a component unmounted threw. The teardown went on.
+    pattern: /\[Pyreon\] Error in (?:onUnmount hook of <([\w$.]*)>|ref callback):/,
+    diagnose: (m) => {
+      const where = m[1] === undefined ? 'a ref callback (it was handed `null`), or an object ref\'s `current` setter' : `an \`onUnmount\` hook of \`<${m[1] || 'Anonymous'}>\`, or a cleanup its \`onMount\` callback returned`
+      return {
+        cause: `User code threw while a component was being unmounted: ${where}. The throw was caught and reported (\`registerErrorHandler\`, \`phase: 'unmount'\`), and the teardown continued: the other hooks ran, the row or root was removed. Whatever that code was meant to release (a listener, a timer, a subscription) may still be live.`,
+        fix: 'Read the logged error and its stack: it points at the hook or ref. Make it safe to run once the component is gone (a ref receives `null` on unmount; an element may already be detached), or guard the part that can fail. An `onCleanup` registered inside `onMount` that throws is reported as an effect error instead, without the component name: move it to `onUnmount` (or return it from `onMount`) to get the name.',
+        fixCode: "onMount(() => {\n  const id = setInterval(tick, 1000)\n  return () => clearInterval(id)\n})\n\n// a ref is handed null on unmount\nconst measure = (el: Element | null) => {\n  if (el === null) return\n  observer.observe(el)\n}",
+      }
+    },
+  },
 ]
 
 /** Diagnose an error message and return structured fix information */

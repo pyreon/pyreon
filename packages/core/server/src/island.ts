@@ -76,7 +76,8 @@
  */
 
 import type { ComponentFn, Props, VNode } from '@pyreon/core'
-import { _IslandIds, _nextIslandIdPrefix, h, onMount } from '@pyreon/core'
+import { h, onMount } from '@pyreon/core'
+import { _IslandIds, _nextIslandIdPrefix } from '@pyreon/core/internal'
 import { getContextOwner, isClient } from '@pyreon/reactivity'
 import { encodeIslandProps } from './island-codec'
 

@@ -55,14 +55,4 @@ export function getRequest(): AmbientRequest | undefined {
   return als.getStore()
 }
 
-/**
- * Detach the accessor. Only useful in tests that assert the un-wired
- * behaviour; production never needs it.
- *
- * @internal
- */
-export function _resetRequestSource(): void {
-  _setRequestSource(null)
-}
-
 export type { AmbientRequest }

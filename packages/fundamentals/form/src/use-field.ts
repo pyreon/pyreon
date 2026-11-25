@@ -109,7 +109,7 @@ export function useField(
     throw new Error(
       `[Pyreon] useField("${name}"): field "${name}" not found. ` +
         `Available fields: ${Object.keys(form.fields).join(', ')}. ` +
-        `Declare "${name}" in useForm({ initialValues: { "${name}": … } }) (or the fields array) — ` +
+        `Declare "${name}" in useForm({ initialValues: { "${name}": … } }) — ` +
         `@pyreon/form does not auto-register fields on first use.`,
     )
   }

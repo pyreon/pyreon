@@ -9,7 +9,8 @@ import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSheet, sheet } from '../sheet'
-import { setStyleExtraction, styled } from '../styled'
+import { setStyleExtraction } from '../cpse-state'
+import { styled } from '../styled'
 import { TestThemeProvider } from './index'
 
 const fakeRewrite = (cssText: string, varsOut: Record<string, string>): string =>

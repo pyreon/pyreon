@@ -4,7 +4,6 @@ import {
   createRef,
   Dynamic,
   defineComponent,
-  dispatchToErrorBoundary,
   ErrorBoundary,
   For,
   ForSymbol,
@@ -21,18 +20,21 @@ import {
   Portal,
   PortalSymbol,
   popContext,
-  propagateError,
   provide,
   pushContext,
   registerErrorHandler,
   reportError,
-  runWithHooks,
   Show,
   Suspense,
   Switch,
   useContext,
   withContext,
 } from '../index'
+import {
+  dispatchToErrorBoundary,
+  propagateError,
+  runWithHooks,
+} from '../internal'
 import { jsxDEV } from '../jsx-dev-runtime'
 import { Fragment as JsxFragment, jsx, jsxs } from '../jsx-runtime'
 import type { ComponentFn, Props, VNode, VNodeChild } from '../types'

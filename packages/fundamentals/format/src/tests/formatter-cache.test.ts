@@ -2,11 +2,11 @@ import * as core from '../core'
 import * as reactive from '../index'
 import { _dateTables } from '../datetime'
 import { _numberTables, tableStats } from '../number'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { clearAllTables, constructions } from './helpers'
 
 beforeEach(() => clearAllTables())
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 describe('formatters share the bounded cache', () => {
   it('10,000 derived formatters with identical options: one construction, one cache entry', () => {

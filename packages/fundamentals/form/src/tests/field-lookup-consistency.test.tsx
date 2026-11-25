@@ -127,16 +127,3 @@ describe('unknown-key consistency — baseline writes skip + dev-warn', () => {
     }
   })
 })
-
-describe('fields-array overload accepts focusOnError (was TS2769)', () => {
-  it('typechecks and runs with focusOnError: false', async () => {
-    const { field } = await import('../field')
-    const title = field('title', '')
-    const form = useForm({
-      fields: [title],
-      onSubmit: () => {},
-      focusOnError: false,
-    })
-    expect(form.getValues('title')).toBe('')
-  })
-})

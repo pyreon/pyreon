@@ -27,7 +27,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { _setLocaleStoreReader, type LocaleStore } from './i18n-routing'
+import { _setLocaleStoreReader, type LocaleStore } from './i18n-routing-state'
 
 const _localeAls = new AsyncLocalStorage<LocaleStore>()
 
