@@ -44,20 +44,14 @@ export function textChanged(next: TextValue, written: TextValue | null | undefin
   )
 }
 
-// One detached text node, reused for every conversion below. A fixed single
-// node, not a cache: nothing is added per call, and it holds only the last
-// string written to it.
-let scratch: Text | undefined
-
 /**
- * The text a value renders as, with a NUMBER converted by the DOM: the
- * characters `String(n)` gives, without touching V8's Number→String cache. For
- * the places that must compare a number with text already in the page (an
- * adopted node's server text, a mismatch report) or measure it (`splitText`).
+ * The text a value renders as, with a NUMBER converted by the DOM (a `Text`
+ * node's WebIDL `DOMString` conversion): the characters `String(n)` gives,
+ * without touching V8's Number→String cache. For the places that must compare
+ * a number with text already in the page (an adopted node's server text, a
+ * value that changed type, a mismatch report) or measure it (`splitText`).
+ * Allocates a detached node, which is fine for those rare paths.
  */
 export function domText(v: TextValue): string {
-  if (typeof v === 'string') return v
-  ;(scratch ??= document.createTextNode('')).data = v as unknown as string
-
-  return scratch.data
+  return new Text(v as string).data
 }
