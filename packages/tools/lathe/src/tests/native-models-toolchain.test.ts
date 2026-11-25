@@ -74,6 +74,17 @@ const EXPECTED = [
   'node=a>b+c',
   'shape-unknown=rejected',
   'roundtrip=Rex/9.99/square',
+  // A discriminator whose property is a plain string dispatches by OpenAPI's
+  // rule (component name, or `mapping`) -- never "first member that decodes".
+  'anypet=dog:Rex',
+  'anypet2=cat',
+  'mapped=dog:puppy',
+  'mapped2=cat:kitty',
+  // A REQUIRED nullable key is written as null, and must be present to decode.
+  'nullables={"a":null}',
+  'nullables-missing=rejected',
+  // Keyword / symbol keys and symbol enum values survive both directions.
+  'keywords=x/true/d/p/minus/rawValue',
 ]
 
 const SWIFT_MAIN = `import Foundation
@@ -108,6 +119,20 @@ var tag = "?"
 if case .square? = again.shape { tag = "square" }
 print("roundtrip=\\(again.name)/\\(again.price!)/\\(tag)")
 print("date-roundtrip=\\(again.createdAt == pet.createdAt)")
+if case .dogPet(let d) = try! JSONDecoder().decode(AnyPet.self, from: Data(#"{"petType":"DogPet","name":"Rex","bark":true}"#.utf8)) { print("anypet=dog:\\(d.name!)") }
+if case .cat = try! JSONDecoder().decode(AnyPet.self, from: Data(#"{"petType":"Cat","name":"Tom"}"#.utf8)) { print("anypet2=cat") }
+if case .dogPet(let d) = try! JSONDecoder().decode(MappedPet.self, from: Data(#"{"petType":"puppy"}"#.utf8)) { print("mapped=dog:\\(d.petType)") }
+if case .cat(let c) = try! JSONDecoder().decode(MappedPet.self, from: Data(#"{"petType":"kitty"}"#.utf8)) { print("mapped2=cat:\\(c.petType)") }
+print("nullables=\\(String(decoding: try! JSONEncoder().encode(Nullables(a: nil)), as: UTF8.self))")
+do {
+    _ = try JSONDecoder().decode(Nullables.self, from: Data("{}".utf8))
+    print("nullables-missing=accepted")
+} catch {
+    print("nullables-missing=rejected")
+}
+let kw = try! JSONDecoder().decode(Keywords.self, from: Data(#"{"nil":"x","fallthrough":true,"$":"d","+":"p","sign":"-","word":"rawValue"}"#.utf8))
+let kwAgain = try! JSONDecoder().decode(Keywords.self, from: try! JSONEncoder().encode(kw))
+print("keywords=\\(kwAgain.nil_)/\\(kwAgain.fallthrough_)/\\(kwAgain.dollar!)/\\(kwAgain.plus!)/\\(kwAgain.sign!)/\\(kwAgain.word!.rawValue)")
 `
 
 const KOTLIN_MAIN = (pkg: string) => `package ${pkg}
@@ -149,10 +174,44 @@ fun main() {
     val again = LatheJson.decodeFromString<Pet>(LatheJson.encodeToString(pet))
     println("roundtrip=\${again.name}/\${again.price}/\${if (again.shape is Shape.Square) "square" else "?"}")
     println("equal=\${again == pet}")
+    val p1 = Json.decodeFromString<AnyPet>("""{"petType":"DogPet","name":"Rex","bark":true}""")
+    if (p1 is AnyPet.DogPet) println("anypet=dog:\${p1.value.name}")
+    if (Json.decodeFromString<AnyPet>("""{"petType":"Cat","name":"Tom"}""") is AnyPet.Cat) println("anypet2=cat")
+    val m1 = Json.decodeFromString<MappedPet>("""{"petType":"puppy"}""")
+    if (m1 is MappedPet.DogPet) println("mapped=dog:\${m1.value.petType}")
+    val m2 = Json.decodeFromString<MappedPet>("""{"petType":"kitty"}""")
+    if (m2 is MappedPet.Cat) println("mapped2=cat:\${m2.value.petType}")
+    println("nullables=\${LatheJson.encodeToString(Nullables(a = null))}")
+    try {
+        LatheJson.decodeFromString<Nullables>("{}")
+        println("nullables-missing=accepted")
+    } catch (e: IllegalArgumentException) {
+        println("nullables-missing=rejected")
+    }
+    val kw = Json.decodeFromString<Keywords>("""{"nil":"x","fallthrough":true,"$":"d","+":"p","sign":"-","word":"rawValue"}""")
+    val kwAgain = Json.decodeFromString<Keywords>(Json.encodeToString(kw))
+    println("keywords=\${kwAgain.nil_}/\${kwAgain.fallthrough_}/\${kwAgain.dollar}/\${kwAgain.plus}/\${if (kwAgain.sign == KeywordsSign.MINUS) "minus" else "?"}/\${if (kwAgain.word == KeywordsWord.RAW_VALUE) "rawValue" else "?"}")
 }
 `
 
-describe.skipIf(!hasSwiftc())('swift models against swiftc', () => {
+/**
+ * `PYREON_REQUIRE_NATIVE_VALIDATE=1` (native-validate.yml's required job)
+ * turns every skip below into a failure: there, a missing toolchain is a
+ * broken runner, not a pass.
+ */
+const required = process.env.PYREON_REQUIRE_NATIVE_VALIDATE === '1'
+
+describe.skipIf(!required)('toolchains, when validation is required', () => {
+  it('are all present', () => {
+    expect(hasSwiftc(), 'swiftc is not on PATH').toBe(true)
+    expect(
+      kotlinxSerialization(),
+      'kotlinc + kotlin + the kotlinx.serialization plugin/jars (PYREON_KOTLINX_SERIALIZATION_CLASSPATH) are not all present',
+    ).toBeDefined()
+  })
+})
+
+describe.skipIf(!hasSwiftc() && !required)('swift models against swiftc', () => {
   it('compile, decode every mapping, and round-trip (public access)', () => {
     const { swift } = files({ swiftAccess: 'public' })
     const r = swiftRun({ 'Models.swift': swift, 'main.swift': SWIFT_MAIN })
@@ -177,11 +236,12 @@ describe.skipIf(!hasSwiftc())('swift models against swiftc', () => {
 
 const kx = kotlinxSerialization()
 
-describe.skipIf(!kx)('kotlin models against kotlinc + the real kotlinx.serialization plugin', () => {
+describe.skipIf(!kx && !required)('kotlin models against kotlinc + the real kotlinx.serialization plugin', () => {
   it('compile, decode every mapping, and round-trip (custom package)', () => {
     const pkg = 'com.example.api'
     const { kotlin } = files({ kotlinPackage: pkg })
-    const r = kotlinRun({ 'Models.kt': kotlin, 'Main.kt': KOTLIN_MAIN(pkg) }, `${pkg}.MainKt`, kx as NonNullable<typeof kx>)
+    if (!kx) throw new Error('[Pyreon] kotlinx.serialization toolchain missing under PYREON_REQUIRE_NATIVE_VALIDATE=1')
+    const r = kotlinRun({ 'Models.kt': kotlin, 'Main.kt': KOTLIN_MAIN(pkg) }, `${pkg}.MainKt`, kx)
     expect(r.ok, r.output).toBe(true)
     const lines = r.output.trim().split('\n')
     const expected = EXPECTED.map((l) =>
@@ -194,7 +254,7 @@ describe.skipIf(!kx)('kotlin models against kotlinc + the real kotlinx.serializa
   }, 300_000)
 })
 
-describe.skipIf(!hasKotlinc() || kx !== undefined)('kotlin models against kotlinc (stubbed kotlinx.serialization)', () => {
+describe.skipIf(!hasKotlinc() || kx !== undefined || required)('kotlin models against kotlinc (stubbed kotlinx.serialization)', () => {
   it('type-checks against the kotlinx.serialization API surface it names', () => {
     const { kotlin } = files({ kotlinPackage: 'com.example.api' })
     const r = kotlinTypecheckStubbed({ 'Models.kt': kotlin })

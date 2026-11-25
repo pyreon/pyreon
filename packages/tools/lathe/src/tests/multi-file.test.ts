@@ -165,6 +165,8 @@ describe('bundling', () => {
         { kind: 'ref', name: 'Dog' },
       ],
       discriminator: 'kind',
+      // The rewritten mapping still names each member's tag.
+      declared: { property: 'kind', tags: [['cat'], ['dog']] },
     })
   })
 

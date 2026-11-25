@@ -12,7 +12,7 @@ import {
   type ClientName,
   type ResponseValidation,
 } from "../emit/client-runtime";
-import { isKotlinPackage } from "../emit/native-models";
+import { isKotlinPackage } from "../emit/native-identifiers";
 import { ALL_VALIDATORS, type ValidatorName } from "../emit/validator";
 import type { LatheNaming, LatheOperationSettings } from "./customize";
 import type { LatheFormatter } from "./format";
@@ -114,6 +114,7 @@ export function expandPlugins(selected: readonly PluginName[]): PluginName[] {
     out.push(name);
   };
   for (const name of selected) visit(name);
+
   return out;
 }
 
@@ -570,6 +571,7 @@ export function resolveProjects(
   if (!projects || projects.length === 0) return [resolveConfig(section)];
 
   const seen = new Set<string>();
+
   return projects.map((p, i) => {
     if (!p.name) {
       throw new Error(
@@ -588,6 +590,7 @@ export function resolveProjects(
     // `exactOptionalPropertyTypes` treats `{ projects: undefined }` and an
     // absent key as different types, and only the absent key is legal here.
     const { projects: _drop, ...base } = { ...section, ...p };
+
     return { ...resolveConfig(base), name: p.name };
   });
 }
@@ -722,6 +725,7 @@ export function resolveConfig(
       `[Pyreon] lathe: unknown \`nativeModels.swiftAccess\` \`${String(swiftAccess)}\`. Known: internal, public.`,
     );
   }
+
   return {
     name: "",
     requestedPlugins: plugins,
@@ -767,5 +771,6 @@ export function validRefOrigin(entry: string): string {
   if (!url || !/^https?:$/.test(url.protocol) || url.origin !== entry.replace(/\/$/, '')) {
     throw new Error(`[Pyreon] lathe: refOrigins entry \`${entry}\` is not an origin. Use \`https://host[:port]\`, or \`*\` for any public origin.`)
   }
+
   return url.origin
 }

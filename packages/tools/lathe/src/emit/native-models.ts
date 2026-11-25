@@ -39,7 +39,9 @@
  */
 
 import type { IrDocument, IrField, IrLiteral, IrModel, IrType } from '../core/ir'
-import { camel, ident, pascal } from '../core/naming'
+import { camel, pascal } from '../core/naming'
+import { kotlinEntry, nativeIdent, swiftCaseIdent } from './native-identifiers'
+import { SWIFT_JSON_VALUE, SWIFT_LATHE_JSON } from './native-swift-support'
 import type { GeneratedFile } from './writer'
 import { CONTROL_CHARS, safeBlockComment, safeLineComment } from './writer'
 
@@ -111,22 +113,30 @@ export interface NativeModels {
 }
 
 /**
- * Type names the printers reference. A model with one of these names is
- * renamed (`<Name>Model`): a model called `List` would otherwise capture every
- * `List<…>` in the Kotlin file, and one called `Date` every Swift `Date`.
+ * Types an iOS / Android app module routinely names. The generated file lives
+ * IN that module, so a model called `Data`, `URL`, `View` or `Result` would
+ * shadow Foundation's / SwiftUI's / Kotlin's own across the whole app, not
+ * just in this file. Renamed like a printer name (`<Name>Model`).
  */
-const NATIVE_RESERVED = new Set([
-  // Swift
-  'String', 'Int', 'Int64', 'Double', 'Bool', 'Date', 'Codable', 'Decoder', 'Encoder', 'CodingKey',
-  'CodingKeys', 'DecodingError', 'EncodingError', 'JSONDecoder', 'JSONEncoder', 'ISO8601DateFormatter',
-  'Foundation', 'Optional', 'Array', 'Dictionary', 'Swift', 'JSONValue', 'LatheJSON', 'Self', 'Type',
-  'Protocol', 'Any', 'AnyObject', 'Never', 'Void', 'Error',
-  // Kotlin
-  'Long', 'Boolean', 'List', 'Map', 'Unit', 'Nothing', 'Serializable', 'SerialName', 'KSerializer',
-  'SerialDescriptor', 'SerializationException', 'Json', 'JsonElement', 'JsonObject', 'JsonPrimitive',
-  'JsonDecoder', 'JsonEncoder', 'LatheJson', 'IllegalArgumentException', 'Exception', 'kotlin',
-  'kotlinx',
-])
+const PLATFORM_TYPES = [
+  'Any', 'AnyObject', 'Array', 'Bool', 'Boolean', 'Button', 'Byte', 'Calendar', 'Char', 'Character',
+  'Collection', 'Color', 'Comparable', 'Data', 'Date', 'Decimal', 'Dictionary', 'Double', 'Error', 'Float',
+  'Image', 'Int', 'Int64', 'Iterable', 'List', 'Locale', 'Long', 'Map', 'Never', 'Nothing', 'Notification',
+  'Number', 'Object', 'Optional', 'Pair', 'Protocol', 'Result', 'Self', 'Sequence', 'Set', 'Short', 'String',
+  'Task', 'Text', 'Throwable', 'TimeZone', 'Triple', 'Type', 'URL', 'UUID', 'Unit', 'View', 'Void',
+]
+
+let reservedCache: ReadonlySet<string> | undefined
+
+/**
+ * Every name a model must not take: each type name the printers THEMSELVES
+ * write (derived, see {@link printerTypeNames}) plus {@link PLATFORM_TYPES}.
+ * Constant for the process, so computed once.
+ */
+export function nativeReserved(): ReadonlySet<string> {
+  reservedCache ??= new Set([...printerTypeNames(), ...PLATFORM_TYPES])
+  return reservedCache
+}
 
 /** One namespace for every top-level declaration, so nothing shadows anything. */
 class Namer {
@@ -151,8 +161,8 @@ class Namer {
 }
 
 /** Lower the document's models to declarations both printers share. */
-export function lowerModels(ir: IrDocument): NativeModels {
-  const lowerer = new Lowerer(ir)
+export function lowerModels(ir: IrDocument, reserved: ReadonlySet<string> = nativeReserved()): NativeModels {
+  const lowerer = new Lowerer(ir, reserved)
   for (const m of ir.models) lowerer.model(m)
   markRecursive(lowerer.decls)
 
@@ -167,14 +177,15 @@ class Lowerer {
   readonly decls: NativeDecl[] = []
   usesJson = false
   usesDate = false
-  private readonly namer = new Namer(NATIVE_RESERVED)
+  private readonly namer: Namer
   /** Every model keeps its IR name unless that name is one the printers use. */
   private readonly modelName = new Map<string, string>()
   private readonly models: ReadonlyMap<string, IrModel>
 
-  constructor(ir: IrDocument) {
+  constructor(ir: IrDocument, reserved: ReadonlySet<string>) {
+    this.namer = new Namer(reserved)
     for (const m of ir.models) {
-      this.modelName.set(m.name, this.namer.claim(NATIVE_RESERVED.has(m.name) ? `${m.name}Model` : m.name))
+      this.modelName.set(m.name, this.namer.claim(reserved.has(m.name) ? `${m.name}Model` : m.name))
     }
     this.models = new Map(ir.models.map((m) => [m.name, m]))
   }
@@ -278,6 +289,27 @@ class Lowerer {
     return some ? wrap({ k: 'json' }) : { k: 'optional', of: { k: 'json' } }
   }
 
+  /**
+   * How a union is dispatched. A discriminator whose members PIN their tag
+   * (an enum / `const` property -- what `t.discriminator` means after the
+   * input layer's check) uses those values. One whose tag property is a plain
+   * string uses OpenAPI's mapping rule instead: the `mapping` keys naming a
+   * member, else its component name (`t.declared`). Never shape-guessing: a
+   * `Dog` and a `Cat` with the same fields would otherwise decode as whichever
+   * comes first.
+   */
+  private tagging(t: IrUnion): { key?: string | undefined; tags?: string[][] | string | undefined } {
+    if (t.discriminator !== undefined) return { key: t.discriminator, tags: this.tagsOf(t.options, t.discriminator) }
+    if (!t.declared) return {}
+    const all = t.declared.tags.flat()
+    if (t.declared.tags.length !== t.options.length || t.declared.tags.some((v) => v.length === 0)) {
+      return { key: t.declared.property, tags: 'a member has no tag value' }
+    }
+    if (new Set(all).size !== all.length) return { key: t.declared.property, tags: 'two members share a discriminator value' }
+
+    return { key: t.declared.property, tags: t.declared.tags.map((v) => [...v]) }
+  }
+
   /** The discriminator values each member pins, or why the union cannot be tagged. */
   private tagsOf(options: readonly IrType[], key: string): string[][] | string {
     const out: string[][] = []
@@ -303,9 +335,9 @@ class Lowerer {
     // Pushed before the members are lowered, so a hoisted member sorts after it.
     const decl: Extract<NativeDecl, { kind: 'union' }> = { kind: 'union', name, doc, variants: [], serializer }
     this.decls.push(decl)
-    const tags = t.discriminator !== undefined ? this.tagsOf(t.options, t.discriminator) : undefined
-    if (typeof tags === 'string') decl.untaggedReason = `discriminator \`${t.discriminator}\`: ${tags}`
-    else if (tags) decl.discriminator = t.discriminator
+    const { key, tags } = this.tagging(t)
+    if (typeof tags === 'string') decl.untaggedReason = `discriminator \`${key}\`: ${tags}`
+    else if (tags) decl.discriminator = key
     const labels = new Set<string>()
     const variants: NativeVariant[] = t.options.map((o, i) => {
       const type = this.type(o, `${name}Option${i + 1}`)
@@ -526,7 +558,10 @@ function kotlinDoc(doc: string | undefined, indent: string): string[] {
 
 /** The Swift file: one `Codable` declaration per model. */
 export function emitSwiftModels(doc: IrDocument, options: NativeModelsOptions = {}): GeneratedFile {
-  const lowered = lowerModels(doc)
+  return { path: SWIFT_MODELS_PATH, contents: printSwift(doc, lowerModels(doc), options) }
+}
+
+function printSwift(doc: Pick<IrDocument, 'title' | 'version'>, lowered: NativeModels, options: NativeModelsOptions): string {
   const pub = options.swiftAccess === 'public' ? 'public ' : ''
   const out: string[] = [...nativeBanner(doc.title, doc.version), '// swiftlint:disable all', '', 'import Foundation', '']
   for (const d of lowered.decls) {
@@ -539,7 +574,7 @@ export function emitSwiftModels(doc: IrDocument, options: NativeModelsOptions = 
   if (lowered.usesJson) out.push(...SWIFT_JSON_VALUE(pub))
   out.push(...SWIFT_LATHE_JSON(pub))
 
-  return { path: SWIFT_MODELS_PATH, contents: `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n` }
+  return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`
 }
 
 function swiftType(t: NativeType): string {
@@ -577,7 +612,7 @@ function declaredType(f: NativeField): NativeType {
 function swiftEnum(d: Extract<NativeDecl, { kind: 'enum' }>, pub: string): string[] {
   const cases = uniqueIdents(
     d.values.map(String),
-    d.raw === 'string' ? (v) => ident(v) : (v) => ident(`value ${v.replace('-', 'minus ')}`),
+    d.raw === 'string' ? (v) => swiftCaseIdent(v) : (v) => swiftCaseIdent(`value ${v.replace('-', 'minus ')}`),
   )
 
   return [
@@ -593,29 +628,58 @@ function swiftStruct(d: Extract<NativeDecl, { kind: 'struct' }>, pub: string): s
   if (d.droppedAdditional) {
     out.push('// lathe: this object also allows additional properties; only the declared ones are modelled.')
   }
-  const props = uniqueIdents(d.fields.map((f) => f.wire), (w) => ident(w))
+  const props = uniqueIdents(d.fields.map((f) => f.wire), nativeIdent)
   const types = d.fields.map((f) => swiftType(declaredType(f)))
   out.push(`${pub}${d.recursive ? 'final class' : 'struct'} ${d.name}: Codable {`)
   d.fields.forEach((f, i) => out.push(...swiftDoc(f.doc, '    '), `    ${pub}var ${props[i]}: ${types[i]}`))
   if (d.fields.length > 0) out.push('')
   const params = d.fields.map((f, i) => `${props[i]}: ${types[i]}${f.required ? '' : ' = nil'}`)
   out.push(`    ${pub}init(${params.join(', ')}) {`, ...props.map((p) => `        self.${p} = ${p}`), '    }')
-  if (d.fields.some((f, i) => f.wire !== props[i])) {
+  // A REQUIRED nullable field must be written as `null` and must be present
+  // to decode. Synthesized Codable treats every Optional as omittable (it
+  // uses `encodeIfPresent` / `decodeIfPresent`), so such a struct spells both
+  // out -- which is what Kotlin's `T?` with no default already does.
+  const explicit = d.fields.some((f) => f.required && f.type.k === 'optional')
+  if (explicit || d.fields.some((f, i) => f.wire !== props[i])) {
     out.push('', '    enum CodingKeys: String, CodingKey {')
     d.fields.forEach((f, i) => {
       out.push(f.wire === props[i] ? `        case ${props[i]}` : `        case ${props[i]} = ${quoted(f.wire, 'swift')}`)
     })
     out.push('    }')
   }
+  if (explicit) out.push(...swiftExplicitCodable(d, props, pub))
   out.push('}', '')
 
   return out
 }
 
+/** `init(from:)` + `encode(to:)` that keep a required nullable key on the wire. */
+function swiftExplicitCodable(d: Extract<NativeDecl, { kind: 'struct' }>, props: string[], pub: string): string[] {
+  const out = ['', `    ${pub}${d.recursive ? 'required ' : ''}init(from decoder: Decoder) throws {`]
+  out.push('        let container = try decoder.container(keyedBy: CodingKeys.self)')
+  d.fields.forEach((f, i) => {
+    const p = props[i] as string
+    if (f.required) out.push(`        self.${p} = try container.decode(${swiftType(f.type)}.self, forKey: .${p})`)
+    else out.push(`        self.${p} = try container.decodeIfPresent(${swiftType(innerType(f.type))}.self, forKey: .${p})`)
+  })
+  out.push('    }', '', `    ${pub}func encode(to encoder: Encoder) throws {`, '        var container = encoder.container(keyedBy: CodingKeys.self)')
+  d.fields.forEach((f, i) => {
+    const p = props[i] as string
+    out.push(`        try container.${f.required ? 'encode' : 'encodeIfPresent'}(${p}, forKey: .${p})`)
+  })
+  out.push('    }')
+
+  return out
+}
+
+function innerType(t: NativeType): NativeType {
+  return t.k === 'optional' ? t.of : t
+}
+
 function swiftUnion(d: Extract<NativeDecl, { kind: 'union' }>, pub: string): string[] {
   const out: string[] = []
   if (d.untaggedReason) out.push(`// lathe: decoded untagged (first member that decodes wins) — ${safeLineComment(d.untaggedReason)}.`)
-  const cases = uniqueIdents(d.variants.map((v) => v.label), (l) => ident(camel(l)))
+  const cases = uniqueIdents(d.variants.map((v) => v.label), (l) => swiftCaseIdent(camel(l)))
   out.push(`${pub}indirect enum ${d.name}: Codable {`)
   d.variants.forEach((v, i) => out.push(`    case ${cases[i]}(${swiftType(v.type)})`))
   out.push('', ...(d.discriminator !== undefined ? swiftTaggedInit(d, cases, pub, d.discriminator) : swiftUntaggedInit(d, cases, pub)))
@@ -673,108 +737,16 @@ function swiftInit(t: NativeType): string {
   return swiftType(t)
 }
 
-const SWIFT_JSON_VALUE = (pub: string): string[] => [
-  '/// Any JSON value — what an untyped schema (`{}`, a free-form object) decodes to.',
-  `${pub}enum JSONValue: Codable, Hashable {`,
-  '    case null',
-  '    case bool(Bool)',
-  '    case number(Double)',
-  '    case string(String)',
-  '    case array([JSONValue])',
-  '    case object([String: JSONValue])',
-  '',
-  `    ${pub}init(from decoder: Decoder) throws {`,
-  '        let container = try decoder.singleValueContainer()',
-  '        if container.decodeNil() { self = .null }',
-  '        else if let value = try? container.decode(Bool.self) { self = .bool(value) }',
-  '        else if let value = try? container.decode(Double.self) { self = .number(value) }',
-  '        else if let value = try? container.decode(String.self) { self = .string(value) }',
-  '        else if let value = try? container.decode([JSONValue].self) { self = .array(value) }',
-  '        else { self = .object(try container.decode([String: JSONValue].self)) }',
-  '    }',
-  '',
-  `    ${pub}func encode(to encoder: Encoder) throws {`,
-  '        var container = encoder.singleValueContainer()',
-  '        switch self {',
-  '        case .null: try container.encodeNil()',
-  '        case .bool(let value): try container.encode(value)',
-  '        case .number(let value): try container.encode(value)',
-  '        case .string(let value): try container.encode(value)',
-  '        case .array(let value): try container.encode(value)',
-  '        case .object(let value): try container.encode(value)',
-  '        }',
-  '    }',
-  '}',
-  '',
-]
-
-const SWIFT_LATHE_JSON = (pub: string): string[] => [
-  '/// A decoder and an encoder configured for these models: `date-time` fields',
-  '/// read RFC 3339 with or without fractional seconds, and are written with them.',
-  `${pub}enum LatheJSON {`,
-  `    ${pub}static var decoder: JSONDecoder {`,
-  '        let decoder = JSONDecoder()',
-  '        decoder.dateDecodingStrategy = .custom { decoder in',
-  '            let container = try decoder.singleValueContainer()',
-  '            let text = try container.decode(String.self)',
-  '            if let date = parseDate(text) { return date }',
-  '            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected an RFC 3339 date-time, got \\(text)")',
-  '        }',
-  '        return decoder',
-  '    }',
-  '',
-  `    ${pub}static var encoder: JSONEncoder {`,
-  '        let encoder = JSONEncoder()',
-  '        encoder.dateEncodingStrategy = .custom { date, encoder in',
-  '            let formatter = ISO8601DateFormatter()',
-  '            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]',
-  '            var container = encoder.singleValueContainer()',
-  '            try container.encode(formatter.string(from: date))',
-  '        }',
-  '        return encoder',
-  '    }',
-  '',
-  `    ${pub}static func parseDate(_ text: String) -> Date? {`,
-  '        let formatter = ISO8601DateFormatter()',
-  '        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]',
-  '        if let date = formatter.date(from: text) { return date }',
-  '        formatter.formatOptions = [.withInternetDateTime]',
-  '        return formatter.date(from: text)',
-  '    }',
-  '}',
-]
-
 /* ------------------------------------------------------------------ */
 /* Kotlin                                                              */
 /* ------------------------------------------------------------------ */
 
-/** A Kotlin `package` name: dot-separated identifiers, no hard keywords. */
-const KOTLIN_HARD_KEYWORDS = new Set([
-  'as', 'break', 'class', 'continue', 'do', 'else', 'false', 'for', 'fun', 'if', 'in', 'interface', 'is',
-  'null', 'object', 'package', 'return', 'super', 'this', 'throw', 'true', 'try', 'typealias', 'typeof',
-  'val', 'var', 'when', 'while',
-])
-
-export function isKotlinPackage(name: string): boolean {
-  return name.split('.').every((seg) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(seg) && !KOTLIN_HARD_KEYWORDS.has(seg))
-}
-
-/** `in_progress` / `inProgress` -> `IN_PROGRESS`. */
-function kotlinEntry(value: string): string {
-  const parts = value
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .split(/[^A-Za-z0-9]+/)
-    .filter((w) => w.length > 0)
-    .map((w) => w.toUpperCase())
-  let out = parts.length === 0 ? 'EMPTY' : parts.join('_')
-  if (/^[0-9]/.test(out)) out = `_${out}`
-
-  return out
-}
-
 /** The Kotlin file: one `@Serializable` declaration per model. */
 export function emitKotlinModels(doc: IrDocument, options: NativeModelsOptions = {}): GeneratedFile {
-  const lowered = lowerModels(doc)
+  return { path: KOTLIN_MODELS_PATH, contents: printKotlin(doc, lowerModels(doc), options) }
+}
+
+function printKotlin(doc: Pick<IrDocument, 'title' | 'version'>, lowered: NativeModels, options: NativeModelsOptions): string {
   const pkg = options.kotlinPackage ?? 'api'
   const out: string[] = kotlinHeader(doc, pkg, lowered)
   for (const d of lowered.decls) {
@@ -792,10 +764,10 @@ export function emitKotlinModels(doc: IrDocument, options: NativeModelsOptions =
     'val LatheJson: Json = Json { ignoreUnknownKeys = true }',
   )
 
-  return { path: KOTLIN_MODELS_PATH, contents: `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n` }
+  return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`
 }
 
-function kotlinHeader(doc: IrDocument, pkg: string, lowered: NativeModels): string[] {
+function kotlinHeader(doc: Pick<IrDocument, 'title' | 'version'>, pkg: string, lowered: NativeModels): string[] {
   const hasUnions = lowered.decls.some((d) => d.kind === 'union')
   const out = [
     ...nativeBanner(doc.title, doc.version),
@@ -880,13 +852,13 @@ function kotlinStruct(d: Extract<NativeDecl, { kind: 'struct' }>): string[] {
   const out = [...kotlinDoc(text.filter(Boolean).join('\n\n') || undefined, ''), '@Serializable']
   // A data class needs at least one constructor parameter.
   if (d.fields.length === 0) return [...out, `class ${d.name}`, '']
-  const props = uniqueIdents(d.fields.map((f) => f.wire), (w) => ident(w))
+  const props = uniqueIdents(d.fields.map((f) => f.wire), nativeIdent)
   out.push(`data class ${d.name}(`)
   d.fields.forEach((f, i) => {
     const name = props[i] as string
     const serial = f.wire === name ? '' : `@SerialName(${quoted(f.wire, 'kotlin')}) `
     const value = `${kotlinType(declaredType(f), '')}${f.required ? '' : ' = null'}`
-    out.push(...kotlinDoc(f.doc, '    '), `    ${serial}val ${kotlinIdent(name)}: ${value},`)
+    out.push(...kotlinDoc(f.doc, '    '), `    ${serial}val ${name}: ${value},`)
   })
   out.push(')', '')
 
@@ -951,7 +923,127 @@ function kotlinUntaggedDecode(d: Extract<NativeDecl, { kind: 'union' }>, cases: 
   ]
 }
 
-/** `ident` already suffixes every Kotlin hard keyword; this is the guard if that list ever shrinks. */
-function kotlinIdent(name: string): string {
-  return KOTLIN_HARD_KEYWORDS.has(name) ? `\`${name}\`` : name
+/* ------------------------------------------------------------------ */
+/* Reserved names, derived from the printers                           */
+/* ------------------------------------------------------------------ */
+
+/** Probe model names: they must not look like anything a printer writes. */
+const PROBE = 'Zqx'
+
+const PROBE_STRING: IrType = { kind: 'string' }
+
+function probeTagged(tag: string): IrType {
+  return { kind: 'object', fields: [{ name: 't', type: { kind: 'enum', values: [tag] }, required: true }] }
+}
+
+/**
+ * A document that drives EVERY printer branch: a struct with CodingKeys, a
+ * required nullable field (explicit Codable), every scalar, a date, free
+ * JSON, a map, string and integer enums, a recursive class, an empty object,
+ * a tagged and an untagged union with every primitive member, and an alias.
+ * `native-models.test.ts` locks that the derived set covers every type name
+ * the printers emit for its own fixture, so a printer branch this probe
+ * misses fails a test rather than shipping an unreserved name.
+ */
+const PROBE_DOC: IrDocument = {
+  title: 'probe',
+  version: '0',
+  baseUrl: '',
+  operations: [],
+  notes: [],
+  models: [
+    {
+      name: `${PROBE}S`,
+      type: {
+        kind: 'object',
+        additional: PROBE_STRING,
+        fields: [
+          { name: 'snake_key', type: { kind: 'nullable', inner: PROBE_STRING }, required: true },
+          { name: 'o', type: { kind: 'number', integer: false }, required: false },
+          { name: 'i', type: { kind: 'number', integer: true }, required: true },
+          { name: 'l', type: { kind: 'bigint' }, required: true },
+          { name: 'b', type: { kind: 'boolean' }, required: true },
+          { name: 'd', type: { kind: 'string', format: 'date-time' }, required: true },
+          { name: 'j', type: { kind: 'unknown', reason: 'probe' }, required: true },
+          { name: 'm', type: { kind: 'object', fields: [], additional: PROBE_STRING }, required: true },
+          { name: 'a', type: { kind: 'array', items: PROBE_STRING }, required: true },
+          { name: 'e', type: { kind: 'enum', values: ['zqxa', 'zqxb'] }, required: true },
+          { name: 'n', type: { kind: 'enum', values: [1, 2] }, required: true },
+          { name: 'r', type: { kind: 'ref', name: `${PROBE}S` }, required: false },
+        ],
+      },
+    },
+    { name: `${PROBE}E`, type: { kind: 'object', fields: [] } },
+    { name: `${PROBE}A`, type: probeTagged('zqxa') },
+    { name: `${PROBE}B`, type: probeTagged('zqxb') },
+    {
+      name: `${PROBE}T`,
+      type: {
+        kind: 'union',
+        discriminator: 't',
+        options: [
+          { kind: 'ref', name: `${PROBE}A` },
+          { kind: 'ref', name: `${PROBE}B` },
+        ],
+      },
+    },
+    {
+      name: `${PROBE}U`,
+      type: {
+        kind: 'union',
+        options: [
+          PROBE_STRING,
+          { kind: 'number', integer: true },
+          { kind: 'number', integer: false },
+          { kind: 'boolean' },
+          { kind: 'bigint' },
+          { kind: 'string', format: 'date-time' },
+          { kind: 'unknown', reason: 'probe' },
+          { kind: 'array', items: PROBE_STRING },
+          { kind: 'object', fields: [], additional: PROBE_STRING },
+          { kind: 'nullable', inner: { kind: 'ref', name: `${PROBE}A` } },
+        ],
+      },
+    },
+    { name: `${PROBE}L`, type: { kind: 'array', items: PROBE_STRING } },
+  ],
+}
+
+/**
+ * Every capitalized identifier in `source` outside comments and string
+ * literals -- the TYPE names a file writes (models are PascalCase, so only
+ * those can collide).
+ */
+export function typeNamesIn(source: string): Set<string> {
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ')
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
+
+  return new Set(code.match(/\b[A-Z][A-Za-z0-9_]*\b/g) ?? [])
+}
+
+/**
+ * The type names the printers write that are not a model's: each one a model
+ * would shadow (`List`, `Date`, `Hashable`, `CaseIterable`, `TagKey`,
+ * `CodingKeys`, Kotlin's `Suppress` from `@file:Suppress`, …). Derived by
+ * printing {@link PROBE_DOC} -- a hand-kept list missed `Hashable` and
+ * `Suppress` -- minus what the probe itself declared and the Kotlin enum
+ * entries / case classes its names produce.
+ */
+function printerTypeNames(): Set<string> {
+  const lowered = lowerModels(PROBE_DOC, new Set())
+  const declared = new Set<string>()
+  for (const d of lowered.decls) {
+    declared.add(d.name)
+    if (d.kind === 'union') declared.add(d.serializer)
+  }
+  const names = new Set<string>()
+  for (const text of [printSwift(PROBE_DOC, lowered, {}), printKotlin(PROBE_DOC, lowered, {})]) {
+    for (const n of typeNamesIn(text)) {
+      if (!declared.has(n) && !n.toLowerCase().startsWith(PROBE.toLowerCase())) names.add(n)
+    }
+  }
+
+  return names
 }

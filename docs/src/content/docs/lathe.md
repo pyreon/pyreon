@@ -397,7 +397,7 @@ data class Note(
 | --- | --- | --- |
 | object | `struct` (a `final class` when it contains itself other than through an array or map) | `@Serializable data class` |
 | optional property | `T? = nil` | `T? = null` |
-| required, nullable | `T?`, no default in the `init` | `T?`, no default |
+| required, nullable | `T?`, no default in the `init`; written as `null`, and the key must be present to decode | `T?`, no default (same wire behaviour) |
 | `snake_case` / keyword / symbol key | camelCase property + `CodingKeys` | camelCase property + `@SerialName` |
 | string enum | `enum X: String, Codable, CaseIterable` | `@Serializable enum class` with `@SerialName` entries |
 | integer enum | `enum X: Int, Codable` | `typealias X = Long`, with the allowed values in its KDoc |
@@ -413,16 +413,29 @@ data class Note(
 | `readOnly` / `writeOnly` | separate `<Name>` and `<Name>Input` types | the same |
 
 Inline objects, enums and unions become named top-level types, named
-`<Parent><Property>` (`Pet.status` becomes `PetStatus`). A model whose name the
-file itself uses (`List`, `Date`, `String`, `Json`) is renamed with a `Model`
-suffix.
+`<Parent><Property>` (`Pet.status` becomes `PetStatus`). A model is renamed
+with a `Model` suffix when its name is a type the generated file itself writes
+(`Hashable`, `CodingKeys`, `TagKey`, `Json`, `Suppress`, …). That set is
+derived from the printers' own output, so it cannot fall behind them. The same
+applies to a type an app module routinely uses (`Data`, `URL`, `View`,
+`Result`, `List`), which a model in the same module would shadow.
 
-A union is **tagged** when it has a `discriminator` and every member is an
-object whose discriminator property is a fixed string. It then decodes by the
-tag and rejects an unknown tag. Otherwise it is **untagged**: the first member
-that decodes wins, in spec order, with integers tried before numbers (so `1` is
-not read as `1.0`). A discriminator that cannot be used is named in a comment
-on the type.
+Property and case names are camelCase. A name that is a Swift or Kotlin
+keyword gets a `_` suffix (`nil_`, `fallthrough_`, `class_`). A key with no
+letters or digits is spelled out (`$` becomes `dollar`, and an enum value `+`
+becomes `plus` / `PLUS`). The wire name is always kept through `CodingKeys` /
+`@SerialName`.
+
+A union with a `discriminator` is **tagged**: it decodes by the tag and
+rejects an unknown tag. The tag values come from each member's discriminator
+property when that is an enum or `const`. Otherwise they follow OpenAPI's
+mapping rule: the `mapping` keys that name a member, or else the member's
+component name. So Petstore's `petType: string` dispatches `"Dog"` to `Dog`, and
+never guesses by shape. A union without a usable discriminator is
+**untagged**: the first member that decodes wins, in spec order, with integers
+tried before numbers (so `1` is not read as `1.0`). A discriminator that cannot
+be used, such as one where two members claim one tag, is named in a comment on
+the type.
 
 **Decoding.** Decode with the `LatheJSON.decoder` and `LatheJSON.encoder`
 emitted into the Swift file. They read RFC 3339 date-times with and without

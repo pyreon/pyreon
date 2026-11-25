@@ -52,6 +52,16 @@ export type IrType =
        * it is a key in the payload, not an identifier in the output.
        */
       discriminator?: string | undefined;
+      /**
+       * The spec's DECLARED discriminator, kept even when `discriminator` is
+       * demoted (an implicit one -- the member's tag property is a plain
+       * `string` -- cannot drive `s.discriminatedUnion`). `tags[i]` are the
+       * values that select `options[i]`: the `mapping` keys naming that
+       * member, else the member's component name (OpenAPI's implicit
+       * mapping). Absent unless every member is a `$ref`. Read by the native
+       * model emitters, which dispatch on it rather than guess by shape.
+       */
+      declared?: { property: string; tags: readonly (readonly string[])[] } | undefined;
     }
   /**
    * `inner`, or `null`.

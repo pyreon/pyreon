@@ -11,7 +11,7 @@ import { parseArgv, run, type Fs } from '../cli/run'
 import { ALL_PLUGINS, resolveConfig } from '../core/config'
 import { formatFiles } from '../core/format'
 import { generate } from '../core/generate'
-import { KOTLIN_MODELS_PATH, SWIFT_MODELS_PATH, lowerModels } from '../emit/native-models'
+import { KOTLIN_MODELS_PATH, SWIFT_MODELS_PATH, lowerModels, nativeReserved, typeNamesIn } from '../emit/native-models'
 
 const SPEC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'native-models.json'), 'utf8')
 
@@ -248,7 +248,7 @@ describe('Kotlin emit', () => {
 })
 
 describe('lowering', () => {
-  it('names a declared discriminator it could not use, rather than dropping it', () => {
+  const unionOf = (discriminator: Record<string, unknown>) => {
     const ir = generate(
       JSON.stringify({
         openapi: '3.0.3',
@@ -258,18 +258,117 @@ describe('lowering', () => {
           schemas: {
             A: { type: 'object', required: ['t'], properties: { t: { type: 'string' } } },
             B: { type: 'object', required: ['t'], properties: { t: { type: 'string' } } },
-            U: { oneOf: [{ $ref: '#/components/schemas/A' }, { $ref: '#/components/schemas/B' }], discriminator: { propertyName: 't' } },
+            U: { oneOf: [{ $ref: '#/components/schemas/A' }, { $ref: '#/components/schemas/B' }], discriminator },
           },
         },
       }),
       resolveConfig({ input: 'x', plugins: ['swift'], filters: { models: 'all' } }),
     ).doc
     const u = lowerModels(ir).decls.find((d) => d.name === 'U')
-    expect(u?.kind).toBe('union')
-    if (u?.kind !== 'union') return
-    // Either the input layer already demoted it, or the native lowering did --
-    // in both cases the union is untagged, never tagged on a free string.
+    if (u?.kind !== 'union') throw new Error('U is not a union')
+
+    return u
+  }
+
+  it('a discriminator on a plain-string property dispatches by component name (OpenAPI implicit mapping)', () => {
+    // It used to fall back to "first member that decodes": with identical
+    // shapes, every B decoded as an A.
+    const u = unionOf({ propertyName: 't' })
+    expect(u.discriminator).toBe('t')
+    expect(u.variants.map((v) => v.tags)).toEqual([['A'], ['B']])
+  })
+
+  it('honours `mapping`, by reference or by bare name; an unmapped member keeps its name', () => {
+    const u = unionOf({ propertyName: 't', mapping: { first: '#/components/schemas/A', one: 'A' } })
+    expect(u.variants.map((v) => v.tags)).toEqual([['first', 'one'], ['B']])
+  })
+
+  it('names a declared discriminator it could not use, rather than dropping it', () => {
+    const u = unionOf({ propertyName: 't', mapping: { A: '#/components/schemas/B' } })
     expect(u.discriminator).toBeUndefined()
+    expect(u.untaggedReason).toContain('two members share a discriminator value')
+  })
+
+  it('keeps the declared tags on the IR union', () => {
+    const anyPet = out.doc.models.find((m) => m.name === 'AnyPet')?.type
+    const mapped = out.doc.models.find((m) => m.name === 'MappedPet')?.type
+    expect(anyPet?.kind === 'union' && anyPet.declared).toEqual({ property: 'petType', tags: [['Cat'], ['DogPet']] })
+    expect(mapped?.kind === 'union' && mapped.declared).toEqual({ property: 'petType', tags: [['kitty'], ['dog', 'puppy']] })
+  })
+})
+
+describe('identifiers', () => {
+  it('never derives a keyword or a bare `_`, on either platform', () => {
+    // Swift: `var nil`, `var fallthrough`, `var _`, `case _` are all rejected by swiftc.
+    expect(swift).toContain('    var nil_: String\n')
+    expect(swift).toContain('    var fallthrough_: Bool\n')
+    expect(swift).toContain('        case dollar = "$"')
+    expect(swift).toContain('        case plus = "+"')
+    expect(swift).toContain('        case underscore = "_"')
+    expect(swift).toContain('        case self_ = "self"')
+    expect(swift).toContain('    case plus = "+"\n    case minus = "-"')
+    // A raw-value / CaseIterable enum's own members are not case names either.
+    expect(swift).toContain('    case rawValue_ = "rawValue"')
+    expect(swift).toContain('    case allCases_ = "allCases"')
+    expect(swift).not.toMatch(/\b(var|case|let) _\b/)
+    expect(kotlin).toContain('    @SerialName("$") val dollar: String? = null,'.replace('$', '\\$'))
+    expect(kotlin).toContain('    @SerialName("+") PLUS,')
+    expect(kotlin).toContain('    @SerialName("-") MINUS,')
+    expect(kotlin).not.toMatch(/\bval _\b/)
+  })
+})
+
+describe('reserved names', () => {
+  it('include every type name the printers write that the file does not declare', () => {
+    const declared = new Set(lowerModels(out.doc).decls.flatMap((d) => (d.kind === 'union' ? [d.name, d.serializer] : [d.name])))
+    const reserved = nativeReserved()
+    // Kotlin case classes inside a sealed interface (`Contact.Address`) are
+    // nested names, and enum entries are upper-case: neither can be a model.
+    const nested = (n: string) => /^[A-Z0-9_]+$/.test(n) || kotlin.includes(`    data class ${n}(`)
+    for (const text of [swift, kotlin]) {
+      const missing = [...typeNamesIn(text)].filter((n) => !declared.has(n) && !reserved.has(n) && !nested(n))
+      expect(missing).toEqual([])
+    }
+  })
+
+  it('renames models named after what the printers write (Hashable, CaseIterable, TagKey, Suppress)', () => {
+    for (const n of ['Hashable', 'CaseIterable', 'TagKey', 'Suppress', 'CodingKeys', 'Json', 'JSONValue']) {
+      expect(nativeReserved().has(n)).toBe(true)
+    }
+    expect(swift).toContain('struct TagKeyModel: Codable {')
+    expect(swift).toContain('struct HashableModel: Codable {')
+    expect(kotlin).toContain('data class SuppressModel(')
+    expect(swift).not.toMatch(/struct (TagKey|Hashable|CaseIterable|Suppress): /)
+  })
+})
+
+describe('required nullable fields', () => {
+  it('Swift writes `null` and requires the key (explicit Codable), like Kotlin `T?` with no default', () => {
+    const nullables = swift.slice(swift.indexOf('struct Nullables'), swift.indexOf('\n}\n', swift.indexOf('struct Nullables')))
+    expect(nullables).toContain('self.a = try container.decode(String?.self, forKey: .a)')
+    expect(nullables).toContain('self.b = try container.decodeIfPresent(String.self, forKey: .b)')
+    expect(nullables).toContain('try container.encode(a, forKey: .a)')
+    expect(nullables).toContain('try container.encodeIfPresent(b, forKey: .b)')
+    expect(kotlin).toContain('data class Nullables(\n    val a: String?,\n    val b: String? = null,\n)')
+  })
+
+  it('a recursive class gets a `required` init(from:)', () => {
+    const o = generate(
+      JSON.stringify({
+        openapi: '3.0.3',
+        info: { title: 'R', version: '1' },
+        paths: {},
+        components: {
+          schemas: {
+            N: { type: 'object', required: ['v'], properties: { v: { type: 'string', nullable: true }, next: { $ref: '#/components/schemas/N' } } },
+          },
+        },
+      }),
+      resolveConfig({ input: 'x', plugins: ['swift'], filters: { models: 'all' } }),
+    )
+    const s = fileOf(o, SWIFT_MODELS_PATH)
+    expect(s).toContain('final class N: Codable {')
+    expect(s).toContain('    required init(from decoder: Decoder) throws {')
   })
 })
 
