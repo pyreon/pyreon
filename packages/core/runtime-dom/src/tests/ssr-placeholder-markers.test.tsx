@@ -174,22 +174,11 @@ const CONTAINERS: [string, (e: string) => string][] = [
   ['<Show> branch', (e) => `<section><Show when={() => true}>${e}</Show></section>`],
 ]
 
-/**
- * NOT placeholders: a VNode or array value as an element's sole child, or in a
- * static text mix the client fuses, is `_setChild` into an EMPTY template
- * element, and the verifier refuses server elements under one. A separate
- * class from the placeholder pairing locked here (tracked as a follow-up).
- */
-const isSetChildClass = (kind: string, position: string) =>
-  (kind === 'value: VNode' || kind === 'value: array') &&
-  (position === 'only' || position === 'adjacent to text')
-
 describe('#4385 D: a fixed child on a client placeholder hydrates by adoption', () => {
   for (const [backendName, backend] of BACKENDS) {
     for (const [cName, container] of CONTAINERS) {
       for (const [pName, position] of POSITIONS) {
         for (const [kName, kind] of KINDS) {
-          if (isSetChildClass(kName, pName)) continue
           const src = `${PRELUDE}const App = () => ${container(`<span>${position(kind)}</span>`)}`
           it(`${backendName} | ${cName} | ${pName} | ${kName}`, async () => {
             const s = scope()

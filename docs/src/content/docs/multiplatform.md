@@ -750,9 +750,11 @@ The vocabulary is multiplatform; the road to shipping real production apps conti
 > (SwiftUI) / `LaunchedEffect` (Compose) fires the loader ONCE on the
 > route's appear and stores the result via `router.setLoaderData(<active
 > path>, …)`, where the already-shipped `useLoaderData<T>()` reads it
-> (keyed by the runtime active path, so it matches for both literal and
-> `:param` routes; the home route keys by its literal path = `currentPath`
-> at launch). The store is guarded (`loaderData[path] == nil`) so
+> (keyed by the runtime active ROUTE path with the query dropped — the
+> web's default loader key — so it matches for both literal and `:param`
+> routes and a query-only navigation such as a `useUrlState` write neither
+> re-runs the loader nor hides the route; the home route keys by its
+> literal path). The store is guarded (`loaderData[path] == nil`) so
 > re-renders never re-run it. Realistic native loader bodies are **signal
 > / store reads** (`() => globalCache()`) and **sync expressions**
 > (`() => buildInitialData()`); both emit correctly.

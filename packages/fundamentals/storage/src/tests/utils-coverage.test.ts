@@ -48,16 +48,35 @@ describe('getWebStorage', () => {
     expect(storage).toBe(window.sessionStorage)
   })
 
-  it('returns null when storage throws (e.g. private browsing)', () => {
+  it('a storage whose writes throw (full / quota 0) stays available for reads (#4812)', () => {
     const originalLocalStorage = window.localStorage
-    // Mock localStorage to throw on setItem
+    const full = {
+      setItem: () => {
+        throw new Error('Quota exceeded')
+      },
+      removeItem: () => {},
+      getItem: () => null,
+    }
+    Object.defineProperty(window, 'localStorage', { value: full, writable: true, configurable: true })
+    expect(getWebStorage('local')).toBe(full)
+    Object.defineProperty(window, 'localStorage', {
+      value: originalLocalStorage,
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('returns null when storage cannot even be read (blocked / sandboxed)', () => {
+    const originalLocalStorage = window.localStorage
     Object.defineProperty(window, 'localStorage', {
       value: {
         setItem: () => {
-          throw new Error('Quota exceeded')
+          throw new Error('SecurityError')
         },
         removeItem: () => {},
-        getItem: () => null,
+        getItem: () => {
+          throw new Error('SecurityError')
+        },
       },
       writable: true,
       configurable: true,

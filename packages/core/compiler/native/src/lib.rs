@@ -811,6 +811,14 @@ struct Ctx<'a> {
     /// > 0 while walking JSX inside an accessor the emit wraps (`wrap_walked`):
     /// that JSX keeps the h() path. Mirrors JS `wrappedJsxDepth`.
     wrapped_jsx_depth: u32,
+    /// True while `slice_handler_value` slices an `on*` / `ref` value: the
+    /// exactly-bare skip then covers component props and children too.
+    /// Mirrors JS `inHandlerSlice`.
+    in_handler_slice: bool,
+    /// Start offset of the object literal being sliced as a DOM element's
+    /// spread argument (`u32::MAX` = none): its exactly-bare signal property
+    /// values stay bare. Mirrors JS `isBareDomSpreadValue`.
+    dom_spread_obj: u32,
     /// Span starts of preserved template holes in SVG/MathML content that build
     /// JSX: walked like every hole, but under `wrapped_jsx_depth` so the JSX
     /// keeps the h() path (mounted in its parent's namespace). Mirrors JS
@@ -999,6 +1007,8 @@ impl<'a> Ctx<'a> {
             needs_slot_import: false,
             in_jsx_child_callback: false,
             wrapped_jsx_depth: 0,
+            in_handler_slice: false,
+            dom_spread_obj: u32::MAX,
             h_path_holes: FxHashSet::default(),
             in_callback_argument: false,
             signal_vars: FxHashSet::default(),
@@ -4233,13 +4243,35 @@ fn collect_signal_idents(
 
     // Skip shorthand object properties
     if let Expression::ObjectExpression(obj) = expr {
+        let dom = obj.span.start == ctx.dom_spread_obj;
+        collect_object_idents(obj, dom, ctx, out, range_start, range_end, shadows);
+        return;
+    }
+    collect_signal_idents_rest(expr, ctx, out, range_start, range_end, shadows);
+}
+
+/// The properties of an object literal. `dom_spread`: the object is a DOM
+/// element's spread argument, whose exactly-bare signal property values stay
+/// bare (a DOM prop treats a function as a live accessor). Mirrors JS
+/// `isBareDomSpreadValue`.
+fn collect_object_idents(
+    obj: &ObjectExpression,
+    dom_spread: bool,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
         for prop in &obj.properties {
             match prop {
                 ObjectPropertyKind::ObjectProperty(p) => {
                     if p.shorthand {
                         continue; // { name } — can't auto-call
                     }
-                    collect_signal_idents(&p.value, ctx, out, range_start, range_end, shadows);
+                    if !(dom_spread && is_dom_spread_value_key(p) && is_bare_active_signal(&p.value, ctx, shadows)) {
+                        collect_signal_idents(&p.value, ctx, out, range_start, range_end, shadows);
+                    }
                     if p.computed {
                         if let Some(e) = p.key.as_expression() {
                             collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
@@ -4251,9 +4283,34 @@ fn collect_signal_idents(
                 }
             }
         }
-        return;
-    }
+}
 
+/// A DOM spread property whose exactly-bare signal value stays bare: a NAMED
+/// key that is not `ref` or an `on*` handler (that value is the listener or the
+/// ref itself, so a computed there must be read). Mirrors the key check in JS
+/// `isBareDomSpreadValue`.
+fn is_dom_spread_value_key(p: &ObjectProperty) -> bool {
+    if p.computed {
+        return false;
+    }
+    let name: &str = match &p.key {
+        PropertyKey::StaticIdentifier(id) => id.name.as_str(),
+        PropertyKey::StringLiteral(l) => l.value.as_str().unwrap_or(""),
+        _ => "",
+    };
+    !name.is_empty() && name != "ref" && !is_event_handler(name)
+}
+
+/// The generic recursion of `collect_signal_idents` (everything but the
+/// identifier and object-literal arms).
+fn collect_signal_idents_rest(
+    expr: &Expression,
+    ctx: &Ctx,
+    out: &mut Vec<(u32, u32)>,
+    range_start: u32,
+    range_end: u32,
+    shadows: &mut Vec<String>,
+) {
     // Generic recursion for other expression types
     match expr {
         Expression::BinaryExpression(b) => {
@@ -4713,7 +4770,7 @@ fn collect_jsx_element_idents(
                     match value {
                         JSXAttributeValue::ExpressionContainer(c) => {
                             if let Some(e) = c.expression.as_expression() {
-                                if !(is_dom && is_bare_active_signal(e, ctx, shadows)) {
+                                if !((is_dom || ctx.in_handler_slice) && is_bare_active_signal(e, ctx, shadows)) {
                                     collect_signal_idents(e, ctx, out, range_start, range_end, shadows);
                                 }
                             }
@@ -4731,12 +4788,17 @@ fn collect_jsx_element_idents(
                 }
             }
             JSXAttributeItem::SpreadAttribute(sp) => {
-                collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows);
+                match unwrap_value_layers(&sp.argument) {
+                    Expression::ObjectExpression(obj) if is_dom => {
+                        collect_object_idents(obj, true, ctx, out, range_start, range_end, shadows);
+                    }
+                    _ => collect_signal_idents(&sp.argument, ctx, out, range_start, range_end, shadows),
+                }
             }
         }
     }
     for child in &el.children {
-        collect_jsx_child_idents(child, is_dom, ctx, out, range_start, range_end, shadows);
+        collect_jsx_child_idents(child, is_dom || ctx.in_handler_slice, ctx, out, range_start, range_end, shadows);
     }
 }
 
@@ -5779,10 +5841,37 @@ fn handle_jsx_element_body(el: &JSXElement, ctx: &mut Ctx) {
                 handle_jsx_attribute(a, el, is_component, ctx);
             }
             JSXAttributeItem::SpreadAttribute(spread) => {
-                // Walk the spread argument FIRST so any nested JSX / signal
-                // accesses get their own transformations applied.
-                walk_expression(&spread.argument, ctx);
-                if is_component {
+                let arg = &spread.argument;
+                if contains_jsx_in_expr(arg) {
+                    // A spread argument that BUILDS JSX gets the attribute
+                    // rules per property (`walk_spread_arg`), on a component
+                    // and a DOM element alike (#4797). The walk replaces no
+                    // range around the JSX, so nested edits cannot overlap.
+                    let already = matches!(arg, Expression::CallExpression(c)
+                        if matches!(&c.callee, Expression::Identifier(id) if id.name.as_str() == "_wrapSpread"));
+                    let wrapped = is_component && !already;
+                    let sp = arg.span();
+                    if wrapped {
+                        ctx.add_replacement(sp.start, sp.start, "_wrapSpread(".to_string());
+                        ctx.needs_wrap_spread_import = true;
+                    }
+                    walk_spread_arg(arg, ctx);
+                    if wrapped {
+                        ctx.add_replacement(sp.end, sp.end, ")".to_string());
+                    }
+                } else if !is_component {
+                    // A DOM element's spread on the h() path is sliced exactly
+                    // as the template path slices it. Mirrors JS
+                    // `handleJsxSpreadAttribute`.
+                    let sp = arg.span();
+                    let sliced = slice_dom_spread_arg(arg, ctx);
+                    if sliced != ctx.source[sp.start as usize..sp.end as usize] {
+                        ctx.add_replacement(sp.start, sp.end, sliced);
+                    }
+                } else {
+                    // Walk the spread argument FIRST so any nested JSX / signal
+                    // accesses get their own transformations applied.
+                    walk_expression(arg, ctx);
                     handle_jsx_spread_attribute(spread, ctx);
                 }
             }
@@ -5883,7 +5972,11 @@ fn handle_jsx_attribute(
     // `ref` / `on*`: sliced like the template path's `emit_ref` /
     // `emit_event_listener` (see `slice_unwrapped_attr_value`).
     if name == "ref" || is_event_handler(name) {
-        slice_unwrapped_attr_value(expr, ctx);
+        let sp = expr.span();
+        let sliced = slice_handler_value(expr, ctx);
+        if sliced != ctx.source[sp.start as usize..sp.end as usize] {
+            ctx.add_replacement(sp.start, sp.end, sliced);
+        }
         return;
     }
 
@@ -5973,10 +6066,17 @@ fn handle_jsx_attribute(
 /// path slices the identical attribute (`emit_event_listener` / `emit_ref`):
 /// bare signals are auto-called and prop-derived consts inlined, so a handler
 /// reads the live prop on every element path, not the setup value on the h()
-/// path only. Nested JSX in the value stays as written (not walked), exactly
-/// as inside a template-path handler. Pushes nothing when the slice is the
-/// source text. Mirrors `sliceUnwrappedAttrValue` in jsx.ts.
+/// path only. A non-handler value that BUILDS JSX (a render prop) is walked
+/// instead (`walk_h_path`), so the nested JSX gets the JSX rules: in a slice a
+/// component prop lost its `_rp` and `each={items}` became a one-time
+/// `items()` read (#4797). Handlers and refs stay sliced
+/// (`slice_handler_value`). Pushes nothing when the slice is the source text.
+/// Mirrors `sliceUnwrappedAttrValue` in jsx.ts.
 fn slice_unwrapped_attr_value(expr: &Expression, ctx: &mut Ctx) {
+    if contains_jsx_in_expr(expr) {
+        walk_h_path_value(expr, ctx);
+        return;
+    }
     let sp = expr.span();
     let sliced = slice_expr(expr, ctx);
     if sliced != ctx.source[sp.start as usize..sp.end as usize] {
@@ -6062,6 +6162,35 @@ fn slice_unsliced(expr: &Expression, ctx: &mut Ctx) {
 ///
 /// Idempotent: skip when the argument is already a `_wrapSpread(...)`
 /// call so multi-pass / re-run compilation doesn't double-wrap.
+/// Parens and TS type layers, value-transparent.
+fn unwrap_value_layers<'b, 'a>(expr: &'b Expression<'a>) -> &'b Expression<'a> {
+    let mut cur = expr;
+    loop {
+        match cur {
+            Expression::ParenthesizedExpression(p) => cur = &p.expression,
+            Expression::TSAsExpression(e) => cur = &e.expression,
+            Expression::TSSatisfiesExpression(e) => cur = &e.expression,
+            Expression::TSNonNullExpression(e) => cur = &e.expression,
+            Expression::TSTypeAssertion(e) => cur = &e.expression,
+            _ => return cur,
+        }
+    }
+}
+
+/// `slice_expr` of a DOM element's spread argument, on both element paths (the
+/// template's `_applyProps` / `_bindSpread`, the h() path's `{...arg}`): an
+/// exactly-bare signal property of an object-literal argument stays bare.
+/// Mirrors the JS `sliceExpr` + `isBareDomSpreadValue` pair.
+fn slice_dom_spread_arg(arg: &Expression, ctx: &mut Ctx) -> String {
+    let prev = ctx.dom_spread_obj;
+    if let Expression::ObjectExpression(obj) = unwrap_value_layers(arg) {
+        ctx.dom_spread_obj = obj.span.start;
+    }
+    let out = slice_expr(arg, ctx);
+    ctx.dom_spread_obj = prev;
+    out
+}
+
 fn handle_jsx_spread_attribute(spread: &JSXSpreadAttribute, ctx: &mut Ctx) {
     let arg = &spread.argument;
     // Idempotent guard: don't double-wrap on re-compilation.
@@ -6596,20 +6725,100 @@ fn wrap_expr(expr: &Expression, ctx: &mut Ctx) {
 fn wrap_walked(expr: &Expression, open: &str, close: &str, ctx: &mut Ctx) {
     let sp = expr.span();
     ctx.add_replacement(sp.start, sp.start, open.to_string());
+    walk_h_path(expr, ctx);
+    ctx.add_replacement(sp.end, sp.end, close.to_string());
+}
+
+/// `slice_expr` for an `on*` handler or a `ref` value, on every path. Handlers
+/// are imperative: JSX they build is built at event time, so an explicit read
+/// there stays a one-time read as written; an EXACTLY-BARE signal that is a
+/// prop value or child of any element in that JSX stays bare (#4797). Mirrors
+/// `sliceHandlerValue` in jsx.ts.
+fn slice_handler_value(expr: &Expression, ctx: &mut Ctx) -> String {
+    let prev = ctx.in_handler_slice;
+    ctx.in_handler_slice = true;
+    let out = slice_expr(expr, ctx);
+    ctx.in_handler_slice = prev;
+    out
+}
+
+/// A spread argument that builds JSX, property by property: an `on*` / `ref`
+/// property's value is a handler (`slice_handler_value`), every other part is
+/// walked like a render prop (`walk_h_path`). A non-object argument is walked
+/// whole. Mirrors `walkSpreadArg` in jsx.ts.
+fn walk_spread_arg(arg: &Expression, ctx: &mut Ctx) {
+    let Expression::ObjectExpression(obj) = arg else {
+        walk_h_path(arg, ctx);
+        return;
+    };
+    for prop in &obj.properties {
+        match prop {
+            ObjectPropertyKind::SpreadProperty(sp) => walk_h_path(&sp.argument, ctx),
+            ObjectPropertyKind::ObjectProperty(p) => {
+                // `{ items }` keeps the binding: a shorthand value is never
+                // auto-called. Mirrors JS `walkSpreadArg`.
+                if p.shorthand {
+                    continue;
+                }
+                if p.computed {
+                    if let Some(k) = p.key.as_expression() {
+                        walk_h_path(k, ctx);
+                    }
+                }
+                let key_name: &str = if p.computed {
+                    ""
+                } else {
+                    match &p.key {
+                        PropertyKey::StaticIdentifier(id) => id.name.as_str(),
+                        PropertyKey::StringLiteral(l) => l.value.as_str().unwrap_or(""),
+                        _ => "",
+                    }
+                };
+                if key_name == "ref" || is_event_handler(key_name) {
+                    let sp = p.value.span();
+                    let sliced = slice_handler_value(&p.value, ctx);
+                    if sliced != ctx.source[sp.start as usize..sp.end as usize] {
+                        ctx.add_replacement(sp.start, sp.end, sliced);
+                    }
+                } else {
+                    walk_h_path_value(&p.value, ctx);
+                }
+            }
+        }
+    }
+}
+
+/// Walk an expression in place with its JSX kept on the h() path — the walk
+/// `wrap_walked` runs, with no accessor around it (a render prop, a handler or
+/// ref that builds JSX). Mirrors `walkHPath` in jsx.ts.
+fn walk_h_path(expr: &Expression, ctx: &mut Ctx) {
+    walk_h_path_as(expr, ctx, false);
+}
+
+/// `walk_h_path`, flagging a DIRECT function value as a render callback
+/// (`children={(item) => …}`, a spread-object property `render: (row) => …`)
+/// so its parameter is not registered as reactive component props — the
+/// attribute spelling compiles like the child spelling (#4797). Mirrors the
+/// JSXAttribute / spread-property skip in JS `maybeRegisterComponentProps`.
+fn walk_h_path_value(expr: &Expression, ctx: &mut Ctx) {
+    let is_fn = matches!(expr, Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_));
+    walk_h_path_as(expr, ctx, is_fn);
+}
+
+fn walk_h_path_as(expr: &Expression, ctx: &mut Ctx, render_cb: bool) {
     ctx.wrapped_jsx_depth += 1;
     let old = ctx.parent_is_jsx;
     let old_eager = ctx.parent_eager_mount;
     let old_cb = ctx.in_jsx_child_callback;
     ctx.parent_is_jsx = false;
     ctx.parent_eager_mount = false;
-    ctx.in_jsx_child_callback = false;
+    ctx.in_jsx_child_callback = render_cb;
     slice_unsliced(expr, ctx);
     walk_expression(expr, ctx);
     ctx.in_jsx_child_callback = old_cb;
     ctx.parent_is_jsx = old;
     ctx.parent_eager_mount = old_eager;
     ctx.wrapped_jsx_depth -= 1;
-    ctx.add_replacement(sp.end, sp.end, close.to_string());
 }
 
 // ─── Compile-to-string SSR fast path (`options.ssrTemplate`) ─────────────────
@@ -8924,7 +9133,11 @@ fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
     let mut saw_key = false;
     for attr in &el.opening_element.attributes {
         match attr {
-            JSXAttributeItem::SpreadAttribute(_) => {
+            JSXAttributeItem::SpreadAttribute(sp) => {
+                // A spread that builds JSX is walked on the h() path (#4797).
+                if contains_jsx_in_expr(&sp.argument) {
+                    return true;
+                }
                 if is_root {
                     saw_spread = true;
                     continue;
@@ -8966,6 +9179,20 @@ fn has_bail_attr(el: &JSXElement, is_root: bool) -> bool {
                 }
                 if is_tpl_property_only_attr(&name) {
                     return true;
+                }
+                // A non-handler, non-ref attribute value that BUILDS JSX: the
+                // template emit slices it into its bind code, where the JSX gets
+                // no JSX rules (#4797). The h() path walks it; handlers and refs
+                // stay sliced. Mirrors `hasBailAttr` in `src/jsx.ts`.
+                if name == "ref" || is_event_handler(&name) {
+                    continue;
+                }
+                if let Some(JSXAttributeValue::ExpressionContainer(c)) = &a.value {
+                    if let Some(e) = jsx_expr_as_expression(&c.expression) {
+                        if contains_jsx_in_expr(e) {
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -9909,7 +10136,7 @@ fn process_one_attr(
 ) -> String {
     match attr {
         JSXAttributeItem::SpreadAttribute(spread) => {
-            let expr_text = slice_expr(&spread.argument, ctx);
+            let expr_text = slice_dom_spread_arg(&spread.argument, ctx);
             // `_applyProps` / `_bindSpread` RETURN a cleanup (dispose the
             // spread's reactive bindings + null a spread `ref`) — thread it
             // into the mount lifecycle or it leaks on unmount. Mirror of the JS
@@ -9967,7 +10194,7 @@ fn emit_ref(
         }
         _ => return,
     };
-    let expr_text = slice_expr(expr, ctx);
+    let expr_text = slice_handler_value(expr, ctx);
     // `_ref` applies the ref as the h() path does and returns the disposer that
     // hands it `null` on unmount (#4390). Mirrors the JS `emitRef`.
     tb.needs_ref = true;
@@ -10017,7 +10244,7 @@ fn emit_event_listener(
         }
         _ => return,
     };
-    let handler = slice_expr(expr, ctx);
+    let handler = slice_handler_value(expr, ctx);
     if is_delegated_event(&event_name) {
         tb.bind_lines
             .push(format!("{}.__ev_{} = {}", var_name, event_name, handler));
@@ -12211,8 +12438,9 @@ fn collapse_attr_expr_text(el: &JSXElement, start: u32, end: u32, ctx: &mut Ctx)
         let Some(JSXAttributeValue::ExpressionContainer(c)) = &a.value else { continue };
         let Some(e) = jsx_expr_as_expression(&c.expression) else { continue };
         let sp = e.span();
+        // The whole value is a peeled `on*` handler.
         if sp.start == start && sp.end == end {
-            return slice_expr(e, ctx);
+            return slice_handler_value(e, ctx);
         }
         if let Expression::ConditionalExpression(ce) = e {
             let tsp = ce.test.span();
