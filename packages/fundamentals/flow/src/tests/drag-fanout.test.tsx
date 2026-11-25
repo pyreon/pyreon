@@ -191,10 +191,12 @@ describe('single-node drag fan-out (per-id computeds)', () => {
     // no longer read by geometry). n1 is e-move's UNMOVED endpoint, so its
     // gate's subscriber set loses exactly the swept geometry computed.
     const subs = () => {
-      // Tracked subscribers are graph edges (`_subs` → `nextSub`).
+      // Tracked subscribers are graph edges (`_subs` → `nextSub`) on the
+      // computed's graph node (`_n`, the object its callable is bound to).
       let n = 0
       type Edge = { nextSub: Edge | null }
-      for (let l = accessInternal<{ _subs: Edge | null }>(flow._nodeById('n1'))._subs; l !== null; l = l.nextSub) n++
+      const gate = accessInternal<{ _n: { _subs: Edge | null } }>(flow._nodeById('n1'))._n
+      for (let l = gate._subs; l !== null; l = l.nextSub) n++
 
       return n
     }
