@@ -1262,7 +1262,13 @@ export function ChartHost() {
   as before), and iOS turns on the edge swipe back and forward. Set
   `backNavigation={false}` to turn that off, or `backNavigation` to turn it on
   for a view without `grow`. The web ignores the prop: the browser's own Back
-  already walks an `<iframe>`'s history.
+  already walks an `<iframe>`'s history. When the app gives the view a new
+  `html`, `src` or `reloadKey`, that page starts a new history: Back and the
+  swipe never return to the page the app replaced. A web view in a hidden tab
+  (`<Tabs>` keeps visited tabs alive) never takes Back from the visible tab.
+- **Handler types**: `WebViewError` is exported for annotating a named handler
+  (`function report(e: WebViewError) { … }`); both native runtimes declare it as
+  an alias of their `PyreonWebViewError`.
 - **`window.open` (Android)**: a user-tapped `window.open(url)` hands `url` to
   the system browser. `w = window.open('')` followed later by
   `w.location = url` works too, however long it takes, until the page opens

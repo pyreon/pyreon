@@ -45,6 +45,9 @@ enum PyreonWebViewTests {
         check(!pyreonWebViewIsCancellation(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet), "offline is reported")
         check(!pyreonWebViewIsCancellation(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost), "refused is reported")
         check(!pyreonWebViewIsCancellation(domain: "WebKitErrorDomain", code: 101), "WebKit 101 (cannot show URL) is reported")
+        check(pyreonWebViewIsCancellation(domain: "WebKitErrorDomain", code: 204), "WebKit 204 (a media URL handed to the player) is not an error")
+        let alias: WebViewError = PyreonWebViewError(kind: "load", code: -1004, description: "x", url: "u")
+        check(alias.kind == "load", "WebViewError names the same type")
         check(pyreonWebViewIsHttpError(404) && pyreonWebViewIsHttpError(500) && pyreonWebViewIsHttpError(400), "4xx / 5xx fail the load")
         check(!pyreonWebViewIsHttpError(200) && !pyreonWebViewIsHttpError(304) && !pyreonWebViewIsHttpError(399), "2xx / 3xx do not")
         // reloadKey is part of the load key: bumping it loads the page again.

@@ -164,15 +164,21 @@ public struct PyreonWebViewError: Equatable, Sendable {
     }
 }
 
+/// The name app code uses (`(e: WebViewError) => …` in a named handler lowers to this type).
+public typealias WebViewError = PyreonWebViewError
+
 let pyreonWebViewErrorLoad = "load"
 let pyreonWebViewErrorHttp = "http"
 let pyreonWebViewErrorCrash = "crash"
 
 /// Whether a failed navigation is a cancellation rather than an error: one the
 /// host cancelled itself (WebKit 102, "frame load interrupted", when the policy
-/// hands a link to the system) or one a newer load superseded (`NSURLErrorCancelled`).
+/// hands a link to the system), one a newer load superseded (`NSURLErrorCancelled`),
+/// or one WebKit handed to its media player (204, "plug-in handled load": a video
+/// or audio URL plays, it did not fail). Android reports none of these as errors.
 func pyreonWebViewIsCancellation(domain: String, code: Int) -> Bool {
-    (domain == NSURLErrorDomain && code == NSURLErrorCancelled) || (domain == "WebKitErrorDomain" && code == 102)
+    (domain == NSURLErrorDomain && code == NSURLErrorCancelled)
+        || (domain == "WebKitErrorDomain" && (code == 102 || code == 204))
 }
 
 /// Whether a main-frame response status is a failed load.
@@ -242,10 +248,13 @@ public struct PyreonWebView: View {
         // high on Android and the web. The unsized default is therefore an
         // exact frame, and filling is the explicit `grow` the caller opts into.
         _PyreonWebViewFrame(
+            // A new html / src / reloadKey is a new WKWebView: the app's new page
+            // starts a new history, so Back and the swipe never return to the page
+            // the app replaced (WKWebView has no way to clear its back list).
             content: _PyreonWebViewBridge(
                 html: html, src: src, data: data, onMessage: onMessage, domStorage: domStorage,
                 onLoad: onLoad, onError: onError, reloadKey: reloadKey, backNavigation: backNavigation
-            ),
+            ).id(pyreonWebViewLoadKey(html: html, src: src, reloadKey: reloadKey)),
             grow: grow
         )
     }

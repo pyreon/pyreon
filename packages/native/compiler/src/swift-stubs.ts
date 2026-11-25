@@ -1197,6 +1197,7 @@ public struct PyreonWebViewError: Equatable, Sendable {
   public let url: String
   public init(kind: String, code: Int, description: String, url: String) { self.kind = kind; self.code = code; self.description = description; self.url = url }
 }
+public typealias WebViewError = PyreonWebViewError
 
 // ---- PyreonRouter (the router-swift module surface the emit imports) ----
 // router-hooks emit: @Environment(\\.pyreonRouter) var pyreonRouter: PyreonRouter?

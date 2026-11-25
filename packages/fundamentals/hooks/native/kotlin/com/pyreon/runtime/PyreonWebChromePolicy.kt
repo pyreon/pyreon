@@ -308,6 +308,9 @@ internal fun pyreonWebViewReloadStillDue(history: PyreonRendererLossHistory, gen
  */
 data class PyreonWebViewError(val kind: String, val code: Int, val description: String, val url: String)
 
+/** The name app code uses (`(e: WebViewError) => …` in a named handler lowers to this type). */
+typealias WebViewError = PyreonWebViewError
+
 internal const val PYREON_WEBVIEW_ERROR_LOAD = "load"
 internal const val PYREON_WEBVIEW_ERROR_HTTP = "http"
 internal const val PYREON_WEBVIEW_ERROR_CRASH = "crash"
@@ -329,9 +332,12 @@ fun pyreonWebViewIsHttpError(status: Int): Boolean = status >= 400
  * a failed page too (showing its error page), so the host remembers the URL
  * the last error was for; the order of `onPageStarted` and `onReceivedError`
  * is not guaranteed, so a URL is kept rather than a flag reset on start.
+ * A same-document navigation (a hash or `pushState` route) also finishes
+ * without starting a page ([documentStarted] false): not a load, as on iOS,
+ * where `didFinish` comes only for a new document.
  */
-fun pyreonWebViewFinishedIsLoad(finishedUrl: String?, failedUrl: String?): Boolean =
-    failedUrl == null || finishedUrl != failedUrl
+fun pyreonWebViewFinishedIsLoad(finishedUrl: String?, failedUrl: String?, documentStarted: Boolean): Boolean =
+    documentStarted && (failedUrl == null || finishedUrl != failedUrl)
 
 /**
  * Whether system Back goes back in the page's history: only when the host

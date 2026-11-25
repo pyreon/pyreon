@@ -1657,6 +1657,63 @@ final class PyreonRouterDemoUITests: XCTestCase {
         )
     }
 
+    /// The label of a native text, read once, or "<absent>".
+    private func label(_ app: XCUIApplication, _ id: String) -> String {
+        let element = app.staticTexts[id].firstMatch
+        return element.exists ? element.label : "<absent>"
+    }
+
+    /// Wait until a native text reads `expected`; the last value is in the failure message.
+    private func waitForLabel(_ app: XCUIApplication, _ id: String, _ expected: String, _ what: String) {
+        let deadline = Date().addingTimeInterval(30)
+        var last = label(app, id)
+        while last != expected && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            last = label(app, id)
+        }
+        XCTAssertEqual(last, expected, what)
+    }
+
+    /// The web tab (#4827, #4829): the back / forward edge swipe walks the PAGE's history, a page the app
+    /// replaced is not in it, `onLoad` runs once per document, and an unreachable page reports `onError`
+    /// with kind 'load' that a new `reloadKey` retries.
+    func test_webTabSwipeBackLoadErrorAndRetry() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-pyreonTabsDemo"]
+        app.launchFresh()
+        XCTAssertTrue(app.staticTexts["tabs-feed-title"].waitToExist(timeout: 30), "TabsApp did not open")
+        app.tabBars.firstMatch.buttons["Web"].tap()
+        waitForLabel(app, "tabs-web-state", "at:#one", "page one never loaded")
+
+        // onError 'load' for the unreachable page, and a retry through reloadKey.
+        waitForLabel(app, "tabs-web-errors", "errors:1 load", "no onError for an unreachable page")
+        app.buttons["tabs-web-retry"].tap()
+        waitForLabel(app, "tabs-web-errors", "errors:2 load", "a new reloadKey did not load the page again")
+
+        // Follow the page's link: one entry of history; not a new document for onLoad.
+        let link = app.webViews.links["Go to two"].firstMatch
+        XCTAssertTrue(link.waitToExist(timeout: 20), "the page's link is not in the web view")
+        link.tap()
+        waitForLabel(app, "tabs-web-state", "at:#two", "the link was not followed")
+        XCTAssertEqual(label(app, "tabs-web-loads"), "loads:1", "onLoad ran for an in-page navigation")
+
+        // The edge swipe goes back in the page (allowsBackForwardNavigationGestures, on for a grow view).
+        // From the SCREEN's left edge (the web view starts there), across most of the width.
+        let frame = app.descendants(matching: .any)["tabs-web-view"].firstMatch.frame
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let edge = origin.withOffset(CGVector(dx: 1, dy: frame.midY))
+        let across = origin.withOffset(CGVector(dx: frame.maxX * 0.85, dy: frame.midY))
+        edge.press(forDuration: 0.05, thenDragTo: across)
+        waitForLabel(app, "tabs-web-state", "at:#one", "the edge swipe did not go back in the page")
+
+        // After the app swaps the page, the swipe has nothing to go back to.
+        app.buttons["tabs-web-swap"].tap()
+        waitForLabel(app, "tabs-web-state", "at:page-two", "the swapped page never loaded")
+        edge.press(forDuration: 0.05, thenDragTo: across)
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        XCTAssertEqual(label(app, "tabs-web-state"), "at:page-two", "the swipe returned to the page the app replaced")
+    }
+
     /// A global `beforeEach` guard written INLINE (`(to) => to.path !== GUARDED_PATH`) blocks navigation in the real
     /// native router. Before, an inline guard was dropped with a warning, so this route was reachable on iOS.
     func test_inlineBeforeEachGuardBlocksNavigation() throws {

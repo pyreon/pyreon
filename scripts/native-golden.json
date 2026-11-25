@@ -7502,13 +7502,13 @@
       "warnings": 0
     },
     "example:native-router-demo/RouterApp.tsx|swift": {
-      "sha": "9cc9bdc877062e5c03a29283db4d0b2819d98a87729d618aa9c61e5f847cfa43",
-      "bytes": 43514,
+      "sha": "636d49f21e9473199c06dbd0f948224e732b1e0f0510b4f511f26066992642cd",
+      "bytes": 47223,
       "warnings": 1
     },
     "example:native-router-demo/RouterApp.tsx|kotlin": {
-      "sha": "a0dbfeb3a29234fb0f161c88d9bb1159591a22fa91b7a2e8856c4ab35060e01d",
-      "bytes": 36871,
+      "sha": "140fc8427f9148a24c81325624b2051e68cb462505cd8c7d6312f0e8042919a4",
+      "bytes": 40085,
       "warnings": 1
     },
     "example:native-showcase/TodayApp.tsx|swift": {

@@ -229,9 +229,12 @@ private fun loadOutcome() {
     expect(pyreonWebViewIsHttpError(404) && pyreonWebViewIsHttpError(500) && pyreonWebViewIsHttpError(400), "4xx / 5xx fail the load")
     expect(!pyreonWebViewIsHttpError(200) && !pyreonWebViewIsHttpError(304) && !pyreonWebViewIsHttpError(399), "2xx / 3xx do not")
     // A failed page still finishes on Android; it is not a load.
-    expect(pyreonWebViewFinishedIsLoad("https://a.test/", null), "no failure: a finished page is a load")
-    expect(!pyreonWebViewFinishedIsLoad("https://a.test/", "https://a.test/"), "the failed page finishing is not a load")
-    expect(pyreonWebViewFinishedIsLoad("https://a.test/b", "https://a.test/"), "a later page finishing is a load")
+    expect(pyreonWebViewFinishedIsLoad("https://a.test/", null, documentStarted = true), "no failure: a finished page is a load")
+    expect(!pyreonWebViewFinishedIsLoad("https://a.test/", "https://a.test/", documentStarted = true), "the failed page finishing is not a load")
+    expect(pyreonWebViewFinishedIsLoad("https://a.test/b", "https://a.test/", documentStarted = true), "a later page finishing is a load")
+    expect(!pyreonWebViewFinishedIsLoad("https://a.test/#b", null, documentStarted = false), "a same-document (hash) navigation is not a load")
+    val alias: WebViewError = PyreonWebViewError("load", -2, "x", "u")
+    expect(alias.kind == "load", "WebViewError names the same type")
     // Back goes back in the page only when opted in AND there is history.
     expect(pyreonWebViewHandlesBack(backNavigation = true, canGoBack = true), "opted in with history: the page goes back")
     expect(!pyreonWebViewHandlesBack(backNavigation = true, canGoBack = false), "first page: Back leaves the screen")

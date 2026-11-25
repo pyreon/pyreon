@@ -17,7 +17,10 @@ package com.pyreon.runtime
 // uses (`LocalConfiguration.current.screenWidthDp`), so the hook and the
 // layout always agree about which class a window is in.
 
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.OnBackPressedDispatcherOwner
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +38,7 @@ import androidx.compose.material.NavigationRail
 import androidx.compose.material.NavigationRailItem
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -121,7 +125,7 @@ fun <T> PyreonTabs(
                                     Modifier.size(0.dp).clipToBounds().clearAndSetSemantics {}
                                 },
                             ) {
-                                content(item.value)
+                                PyreonBackScope(shown) { content(item.value) }
                             }
                         }
                     }
@@ -180,7 +184,7 @@ fun PyreonSplit(
                 else -> Modifier.size(0.dp).clipToBounds().clearAndSetSemantics {}
             },
         ) {
-            sidebar()
+            PyreonBackScope(sidebarShown) { sidebar() }
         }
         if (wide) {
             Box(
@@ -198,7 +202,37 @@ fun PyreonSplit(
                 Modifier.size(0.dp).clipToBounds().clearAndSetSemantics {}
             },
         ) {
-            detail()
+            PyreonBackScope(detailShown) { detail() }
         }
     }
+}
+
+/**
+ * Content that stays COMPOSED while hidden (a visited tab, a phone's hidden
+ * split pane) keeps every `BackHandler` inside it registered, and the most
+ * recently registered enabled handler wins: a hidden tab's web view would take
+ * Back from the visible tab's route stack. Hidden content therefore gets a
+ * dispatcher of its own that nothing ever presses; when it is shown again its
+ * handlers move back to the activity's dispatcher (BackHandler re-registers on
+ * a new dispatcher). The tree shape does not change, so no state is lost.
+ */
+@Composable
+internal fun PyreonBackScope(shown: Boolean, content: @Composable () -> Unit) {
+    val parent = LocalOnBackPressedDispatcherOwner.current
+    val detached = remember { PyreonDetachedBackOwner() }
+    detached.parent = parent
+    CompositionLocalProvider(
+        LocalOnBackPressedDispatcherOwner provides (if (shown && parent != null) parent else detached),
+    ) {
+        content()
+    }
+}
+
+/** A Back dispatcher no system Back reaches (see [PyreonBackScope]). */
+internal class PyreonDetachedBackOwner : OnBackPressedDispatcherOwner {
+    var parent: OnBackPressedDispatcherOwner? = null
+    private val ownLifecycle = androidx.lifecycle.LifecycleRegistry(this)
+    override val onBackPressedDispatcher: OnBackPressedDispatcher = OnBackPressedDispatcher()
+    override val lifecycle: androidx.lifecycle.Lifecycle
+        get() = parent?.lifecycle ?: ownLifecycle
 }

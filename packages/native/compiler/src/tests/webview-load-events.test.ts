@@ -95,6 +95,37 @@ describe('<WebView> load outcome, retry and back navigation', () => {
     expect(webLine(kotlin(bound).code)).toBe('PyreonWebView(src = "p.html", backNavigation = swipe)')
   })
 
+  // A NAMED handler annotated with the public type: the annotation is emitted as
+  // written, so each runtime declares `WebViewError` (an alias of PyreonWebViewError).
+  const NAMED = `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView, type WebViewError } from '@pyreon/primitives'
+export function App() {
+  const status = signal('loading')
+  function report(e: WebViewError) {
+    status.set(e.kind + ': ' + e.description)
+  }
+  const reportUrl = (e: WebViewError) => status.set(e.url)
+  return (
+    <Stack>
+      <Text>{status()}</Text>
+      <WebView src="a.html" onError={report} />
+      <WebView src="b.html" onError={reportUrl} />
+    </Stack>
+  )
+}`
+
+  it.skipIf(!isKotlincAvailable())('kotlin: a named handler annotated `WebViewError` compiles', () => {
+    const r = validateKotlin(kotlin(NAMED).code)
+    expect(r.skipped).not.toBe(true)
+    expect(r.ok, r.error).toBe(true)
+  }, 180_000)
+
+  it.skipIf(!isSwiftcAvailable())('swift: a named handler annotated `WebViewError` compiles', () => {
+    const r = validateSwiftWithStubs(swift(NAMED).code)
+    expect(r.skipped).not.toBe(true)
+    expect(r.ok, r.error).toBe(true)
+  }, 180_000)
+
   const COMPILE = wrap(`<WebView grow src="https://example.test/" data-testid="w" reloadKey={attempt()} backNavigation={swipe()} onLoad={() => status.set('ok')} onError={(e) => { if (e.kind === 'http' && e.code >= 500) status.set(e.url) }} />
       <WebView html="<p/>" domStorage={false} reloadKey="a" onError={(e) => status.set(e.description)} />`)
 
