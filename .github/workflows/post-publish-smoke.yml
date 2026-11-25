@@ -26,6 +26,9 @@ on:
   workflow_run:
     workflows: [Release, Release Native Binaries]
     types: [completed]
+    # Releases only run on the default branch; without this filter every PR run
+    # of the followed workflows would start a run here (check-main-red-watchlist).
+    branches: [main]
   schedule:
     # Daily 06:53 UTC — after published-state (05:23) and zero-freshness (06:41).
     - cron: '53 6 * * *'
