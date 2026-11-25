@@ -162,6 +162,58 @@ describe('<WebView> bridges', () => {
  * expectation here is the number the iOS and Android hosts produce for the same
  * tree, so the web build cannot quietly mean something else by the same prop.
  */
+describe('<WebView> load outcome and retry (#4827)', () => {
+  // The page counts its own loads in sessionStorage-free form: each load of
+  // the srcdoc document is a new realm, so the count lives in the parent.
+  it('onLoad runs once per document the frame loads', async () => {
+    const onLoad = vi.fn()
+    mountInBrowser(() => h(WebView as never, { html: '<!doctype html><p>a</p>', onLoad } as never))
+    await waitFor(() => onLoad.mock.calls.length === 1)
+    // No spurious second call without a navigation.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(onLoad).toHaveBeenCalledTimes(1)
+  })
+
+  it('a CHANGED reloadKey loads the same html again; an unchanged one does not', async () => {
+    const attempt = signal(0)
+    const onLoad = vi.fn()
+    const loads: number[] = []
+    // Each document reports itself through the reverse bridge, so a reload is
+    // seen from inside the page, not only through the host's own onLoad.
+    const html = `<!doctype html><body><script>
+      setTimeout(function () { window.pyreonPostMessage('loaded') }, 0);
+    </script></body>`
+    const onMessage = (m: string): void => {
+      if (m === 'loaded') loads.push(attempt())
+    }
+    const props: Record<string, unknown> = { html, onLoad, onMessage }
+    Object.defineProperty(props, 'reloadKey', { get: () => attempt(), enumerable: true })
+    mountInBrowser(() => h(WebView as never, props as never))
+    await waitFor(() => loads.length === 1)
+
+    attempt.set(1)
+    await waitFor(() => loads.length === 2)
+    expect(loads).toEqual([0, 1])
+    expect(onLoad).toHaveBeenCalledTimes(2)
+
+    // Writing the same key again is not a change: no reload.
+    attempt.set(1)
+    await new Promise((r) => setTimeout(r, 100))
+    expect(loads).toEqual([0, 1])
+  })
+
+  it('a changed reloadKey re-navigates a src frame too', async () => {
+    const attempt = signal('a')
+    const onLoad = vi.fn()
+    const props: Record<string, unknown> = { src: 'about:blank', onLoad }
+    Object.defineProperty(props, 'reloadKey', { get: () => attempt(), enumerable: true })
+    mountInBrowser(() => h(WebView as never, props as never))
+    await waitFor(() => onLoad.mock.calls.length === 1)
+    attempt.set('b')
+    await waitFor(() => onLoad.mock.calls.length === 2)
+  })
+})
+
 describe('<WebView> sizing', () => {
   const frameIn = (root: HTMLElement): HTMLIFrameElement => query(root, 'iframe') as HTMLIFrameElement
   const column = (height: string, ...children: unknown[]) =>

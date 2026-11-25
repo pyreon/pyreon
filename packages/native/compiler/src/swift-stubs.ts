@@ -1187,8 +1187,15 @@ public func pyreonSchemaValue<T: Encodable>(_ value: T) -> Any { value }
 // the real runtime rejects.
 public enum PyreonWebViewGrow { case vertical, horizontal, both }
 public struct PyreonWebView: View {
-  public init(html: String? = nil, src: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true, grow: PyreonWebViewGrow? = nil) {}
+  public init(html: String? = nil, src: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true, grow: PyreonWebViewGrow? = nil, onLoad: (() -> Void)? = nil, onError: ((PyreonWebViewError) -> Void)? = nil, reloadKey: String? = nil, backNavigation: Bool = false) {}
   public typealias Body = Never
+}
+public struct PyreonWebViewError: Equatable, Sendable {
+  public let kind: String
+  public let code: Int
+  public let description: String
+  public let url: String
+  public init(kind: String, code: Int, description: String, url: String) { self.kind = kind; self.code = code; self.description = description; self.url = url }
 }
 
 // ---- PyreonRouter (the router-swift module surface the emit imports) ----

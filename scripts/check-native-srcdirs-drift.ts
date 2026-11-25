@@ -85,8 +85,13 @@ export function declaredPyreonDeps(pkgJsonPath: string): number {
   try {
     const pj = JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as {
       dependencies?: Record<string, string>
+      devDependencies?: Record<string, string>
     }
-    return Object.keys(pj.dependencies ?? {}).filter((d) => d.startsWith('@pyreon/')).length
+    // Both: `wire` starts from the app's devDependencies too (an example such
+    // as native-counter declares its libraries only there).
+    return [...Object.keys(pj.dependencies ?? {}), ...Object.keys(pj.devDependencies ?? {})].filter((d) =>
+      d.startsWith('@pyreon/'),
+    ).length
   } catch {
     return 0
   }
@@ -118,12 +123,13 @@ export function compareSets(
  * platform host's hand-written source list and the directory whose
  * `package.json` `wire` resolves. Each path must exist. A pair whose path is
  * missing used to be skipped with `continue`, so renaming or moving an
- * example turned its check off with no signal (the counter pair named a
- * `native-counter` directory that never existed and was never checked).
+ * example turned its check off with no signal (the counter pair once named a
+ * directory that did not exist and was never checked).
  */
 export const ANDROID_PAIRS: readonly { host: string; shared: string }[] = [
   { host: 'native-tasks/android/app/build.gradle.kts', shared: 'native-tasks' },
   { host: 'native-finance/android/app/build.gradle.kts', shared: 'native-finance' },
+  { host: 'native-counter/android/app/build.gradle.kts', shared: 'native-counter' },
 ]
 export const IOS_PAIRS: readonly { host: string; shared: string }[] = [
   { host: 'native-tasks/ios/project.yml', shared: 'native-tasks' },

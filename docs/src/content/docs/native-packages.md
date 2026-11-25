@@ -91,7 +91,7 @@ sourceSets {
 Kotlin aggregates any number of `srcDir`s into one compilation, so — unlike iOS, where a co-located feature directory needs its OWN staging step because it can't be an SPM package — every Kotlin source root, base or co-located, is just another `srcDir` on the same list.
 
 :::note{title="`pyreon-native wire` computes this list for you"}
-The set of source roots grows as you use more libraries — each fundamentals package that crosses to native contributes its own `native/kotlin/` directory. `pyreon-native wire` resolves them in dependency order, deduplicated, and can write the Android list to a file for Gradle to read. Hand-maintaining that list is how a co-located runtime goes missing and the app fails to compile with an unresolved reference.
+The set of source roots grows as you use more libraries — each fundamentals package that crosses to native contributes its own `native/kotlin/` directory. `pyreon-native wire` resolves them in dependency order, deduplicated, and can write the Android list to a file for Gradle to read. It walks what an install of your app installs: your app's own `dependencies`, `devDependencies` and `optionalDependencies`, and then, for each `@pyreon/*` package, its `dependencies`, `optionalDependencies` and required `peerDependencies`. A library's `devDependencies` are never followed, since installing the library does not install them. Hand-maintaining that list is how a co-located runtime goes missing and the app fails to compile with an unresolved reference.
 :::
 
 ## The router packages, hand-written

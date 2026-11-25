@@ -20,7 +20,13 @@ import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames }
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
-import { lowerWebViewDomStorage } from './webview-options'
+import {
+  lowerWebViewBackNavigation,
+  lowerWebViewDomStorage,
+  lowerWebViewReloadKey,
+  webViewErrorParamType,
+  type WebViewOptionEmit,
+} from './webview-options'
 import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
@@ -9875,7 +9881,34 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   }
   const domStorage = lowerWebViewDomStorage(e, readStaticAttr, 'swift')
   if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
-  const args = [content, dataArg, onMsgArg, domStorage.arg, swiftWebViewGrowArg(e)]
+  const growArg = swiftWebViewGrowArg(e)
+  // Load outcome + retry + back navigation (#4827, #4829). Swift labels are
+  // positional: this order is the runtime initializer's.
+  const onLoad = e.attrs.find((a) => a.kind === 'event' && a.name === 'load')
+  const onLoadArg = onLoad?.kind === 'event' ? `onLoad: ${emitSwiftAction(onLoad.handler, 0)}` : undefined
+  const onError = e.attrs.find((a) => a.kind === 'event' && a.name === 'error')
+  const onErrorArg =
+    onError?.kind === 'event'
+      ? `onError: ${emitSwiftMessageHandler(onError.handler, webViewErrorParamType(onError.handler.kind === 'arrow' ? onError.handler.paramTypes?.[0] : undefined))}`
+      : undefined
+  const options: WebViewOptionEmit = {
+    readStatic: readStaticAttr,
+    dynamicAttr: dynamicWebViewAttr,
+    emitExpr: (x) => emitSwiftExpr(x, 0),
+    quote: swiftStr,
+    target: 'swift',
+  }
+  const args = [
+    content,
+    dataArg,
+    onMsgArg,
+    domStorage.arg,
+    growArg,
+    onLoadArg,
+    onErrorArg,
+    lowerWebViewReloadKey(e, options),
+    lowerWebViewBackNavigation(e, options, growArg !== undefined),
+  ]
     .filter((a) => a !== undefined)
     .join(', ')
   // The generic tail (`padding`/`margin`, `data-testid` →
@@ -9905,7 +9938,7 @@ function swiftWebViewGrowArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): strin
  * param keeps it (`{ m in … }`); a zero-param arrow ignores it
  * (`{ _ in … }`); a bare function reference is called with the message.
  */
-function emitSwiftMessageHandler(handler: ExprIR): string {
+function emitSwiftMessageHandler(handler: ExprIR, defaultParamType: TypeIR = { kind: 'string' }): string {
   // The page-posted payload is ALWAYS a string (the runtime bridge hands over `String(m)`), so
   // an unannotated parameter is a `String`. Without that the receiver of `m.slice(2)` /
   // `m.startsWith(…)` is unknown and the string lowerings never fire: Kotlin happened to
@@ -9914,7 +9947,10 @@ function emitSwiftMessageHandler(handler: ExprIR): string {
   // block-body path emits through the generic action emitter, which seeds handler-local consts
   // but not the closure's own parameter.
   const messageParam = handler.kind === 'arrow' ? handler.params[0] : undefined
-  const paramType: TypeIR = (handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? { kind: 'string' }
+  const paramType: TypeIR =
+    defaultParamType.kind === 'string'
+      ? ((handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? defaultParamType)
+      : defaultParamType
   return withSwiftLocals(messageParam !== undefined ? [[messageParam, paramType]] : [], () => {
     if (handler.kind === 'arrow') {
       // A BLOCK body (`(event) => { a.set(x); b.set(y) }`) parses to an empty

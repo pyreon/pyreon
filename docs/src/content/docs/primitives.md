@@ -1161,6 +1161,10 @@ page sends back.
 | `onMessage` | `(message: string) => void` |
 | `domStorage` | `boolean`, default `true`; native only, literal value |
 | `grow` | `boolean`, default `false`; literal value on native |
+| `onLoad` | `() => void`, each time the page finishes loading |
+| `onError` | `(error: WebViewError) => void`, when the page fails to load; native only |
+| `reloadKey` | `string \| number`; a change loads the page again |
+| `backNavigation` | `boolean`, default `true` with `grow`, else `false`; native only |
 
 ```tsx
 // @check
@@ -1200,10 +1204,65 @@ export function ChartHost() {
   after the third crash in a row the view stays **empty** and logs a
   `[Pyreon] <WebView>` warning. On Android every WebView in the app shares the
   renderer, so that can empty several views at once, including ones whose
-  page did not cause it. An empty view stays empty until its `html` or `src`
-  changes: a new value loads it and starts a fresh count. The app gets no
-  callback (a follow-up may add one). iOS does not say whether its process
-  crashed or was reclaimed, so every termination counts towards the cap there.
+  page did not cause it. An empty view stays empty until its `html`, `src` or
+  `reloadKey` changes: a new value loads it and starts a fresh count. When the
+  host gives up it calls `onError` with `kind: 'crash'`. iOS does not say
+  whether its process crashed or was reclaimed, so every termination counts
+  towards the cap there.
+- **Load errors and retry**: `onLoad` runs each time the page (the main frame)
+  finishes loading a document, the first one and every page the user follows
+  inside the view. `onError` gets a `WebViewError` when the page fails to load:
+  `kind` is `'load'` (offline, DNS failure, connection refused, TLS), `'http'`
+  (the server answered 400 or more; `code` is the status) or `'crash'` (above).
+  `code` is otherwise the platform's error code and `description` its message,
+  so branch on `kind`. A failed image or request inside the page is not
+  reported, and neither is a cancelled navigation. To retry, change
+  `reloadKey`: setting the same `src` again is not a change, so nothing would
+  reload. On Android the system error page stays under your own screen; on iOS
+  the view is blank. On the web `onLoad` is the `<iframe>`'s `load` event and
+  `onError` is never called, because a browser does not tell the page that an
+  `<iframe>` failed to load.
+
+  ```tsx
+  // @check
+  import { Button, Show, Stack, Text, WebView } from '@pyreon/primitives'
+  import { signal } from '@pyreon/reactivity'
+
+  export function Support() {
+    const failed = signal(false)
+    const attempt = signal(0)
+    return (
+      <Stack>
+        <Show when={() => failed()}>
+          <Text>Support can't be reached.</Text>
+          <Button
+            onPress={() => {
+              failed.set(false)
+              attempt.update((n) => n + 1)
+            }}
+          >
+            Try again
+          </Button>
+        </Show>
+        <WebView
+          src="https://support.example/"
+          grow
+          reloadKey={attempt()}
+          onLoad={() => failed.set(false)}
+          onError={() => failed.set(true)}
+        />
+      </Stack>
+    )
+  }
+  ```
+
+- **Back navigation**: a `grow` web view is usually a whole screen the user
+  navigates inside, so by default system Back on Android goes back in the
+  page's history while there is one (at the first page Back leaves the screen
+  as before), and iOS turns on the edge swipe back and forward. Set
+  `backNavigation={false}` to turn that off, or `backNavigation` to turn it on
+  for a view without `grow`. The web ignores the prop: the browser's own Back
+  already walks an `<iframe>`'s history.
 - **`window.open` (Android)**: a user-tapped `window.open(url)` hands `url` to
   the system browser. `w = window.open('')` followed later by
   `w.location = url` works too, however long it takes, until the page opens

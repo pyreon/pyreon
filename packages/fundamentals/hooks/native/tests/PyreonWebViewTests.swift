@@ -32,6 +32,28 @@ enum PyreonWebViewTests {
         rendererGone()
         print("[PyreonWebViewTests] all assertions passed")
         #endif
+        loadOutcome()
+    }
+
+    /// `onLoad` / `onError` / `reloadKey` decisions (#4827). Mirrored in
+    /// PyreonWebChromePolicyTest.kt `loadOutcome`.
+    static func loadOutcome() {
+        // A cancellation is not an error: a newer load superseding this one,
+        // or WebKit's "frame load interrupted" when a link goes to the system.
+        check(pyreonWebViewIsCancellation(domain: NSURLErrorDomain, code: NSURLErrorCancelled), "NSURLErrorCancelled is a cancellation")
+        check(pyreonWebViewIsCancellation(domain: "WebKitErrorDomain", code: 102), "WebKit 102 is a cancellation")
+        check(!pyreonWebViewIsCancellation(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet), "offline is reported")
+        check(!pyreonWebViewIsCancellation(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost), "refused is reported")
+        check(!pyreonWebViewIsCancellation(domain: "WebKitErrorDomain", code: 101), "WebKit 101 (cannot show URL) is reported")
+        check(pyreonWebViewIsHttpError(404) && pyreonWebViewIsHttpError(500) && pyreonWebViewIsHttpError(400), "4xx / 5xx fail the load")
+        check(!pyreonWebViewIsHttpError(200) && !pyreonWebViewIsHttpError(304) && !pyreonWebViewIsHttpError(399), "2xx / 3xx do not")
+        // reloadKey is part of the load key: bumping it loads the page again.
+        check(pyreonWebViewLoadKey(html: nil, src: "p.html", reloadKey: "1") != pyreonWebViewLoadKey(html: nil, src: "p.html", reloadKey: "2"), "a new reloadKey reloads")
+        check(pyreonWebViewLoadKey(html: nil, src: "p.html", reloadKey: nil) == pyreonWebViewLoadKey(html: nil, src: "p.html", reloadKey: nil), "the same props do not")
+        check(pyreonWebViewLoadKey(html: "a", src: nil, reloadKey: nil) != pyreonWebViewLoadKey(html: nil, src: "a", reloadKey: nil), "html and src are distinct")
+        let e = PyreonWebViewError(kind: pyreonWebViewErrorHttp, code: 503, description: "service unavailable", url: "https://a.test/")
+        check(e.kind == "http" && e.code == 503 && e.url == "https://a.test/", "the error carries kind, code and url")
+        print("[PyreonWebViewTests] load outcome assertions passed")
     }
 
     #if canImport(WebKit)

@@ -107,6 +107,7 @@ export interface PackageManifest {
   devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>
   pyreon?: { native?: PyreonNativeField }
 }
 
@@ -244,6 +245,7 @@ export interface ResolveOptions {
    * default (v1 scans the app's DIRECT deps — the shape `npm install
    * @pyreon/query` produces). A workspace app that re-exports a native-bearing
    * package through an intermediate first-party package can turn this on.
+   * Only a dependency's installed edges are followed (`installedDepNames`).
    */
   transitiveScope?: 'direct' | 'first-party'
   /**
@@ -255,9 +257,41 @@ export interface ResolveOptions {
 }
 
 /**
+ * The edges the walk starts from: everything the APP declares. The app is the
+ * root of its own install, so its devDependencies are installed too (a native
+ * app's libraries commonly sit there, as in the repo's examples).
+ */
+export function appDepNames(m: PackageManifest): string[] {
+  return [
+    ...Object.keys(m.dependencies ?? {}),
+    ...Object.keys(m.devDependencies ?? {}),
+    ...Object.keys(m.optionalDependencies ?? {}),
+  ]
+}
+
+/**
+ * The edges followed out of a DEPENDENCY: only what installing that package
+ * installs: `dependencies`, `optionalDependencies` and the non-optional
+ * `peerDependencies` (npm 7+, pnpm and bun install those). Never its
+ * `devDependencies`: a consumer install does not install them, so a native
+ * source dir reached through one is a dir the published app cannot resolve
+ * (#4849). An optional peer is present only when the app installs it itself,
+ * and then the app's own edge reaches it.
+ */
+export function installedDepNames(m: PackageManifest): string[] {
+  const optionalPeers = m.peerDependenciesMeta ?? {}
+  return [
+    ...Object.keys(m.dependencies ?? {}),
+    ...Object.keys(m.optionalDependencies ?? {}),
+    ...Object.keys(m.peerDependencies ?? {}).filter((name) => optionalPeers[name]?.optional !== true),
+  ]
+}
+
+/**
  * Resolve every native source directory reachable from an app directory.
  *
- * Reads the app's `package.json` dependencies + devDependencies, resolves each
+ * Reads the app's `package.json` dependencies, devDependencies and
+ * optionalDependencies (`appDepNames`), resolves each
  * one's install location (hoisting/pnpm-safe), and scans it for native
  * sources. Deterministic order: dependency-declaration order, deduped by
  * resolved directory so a package resolved through two dep edges contributes
@@ -272,12 +306,7 @@ export function resolveNativeSources(appDir: string, options: ResolveOptions = {
   const seenDirs = new Set<string>()
   const visited = new Set<string>()
 
-  const depNames = (m: PackageManifest): string[] => [
-    ...Object.keys(m.dependencies ?? {}),
-    ...Object.keys(m.devDependencies ?? {}),
-  ]
-
-  const queue: { name: string; fromDir: string }[] = depNames(appManifest).map((name) => ({
+  const queue: { name: string; fromDir: string }[] = appDepNames(appManifest).map((name) => ({
     name,
     fromDir: appDir,
   }))
@@ -302,9 +331,10 @@ export function resolveNativeSources(appDir: string, options: ResolveOptions = {
     }
 
     // Transitive first-party scan (opt-in): follow @pyreon/* deps of a
-    // resolved @pyreon/* package so a re-export chain still aggregates.
+    // resolved @pyreon/* package so a re-export chain still aggregates. Only
+    // what a consumer install of that package installs (see `installedDepNames`).
     if (options.transitiveScope === 'first-party' && name.startsWith('@pyreon/')) {
-      for (const dep of depNames(manifest)) {
+      for (const dep of installedDepNames(manifest)) {
         if (dep.startsWith('@pyreon/') && !visited.has(dep)) {
           queue.push({ name: dep, fromDir: pkgDir })
         }

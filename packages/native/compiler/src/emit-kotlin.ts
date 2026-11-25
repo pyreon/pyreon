@@ -31,7 +31,13 @@ import {
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
-import { lowerWebViewDomStorage } from './webview-options'
+import {
+  lowerWebViewBackNavigation,
+  lowerWebViewDomStorage,
+  lowerWebViewReloadKey,
+  webViewErrorParamType,
+  type WebViewOptionEmit,
+} from './webview-options'
 import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import {
   asyncValueReturnWarning,
@@ -8147,11 +8153,35 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   const domStorage = lowerWebViewDomStorage(e, readStaticAttrKotlin, 'kotlin')
   if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
-  // `domStorage` rides after `modifier` (its position in the runtime signature).
-  return `PyreonWebView(${args}${kotlinWebViewModifierArg(e)}${domStorage.arg === undefined ? '' : `, ${domStorage.arg}`})`
+  // Whether it grows decides the `backNavigation` default. The modifier arg
+  // below reports the warning, so this read discards it.
+  const grows =
+    lowerWebViewGrow(e.attrs, () => readStaticAttrKotlin(e, 'grow'), _kotlinLayout, e.tag).axis !== undefined
+  const modifierArg = kotlinWebViewModifierArg(e)
+  // Load outcome + retry + back navigation (#4827, #4829).
+  const onLoad = e.attrs.find((a) => a.kind === 'event' && a.name === 'load')
+  const onError = e.attrs.find((a) => a.kind === 'event' && a.name === 'error')
+  const options: WebViewOptionEmit = {
+    readStatic: readStaticAttrKotlin,
+    dynamicAttr: dynamicWebViewAttrKotlin,
+    emitExpr: (x) => emitKotlinExpr(x, 0),
+    quote: kotlinStr,
+    target: 'kotlin',
+  }
+  // `domStorage` and the rest ride after `modifier` (their position in the runtime signature).
+  const trailing = [
+    domStorage.arg,
+    onLoad?.kind === 'event' ? `onLoad = ${emitKotlinAction(onLoad.handler, 0)}` : undefined,
+    onError?.kind === 'event'
+      ? `onError = ${emitKotlinMessageHandler(onError.handler, webViewErrorParamType(onError.handler.kind === 'arrow' ? onError.handler.paramTypes?.[0] : undefined))}`
+      : undefined,
+    lowerWebViewReloadKey(e, options),
+    lowerWebViewBackNavigation(e, options, grows),
+  ].filter((a) => a !== undefined)
+  return `PyreonWebView(${args}${modifierArg}${trailing.map((a) => `, ${a}`).join('')})`
 }
 
-function emitKotlinMessageHandler(handler: ExprIR): string {
+function emitKotlinMessageHandler(handler: ExprIR, defaultParamType: TypeIR = { kind: 'string' }): string {
   // The page-posted payload is ALWAYS a string (the runtime bridge hands over `String(m)`), so
   // an unannotated parameter is a `String`. Without that the receiver of `m.slice(2)` /
   // `m.startsWith(…)` is unknown and the string lowerings never fire: Kotlin happened to
@@ -8160,7 +8190,10 @@ function emitKotlinMessageHandler(handler: ExprIR): string {
   // block-body path emits through the generic action emitter, which seeds handler-local consts
   // but not the closure's own parameter.
   const messageParam = handler.kind === 'arrow' ? handler.params[0] : undefined
-  const paramType: TypeIR = (handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? { kind: 'string' }
+  const paramType: TypeIR =
+    defaultParamType.kind === 'string'
+      ? ((handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? defaultParamType)
+      : defaultParamType
   return withKotlinLocals(messageParam !== undefined ? [[messageParam, paramType]] : [], () => {
     if (handler.kind === 'arrow') {
       // A BLOCK body parses to an empty `body` with its statements in `stmts`;

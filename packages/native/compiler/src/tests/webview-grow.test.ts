@@ -21,6 +21,8 @@ const swift = (src: string) => transform(src, { target: 'swift' })
 const kotlin = (src: string) => transform(src, { target: 'kotlin' })
 const webLine = (code: string) => code.split('\n').find((l) => l.includes('PyreonWebView('))?.trim() ?? ''
 
+// A growing view is the full-screen case, so it also gets `backNavigation: true`
+// by default (#4829; see webview-load-events.test.ts).
 describe('<WebView grow> lowering', () => {
   it('unsized emits exactly what it did before — no weight, no grow argument', () => {
     const src = wrap('<Stack><Text>a</Text><WebView src="p.html" data-testid="w" /></Stack>')
@@ -34,16 +36,16 @@ describe('<WebView grow> lowering', () => {
 
   it('a direct child of <Stack> grows vertically: weight on Compose, .vertical on SwiftUI', () => {
     const src = wrap('<Stack><Text>a</Text><WebView src="p.html" grow data-testid="w" /></Stack>')
-    expect(webLine(swift(src).code)).toBe('PyreonWebView(src: "p.html", grow: .vertical).accessibilityIdentifier("w")')
-    expect(webLine(kotlin(src).code)).toBe('PyreonWebView(src = "p.html", modifier = Modifier.weight(1f).testTag("w"))')
+    expect(webLine(swift(src).code)).toBe('PyreonWebView(src: "p.html", grow: .vertical, backNavigation: true).accessibilityIdentifier("w")')
+    expect(webLine(kotlin(src).code)).toBe('PyreonWebView(src = "p.html", modifier = Modifier.weight(1f).testTag("w"), backNavigation = true)')
     expect(swift(src).warnings).toEqual([])
     expect(kotlin(src).warnings).toEqual([])
   })
 
   it('a direct child of <Inline> grows horizontally', () => {
     const src = wrap('<Inline><Text>a</Text><WebView html="<p/>" grow /></Inline>')
-    expect(webLine(swift(src).code)).toBe('PyreonWebView(html: "<p/>", grow: .horizontal)')
-    expect(webLine(kotlin(src).code)).toBe('PyreonWebView(html = "<p/>", modifier = Modifier.weight(1f))')
+    expect(webLine(swift(src).code)).toBe('PyreonWebView(html: "<p/>", grow: .horizontal, backNavigation: true)')
+    expect(webLine(kotlin(src).code)).toBe('PyreonWebView(html = "<p/>", modifier = Modifier.weight(1f), backNavigation = true)')
   })
 
   it('<Stack direction="row"> is a row', () => {
@@ -61,8 +63,8 @@ describe('<WebView grow> lowering', () => {
 
   it('anywhere else (Layer, a component root) fills both axes: fillMaxSize / .both', () => {
     const layer = wrap('<Stack><Layer><WebView html="<p/>" grow /></Layer></Stack>')
-    expect(webLine(kotlin(layer).code)).toBe('PyreonWebView(html = "<p/>", modifier = Modifier.fillMaxSize())')
-    expect(webLine(swift(layer).code)).toBe('PyreonWebView(html: "<p/>", grow: .both)')
+    expect(webLine(kotlin(layer).code)).toBe('PyreonWebView(html = "<p/>", modifier = Modifier.fillMaxSize(), backNavigation = true)')
+    expect(webLine(swift(layer).code)).toBe('PyreonWebView(html: "<p/>", grow: .both, backNavigation: true)')
     const root = wrap('<WebView html="<p/>" grow padding={2} />')
     expect(webLine(kotlin(root).code)).toMatch(/^PyreonWebView\(html = "<p\/>", modifier = Modifier\.fillMaxSize\(\)\.padding\(/)
     expect(webLine(swift(root).code)).toContain('grow: .both')

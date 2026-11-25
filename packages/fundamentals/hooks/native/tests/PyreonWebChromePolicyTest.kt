@@ -220,7 +220,32 @@ private fun rendererGone() {
 
 private const val PAGE = "bridge.html"
 
+private fun loadOutcome() {
+    // Main frame only, and never a cancellation.
+    expect(pyreonWebViewReportsLoadError(isMainFrame = true, description = "net::ERR_INTERNET_DISCONNECTED"), "offline main frame is reported")
+    expect(pyreonWebViewReportsLoadError(isMainFrame = true, description = "net::ERR_CONNECTION_REFUSED"), "refused main frame is reported")
+    expect(!pyreonWebViewReportsLoadError(isMainFrame = false, description = "net::ERR_CONNECTION_REFUSED"), "a failed image / XHR is the page's business")
+    expect(!pyreonWebViewReportsLoadError(isMainFrame = true, description = "net::ERR_ABORTED"), "a cancelled navigation is not an error")
+    expect(pyreonWebViewIsHttpError(404) && pyreonWebViewIsHttpError(500) && pyreonWebViewIsHttpError(400), "4xx / 5xx fail the load")
+    expect(!pyreonWebViewIsHttpError(200) && !pyreonWebViewIsHttpError(304) && !pyreonWebViewIsHttpError(399), "2xx / 3xx do not")
+    // A failed page still finishes on Android; it is not a load.
+    expect(pyreonWebViewFinishedIsLoad("https://a.test/", null), "no failure: a finished page is a load")
+    expect(!pyreonWebViewFinishedIsLoad("https://a.test/", "https://a.test/"), "the failed page finishing is not a load")
+    expect(pyreonWebViewFinishedIsLoad("https://a.test/b", "https://a.test/"), "a later page finishing is a load")
+    // Back goes back in the page only when opted in AND there is history.
+    expect(pyreonWebViewHandlesBack(backNavigation = true, canGoBack = true), "opted in with history: the page goes back")
+    expect(!pyreonWebViewHandlesBack(backNavigation = true, canGoBack = false), "first page: Back leaves the screen")
+    expect(!pyreonWebViewHandlesBack(backNavigation = false, canGoBack = true), "not opted in: Back leaves the screen")
+    // reloadKey is part of the load key: bumping it loads the page again.
+    expect(pyreonWebViewLoadKey(null, PAGE, "1") != pyreonWebViewLoadKey(null, PAGE, "2"), "a new reloadKey reloads")
+    expect(pyreonWebViewLoadKey(null, PAGE, null) == pyreonWebViewLoadKey(null, PAGE, null), "the same props do not")
+    expect(pyreonWebViewLoadKey("a", null, null) != pyreonWebViewLoadKey(null, "a", null), "html and src are distinct")
+    val e = PyreonWebViewError(PYREON_WEBVIEW_ERROR_HTTP, 503, "Service Unavailable", "https://a.test/")
+    expect(e.kind == "http" && e.code == 503 && e.url == "https://a.test/", "the error carries kind, code and url")
+}
+
 public fun main() {
+    loadOutcome()
     rendererGone()
     originScope()
     fileChooserPlans()
