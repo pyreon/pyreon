@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      pull-requests: read
+      contents: read
     outputs:
       run: ${{ steps.diff.outputs.run }}
       # `graph` gates `validate` and `validate-swift-typecheck`, never the
@@ -122,9 +122,9 @@ jobs:
       macos: ${{ steps.diff.outputs.macos }}
       graph-macos: ${{ steps.diff.outputs.graph-macos }}
     steps:
-      # The classifier reads changed package.json manifests at the PR head, so
-      # it needs the merge-ref checkout and both parents to inspect removed
-      # native plugin declarations without treating web-only manifests as native.
+      # The changed set (scripts/diff-base.ts) and the classifier's base-side
+      # manifest reads both use the merge commit's first parent, so the
+      # merge-ref checkout needs its parents: depth 2.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,26 +136,11 @@ jobs:
       - name: Check changed paths against the native dependency surface
         id: diff
         env:
-          GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           MG_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
           set -euo pipefail
-          FILES=$(mktemp)
-          if [ "$EVENT" = "merge_group" ]; then
-            # The group's own diff against the commit it was built on. Any
-            # failure here (fetch, diff, empty list) runs both rules
-            # fail-closed: an empty list makes the classifier say run.
-            if git fetch --no-tags --quiet --depth=1 origin "$MG_BASE" \
-              && git diff --name-only "$MG_BASE" HEAD > "$FILES"; then
-              # The classifier proves a changed manifest was web-only by
-              # reading it at merge-base(origin/main, HEAD); point that at the
-              # group's base. A shallow history it cannot walk fails closed.
-              git update-ref refs/remotes/origin/main "$MG_BASE"
-            else
-              : > "$FILES"
-            fi
-          elif [ "$EVENT" != "pull_request" ]; then
+          if [ "$EVENT" != "pull_request" ] && [ "$EVENT" != "merge_group" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "graph=true" >> "$GITHUB_OUTPUT"
             echo "macos=true" >> "$GITHUB_OUTPUT"
@@ -163,41 +148,31 @@ jobs:
             echo "non-PR event — always validate"
             exit 0
           fi
+          if [ "$EVENT" = "merge_group" ]; then
+            # The group's base may sit deeper than this depth-2 checkout.
+            git fetch --no-tags --quiet --depth=1 origin "$MG_BASE"
+          fi
+          # The changed set every workflow uses (scripts/diff-base.ts): on a PR
+          # the merge commit's first parent → the merge commit; in a merge
+          # group merge_group.base_sha → the group head. It replaced a read of
+          # the PR files API, which GitHub answered with HTTP 500 under load
+          # (PR #4533). A base this checkout cannot supply fails this job with
+          # a [Pyreon] message, and a failed decide runs every lane (fail-closed).
+          FILES=$(mktemp)
+          bun scripts/diff-base.ts --files > "$FILES"
+          BASE=$(bun scripts/diff-base.ts)
           # ONE classifier for both native workflows (scripts/native-surface-touched.ts,
           # fail-closed: every uncertainty RUNS the lanes). The inline regex it
           # replaced counted the JSX compiler's napi crate (packages/core/compiler/native/)
           # and EVERY package.json as native surface — measured 2026-09-07 at ~2h of
           # runner time (50 min macOS swiftc + 50 min iOS + 30 min Android) per
-          # affected PR, on 6 of the last 40 PRs.
-          if [ "$EVENT" = "pull_request" ]; then
-            # GitHub answers this endpoint with HTTP 500 under load ("this diff is
-            # temporarily unavailable"). A bare call exits the step non-zero and
-            # turns a required check red for a reason no code change caused
-            # (PR #4533, 2026-11-17). Retry, then fail CLOSED like every other
-            # uncertainty here: a diff nobody could read runs all lanes.
-            LISTED=''
-            for attempt in 1 2 3 4; do
-              if gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' > "$FILES"; then
-                LISTED=1
-                break
-              fi
-              echo "::warning::could not list the pull request's files (attempt $attempt of 4)"
-              sleep $((attempt * 10))
-            done
-            if [ -z "$LISTED" ]; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-              echo "graph=true" >> "$GITHUB_OUTPUT"
-              echo "macos=true" >> "$GITHUB_OUTPUT"
-              echo "graph-macos=true" >> "$GITHUB_OUTPUT"
-              echo "::warning::the pull request's file list stayed unavailable — running every native lane"
-              exit 0
-            fi
-          fi
+          # affected PR, on 6 of the last 40 PRs. It reads changed manifests at
+          # the same base (`--base`).
           # `--macos-jobs` also emits `macos`: the same question for the macOS job
           # alone (see scripts/native-surface-touched.ts, classifyMacosLane).
           FILES_MAC=$(mktemp)
           cp "$FILES" "$FILES_MAC"
-          bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml --macos-jobs=validate-swift-typecheck --macos-graph-files="$FILES_MAC" < "$FILES"
+          bun scripts/native-surface-touched.ts --base="$BASE" --self=.github/workflows/native-validate.yml --macos-jobs=validate-swift-typecheck --macos-graph-files="$FILES_MAC" < "$FILES"
           # `graph` — the DEPENDENCY-GRAPH half. `@pyreon/native-compiler` has
           # RUNTIME deps on `@pyreon/charts` and `@pyreon/compiler` (the chart
           # engine sources are PMTC input), so a PR that touches neither

@@ -35,6 +35,8 @@ function fixture(): string {
     'native-example-hosts.ts',
     'native-workflow-surface.ts',
     'native-inputs-fingerprint.ts',
+    'diff-base.ts',
+    'changed-files.ts',
   ])
     copyFileSync(join(REPO, 'scripts', script), join(root, 'scripts', script))
   put(

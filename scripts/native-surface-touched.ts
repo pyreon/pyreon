@@ -37,6 +37,7 @@ import { listNativeHosts } from './native-example-hosts'
 import { deriveNativePluginSurface } from './native-plugin-surface'
 import { lockClosure, nativeWorkspaces, parseLockfile } from './native-inputs-fingerprint'
 import { laneChanged } from './native-workflow-surface'
+import { mergeCommitFirstParent } from './diff-base'
 
 export interface Decision {
   run: boolean
@@ -515,8 +516,13 @@ function readAtHead(path: string): string | null {
   }
 }
 
-/** Lazily read the actual merge checkout's base, or the local main merge-base. */
-export function comparisonManifestReader(repoRoot: string): (path: string) => string | null {
+/**
+ * Lazily read files at the comparison base: `explicitBase` when given (CI passes
+ * CI_BASE from `scripts/diff-base.ts`), else the merge checkout's first parent
+ * (the same `mergeCommitFirstParent` diff-base uses), else the local main
+ * merge-base.
+ */
+export function comparisonManifestReader(repoRoot: string, explicitBase?: string): (path: string) => string | null {
   let base: string | undefined
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
@@ -530,16 +536,24 @@ export function comparisonManifestReader(repoRoot: string): (path: string) => st
     }).trim()
   return (path) => {
     if (!base) {
-      if (/^refs\/pull\/\d+\/merge$/.test(process.env.GITHUB_REF ?? '')) {
-        // Both parents must exist. A head-only/shallow checkout is uncertainty,
-        // not evidence that the package used to be web-only.
-        git('rev-parse', '--verify', 'HEAD^2^{commit}')
-        base = git('rev-parse', '--verify', 'HEAD^1^{commit}')
+      if (explicitBase !== undefined) base = git('rev-parse', '--verify', explicitBase + '^{commit}')
+      else if (/^refs\/pull\/\d+\/merge$/.test(process.env.GITHUB_REF ?? '')) {
+        // The first parent must exist. A head-only/shallow checkout is
+        // uncertainty, not evidence that the package used to be web-only.
+        base = mergeCommitFirstParent(repoRoot)
       } else base = git('merge-base', 'origin/main', 'HEAD')
       if (!/^[\da-f]{40}$/.test(base)) throw new Error('native comparison base unavailable')
     }
     return git('show', base + ':' + path)
   }
+}
+
+/** `--base=<rev>`: the comparison base commit (CI: CI_BASE from scripts/diff-base.ts). */
+function baseArg(): string | undefined {
+  const v = process.argv.find((a) => a.startsWith('--base='))?.slice('--base='.length)
+  if (v === undefined) return undefined
+  if (!/^[\w./^~-]+$/.test(v)) throw new Error('[Pyreon] native-surface-touched: --base must be a plain git revision (an unset CI_BASE?), got ' + JSON.stringify(v))
+  return v
 }
 
 function listArg(name: string): string[] | undefined {
@@ -557,7 +571,7 @@ function readSelfWorkflow(file: string): SelfWorkflow {
   }
   let base: string | null | Error
   try {
-    base = comparisonManifestReader(process.cwd())(file)
+    base = comparisonManifestReader(process.cwd(), baseArg())(file)
   } catch (err) {
     // A path that is absent at the base reads as an error from `git show`;
     // either way the comparison is impossible, so the lane counts as changed.
@@ -586,7 +600,7 @@ if (import.meta.main) {
   const out = (key: string, value: string): void => {
     if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, key + '=' + value + '\n')
   }
-  const readBase = comparisonManifestReader(process.cwd())
+  const readBase = comparisonManifestReader(process.cwd(), baseArg())
   const deviceJobs = self && iosJobs && androidJobs ? { ios: iosJobs, android: androidJobs } : undefined
   if (process.argv.includes('--apps') && deviceJobs) {
     // Device lanes: the workflow file selects a platform only through that

@@ -727,8 +727,8 @@ async function main(): Promise<void> {
     else if (arg === '--changed-only') directOnly = true
     // `--files-from-stdin` takes the changed-file list from stdin (one path
     // per line) instead of `git diff`. For a caller that already HAS the list
-    // and no history to diff — native-validate.yml's decide job reads it from
-    // the PR files API over a depth-1 checkout. An empty list is treated as
+    // — native-validate.yml's decide job gets it from
+    // `bun scripts/diff-base.ts --files`. An empty list is treated as
     // UNKNOWABLE (null → `--filter=*`), never as "nothing changed": a PR with
     // zero files cannot reach CI, so an empty read means the pipe failed.
     else if (arg === '--files-from-stdin') filesFromStdin = true
@@ -737,6 +737,12 @@ async function main(): Promise<void> {
     else if (arg.startsWith('--script=')) requireScript = arg.slice('--script='.length)
   }
 
+  // An empty `--base=` (an unset CI_BASE) would diff `...HEAD` = HEAD against
+  // itself — "nothing changed", the silent under-selection. Refuse it.
+  if (base === '') {
+    console.error('[Pyreon] affected.ts: --base is empty. In CI it is CI_BASE, exported by `bun scripts/diff-base.ts --github-env`; run that step first.')
+    process.exit(1)
+  }
   const changed = filesFromStdin ? readFilesFromStdin() : gitChangedFiles(base)
 
   if (codeChanged) {
