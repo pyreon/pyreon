@@ -1,19 +1,6 @@
 /* oxlint-disable complexity -- one pass over import/export declarations; each branch is a syntax shape the rewrite must preserve */
-import { createRequire } from 'node:module'
+import { loadTs } from './load-ts'
 import type { Codemod } from './types'
-
-type TS = typeof import('typescript')
-
-/** TypeScript, loaded only when the codemod actually has a candidate file. */
-function loadTs(): TS {
-  try {
-    return createRequire(import.meta.url)('typescript') as TS
-  } catch {
-    throw new Error(
-      '[Pyreon] codemod internal-exports-subpath needs the `typescript` package. Install it (it is a peer dependency of @pyreon/cli) and re-run `pyreon upgrade`.',
-    )
-  }
-}
 
 /** One entry point's moved names: each name in `names` left `from` for `to`. */
 export interface ExportMove {
@@ -222,7 +209,7 @@ export function createExportMoveCodemod(moves: readonly ExportMove[]): Codemod['
     }
     if (!candidate) return null
 
-    const ts = loadTs()
+    const ts = loadTs('internal-exports-subpath')
     const kind = /\.[mc]?tsx$|\.jsx$/.test(relPath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS
     const sf = ts.createSourceFile(relPath, source, ts.ScriptTarget.ESNext, true, kind)
     const edits: { start: number; end: number; text: string }[] = []
