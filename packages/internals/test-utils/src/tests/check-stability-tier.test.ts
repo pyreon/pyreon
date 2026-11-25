@@ -2,8 +2,11 @@
 // each policy function, plus the REAL-REPO invariant the gate exists to hold.
 //
 // Policy functions are called DIRECTLY (no subprocess fork — see
-// .agents/rules/anti-patterns.md "Subprocess testing as a default").
+// .agents/rules/anti-patterns.md "Subprocess testing as a default"). The one
+// exception is the real-repo smoke test at the bottom, which runs the gate
+// script and asserts its exit status only.
 
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -21,7 +24,6 @@ import {
   readStabilityField,
   readTextIfExists,
   renderStatusLine,
-  runGate,
   type PublishedPackage,
   type StabilityField,
   internalImportPinFailures,
@@ -429,7 +431,15 @@ describe('internalImportPinFailures (rule 10)', () => {
 })
 
 describe('real repo', () => {
-  it('holds every rule (the gate is green on this tree)', async () => {
-    expect(await runGate(REPO, false)).toEqual([])
+  // The gate itself, run in a child process: every published package's public
+  // entries go through the TypeScript parser, and in process that parse ran
+  // under V8's coverage instrumenter for nothing, because the script is not in
+  // this package's coverage include (`src/**`). In `Coverage (Full)` on a
+  // loaded runner it took 50.5 s of this 60 s budget. The policy functions keep
+  // their in-process fixture specs above; this is the smoke test, so it asserts
+  // the exit status only, and stderr (the failure list) is the message.
+  it('holds every rule (the gate is green on this tree)', () => {
+    const r = spawnSync('bun', [join(REPO, 'scripts/check-stability-tier.ts')], { cwd: REPO, encoding: 'utf8' })
+    expect(r.status, r.error?.message ?? r.stderr).toBe(0)
   }, 60_000)
 })

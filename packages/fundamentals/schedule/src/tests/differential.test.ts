@@ -11,39 +11,21 @@ import { occurrences, occurrencesBetween } from '../core'
 import { brute } from './brute'
 import { makeCase, toDate, wallOf } from './diff-gen'
 import { makeWideCase } from './wide-gen'
+import { oracleInChild, skipReason } from './oracle-child'
 import type { Recurrence } from '../types'
 
-const run = (c: ReturnType<typeof makeCase>): { ours: string[]; theirs: string[] } => {
-  const ours = occurrencesBetween(c.rule, c.rule.start, c.windowEnd as never) as string[]
-  const timed = c.rule.start.length > 10
-  const rr = new RRule({ ...c.options, ...(c.count === undefined ? {} : { count: c.count }), until: toDate(c.windowEnd) } as never)
-  const theirs = rr.between(toDate(c.rule.start), toDate(c.windowEnd), true).map((d) => wallOf(d, timed))
-
-  return { ours, theirs: [...new Set(theirs)].sort() }
-}
-
-/** Why a random case is not compared with rrule (each reason is a documented divergence), or undefined when it is. */
-function skipReason(c: ReturnType<typeof makeCase>, found: number): string | undefined {
-  const weekStart = (c.rule.weekStart ?? 1) % 7
-
-  if (c.mixedDays) return 'D2 mixed plain and n-th BYDAY'
-  if (found === 0) return 'empty window (rrule would scan to year 9999: D8)'
-  if (c.rule.every === 'week' && c.rule.on?.position !== undefined && toDate(c.rule.start).getUTCDay() !== weekStart) return 'D4 position in the first, partial week'
-  if (c.rule.every === 'year' && c.rule.on?.weeks !== undefined) return 'D5 week-year days outside the calendar year'
-  if (c.rule.every === 'minute' && c.rule.on?.hours !== undefined) return 'D6 minutely grid after an hour filter'
-
-  return undefined
-}
-
-// Thousands of seeded cases in one test. It runs in a few seconds, but under the
-// coverage run on a loaded CI runner it passed the 20 s default (#4738's first run).
+// Thousands of seeded cases per test. Our expansion runs here, in the test
+// process, for every seed: that is what the coverage run measures. The ORACLES
+// (rrule, the brute-force expander) run in a child process (oracle-child.ts),
+// where V8's coverage instrumenter cannot slow them. In process, the rrule spec
+// took 103.8 s of this budget in `Coverage (Full)` on a loaded 4-vCPU runner.
 const DIFFERENTIAL_TIMEOUT_MS = 120_000
 
 describe('differential: ours against rrule', () => {
-  it('agrees on thousands of seeded random rules and windows, except the documented divergences', () => {
+  it('agrees on thousands of seeded random rules and windows, except the documented divergences', async () => {
+    const theirs = oracleInChild('rrule', 2500)
     const skipped: Record<string, number> = {}
-    let compared = 0
-    let nonEmpty = 0
+    const compared: { seed: number; ours: string[]; rule: string }[] = []
 
     for (let seed = 1; seed <= 2500; seed++) {
       const c = makeCase(seed)
@@ -54,30 +36,33 @@ describe('differential: ours against rrule', () => {
         skipped[why] = (skipped[why] ?? 0) + 1
         continue
       }
-      const { theirs } = run(c)
-
-      expect(ours, `seed ${seed}: ${JSON.stringify(c.rule)}`).toEqual(theirs)
-      compared++
-      if (ours.length > 0) nonEmpty++
+      compared.push({ seed, ours, rule: JSON.stringify(c.rule) })
     }
-    expect(compared).toBeGreaterThan(2000)
-    expect(nonEmpty).toBe(compared)
+    const results = await theirs
+
+    // The child skips by the same rule; it must have skipped the same seeds.
+    expect(results.flatMap((r, i) => (r === null ? [] : [i + 1]))).toEqual(compared.map((x) => x.seed))
+    for (const { seed, ours, rule } of compared) expect(ours, `seed ${seed}: ${rule}`).toEqual(results[seed - 1])
+    expect(compared.length).toBeGreaterThan(2000)
+    expect(compared.every((x) => x.ours.length > 0)).toBe(true)
     expect(Object.values(skipped).reduce((a, b) => a + b, 0)).toBeLessThan(700)
   }, DIFFERENTIAL_TIMEOUT_MS)
 })
 
 describe('differential: ours against the brute-force oracle (every part, every position, mixed BYDAY, weeks, count, until, except, also)', () => {
-  it('agrees on 3000 seeded wide rules', () => {
-    let nonEmpty = 0
+  it('agrees on 3000 seeded wide rules', async () => {
+    const expected = oracleInChild('brute', 3000)
+    const ours: { seed: number; occurrences: string[]; rule: string }[] = []
 
     for (let seed = 1; seed <= 3000; seed++) {
       const c = makeWideCase(seed)
-      const ours = occurrencesBetween(c.rule, c.rule.start, c.windowEnd as never) as string[]
 
-      expect(ours, `seed ${seed}: ${JSON.stringify(c.rule)}`).toEqual(brute(c.rule, c.windowEnd))
-      if (ours.length > 0) nonEmpty++
+      ours.push({ seed, occurrences: occurrencesBetween(c.rule, c.rule.start, c.windowEnd as never) as string[], rule: JSON.stringify(c.rule) })
     }
-    expect(nonEmpty).toBeGreaterThan(1800)
+    const results = await expected
+
+    for (const { seed, occurrences, rule } of ours) expect(occurrences, `seed ${seed}: ${rule}`).toEqual(results[seed - 1])
+    expect(ours.filter((x) => x.occurrences.length > 0).length).toBeGreaterThan(1800)
   }, DIFFERENTIAL_TIMEOUT_MS)
 })
 
