@@ -1161,6 +1161,8 @@ page sends back.
 | `onMessage` | `(message: string) => void` |
 | `domStorage` | `boolean`, default `true`; native only, literal value |
 | `grow` | `boolean`, default `false`; literal value on native |
+| `onDownload` | `(download: { url, filename, mimeType }) => void`; native only |
+| `saveDownloads` | `boolean`, default `true`; native only, literal value |
 
 ```tsx
 // @check
@@ -1204,6 +1206,35 @@ export function ChartHost() {
   changes: a new value loads it and starts a fresh count. The app gets no
   callback (a follow-up may add one). iOS does not say whether its process
   crashed or was reclaimed, so every termination counts towards the cap there.
+- **Downloads (native)**: when the page starts a download (an `<a download>`
+  link, including the `blob:` and `data:` URLs a page builds for an export, a
+  `Content-Disposition: attachment` response, or a file type the engine cannot
+  display), the host calls `onDownload` with the URL, a safe file name and the
+  MIME type, and then saves the file where the user can find it:
+
+  | | `http(s)` | `blob:` / `data:` |
+  | --- | --- | --- |
+  | iOS | WebKit fetches it, then the share sheet (Save to Files, AirDrop, …) | same |
+  | Android | `DownloadManager` → Downloads, with the system notification | read from the page, then the system "save as" picker |
+
+  `saveDownloads={false}` turns the saving off, so every download only reaches
+  `onDownload` and the app decides (open an `http(s)` URL itself, ignore it,
+  or ask the page for the content over `onMessage`). Nothing is written
+  without the user seeing it. On Android a `blob:` download is read from the
+  page after the click, so a page must not revoke the blob URL immediately
+  (revoke it after a timeout), and it is limited to 50 MB. Before Android 10,
+  `DownloadManager` saves into the app's own Downloads directory unless the
+  app holds `WRITE_EXTERNAL_STORAGE`. On the web the browser downloads from
+  the `<iframe>` itself, with its own UI, and both props are ignored.
+
+  ```tsx
+  <WebView
+    src="https://reports.example/q3"
+    grow
+    onDownload={(d) => lastExport.set(d.filename)}
+  />
+  ```
+
 - **`window.open` (Android)**: a user-tapped `window.open(url)` hands `url` to
   the system browser. `w = window.open('')` followed later by
   `w.location = url` works too, however long it takes, until the page opens

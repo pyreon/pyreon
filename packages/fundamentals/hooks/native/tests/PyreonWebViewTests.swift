@@ -30,11 +30,53 @@ enum PyreonWebViewTests {
 
         originScope()
         rendererGone()
+        downloads()
         print("[PyreonWebViewTests] all assertions passed")
         #endif
     }
 
     #if canImport(WebKit)
+    /// Downloads (#4828): which responses become downloads, and the name a
+    /// download is saved under. Mirrored by `PyreonWebChromePolicyTest.kt`.
+    static func downloads() {
+        // Attachment wins over a displayable type; inline / absent follow the type.
+        check(pyreonWebViewResponseIsDownload(canShowMIMEType: true, contentDisposition: "attachment; filename=\"a.csv\""), "attachment is a download")
+        check(pyreonWebViewResponseIsDownload(canShowMIMEType: true, contentDisposition: " ATTACHMENT "), "bare attachment, any case")
+        check(!pyreonWebViewResponseIsDownload(canShowMIMEType: true, contentDisposition: "inline; filename=a.pdf"), "inline is shown")
+        check(!pyreonWebViewResponseIsDownload(canShowMIMEType: true, contentDisposition: nil), "a displayable type is shown")
+        check(!pyreonWebViewResponseIsDownload(canShowMIMEType: true, contentDisposition: "attachmentfoo"), "not a disposition token")
+        check(pyreonWebViewResponseIsDownload(canShowMIMEType: false, contentDisposition: nil), "an undisplayable type is a download")
+
+        // The first usable candidate wins; nothing usable is "download".
+        check(pyreonWebViewDownloadFilename("report.csv", "ignored") == "report.csv", "suggested name")
+        check(pyreonWebViewDownloadFilename(nil, "file.zip") == "file.zip", "URL name when none suggested")
+        check(pyreonWebViewDownloadFilename("", "  ", nil) == "download", "fallback")
+        // One path component, never hidden, never escaping the directory.
+        check(pyreonWebViewDownloadFilename("../../etc/passwd") == "_.._etc_passwd", "separators replaced: \(pyreonWebViewDownloadFilename("../../etc/passwd"))")
+        check(pyreonWebViewDownloadFilename("a\\b:c") == "a_b_c", "backslash and colon replaced")
+        check(pyreonWebViewDownloadFilename("..hidden") == "hidden", "leading dots dropped")
+        check(pyreonWebViewDownloadFilename("a\u{0}b\nc") == "a_b_c", "control characters replaced")
+        check(pyreonWebViewDownloadFilename("///", "x.txt") == "x.txt", "an all-separator name is no name")
+        check(pyreonWebViewDownloadFilename("Résumé 2026.pdf") == "Résumé 2026.pdf", "unicode and spaces kept")
+        let long = pyreonWebViewDownloadFilename(String(repeating: "a", count: 300) + ".pdf")
+        check(long.count == 200 && long.hasSuffix(".pdf"), "capped at 200, extension kept: \(long.count)")
+
+        // URL names: only for a URL with a real path.
+        check(pyreonWebViewDownloadURLName("https://x.test/files/q3.csv?x=1") == "q3.csv", "http path segment")
+        check(pyreonWebViewDownloadURLName("https://x.test/") == nil, "no segment")
+        check(pyreonWebViewDownloadURLName("blob:https://x.test/8c1d-uuid") == nil, "blob has no name")
+        check(pyreonWebViewDownloadURLName("data:text/csv,a,b") == nil, "data has no name")
+
+        // A free name in a folder (macOS Downloads).
+        let taken: Set<String> = ["a.csv", "a (2).csv", "notes"]
+        check(pyreonWebViewFreeFilename("b.csv") { taken.contains($0) } == "b.csv", "free name kept")
+        check(pyreonWebViewFreeFilename("a.csv") { taken.contains($0) } == "a (3).csv", "numbered before the extension")
+        check(pyreonWebViewFreeFilename("notes") { taken.contains($0) } == "notes (2)", "no extension")
+
+        let d = PyreonWebViewDownload(url: "blob:x", filename: "a.csv", mimeType: "text/csv")
+        check(d == PyreonWebViewDownload(url: "blob:x", filename: "a.csv", mimeType: "text/csv"), "value type")
+    }
+
     /// Content-process loss: the same backoff and cap as the Android host.
     static func rendererGone() {
         let page = "bridge.html"

@@ -1741,6 +1741,22 @@ lists them commented out) — and `window.open` / `target="_blank"` handed to th
 system browser for `http(s)`, `mailto`, `tel` and `sms`. Device-proven by
 `examples/native-tasks`' `/webhost` screen on both platforms.
 
+**Downloads.** A download the page starts — `<a download>` (also for a
+`blob:` / `data:` URL the page built), a `Content-Disposition: attachment`
+response, or a type the engine cannot display — calls
+`onDownload({ url, filename, mimeType })` and is then saved for the user: on
+iOS through a `WKDownload` and the share sheet (Save to Files, AirDrop, …), on
+Android through `DownloadManager` (http(s), with its notification) or, for a
+`blob:` / `data:` URL that only the page can read, by reading it in the page
+and opening the system "save as" picker. `saveDownloads={false}` leaves every
+download to `onDownload`. Without this both hosts silently dropped downloads.
+The `/webhost` screen's "Download CSV" export (a detached `<a download>` on a
+`blob:` URL) is asserted in the device lanes: `onDownload` receives the page's
+file name and the share sheet / save picker opens. The `http(s)` →
+`DownloadManager` path and the `Content-Disposition` / undisplayable-type
+routes are covered by the policy unit tests only. On the web the browser
+handles downloads in the iframe and the two props are ignored.
+
 ### The `/webview` subpaths — web engines that cross by HOSTING
 
 Two packages wrap a web engine that has no native equivalent and cannot

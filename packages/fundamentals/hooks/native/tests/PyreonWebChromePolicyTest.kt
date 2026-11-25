@@ -169,6 +169,73 @@ private fun originScope() {
     }
 }
 
+/** Downloads (#4828) — mirrors `PyreonWebViewTests.downloads()` (Swift) where the rule is shared. */
+private fun downloads() {
+    // Route: only the page can read blob:/data:, DownloadManager fetches http(s).
+    expect(pyreonWebViewDownloadRoute("https://x.test/a.pdf") == PyreonDownloadRoute.SYSTEM, "https → system")
+    expect(pyreonWebViewDownloadRoute("HTTP://x.test/a") == PyreonDownloadRoute.SYSTEM, "scheme case")
+    expect(pyreonWebViewDownloadRoute("blob:https://x.test/uuid") == PyreonDownloadRoute.PAGE, "blob → page")
+    expect(pyreonWebViewDownloadRoute("data:text/csv,a,b") == PyreonDownloadRoute.PAGE, "data → page")
+    for (no in listOf("file:///sdcard/x", "javascript:alert(1)", "content://x/y", "myapp://x", "", null)) {
+        expect(pyreonWebViewDownloadRoute(no) == PyreonDownloadRoute.UNSUPPORTED, "$no is not downloaded")
+    }
+
+    // File names: first usable candidate, one path component, never hidden.
+    expect(pyreonWebViewDownloadFilename("report.csv", "ignored") == "report.csv", "page name wins")
+    expect(pyreonWebViewDownloadFilename(null, "", "file.zip") == "file.zip", "falls through empty candidates")
+    expect(pyreonWebViewDownloadFilename("", "  ", null) == "download", "fallback")
+    expect(pyreonWebViewDownloadFilename("../../etc/passwd") == "_.._etc_passwd", "separators: ${pyreonWebViewDownloadFilename("../../etc/passwd")}")
+    expect(pyreonWebViewDownloadFilename("a\\b:c") == "a_b_c", "backslash and colon")
+    expect(pyreonWebViewDownloadFilename("..hidden") == "hidden", "leading dots")
+    expect(pyreonWebViewDownloadFilename("a\u0000b\nc") == "a_b_c", "control characters")
+    expect(pyreonWebViewDownloadFilename("///", "x.txt") == "x.txt", "an all-separator name is no name")
+    expect(pyreonWebViewDownloadFilename("Résumé 2026.pdf") == "Résumé 2026.pdf", "unicode and spaces kept")
+    val long = pyreonWebViewDownloadFilename("a".repeat(300) + ".pdf")
+    expect(long.length == 200 && long.endsWith(".pdf"), "capped at 200 with the extension: ${long.length}")
+
+    // URL names.
+    expect(pyreonWebViewDownloadURLName("https://x.test/files/q3%20final.csv?x=1#y") == "q3 final.csv", "http segment, decoded")
+    expect(pyreonWebViewDownloadURLName("https://x.test/") == null, "no segment")
+    expect(pyreonWebViewDownloadURLName("https://x.test") == null, "no path")
+    expect(pyreonWebViewDownloadURLName("blob:https://x.test/uuid") == null, "blob has no name")
+    expect(pyreonWebViewDownloadURLName("data:text/csv,a") == null, "data has no name")
+
+    // Content-Disposition.
+    expect(pyreonContentDispositionFilename("attachment; filename=\"q3 report.csv\"") == "q3 report.csv", "quoted")
+    expect(pyreonContentDispositionFilename("attachment; filename=plain.txt") == "plain.txt", "token")
+    expect(pyreonContentDispositionFilename("attachment; filename=\"a\\\"b.txt\"") == "a\"b.txt", "escaped quote")
+    expect(
+        pyreonContentDispositionFilename("attachment; filename=\"fallback.pdf\"; filename*=UTF-8''%C5%BElu%C5%A5ou%C4%8Dk%C3%BD.pdf") == "žluťoučký.pdf",
+        "filename* wins and is decoded",
+    )
+    expect(pyreonContentDispositionFilename("attachment; FILENAME*=iso-8859-1''caf%E9.txt") == "café.txt", "other charset")
+    expect(pyreonContentDispositionFilename("attachment; filename*=UTF-8''%ZZ; filename=ok.txt") == "ok.txt", "malformed filename* falls back")
+    expect(pyreonContentDispositionFilename("attachment") == null, "no name")
+    expect(pyreonContentDispositionFilename(null) == null, "no header")
+    expect(pyreonContentDispositionFilename("inline; xfilename=x") == null, "not a filename parameter")
+
+    // Public Downloads folder: API 29+, or the legacy write permission.
+    expect(pyreonDownloadToPublicDir(29, false), "API 29 needs no permission")
+    expect(!pyreonDownloadToPublicDir(28, false), "API 28 without permission → app directory")
+    expect(pyreonDownloadToPublicDir(26, true), "API 26 with permission")
+
+    // Script building: every interpolated value is a JS string literal.
+    expect(pyreonJsString("a\"b\\c\n</script> ") == "\"a\\\"b\\\\c\\n\\u003c/script>\\u2028\"", "js string: ${pyreonJsString("a\"b\\c\n</script> ")}")
+    val hostile = "blob:https://x.test/\"));alert(1)//"
+    expect(pyreonWebViewDownloadFetchScript(hostile, "tok", "1").contains(pyreonJsString(hostile)), "fetch script quotes the URL")
+    expect(!pyreonWebViewDownloadFetchScript(hostile, "tok", "1").contains("fetch(\"blob:https://x.test/\"))"), "the URL cannot close the call")
+    expect(pyreonWebViewDownloadNameScript(hostile).contains(pyreonJsString(hostile)), "name script quotes the URL")
+    expect(pyreonWebViewDownloadFetchScript("data:,x", "t", "7").contains("n.download(t,i,"), "posts through the download bridge")
+
+    // evaluateJavascript results.
+    expect(pyreonJsonStringResult("\"a.csv\"") == "a.csv", "a string result")
+    expect(pyreonJsonStringResult("\"q\\\"3\\u00e9\\n\"") == "q\"3é\n", "escapes decoded")
+    expect(pyreonJsonStringResult("null") == null, "null")
+    expect(pyreonJsonStringResult("42") == null, "a number is not a name")
+    expect(pyreonJsonStringResult("\"bad\\x\"") == null, "malformed")
+    expect(pyreonJsonStringResult(null) == null, "no result")
+}
+
 private fun rendererGone() {
     // A system kill always reloads: at once, then with a doubling delay capped at 30 s.
     val kills = PyreonRendererLossHistory()
@@ -223,6 +290,7 @@ private const val PAGE = "bridge.html"
 public fun main() {
     rendererGone()
     originScope()
+    downloads()
     fileChooserPlans()
     mediaPermissions()
     externalUrls()

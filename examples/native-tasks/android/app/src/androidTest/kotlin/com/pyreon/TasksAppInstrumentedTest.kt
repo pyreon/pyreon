@@ -2294,4 +2294,55 @@ class TasksAppInstrumentedTest {
         assertTrue("did not return to the app", device.wait(Until.hasObject(By.pkg(pkg).depth(0)), 20_000))
         assertTagDisplayed("webhost-page", "the hosted page must be kept, not replaced by the link")
     }
+
+    /**
+     * A download the hosted page starts (#4828). Before, the WebView had no
+     * DownloadListener and the page's "export" did nothing. The page builds a
+     * CSV in a `blob:` URL behind a DETACHED `<a download="pyreon-tasks.csv">`
+     * clicked from script: the name must survive (WebView's listener does not
+     * pass the `download` attribute; the host's shim remembers it), the host
+     * must report it to `onDownload`, then read the blob from the page and open
+     * the system "save as" picker with it.
+     */
+    @Test
+    fun webHostDownloadReachesOnDownloadAndTheSavePicker() {
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        composeRule.onNodeWithTag("login-username").performTextInput("abcde")
+        composeRule.onNodeWithTag("login-submit").performClick()
+        assertTagDisplayed("tasks-page", "after login-submit")
+        composeRule.onNodeWithTag("tasks-webhost").performScrollTo().performClick()
+        assertTagDisplayed("webhost-page", "after tasks-webhost")
+        // The page is ready once it has reported its size.
+        waitForWebResult("the page never loaded", 120_000) { it.startsWith("size:") }
+
+        clickInPage(device, "Download CSV")
+        try {
+            composeRule.waitUntil(timeoutMillis = 20_000) { textOf("webhost-download").startsWith("pyreon-tasks.csv|") }
+        } catch (e: Throwable) {
+            throw AssertionError("onDownload never reported the download — webhost-download is '${textOf("webhost-download")}'", e)
+        }
+        android.util.Log.i("PyreonWebHostTest", "onDownload reported: ${textOf("webhost-download")}")
+
+        val picker = java.util.regex.Pattern.compile(".*documentsui.*")
+        assertTrue(
+            "the page's blob download opened no save picker; visible: ${webTexts(device)}",
+            device.wait(Until.hasObject(By.pkg(picker)), 20_000),
+        )
+        // The picker offers the page's file name.
+        assertTrue(
+            "the save picker does not offer pyreon-tasks.csv; visible: ${webTexts(device)}",
+            device.wait(Until.hasObject(By.text(java.util.regex.Pattern.compile("pyreon-tasks.*\\.csv"))), 10_000),
+        )
+        // Cancel. The first Back may only close the keyboard over the file name.
+        var closed = false
+        for (attempt in 0 until 3) {
+            device.pressBack()
+            if (device.wait(Until.gone(By.pkg(picker)), 5_000)) {
+                closed = true
+                break
+            }
+        }
+        assertTrue("the save picker did not close", closed)
+        assertTagDisplayed("webhost-page", "the hosted page must survive the save picker")
+    }
 }

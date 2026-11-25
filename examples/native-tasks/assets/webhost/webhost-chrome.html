@@ -12,6 +12,10 @@
   Results:  alert:done · confirm:true|false · prompt:<text>|null
             geo:ok · geo:err:<code> · file:<n>:<names> · file:cancel
             size:<innerHeight> (posted on load, for the sizing case)
+
+  "Download CSV" builds a file in the page (a blob: URL behind
+  <a download="pyreon-tasks.csv">, the shape every "export" button has); the
+  host's onDownload reports it in a separate native Text (#4828).
 -->
 <html>
 <head>
@@ -28,6 +32,7 @@
   <button class="row" onclick="doLocate()">Locate</button>
   <label class="row">Pick a file <input id="file" type="file" aria-label="Pick a file"></label>
   <a class="row" href="https://example.com/" target="_blank" rel="noopener" onclick="post('link:clicked')">External link</a>
+  <button class="row" onclick="doDownload()">Download CSV</button>
   <script>
     // Handler names are prefixed: an inline onclick resolves names against the
     // BUTTON first, so a global `type()` would hit `button.type` ("submit").
@@ -54,6 +59,17 @@
         function (e) { post('geo:err:' + e.code) },
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       )
+    }
+    // A detached link clicked from script, as export helpers do. The blob is
+    // revoked a minute later, not at once: the Android host reads it from the
+    // page after the click.
+    function doDownload() {
+      var blob = new Blob(['id,title\n1,Write the docs\n'], { type: 'text/csv' })
+      var a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = 'pyreon-tasks.csv'
+      a.click()
+      setTimeout(function () { URL.revokeObjectURL(a.href) }, 60000)
     }
     var input = document.getElementById('file')
     input.addEventListener('change', function () {

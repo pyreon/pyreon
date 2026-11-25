@@ -377,3 +377,228 @@ class PyreonPermissionQueue(private val launch: (List<String>) -> Unit) {
         launch(next.permissions)
     }
 }
+
+// ---- Downloads (#4828) ----------------------------------------------------------
+//
+// The decisions behind PyreonWebView's DownloadListener. Same naming rule and
+// the same `PyreonWebViewDownload` shape as the iOS host (PyreonWebView.swift).
+
+/** A download the hosted page started — mirror of the Swift `PyreonWebViewDownload`. */
+data class PyreonWebViewDownload(
+    /** The URL being downloaded: `http(s)`, or a `blob:` / `data:` URL the page created. */
+    val url: String,
+    /** A file name safe to write (see [pyreonWebViewDownloadFilename]). */
+    val filename: String,
+    /** The MIME type, or "" when it is not known. */
+    val mimeType: String,
+)
+
+/** How a download's bytes are obtained. */
+enum class PyreonDownloadRoute {
+    /** `http(s)`: the system `DownloadManager` fetches it (cookies and user agent passed on). */
+    SYSTEM,
+    /** `blob:` / `data:`: only the page can read it, so the page reads it and hands the bytes over. */
+    PAGE,
+    /** Anything else (`file:`, `javascript:`, a custom scheme): not downloaded. */
+    UNSUPPORTED,
+}
+
+fun pyreonWebViewDownloadRoute(url: String?): PyreonDownloadRoute =
+    when (url?.substringBefore(':', "")?.lowercase()) {
+        "http", "https" -> PyreonDownloadRoute.SYSTEM
+        "blob", "data" -> PyreonDownloadRoute.PAGE
+        else -> PyreonDownloadRoute.UNSUPPORTED
+    }
+
+/** The largest `blob:` / `data:` download the page hands over the bridge (it crosses as base64 text). */
+const val PYREON_WEBVIEW_PAGE_DOWNLOAD_MAX_BYTES: Long = 50L * 1024 * 1024
+
+/**
+ * The name a download is saved under: the first candidate that is still a name
+ * after cleaning, else "download". Cleaning keeps ONE path component — `/`,
+ * `\`, `:` and control characters become `_`, leading dots and surrounding
+ * spaces go, a name of only `_` is no name — and caps it at 200 characters,
+ * keeping a short extension. Same rule as the Swift host.
+ */
+fun pyreonWebViewDownloadFilename(vararg candidates: String?): String {
+    for (candidate in candidates) {
+        if (candidate == null) continue
+        val cleaned = pyreonCleanFilename(candidate)
+        if (cleaned.isNotEmpty()) return cleaned
+    }
+    return "download"
+}
+
+private fun pyreonCleanFilename(raw: String): String {
+    val sb = StringBuilder(raw.length)
+    var i = 0
+    while (i < raw.length) {
+        val cp = raw.codePointAt(i)
+        if (cp < 0x20 || cp == 0x7F || cp == '/'.code || cp == '\\'.code || cp == ':'.code) sb.append('_') else sb.appendCodePoint(cp)
+        i += Character.charCount(cp)
+    }
+    var name = sb.toString().trim(' ')
+    name = name.trimStart('.').trim(' ')
+    if (name.all { it == '_' }) return ""
+    if (name.codePointCount(0, name.length) > 200) {
+        val dot = name.lastIndexOf('.')
+        val ext = if (dot > 0) name.substring(dot + 1) else ""
+        val keep = if (ext.isEmpty() || ext.length > 16) "" else ".$ext"
+        val budget = 200 - keep.length
+        name = name.substring(0, name.offsetByCodePoints(0, budget)) + keep
+    }
+    return name
+}
+
+/** The last path segment of an `http(s)` / `file` URL; null for `blob:` / `data:` (no name there). */
+fun pyreonWebViewDownloadURLName(url: String?): String? {
+    if (url == null) return null
+    val scheme = url.substringBefore(':', "").lowercase()
+    if (scheme != "http" && scheme != "https" && scheme != "file") return null
+    val afterAuthority = url.substringAfter("://", "").let { rest -> rest.indexOf('/').let { if (it < 0) "" else rest.substring(it) } }
+    val path = afterAuthority.substringBefore('?').substringBefore('#')
+    val last = path.substringAfterLast('/')
+    if (last.isEmpty()) return null
+    return pyreonPercentDecode(last, Charsets.UTF_8) ?: last
+}
+
+/**
+ * The file name a `Content-Disposition` header carries: `filename*` (RFC 6266 /
+ * 5987, percent-encoded in the named charset) wins over `filename` (quoted with
+ * backslash escapes, or a bare token). Null when it names none.
+ */
+fun pyreonContentDispositionFilename(header: String?): String? {
+    if (header.isNullOrBlank()) return null
+    val extended = Regex("""(?i)(?:^|;)\s*filename\*\s*=\s*([^';\s]*)'[^']*'([^;\s]+)""").find(header)
+    if (extended != null) {
+        val charset = try {
+            java.nio.charset.Charset.forName(extended.groupValues[1].ifEmpty { "UTF-8" })
+        } catch (e: Exception) {
+            null
+        }
+        val decoded = charset?.let { pyreonPercentDecode(extended.groupValues[2], it) }
+        if (!decoded.isNullOrEmpty()) return decoded
+    }
+    val plain = Regex("""(?i)(?:^|;)\s*filename\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^;]+))""").find(header) ?: return null
+    val quoted = plain.groups[1]?.value
+    val value = quoted?.replace(Regex("""\\(.)"""), "$1") ?: plain.groupValues[2].trim()
+    return value.ifEmpty { null }
+}
+
+/** `%XX` decoding to bytes in [charset] (no `+` → space: that is form encoding). Null when malformed. */
+private fun pyreonPercentDecode(s: String, charset: java.nio.charset.Charset): String? {
+    if (!s.contains('%')) return s
+    val out = java.io.ByteArrayOutputStream()
+    var i = 0
+    while (i < s.length) {
+        val c = s[i]
+        if (c == '%') {
+            if (i + 2 >= s.length) return null
+            val byte = s.substring(i + 1, i + 3).toIntOrNull(16) ?: return null
+            out.write(byte)
+            i += 3
+        } else {
+            out.write(c.toString().toByteArray(Charsets.UTF_8))
+            i++
+        }
+    }
+    return String(out.toByteArray(), charset)
+}
+
+/**
+ * Whether `DownloadManager` may write to the PUBLIC Downloads folder: always
+ * from Android 10 (API 29), before that only with `WRITE_EXTERNAL_STORAGE`.
+ * Otherwise the file goes to the app's own external Downloads directory, which
+ * the system download list and notification still open.
+ */
+fun pyreonDownloadToPublicDir(sdkInt: Int, hasWriteExternalStorage: Boolean): Boolean =
+    sdkInt >= 29 || hasWriteExternalStorage
+
+/** A JS string literal for [s] (double-quoted; safe inside evaluated script). */
+fun pyreonJsString(s: String): String {
+    val sb = StringBuilder(s.length + 2).append('"')
+    for (c in s) {
+        when {
+            c == '"' -> sb.append("\\\"")
+            c == '\\' -> sb.append("\\\\")
+            c == '\n' -> sb.append("\\n")
+            c == '\r' -> sb.append("\\r")
+            c == '\t' -> sb.append("\\t")
+            c.code < 0x20 || c == ' ' || c == ' ' || c == '<' ->
+                sb.append("\\u").append(String.format("%04x", c.code))
+            else -> sb.append(c)
+        }
+    }
+    return sb.append('"').toString()
+}
+
+/**
+ * The JSON value `evaluateJavascript` hands back, read as a string: the
+ * decoded text of a JSON string literal, null for anything else (`null`, a
+ * number, an object, malformed input).
+ */
+fun pyreonJsonStringResult(json: String?): String? {
+    if (json == null || json.length < 2 || json[0] != '"' || json[json.length - 1] != '"') return null
+    val sb = StringBuilder(json.length)
+    var i = 1
+    val end = json.length - 1
+    while (i < end) {
+        val c = json[i]
+        if (c != '\\') {
+            sb.append(c)
+            i++
+            continue
+        }
+        if (i + 1 >= end) return null
+        when (val e = json[i + 1]) {
+            '"', '\\', '/' -> sb.append(e)
+            'b' -> sb.append('\b')
+            'f' -> sb.append('\u000C')
+            'n' -> sb.append('\n')
+            'r' -> sb.append('\r')
+            't' -> sb.append('\t')
+            'u' -> {
+                if (i + 6 > end) return null
+                sb.append(json.substring(i + 2, i + 6).toIntOrNull(16)?.toChar() ?: return null)
+                i += 4
+            }
+            else -> return null
+        }
+        i += 2
+    }
+    return sb.toString()
+}
+
+/**
+ * Installed in the main frame with the reverse-bridge shim: remembers the
+ * `download` attribute of the last links clicked (WebView's DownloadListener
+ * does not pass it on), for a click that bubbles AND for `a.click()` on a link
+ * the page never attached. Observes only; at most 16 links are remembered.
+ */
+const val PYREON_WEBVIEW_DOWNLOAD_NAMES_SHIM: String =
+    "(function(){if(window.__pyreonDownloadNames)return;" +
+        "var m=window.__pyreonDownloadNames=Object.create(null),k=[];" +
+        "function r(a){try{if(a&&a.hasAttribute&&a.hasAttribute('download')){var h=a.href;" +
+        "if(!(h in m))k.push(h);m[h]=a.getAttribute('download')||'';if(k.length>16)delete m[k.shift()];}}catch(e){}}" +
+        "document.addEventListener('click',function(e){var t=e.target;while(t&&t.nodeName!=='A')t=t.parentNode;r(t);},true);" +
+        "var c=HTMLAnchorElement.prototype.click;" +
+        "HTMLAnchorElement.prototype.click=function(){r(this);return c.apply(this,arguments);};})();"
+
+/** Script returning the `download` name the page gave [url]'s link, or null. */
+fun pyreonWebViewDownloadNameScript(url: String): String =
+    "(function(){var m=window.__pyreonDownloadNames,u=${pyreonJsString(url)};return m&&(u in m)?m[u]:null;})()"
+
+/**
+ * Script that reads a `blob:` / `data:` URL IN THE PAGE (only the page can) and
+ * hands it back through `__pyreonNative.download(token, id, base64, mimeType,
+ * error)`: the bytes as base64 with the blob's type, or null bytes and the
+ * reason. A blob the page already revoked fails here, as it would in a browser.
+ */
+fun pyreonWebViewDownloadFetchScript(url: String, token: String, id: String): String =
+    "(function(){var n=window.__pyreonNative,t=${pyreonJsString(token)},i=${pyreonJsString(id)};" +
+        "function f(e){n.download(t,i,null,'',String(e&&e.message||e));}" +
+        "try{fetch(${pyreonJsString(url)}).then(function(r){return r.blob();}).then(function(b){" +
+        "if(b.size>$PYREON_WEBVIEW_PAGE_DOWNLOAD_MAX_BYTES){f('larger than $PYREON_WEBVIEW_PAGE_DOWNLOAD_MAX_BYTES bytes');return;}" +
+        "var rd=new FileReader();rd.onload=function(){var s=String(rd.result);" +
+        "n.download(t,i,s.slice(s.indexOf(',')+1),b.type||'',null);};" +
+        "rd.onerror=function(){f('unreadable');};rd.readAsDataURL(b);}).catch(f);}catch(e){f(e);}})();"
