@@ -61,6 +61,33 @@ describe('loader data serialization — edge cases', () => {
     expect(router._loaderData.size).toBe(0)
   })
 
+  // In a browser, markup with `id="__PYREON_LOADER_DATA__"` makes the global
+  // that element (named access on Window) on a page whose inline script was not
+  // written. An element is an object, and can carry an own property under a
+  // route path. Only a plain record (what the inline script evaluates to) is
+  // loader data.
+  test('hydrate ignores an object that is not a plain record (window named access)', () => {
+    const routes: RouteRecord[] = [{ path: '/page', component: About, loader: async () => 'client' }]
+    const router = createRouter({ routes, url: '/page' }) as RouterInstance
+    const shadow = Object.assign(document.createElement('div'), { '/page': 'from-element' })
+
+    expect(hydrateLoaderData(router, shadow)).toBe(false)
+    expect(hydrateLoaderData(router, ['/page'])).toBe(false)
+    expect(router._loaderData.size).toBe(0)
+  })
+
+  test('hydrate accepts an object literal and a null-prototype record, and says so', () => {
+    const routes: RouteRecord[] = [{ path: '/page', component: About, loader: async () => 'client' }]
+    const literal = createRouter({ routes, url: '/page' }) as RouterInstance
+    expect(hydrateLoaderData(literal, { '/page': 'server' })).toBe(true)
+    expect(literal._loaderData.size).toBe(1)
+
+    const bare = createRouter({ routes, url: '/page' }) as RouterInstance
+    const record = Object.assign(Object.create(null) as Record<string, unknown>, { '/page': 'server' })
+    expect(hydrateLoaderData(bare, record)).toBe(true)
+    expect(bare._loaderData.size).toBe(1)
+  })
+
   test('round-trip with complex data types', async () => {
     const complexData = {
       items: [

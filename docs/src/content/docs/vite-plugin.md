@@ -814,7 +814,7 @@ import { App } from './App'
 const router = createRouter({ routes, mode: 'history' })
 
 // Hydrate server-fetched loader data to avoid re-fetching on the client
-hydrateLoaderData(router, (window as any).__PYREON_LOADER_DATA__ ?? {})
+hydrateLoaderData(router, (window as any).__PYREON_LOADER_DATA__)
 
 // Set up head context for client-side head management
 const headCtx = createHeadContext()

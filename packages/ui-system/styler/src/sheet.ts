@@ -392,11 +392,14 @@ export class StyleSheet {
    * watermark (request A's flush advancing past request B's rules).
    */
   private get _ssr(): StylerSSRState {
-    const bag = (
-      globalThis as {
-        __PYREON_STYLER_REQUEST_STATE__?: () => Record<string, unknown> | undefined
-      }
-    ).__PYREON_STYLER_REQUEST_STATE__?.()
+    // `typeof`, not `?.()`: in a browser, markup with this `id` makes the
+    // global an element (named access on Window), and `reset()` runs there.
+    const requestState = (globalThis as { __PYREON_STYLER_REQUEST_STATE__?: unknown })
+      .__PYREON_STYLER_REQUEST_STATE__
+    const bag =
+      typeof requestState === 'function'
+        ? (requestState as () => Record<string, unknown> | undefined)()
+        : undefined
     if (bag) {
       let s = bag.__pyreonStylerSSR as StylerSSRState | undefined
       if (!s) {

@@ -62,6 +62,30 @@ describe('startClient', () => {
     cleanup()
   })
 
+  // In a browser, markup with an `id` makes the global of that name resolve to
+  // the element (named access on Window) when no script assigned it: here no
+  // `@pyreon/store` bridge and no inline state scripts. happy-dom has no named
+  // access, so the globals get what a browser's would return. The store
+  // bridge used to be called because it was truthy: "hydrateStores is not a
+  // function".
+  test('page markup that shadows the hand-over globals does not break startClient (window named access)', () => {
+    const ids = ['__PYREON_LOADER_DATA__', '__PYREON_HYDRATE_STORES__', '__PYREON_STORE_STATE__']
+    document.body.innerHTML = `<div id="app"></div>${ids.map((id) => `<div id="${id}"></div>`).join('')}`
+    const g = window as unknown as Record<string, unknown>
+    for (const id of ids) g[id] = document.getElementById(id)
+    try {
+      const App: ComponentFn = () => h('div', null, 'app')
+      let cleanup: (() => void) | undefined
+      expect(() => {
+        cleanup = startClient({ App, routes: [{ path: '/', component: App }] })
+      }).not.toThrow()
+      expect(document.getElementById('app')!.textContent).toBe('app')
+      cleanup?.()
+    } finally {
+      for (const id of ids) delete g[id]
+    }
+  })
+
   test('accepts Element directly as container', () => {
     document.body.innerHTML = '<div id="custom"></div>'
     const el = document.getElementById('custom')!

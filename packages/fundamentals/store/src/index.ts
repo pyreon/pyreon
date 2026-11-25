@@ -95,6 +95,7 @@ export { dehydrateStores, hydrateStores } from './hydration'
 import { _notifyChange } from './devtools-bus'
 import { getRegistry } from './registry'
 import { consumeHydration, markStoreSsrExcluded } from './hydration'
+import { isPlainObject } from './plain-object'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -429,18 +430,6 @@ const RESERVED_STORE_KEYS = new Set([
 // isPyreonAdapter, isStandardSchema, formatIssues) live in
 // `@pyreon/validation` — same shape, shared by both `@pyreon/store`
 // and `@pyreon/state-tree` schema modes. Imported above.
-
-/**
- * Detect a plain object (literal `{}` or `Object.create(null)`) — used by
- * `deepMerge` to decide whether to recurse or replace. Arrays, class
- * instances, Maps, Sets, Dates, Promises etc. are NOT plain objects and
- * REPLACE rather than merge.
- */
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value == null || typeof value !== 'object') return false
-  const proto = Object.getPrototypeOf(value)
-  return proto === null || proto === Object.prototype
-}
 
 /**
  * Recursively merge `source` into `target` for plain-object branches.

@@ -6,6 +6,7 @@ import { hydrateRoot, mount } from '@pyreon/runtime-dom'
 import { createApp } from './app'
 import { type IslandsOnlyOptions, isIslandsOnlyPage, startIslandsOnlyPage } from './client-marker'
 import { islandsOnlyNavigation } from './islands-navigation'
+import { isPlainRecord } from './plain-record'
 
 export type { IslandRootLoader, IslandsOnlyOptions, IslandsRegistry } from './client-marker'
 
@@ -156,32 +157,31 @@ export function startClient(options: StartClientOptions) {
   // If the server embedded loader data, hydrate it BEFORE mounting so the
   // initial render sees the same data the SSR pass produced. This avoids
   // hydration mismatches and eliminates the flash-of-fallback.
+  // Only a plain record is server data: on a page whose inline script was not
+  // written, markup with `id="__PYREON_LOADER_DATA__"` makes the global an
+  // element (named access on Window). Taking that for server data skipped the
+  // initial loaders, and the page rendered without its data.
   const ssrLoaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
-  const hasSSRLoaderData =
-    !isStaticFallback && ssrLoaderData !== undefined && typeof ssrLoaderData === 'object' && ssrLoaderData !== null
+  const hasSSRLoaderData = !isStaticFallback && isPlainRecord(ssrLoaderData)
   if (hasSSRLoaderData) {
     // `router` is the public Router<> type; hydrateLoaderData uses the
     // internal RouterInstance shape. The cast is safe because they're
     // the same object at runtime — just narrower/wider type views.
-    hydrateLoaderData(router as never, ssrLoaderData as Record<string, unknown>)
+    hydrateLoaderData(router as never, ssrLoaderData)
   }
 
   // ── Store-state hydration (SSR path) ───────────────────────────────────────
   // Seed @pyreon/store stores from the server snapshot BEFORE mounting so the
   // initial render (and any island sharing a store) reads server values, not
   // defaults. Decoupled bridge — `__PYREON_HYDRATE_STORES__` is set by
-  // @pyreon/store on import; undefined (one null check) when the app uses no
-  // stores. This is what makes cross-island shared state hydrate ONCE.
-  const hydrateStores = (
-    globalThis as {
-      __PYREON_HYDRATE_STORES__?: (d: Record<string, Record<string, unknown>>) => void
-    }
-  ).__PYREON_HYDRATE_STORES__
-  if (hydrateStores) {
+  // @pyreon/store on import; undefined when the app uses no stores. This is
+  // what makes cross-island shared state hydrate ONCE. `typeof` and a plain
+  // record, not truthiness: without @pyreon/store, markup with that `id` makes
+  // the bridge an element, and the same goes for the state.
+  const hydrateStores = (globalThis as { __PYREON_HYDRATE_STORES__?: unknown }).__PYREON_HYDRATE_STORES__
+  if (typeof hydrateStores === 'function') {
     const ssrStoreState = (window as unknown as Record<string, unknown>).__PYREON_STORE_STATE__
-    if (ssrStoreState && typeof ssrStoreState === 'object') {
-      hydrateStores(ssrStoreState as Record<string, Record<string, unknown>>)
-    }
+    if (isPlainRecord(ssrStoreState)) hydrateStores(ssrStoreState)
   }
 
   // PR-S1: App is router-AGNOSTIC; supply the RouterProvider at this call

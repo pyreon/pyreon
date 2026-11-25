@@ -392,23 +392,39 @@ function throwOnCycle(data: unknown): void {
 }
 
 /**
+ * Whether `value` is what an inline `<script>window.X={…}</script>` evaluates
+ * to: an object literal (prototype `Object.prototype`) or a null-prototype
+ * record. Anything else is not server data. In particular, markup with
+ * `id="__PYREON_LOADER_DATA__"` makes `window.__PYREON_LOADER_DATA__` resolve
+ * to that ELEMENT (named access on Window) on a page whose inline script was
+ * not written, and an element is an object.
+ */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+/**
  * Hydrate loader data from a serialized object (e.g. `window.__PYREON_LOADER_DATA__`).
  * Populates the router's internal `_loaderData` map so the initial render uses
  * server-fetched data without re-running loaders on the client.
  *
- * Call this before `mount()`, after `createRouter()`.
+ * Call this before `mount()`, after `createRouter()`. Pass the global as it
+ * is: anything that is not a plain record (no script was written, or page
+ * markup with that `id` shadows the global with an element) is ignored, and
+ * the call returns `false` so the caller runs the loaders instead.
+ *
+ * @returns `true` when `serialized` was a loader-data record and was applied.
  *
  * @example — client entry:
  * import { hydrateLoaderData } from "@pyreon/router"
  * const router = createRouter({ routes })
- * hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
+ * hydrateLoaderData(router, window.__PYREON_LOADER_DATA__)
  * mount(h(App, null), document.getElementById("app")!)
  */
-export function hydrateLoaderData(
-  router: RouterInstance,
-  serialized: Record<string, unknown>,
-): void {
-  if (!serialized || typeof serialized !== 'object') return
+export function hydrateLoaderData(router: RouterInstance, serialized: unknown): boolean {
+  if (!isPlainRecord(serialized)) return false
   // Server rendered the loader-not-found chain → enter the same state BEFORE
   // resolving, so the walk below (and the first render) uses that chain.
   const notFound = serialized[LOADER_NOT_FOUND_KEY] === true && router._loaderNotFound !== undefined
@@ -430,4 +446,5 @@ export function hydrateLoaderData(
       setLoaderData(router, record, route, serialized[record.path])
     }
   }
+  return true
 }

@@ -10,7 +10,16 @@ import { computed, signal } from '@pyreon/reactivity'
 import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { _bindText, mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { compactGraph, CONSOLE_CAP, createHook, fileBase, type Hook, MOUNTED_IDS_CAP } from './hook'
+import {
+  compactGraph,
+  CONSOLE_CAP,
+  createHook,
+  DETECT_PYREON_EXPRESSION,
+  fileBase,
+  type Hook,
+  isPyreonDevtools,
+  MOUNTED_IDS_CAP,
+} from './hook'
 import type { HookMessage, PyreonDevtools } from './types'
 
 type TextSource = Parameters<typeof _bindText>[0]
@@ -338,5 +347,35 @@ describe('createHook', () => {
     expect(out.edges).toBe(edges)
     expect(fileBase('/a/b/c.ts#frag')).toBe('c.ts')
     expect(fileBase('plain.ts')).toBe('plain.ts')
+  })
+})
+
+// Window named access (#4765): on a page without Pyreon, markup with
+// `id="__PYREON_DEVTOOLS__"` makes the global that element. Truthiness took it
+// for the framework hook (the page hook then drove an element, and the panel
+// opened on a page with no Pyreon). happy-dom has no named access, so the
+// element is assigned.
+describe('detecting the framework hook', () => {
+  const g = globalThis as Record<string, unknown>
+  let saved: unknown
+
+  beforeEach(() => {
+    saved = g.__PYREON_DEVTOOLS__
+  })
+  afterEach(() => {
+    g.__PYREON_DEVTOOLS__ = saved
+  })
+
+  it('accepts the real hook and refuses an element shadowing it', () => {
+    disposeApp = mount(h('div', null, 'x'), document.body.appendChild(document.createElement('main')))
+    expect(isPyreonDevtools(devtools())).toBe(true)
+    // The panel's in-page expression, evaluated against the same global.
+    const detect = new Function(`return ${DETECT_PYREON_EXPRESSION}`) as () => boolean
+    expect(detect()).toBe(true)
+
+    g.__PYREON_DEVTOOLS__ = Object.assign(document.createElement('div'), { id: '__PYREON_DEVTOOLS__' })
+    expect(isPyreonDevtools(g.__PYREON_DEVTOOLS__)).toBe(false)
+    expect(detect()).toBe(false)
+    expect(isPyreonDevtools(undefined)).toBe(false)
   })
 })

@@ -353,11 +353,11 @@ html = html.replace('</head>',
     {
       name: 'hydrateStores',
       kind: 'function',
-      signature: '(data: Record<string, Record<string, unknown>>) => void',
+      signature: '(data: unknown) => void',
       summary:
-        'CLIENT side of the SSR store-hydration handshake. Call once at boot BEFORE the app mounts — it seeds stores from the server snapshot so components/islands read the hydrated values immediately (no flash of default state). Stores that already exist are patched in place; stores not yet created (the common lazy-island case) are seeded on their first use. Each store seeds exactly once (a boot-time one-shot) — a later `resetStore` + re-create falls back to the store\'s own `setup()` initial values, not stale boot state. Unknown keys in the snapshot are ignored (patch writes only the store\'s declared signal keys).',
+        'CLIENT side of the SSR store-hydration handshake. Call once at boot BEFORE the app mounts — it seeds stores from the server snapshot so components/islands read the hydrated values immediately (no flash of default state). Stores that already exist are patched in place; stores not yet created (the common lazy-island case) are seeded on their first use. Each store seeds exactly once (a boot-time one-shot) — a later `resetStore` + re-create falls back to the store\'s own `setup()` initial values, not stale boot state. Unknown keys in the snapshot are ignored (patch writes only the store\'s declared signal keys). Pass the global as it is: anything that is not a plain record is ignored — including the element a browser returns for `window.__PYREON_STORE_STATE__` when page markup has that `id` and no inline script was written (named access on Window).',
       example: `// client entry, before mount:
-hydrateStores(window.__PYREON_STORE_STATE__ ?? {})`,
+hydrateStores(window.__PYREON_STORE_STATE__)`,
       mistakes: [
         'Calling it AFTER mount — components already read default state; hydrate before `mount`/`hydrateRoot` so the first render sees server values',
         'Expecting it to create stores eagerly — it seeds lazily: a store only hydrates when first used. The snapshot is stashed until then',

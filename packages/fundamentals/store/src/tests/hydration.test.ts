@@ -50,6 +50,21 @@ describe('@pyreon/store — SSR hydration', () => {
     expect(snap['server:secret']).toBeUndefined()
   })
 
+  // In a browser, markup with `id="__PYREON_STORE_STATE__"` makes the global
+  // that element (named access on Window) on a page whose inline script was not
+  // written. An element is an object and can carry an own property named like a
+  // store. Only a plain record (what the inline script evaluates to) is state.
+  it('hydrateStores ignores an object that is not a plain record (window named access)', () => {
+    const useCart = defineStore('cart', () => ({ count: signal(0) }))
+    const shadow = Object.assign(document.createElement('div'), { cart: { count: 7 } })
+
+    hydrateStores(shadow)
+    expect(useCart().store.count.peek()).toBe(0)
+
+    hydrateStores(Object.assign(Object.create(null) as Record<string, unknown>, { cart: { count: 8 } }))
+    expect(useCart().store.count.peek()).toBe(8)
+  })
+
   it('hydrateStores seeds an ALREADY-created store in place', () => {
     const useCart = defineStore('cart', () => ({ count: signal(0) }))
     const cart = useCart()
