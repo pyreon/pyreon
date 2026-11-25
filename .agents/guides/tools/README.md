@@ -87,7 +87,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 - A layered graph, not one barrel: `index.ts` (production), `dev.ts` (fixtures/factories, node-safe), `endpoints/index.ts` + `queries/index.ts` per layer, per-tag files.
 - An emitted `package.json` declares `sideEffects`, so the graph tree-shakes regardless of the consuming app's config.
 - Dev isolation is structural: `index.ts` never names `./faker`, `./mocks` or `./components`. The entry-point tests run with and without the marker; the no-marker half catches regressions. `/* @__PURE__ */` per declaration does not fix this.
-- Plugins: `types`, `schemas`, `client`, `queries`, `mocks`, `faker` (`createX(overrides?)`; spec constraints win over realism), `components`, `atlas`, `docs` (Markdown for the generated client, including native reach).
+- Plugins: `types`, `schemas`, `client`, `queries`, `mocks`, `faker` (`createX(overrides?)`; spec constraints win over realism), `components`, `atlas`, `docs` (Markdown for the generated client, including native reach), `mcp`, `swift` / `kotlin` (plain `Codable` / `@Serializable` model files in `swift/Models.swift` and `kotlin/Models.kt`, configured by `nativeModels`; `emit/native-models.ts` lowers once into shared declarations, then prints per language, so the two platforms cannot disagree about a shape. Proven by compiling and running a decode program with real `swiftc` / `kotlinc` + the serialization plugin, and never passed to the `format` hook).
 
 ### `target: 'multiplatform'`
 
