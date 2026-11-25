@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { _resetRegistry, createStorage, useMemoryStorage } from '../index'
+import { createStorage, useMemoryStorage } from '../index'
+import { _resetRegistry } from '../internal'
 
 describe('createStorage', () => {
   beforeEach(() => {

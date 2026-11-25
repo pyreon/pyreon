@@ -115,9 +115,10 @@ export function useRequestLocals(): Record<string, unknown> {
 }
 
 /**
- * Provide request locals into the component tree.
- * Called by the SSR handler — not for direct use.
- * @internal
+ * Provide request locals into the component tree for the current render, so
+ * `useRequestLocals()` reads them. `createHandler` and `renderPage` call it
+ * for you; a custom adapter or fragment endpoint that renders outside them
+ * calls it with its own `ctx.locals`.
  */
 export function provideRequestLocals(locals: Record<string, unknown>): void {
   provide(RequestLocalsCtx, locals)

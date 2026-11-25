@@ -66,7 +66,7 @@ export function useWatch<TValues extends Record<string, unknown>, K extends keyo
       throw new Error(
         `[Pyreon] useWatch("${name}"): field "${name}" not found. ` +
           `Available fields: ${Object.keys(form.fields).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array) — ` +
+          `Declare it in useForm({ initialValues }) — ` +
           `@pyreon/form does not auto-register fields.`,
       )
     }

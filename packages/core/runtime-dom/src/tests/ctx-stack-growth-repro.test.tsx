@@ -21,7 +21,8 @@
  * identity-based splice that finds the specific frame regardless of its
  * position on the stack.
  */
-import { getContextStackLength, createContext, h, provide, useContext } from '@pyreon/core'
+import { createContext, h, provide, useContext } from '@pyreon/core'
+import { getContextStackLength } from '@pyreon/core/internal'
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
 import { mount } from '..'

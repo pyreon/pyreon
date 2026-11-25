@@ -3,8 +3,6 @@ import type { Signal } from '@pyreon/reactivity'
 import { batch, computed, effect, isServer, signal, untrack } from '@pyreon/reactivity'
 import type { SchemaValidateFn } from '@pyreon/validation'
 import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
-import type { FieldDefinition, InferFieldValues } from './field'
-import { isFieldDefinition } from './field'
 import { findPathAncestorConflict, nearestAncestorField, nestValues } from './path'
 import type {
   FieldErrorProps,
@@ -241,22 +239,15 @@ export function resolveSchemaValidator<TValues extends Record<string, unknown>>(
 }
 
 /**
- * Options for the field-definition-based useForm overload.
- * Types are inferred from the field definitions array.
+ * Does this validation result represent a REAL error?
+ *
+ * `undefined` and `''` both mean "valid". The empty string matters because it
+ * is what a validator's valid branch naturally returns when its invalid branch
+ * returns a message (`v.length < 3 ? 'too short' : ''`), and treating it as an
+ * error produced a form that could never submit and never said why.
  */
-export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<string, unknown>[]> {
-  /** Array of field definitions created via `field()`. */
-  fields: readonly [...TDefs]
-  /** Called with validated values on successful submit. */
-  onSubmit: (values: InferFieldValues<TDefs>) => void | Promise<void>
-  /** Schema-level validator (runs after field validators). */
-  schema?: UseFormOptions<InferFieldValues<TDefs>>['schema']
-  /** When to validate: 'blur' (default), 'change', or 'submit'. */
-  validateOn?: 'blur' | 'change' | 'submit'
-  /** Debounce delay in ms for validators. */
-  debounceMs?: number
-  /** Focus the first errored field on a failed submit (default true). */
-  focusOnError?: boolean
+export function isRealError(err: ValidationError): boolean {
+  return err !== undefined && err !== ''
 }
 
 /**
@@ -277,70 +268,10 @@ export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<str
  * // h('input', form.register('email'))
  * // h('input', { type: 'checkbox', ...form.register('remember', { type: 'checkbox' }) })
  */
-/**
- * Create a form from field definitions — types inferred from the fields array.
- *
- * @example
- * ```ts
- * const email = field('email', '', (v) => !v.includes('@') ? 'Invalid' : undefined)
- * const password = field('password', '', (v) => v.length < 8 ? 'Too short' : undefined)
- *
- * const form = useForm({
- *   fields: [email, password],
- *   onSubmit: (values) => { // values: { email: string; password: string } }
- * })
- * ```
- */
-// oxlint-disable-next-line no-explicit-any
-/**
- * Does this validation result represent a REAL error?
- *
- * `undefined` and `''` both mean "valid". The empty string matters because it
- * is what a validator's valid branch naturally returns when its invalid branch
- * returns a message (`v.length < 3 ? 'too short' : ''`), and treating it as an
- * error produced a form that could never submit and never said why.
- */
-export function isRealError(err: ValidationError): boolean {
-  return err !== undefined && err !== ''
-}
-
-export function useForm<TDefs extends FieldDefinition<string, any>[]>(
-  // The exported UseFormFieldsOptions IS the overload's type — an inline
-  // literal here silently drifted (it omitted `focusOnError`, so
-  // fields-overload users couldn't opt out of a default-ON behavior: TS2769).
-  options: UseFormFieldsOptions<TDefs>,
-): FormState<InferFieldValues<TDefs>>
-/**
- * Create a form with explicit initial values and validators.
- */
-export function useForm<TValues extends Record<string, unknown>>(
-  options: UseFormOptions<TValues>,
-): FormState<TValues>
 // oxlint-disable-next-line no-unnecessary-type-arguments
 export function useForm<TValues extends Record<string, unknown> = Record<string, unknown>>(
-  options: UseFormFieldsOptions<readonly FieldDefinition[]> | UseFormOptions<TValues>,
+  options: UseFormOptions<TValues>,
 ): FormState<TValues> {
-  // ── Field-definition overload: translate to legacy format ──────────────
-  if ('fields' in options && Array.isArray(options.fields) && options.fields.length > 0 && isFieldDefinition(options.fields[0])) {
-    const defs = options.fields as readonly FieldDefinition[]
-    const initialValues: Record<string, unknown> = {}
-    const validators: Record<string, ValidateFn<unknown, Record<string, unknown>>> = {}
-    for (const def of defs) {
-      initialValues[def.name] = def.defaultValue
-      if (def.validator) validators[def.name] = def.validator
-    }
-    return useForm<TValues>({
-      initialValues,
-      validators,
-      onSubmit: options.onSubmit,
-      schema: options.schema,
-      validateOn: options.validateOn,
-      debounceMs: options.debounceMs,
-      focusOnError: options.focusOnError,
-    } as unknown as UseFormOptions<TValues>) as FormState<TValues>
-  }
-
-  // ── Legacy path ───────────────────────────────────────────────────────
   const opts = options as UseFormOptions<Record<string, unknown>>
   const { initialValues: rawInitialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs, focusOnError = true } = opts
 
@@ -1333,7 +1264,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     if (!fields[field]) {
       throw new Error(
         `[Pyreon] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
+          `Declare it in useForm({ initialValues }) — @pyreon/form does not auto-register fields.`,
       )
     }
     fields[field].setValue(value)
@@ -1343,7 +1274,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     if (!fields[field]) {
       throw new Error(
         `[Pyreon] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
+          `Declare it in useForm({ initialValues }) — @pyreon/form does not auto-register fields.`,
       )
     }
     fields[field].error.set(error)
@@ -1445,7 +1376,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       throw new Error(
         `[Pyreon] register("${field}"): field "${field}" does not exist. ` +
           `Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array), or add it at runtime via ` +
+          `Declare it in useForm({ initialValues }), or add it at runtime via ` +
           `registerField("${field}", initialValue) — @pyreon/form does not auto-register fields.`,
       )
     }

@@ -1,12 +1,12 @@
 # @pyreon/auth
 
+> **Status: Experimental.** Outside the semver promise: the API may change in a minor release. See the [stability policy](https://pyreon.dev/docs/stability-and-direction).
+
 Authentication primitives for Pyreon on Web Crypto + `fetch`, so the same code runs in the browser, Node, Bun and
 workerd: OIDC / OAuth2 sign-in, ID-token verification, signed cookie sessions, TOTP and passkeys.
 
 Tested against [`oidc-provider`](https://github.com/panva/node-oidc-provider), a certified OpenID Provider, run
 in-process: discovery, PKCE + nonce, code exchange, ID-token verification, refresh and RP-initiated logout.
-
-> **Not published to npm.** This package is marked `private` in its `package.json` and is not part of the 1.0 release. It lives in the repository and is tested in CI; to try it, build Pyreon from source. Publishing it later is a maintainer decision (remove `"private": true`, bootstrap the first publish by hand, add a Trusted Publisher).
 
 **Guide, with live demos you can break on purpose:** [pyreon.dev/docs/auth](https://pyreon.dev/docs/auth).
 
@@ -41,7 +41,8 @@ into a stolen long-lived session; there is deliberately no option for it. To sta
 - call `auth.signIn()` when the app loads signed out — while the provider still has its own session, the round trip
   completes without a prompt; or
 - keep the session on your server (a backend-for-frontend): complete the code exchange there and hand the browser a
-  signed, `HttpOnly` cookie with `signSession` / `sessionCookie`, which page scripts cannot read.
+  signed, `HttpOnly` cookie with `signSession` / `sessionCookie`, which page scripts cannot read. Bind each sign-in to
+  the browser that started it — see "On a server" below.
 
 Underneath is `createAuth`, which you can use directly — on a server, or to choose the flow store and navigation
 yourself:
@@ -70,18 +71,79 @@ when they issue a refresh token: request `offline_access` in `scope`, and pass p
 `client.authorizationParams` (Google: `{ access_type: 'offline', prompt: 'consent' }`). The parameters that carry the
 flow's security (`state`, `nonce`, PKCE, `redirect_uri`, …) cannot be overridden there.
 
+**When a refresh fails.** If the provider cannot be reached or is unavailable (`network_error`, `provider_unavailable`
+for 429 / 5xx, `discovery_failed`, `jwks_failed`), the session is kept for a retry: `status()` is `'error'` with that
+code, the refresh token stays (on iOS and Android the stored session stays too), and `refresh()` tries again. Any other
+failure (the refresh token refused or revoked, a bad ID token) ends the session. When the token endpoint answered but
+the new ID token cannot be verified yet (key set unreachable), the new tokens — including a rotated refresh token — are
+kept, so the retry never presents a spent one.
+
+**Redirect URIs are checked when you configure them.** A redirect URI the matcher would refuse (a non-ASCII host —
+write it in punycode — a percent-encoded dot, a backslash or whitespace) throws in `createAuth` and fails
+`beginAuthorization` (`invalid_redirect_uri`); natively the container starts in `error` with that code, and the
+compiler refuses it. A callback whose URL the matcher refuses never matches.
+
 **Signing out.** `auth.signOut()` clears local state only, so the provider still has a session and the next sign-in
 completes without a prompt. `auth.signOut({ endProviderSession: true, postLogoutRedirectUri })` also sends the user to
 the provider's `end_session_endpoint` with an `id_token_hint`.
 
+**On a server (backend-for-frontend)**, two things are yours to supply: a `FlowStore` all instances share, and a
+**browser binding**. The `state` travels in the callback URL, so on its own it cannot say which browser started the
+sign-in: an attacker could start one, finish it at the provider as themselves and send the callback URL to a victim,
+who would then be signed in to the attacker's account (login CSRF; PKCE does not help, the verifier is on your server).
+`createFlowBinding(cookieHeader)` returns a random value and the `Set-Cookie` header (`__Host-`, HttpOnly, 10 minutes)
+to send with the redirect; on the callback, `readFlowBinding(cookieHeader)` reads it back. `createAuth` refuses to start
+without a binding unless the store is tab-scoped (`sessionStorageFlowStore`), and `useOidc` supplies one itself.
+
+```ts
+import { createAuth, createFlowBinding, memoryFlowStore, readFlowBinding } from '@pyreon/auth'
+
+const config = {
+  issuer: 'https://accounts.example.com',
+  client: { clientId: 'bff', redirectUri: 'https://app.example.com/auth/callback' },
+  flows: memoryFlowStore(), // a shared store (Redis GETDEL) with several instances
+}
+
+// GET /login
+const binding = createFlowBinding(req.headers.get('cookie'))
+let location = '/'
+await createAuth({ ...config, binding: binding.value, redirect: (url) => (location = url) }).signIn()
+// → 302 to `location`, with Set-Cookie: binding.setCookie
+
+// GET /auth/callback
+const auth = createAuth({ ...config, binding: readFlowBinding(req.headers.get('cookie')), redirect: () => {} })
+// The request's PATH and query (Node's req.url), resolved against the configured redirect origin.
+// Behind a TLS-terminating proxy the absolute request URL is the internal one and is refused.
+await auth.handleCallback(req.url) // a callback opened in another browser fails with unbound_flow / unknown_flow
+```
+
+**One redirect URI per provider.** Most providers send no `iss` on the redirect, so the redirect URI is what says which
+provider answered. With a shared one, a malicious or compromised provider you also offer could bounce the user to an
+honest one and receive its code and your PKCE verifier (the OAuth mix-up attack, RFC 9700 §4.4). Instances are
+registered process-wide by redirect URI: two providers may share one only if both send RFC 9207 `iss` — a provider known
+not to is refused at construction (explicit metadata) or at sign-in (`redirect_shared`), and every callback on a shared
+URI must carry `iss`. `auth.dispose()` releases a claim: `useOidc` does it on unmount on the web, the iOS container on
+deinit, and `rememberPyreonOidcAuth` when it leaves the composition on Android; a disposed instance that signs in again
+registers again. Use `/auth/callback/github`,
+`/auth/callback/google`, … — and on iOS / Android one `nativeRedirectUri` per provider (`com.example.app:/oauth/google`):
+the compiler and the native runtime apply the same rule.
+
+**Hot reload and tests.** The registry lives as long as the page or process. A module-level `createAuth` whose issuer
+you edit during hot module replacement keeps its old claim until a full reload. In your own tests, call `auth.dispose()`
+for every instance a test creates (the registry's reset is internal), or give each test its own redirect URI.
+
 The lower-level steps are exported too (`discover`, `beginAuthorization`, `parseCallback`, `exchangeCode`,
-`refreshTokens`, `endSessionUrl`, `verifyIdToken`, `createJwksCache`) for server-side flows.
+`refreshTokens`, `endSessionUrl`, `verifyIdToken`, `createJwksCache`) for server-side flows; `beginAuthorization` and
+`parseCallback` take the browser binding.
 
 ## Secure defaults
 
-S256-only PKCE, `state` + `nonce`, RFC 9207 `iss` check, https-only discovery with issuer equality and https on every
+S256-only PKCE, `state` + `nonce`, pending flows bound to the client, redirect URI and browser that started them
+(login CSRF), one redirect URI per provider and the callback checked against it plus the RFC 9207 `iss` check (OAuth
+mix-up), https-only discovery with issuer equality and https on every
 advertised endpoint (loopback http is allowed for local development), single-use flows that expire after 10 minutes,
-ID tokens limited to RS256 / ES256 with `crit` headers refused, cookies `__Host-` + HttpOnly + Secure + SameSite=Lax,
+ID tokens limited to RS256 / ES256 with `crit` headers refused, `azp` and `iat` checked, `key_ops` honoured and RSA keys
+under 2048 bits ignored, one refresh in flight per session, cookies `__Host-` + HttpOnly + Secure + SameSite=Lax,
 passkey ceremonies from a cross-origin iframe refused unless `allowCrossOrigin`, and a guard whose `returnTo` only
 accepts paths that stay on the same origin under the URL parser. Not offered, on purpose: the implicit flow, the
 password grant, PKCE `plain`.
@@ -111,9 +173,10 @@ These are not defaults because they need storage or policy only the app has.
   window. With several instances, keep the same counters in a shared store.
 - **Make sessions revocable.** A signed cookie is valid until it expires. Every session carries a `jti`; pass
   `isRevoked` to `verifySession` and keep revoked ids (logout everywhere, a stolen device) until their `exp`.
+- **Bind server-side sign-ins to the browser** with `createFlowBinding` / `readFlowBinding` (see "On a server").
 - **Running more than one instance.** `memoryFlowStore` holds pending sign-ins in one process, so a callback that
   lands on a different instance fails with `unknown_flow`. Implement `FlowStore` over a shared store; `take` must
-  read and delete atomically, and entries can expire after `FLOW_TTL_MS`.
+  read and delete atomically, and entries can expire after 10 minutes (the flow lifetime).
 - **Keep the passkey `signCount`.** Store the `signCount` `verifyAssertion` returns and pass it back next time; a
   counter that does not increase signals a cloned authenticator.
 
@@ -146,6 +209,15 @@ const auth = useOidc({
 // <Text>{auth.isAuthenticated() ? auth.claim('email') : auth.status()}</Text>
 ```
 
+**A restored session that has expired** is `signingIn` until its refresh completes: on iOS the refresh starts when the
+view appears (`.onAppear { auth.start() }`, emitted by the compiler) or on the first read of `accessToken`, on Android
+when the container enters the composition. `accessToken` never returns an expired token, on any target
+(`useOidc().accessToken()` on the web, `accessToken` on iOS and Android): it is null once `expiresAt` has passed, until a
+refresh lands. The web's lower-level `createAuth().tokens()` is the raw token response and is not gated. In hand-written
+Swift or Kotlin, `freshAccessToken()` returns a token refreshed first when needed (Swift: `await`; Kotlin: blocking, and
+it throws on the Android main thread). Refreshes are shared PROCESS-WIDE per stored session, adopt only the same
+user's stored session, and never sign a signed-out instance back in.
+
 Every member reads the same on all three targets, and the strings match: `status()` is `signedOut` / `signingIn` /
 `signedIn` / `error`, and `error()` is the same code everywhere (`network_error`, `bad_nonce`, `cancelled`, …). Options
 must be static (literals or module-level consts) because native bakes them in; anything else is reported by name and
@@ -155,6 +227,10 @@ nothing is emitted.
 
 - **iOS** — nothing. Sign-in runs in `ASWebAuthenticationSession`, which hands the redirect straight back. Register
   `nativeRedirectUri` with the provider; an https redirect is matched as a universal link on iOS 17.4+.
+- **One `nativeRedirectUri` per provider** — `com.example.app:/oauth/google`, `com.example.app:/oauth/github`, not one
+  shared `com.example.app:/oauth`: the OAuth mix-up attack above works on native too. The compiler warns about two issuers on
+  one `nativeRedirectUri` in a file; the native runtime refuses to sign in on a shared one unless the provider sends
+  `iss`, and then requires it on the callback.
 - **Android** — declare the two activities in `AndroidManifest.xml` (sources are wired, not an AAR, so there is no
   library manifest to merge), with your redirect's scheme:
 
@@ -177,10 +253,33 @@ nothing is emitted.
 **Parity is tested, not assumed.** `native/tests/vectors.json` is one answer sheet of signed ID tokens — valid ones and
 every rejection the verifier makes — that the web, Swift and Kotlin verifiers must all agree on, error code for error
 code. The native containers run end to end in the smoke tests against an in-process provider that enforces PKCE and
-the nonce, and the `native-tasks` example's sign-in panel is asserted on a real simulator and emulator.
+the nonce.
+
+**Native sign-in is unverified on a device against a real provider.** On a real simulator and emulator, the
+`native-tasks` example's sign-in panel has been driven only to the `network_error` path (an unreachable issuer). A
+complete sign-in through the system browser, a real provider and the redirect back into the app has not been run on a
+device. Test your provider on your devices before you rely on it.
 
 **What stays web/server.** The lower-level API — `createAuth`, `discover`, `exchangeCode`, sessions, TOTP, passkeys,
 the route guard — is web or server code. Native apps hold one session per `useOidc` call: create it once at the root
 and pass it down.
+
+## Security notes and known limits
+
+`@pyreon/auth` is **Experimental**: its API may change in a minor release. Known limits (accepted for the first release
+on 2026-11-24, to be fixed after it):
+
+- **L1 — iOS Keychain backups.** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not `…ThisDeviceOnly`: an encrypted backup moves it to another device, and Keychain items survive an uninstall.
+- **L2 — OAuth2-only sign-in.** A sign-in with a provider that returns no ID token (GitHub, Facebook) has no verified identity until a refresh brings an ID token, and two such sessions in one app cannot be told apart, so native instances never adopt each other's refresh of one.
+- **L3 — callback parsing.** Duplicated callback parameters are read differently on Android (last value) than on the web and iOS (first). On native, a flow started for another provider is refused but consumed, so that sign-in has to be retried.
+- **Native is unverified on a device.** Native sign-in has never completed against a real provider on a device, and none of the following has run on a device or been compiled against the Android SDK: the native redirect check, Android `activate()` / `dispose()` and the process-wide refresh, and the iOS `.onAppear` emit.
+- **Android custom schemes.** Another installed app can claim the scheme and receive the redirect (PKCE is then the only defence), and any app can cancel a sign-in in progress through the exported `PyreonAuthRedirectActivity`. Prefer an App Link.
+- **Sign-out does not revoke tokens** (no RFC 7009), and a sign-out in one native instance does not sign out the others.
+- **OAuth mix-up: one redirect URI per provider is the only complete defence.** The registry sees only providers alive together in one process — not per-request servers, separate workers, or a page that builds only the chosen provider. The compiler only warns, one file at a time.
+- **A leaked authorization request still allows login CSRF.** Pushed authorization requests (PAR) are not offered.
+- **Server sign-ins need the public callback path or URL, and HTTPS.** The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported. Redirect URIs must be ASCII (punycode hosts), with no `%2e`, backslash or whitespace.
+- **A refresh that cannot reach the provider** keeps the session in `error` until `refresh()` succeeds or the app relaunches. If the response to a rotating refresh is lost in transit, the new refresh token is lost with it and a provider with reuse detection may revoke the family — inherent to rotation.
+- **The first npm version, 0.54.0, is published by hand** from the commit that made the package public (after the `v0.54.0` tag, which does not contain a public auth), without provenance. From the next release on it publishes through CI with provenance.
+- **TOTP secrets under 128 bits throw** unless `allowShortSecret: true` is set. Existing 80-bit enrolments need the flag: a behaviour change to announce.
 
 MIT

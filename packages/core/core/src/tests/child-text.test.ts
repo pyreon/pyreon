@@ -11,7 +11,8 @@
  */
 import { signal } from '@pyreon/reactivity'
 import { describe, expect, it } from 'vitest'
-import { _childText, _fuse, _isStructuralChild, _isVNodeLike, Fragment, h } from '../index'
+import { _fuse, Fragment, h } from '../index'
+import { _childText, _isStructuralChild, _isVNodeLike } from '../internal'
 import type { NativeItem, VNode } from '../types'
 
 /** A NativeItem as `_tpl()` / `createTemplate()` returns it. */

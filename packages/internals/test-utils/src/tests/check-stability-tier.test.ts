@@ -24,6 +24,10 @@ import {
   runGate,
   type PublishedPackage,
   type StabilityField,
+  internalImportPinFailures,
+  internalTagFailures,
+  isExactRange,
+  underscoreExportFailures,
   writeStatusLine,
 } from '../../../../../scripts/check-stability-tier'
 
@@ -256,9 +260,9 @@ describe('readTextIfExists', () => {
   })
 })
 
-// Rule 7. An unpublished package (`@pyreon/auth` while it is `private`) is outside rules 1-2,
+// Rule 7. An unpublished package (`"private": true`) is outside rules 1-2,
 // so a tier left on it would drift unchecked. Bisect-verified: with the field and status line
-// restored on auth, the real-repo spec fails with both messages.
+// restored on a private package, the real-repo spec fails with both messages.
 describe('private packages', () => {
   const field = renderStatusLine({ stability: 'experimental' })
 
@@ -284,9 +288,143 @@ describe('private packages', () => {
 
   it('lists the private packages and none of the published ones', () => {
     const names = listPrivatePackages(REPO).map((p) => p.name)
-    expect(names).toContain('@pyreon/auth')
     expect(names).toContain('@pyreon/test-utils')
+    // Published since 0.54.0: it carries a tier and is checked by rules 1-2.
+    expect(names).not.toContain('@pyreon/auth')
     expect(names).not.toContain('@pyreon/core')
+  })
+})
+
+describe('underscoreExportFailures (rule 8)', () => {
+  let dir: string
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const setup = (files: Record<string, string>) => {
+    dir = mkdtempSync(join(tmpdir(), 'stability-underscore-'))
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(join(dir, rel, '..'), { recursive: true })
+      writeFileSync(join(dir, rel), body)
+    }
+  }
+  const exportsMap = {
+    '.': { bun: './src/index.ts' },
+    './sub': { bun: './src/sub.ts' },
+    './internal': { bun: './src/internal.ts' },
+  }
+
+  it('fails a `_` name on a public entry, through `export *` and declarations', () => {
+    setup({
+      'src/index.ts': "export * from './a'\nexport function _direct() {}\nexport type { _T } from './a'\n",
+      'src/a.ts': 'export const _viaStar = 1\nexport const fine = 2\nexport type _T = 1\n',
+      'src/sub.ts': "export { _reset as _reset } from './a'\n",
+      'src/internal.ts': "export { _hidden } from './a'\n",
+    })
+    const out = underscoreExportFailures([pkg('@pyreon/x', { exports: exportsMap }, dir)], {})
+    expect(out.map((f) => f.split(' ').slice(0, 3).join(' '))).toEqual([
+      '@pyreon/x exports `_viaStar`,',
+      '@pyreon/x exports `_direct`,',
+      '@pyreon/x/sub exports `_reset`,',
+    ])
+  })
+
+  it('allows compiler ABI on the main entry and fails a stale ABI entry', () => {
+    setup({ 'src/index.ts': 'export const _tpl = 1\n', 'src/sub.ts': '', 'src/internal.ts': '' })
+    const p = pkg('@pyreon/x', { exports: exportsMap }, dir)
+    expect(underscoreExportFailures([p], { '@pyreon/x': ['_tpl'] })).toEqual([])
+    expect(underscoreExportFailures([p], { '@pyreon/x': ['_tpl', '_gone'] })[0]).toMatch(/`_gone`.*stale/)
+  })
+})
+
+describe('internalTagFailures (rule 9)', () => {
+  let dir: string
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const setup = (files: Record<string, string>) => {
+    dir = mkdtempSync(join(tmpdir(), 'stability-internal-tag-'))
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(join(dir, rel, '..'), { recursive: true })
+      writeFileSync(join(dir, rel), body)
+    }
+  }
+  const exportsMap = { '.': { bun: './src/index.ts' }, './internal': { bun: './src/internal.ts' } }
+
+  it('fails an @internal-tagged declaration reached through re-exports, imports and export *', () => {
+    setup({
+      'src/index.ts':
+        "export { seam as renamed } from './a'\nexport * from './b'\nimport { local } from './c'\nexport { local }\nexport { fine } from './a'\n",
+      'src/a.ts': '/** @internal */\nexport function seam() {}\n/** Public. Mentions internal in prose only. */\nexport const fine = 1\n',
+      'src/b.ts': '/**\n * Test seam.\n * @internal\n */\nexport const viaStar = 1\n',
+      'src/c.ts': '/** @internal */\nexport const local = 2\n',
+      'src/internal.ts': "export { seam } from './a'\n",
+    })
+    const out = internalTagFailures([pkg('@pyreon/x', { exports: exportsMap }, dir)], {})
+    expect(out.map((f) => f.split(' ').slice(0, 3).join(' '))).toEqual([
+      '@pyreon/x exports `renamed`,',
+      '@pyreon/x exports `viaStar`,',
+      '@pyreon/x exports `local`,',
+    ])
+  })
+
+  it('closes the alias, default and namespace bypasses (rules 8 and 9)', () => {
+    setup({
+      'src/index.ts': [
+        "import { seam } from './a'",
+        'const alias = seam',
+        "import * as ns from './b'",
+        "export { alias, ns }",
+        "export { default as viaDefault } from './c'",
+        "export * as star from './d'",
+        '',
+      ].join('\n'),
+      'src/a.ts': '/** @internal */\nexport function seam() {}\n',
+      'src/b.ts': 'export const _hidden = 1\n',
+      'src/c.ts': '/** @internal */\nfunction impl() {}\nexport default impl\n',
+      'src/d.ts': '/** @internal */\nexport const deep = 1\n',
+      'src/internal.ts': '',
+    })
+    const p = pkg('@pyreon/x', { exports: exportsMap }, dir)
+    expect(internalTagFailures([p], {}).map((f) => f.split(' ')[2])).toEqual(['`alias`,', '`viaDefault`,', '`star.deep`,'])
+    expect(underscoreExportFailures([p], {}).map((f) => f.split(' ')[2])).toEqual(['`ns._hidden`,'])
+  })
+
+  it('exempts compiler ABI on the main entry', () => {
+    setup({ 'src/index.ts': '/** @internal */\nexport function _tpl() {}\n', 'src/internal.ts': '' })
+    const p = pkg('@pyreon/x', { exports: exportsMap }, dir)
+    expect(internalTagFailures([p], { '@pyreon/x': ['_tpl'] })).toEqual([])
+    expect(internalTagFailures([p], {})).toHaveLength(1)
+  })
+})
+
+describe('internalImportPinFailures (rule 10)', () => {
+  let dir: string
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const setup = (files: Record<string, string>) => {
+    dir = mkdtempSync(join(tmpdir(), 'stability-pins-'))
+    for (const [rel, body] of Object.entries(files)) {
+      mkdirSync(join(dir, rel, '..'), { recursive: true })
+      writeFileSync(join(dir, rel), body)
+    }
+  }
+
+  it('fails a caret or missing edge to a package whose internals are imported; tests do not count', () => {
+    setup({
+      'src/index.ts': "import { _x } from '@pyreon/core/internal'\nimport { y } from '@pyreon/core/compat'\nimport { z } from '@pyreon/zz/internal-server'\n",
+      'src/tests/a.test.ts': "import { _t } from '@pyreon/only-in-tests/internal'\n",
+    })
+    const caret = pkg('@pyreon/x', { peerDependencies: { '@pyreon/core': 'workspace:^' } }, dir)
+    const out = internalImportPinFailures([caret])
+    expect(out).toHaveLength(2)
+    expect(out[0]).toMatch(/imports @pyreon\/core\/internal .* declares @pyreon\/core as "workspace:\^"/)
+    expect(out[1]).toMatch(/does not declare @pyreon\/zz/)
+  })
+
+  it('accepts workspace:* and a bare exact version, and the package importing itself', () => {
+    setup({ 'src/index.ts': "import { _x } from '@pyreon/core/internal'\nimport { _s } from '@pyreon/x/internal'\n" })
+    expect(internalImportPinFailures([pkg('@pyreon/x', { dependencies: { '@pyreon/core': 'workspace:*' } }, dir)])).toEqual([])
+    expect(internalImportPinFailures([pkg('@pyreon/x', { peerDependencies: { '@pyreon/core': '1.0.0' } }, dir)])).toEqual([])
+    expect(isExactRange('^1.0.0')).toBe(false)
+    expect(isExactRange('1.0.0-rc.2')).toBe(true)
   })
 })
 

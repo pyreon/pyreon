@@ -381,7 +381,7 @@ Adapt an `s.*` schema directly into `@pyreon/form`'s `schema` validator shape â€
 const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
 const { t } = useI18n()
 const form = useForm({
-  fields: [emailField, ageField],
+  initialValues: { email: '', age: 0 },
   schema: toFormValidator(schema, t),
   onSubmit,
 })

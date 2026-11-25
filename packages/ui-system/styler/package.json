@@ -33,6 +33,11 @@
       "bun": "./src/native-plugin.ts",
       "import": "./lib/native-plugin.js",
       "types": "./lib/native-plugin.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/internal.d.ts"
     }
   },
   "publishConfig": {
@@ -64,9 +69,9 @@
     "oxc-parser": "^0.159.0"
   },
   "peerDependencies": {
-    "@pyreon/core": "workspace:^",
+    "@pyreon/core": "workspace:*",
     "@pyreon/native-compiler": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/reactivity": "workspace:*",
     "oxc-parser": "^0.152.0"
   },
   "peerDependenciesMeta": {

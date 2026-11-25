@@ -1,7 +1,7 @@
 import * as core from '../core'
 import * as reactive from '../index'
 import { _resetWarnings } from '../warn'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 
 const en = { locale: 'en-US' }
 let warn: { mock: { calls: unknown[][] }; mockRestore(): void }
@@ -15,7 +15,7 @@ beforeEach(() => {
 afterEach(() => {
   warn.mockRestore()
   process.env.NODE_ENV = nodeEnv
-  _resetLocaleState()
+  resetLocaleState()
 })
 
 const CALLS: Array<[string, (v: unknown, fb: string) => string]> = [
@@ -55,9 +55,10 @@ describe('nullish input returns the fallback, silently', () => {
 })
 
 describe('invalid input returns the fallback with a dev warning, once', () => {
-  it.each(CALLS)('%s(NaN / a string / an object)', (name, call) => {
+  it.each(CALLS)('%s(NaN / a non-decimal string / an object)', (name, call) => {
     expect(call(NaN, '?')).toBe('?')
-    expect(call('12', '?')).toBe('?')
+    // Intl would read these as numbers (" 12 " as 12, "" as 0); only a plain decimal string is an amount.
+    for (const text of ['1e3', ' 12 ', '', '+5', '12.', '.5', 'Infinity', '0x1F', '1,5']) expect(call(text, '?'), text).toBe('?')
     expect(call({}, '?')).toBe('?')
     // one warning per (function, kind of bad value, expectation), however many calls
     expect(warn.mock.calls.filter((c) => String(c[0]).includes(`${name}()`)).length).toBeLessThanOrEqual(3)
@@ -79,7 +80,7 @@ describe('invalid input returns the fallback with a dev warning, once', () => {
 
   it('the warning says how to fix it', () => {
     core.formatNumber(NaN)
-    expect(warn.mock.calls[0]?.[0]).toMatch(/^\[Pyreon\] formatNumber\(\): expected a number or bigint .* got NaN; returning the fallback/)
+    expect(warn.mock.calls[0]?.[0]).toMatch(/^\[Pyreon\] formatNumber\(\): expected a number, a bigint or a decimal string .* got NaN; returning the fallback/)
   })
 
   it('the warning set is itself bounded', () => {
@@ -96,7 +97,7 @@ describe('invalid input returns the fallback with a dev warning, once', () => {
     expect(core.formatDateRange(0, 'x', { ...en, fallback: '?' })).toBe('?')
     expect(core.formatNumberRange(1, NaN, { ...en, fallback: '?' })).toBe('?')
     expect(core.formatNumberRange('a' as never, 1, { ...en, fallback: '?' })).toBe('?')
-    expect(core.formatCurrency(1, 'EURO', { ...en, fallback: '?' })).toBe('?')
+    expect(core.formatCurrency(1, 'Euro', { ...en, fallback: '?' })).toBe('?')
     expect(core.formatCurrency(1, '€', { ...en, fallback: '?' })).toBe('?')
     expect(core.formatCurrency(1, null as never, { ...en, fallback: '?' })).toBe('?')
     expect(core.formatNumberToParts(NaN)).toEqual([])
@@ -134,7 +135,7 @@ describe('production is silent', () => {
     expect(core.formatNumber(NaN, { fallback: '?' })).toBe('?')
     expect(core.formatDate('garbage', { fallback: '?' })).toBe('?')
     expect(core.formatBytes(Infinity, { fallback: '?' })).toBe('?')
-    expect(core.formatCurrency(1, 'EURO', { fallback: '?' })).toBe('?')
+    expect(core.formatCurrency(1, 'Euro', { fallback: '?' })).toBe('?')
     expect(core.formatNumber(1, { locale: 'en_US' })).toBe(new Intl.NumberFormat().format(1))
     reactive.setLocale('en')
     expect(warn).not.toHaveBeenCalled()

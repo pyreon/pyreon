@@ -3,17 +3,8 @@
  * Import: `import { ... } from "@pyreon/store/devtools"`
  */
 
+import { addChangeListener } from './devtools-bus'
 import { getRegistry } from './registry'
-
-const _listeners = new Set<() => void>()
-
-/** @internal — called by defineStore/resetStore to notify devtools. */
-export function _notifyChange(): void {
-  // Size guard: the common case (no devtools attached) skips the for..of
-  // iterator allocation on every store creation / reset.
-  if (_listeners.size === 0) return
-  for (const listener of _listeners) listener()
-}
 
 /** Get all registered store IDs. */
 export function getRegisteredStores(): string[] {
@@ -29,8 +20,5 @@ export function getStoreById(
 
 /** Subscribe to store registry changes (store added/removed). Returns unsubscribe. */
 export function onStoreChange(listener: () => void): () => void {
-  _listeners.add(listener)
-  return () => {
-    _listeners.delete(listener)
-  }
+  return addChangeListener(listener)
 }

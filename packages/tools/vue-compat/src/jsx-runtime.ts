@@ -15,7 +15,8 @@
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
-import { _compatProps, Fragment, h, isNativeCompat, onUnmount } from '@pyreon/core'
+import { Fragment, h, onUnmount } from '@pyreon/core'
+import { _compatProps, isNativeCompat } from '@pyreon/core/compat'
 import { runUntracked, signal } from '@pyreon/reactivity'
 
 export { Fragment }

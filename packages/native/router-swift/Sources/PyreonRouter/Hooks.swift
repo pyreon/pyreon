@@ -83,7 +83,8 @@ public func useParams(router: PyreonRouter?) -> [String: String] {
 @available(iOS 17.0, macOS 14.0, *)
 public func useLoaderData<T>(router: PyreonRouter?) -> T? {
     guard let router else { return nil }
-    return router.loaderData[router.currentPath] as? T
+    // The route part, query excluded — the key `setLoaderData` stores under.
+    return router.loaderData[router.routePath] as? T
 }
 
 /// Imperative navigation — `@pyreon/router`'s `useRouter()`, for the calls a

@@ -73,7 +73,7 @@
     "@pyreon/core": "workspace:^",
     "@pyreon/native-compiler": "workspace:^",
     "@pyreon/reactivity": "workspace:^",
-    "@pyreon/runtime-dom": "workspace:^"
+    "@pyreon/runtime-dom": "workspace:*"
   },
   "peerDependenciesMeta": {
     "@pyreon/native-compiler": {

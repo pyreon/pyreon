@@ -81,7 +81,6 @@ const InvertedSection = () => (
 | [`render`](#render-function) | function | A flexible one-shot renderer used internally by the ui-system's content/slot props: primitives (string/number/boolean)… |
 | [`useStableValue`](#usestablevalue-hook) | hook | Returns a referentially-stable version of `value` — the returned reference only changes when the new value is no longer… |
 | [`HTML_TAGS / HTML_TEXT_TAGS`](#html_tags-html_text_tags-constant) | constant | The two tag allowlists `@pyreon/elements`' Element/Text bases dispatch on: `HTML_TAGS` is every recognized host tag… |
-| [`getThemeEngine / setThemeEngine`](#getthemeengine-setthemeengine-function) | function | @internal — the registration seam that breaks the `ui-core ↔ unistyle` dependency cycle. |
 | [`resolveCssVariables`](#resolvecssvariables-function) | function | The single defaulted view of `config.cssVariables` — every CSS-variables-mode consumer (`<PyreonUI>`, rocketstyle's… |
 | [`hoistNonReactStatics`](#hoistnonreactstatics-function) | function | Copies non-framework static properties (walking the prototype chain) from `source` onto `target` — the Pyreon equivalent… |
 
@@ -477,32 +476,6 @@ HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text
 
 ---
 
-### `getThemeEngine / setThemeEngine` `function`
-
-```ts
-getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void
-```
-
-@internal — the registration seam that breaks the `ui-core ↔ unistyle` dependency cycle. `@pyreon/unistyle` calls `setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })` at module load (a side effect its `package.json` marks `sideEffects` for, so tree-shaking can't drop the registration); `<PyreonUI>` reads it lazily via `getThemeEngine()` at each use-site, never eagerly at setup. When unistyle is NOT in the module graph (a bare `@pyreon/rocketstyle`-only app), `getThemeEngine()` returns a minimal FALLBACK — identity `enrichTheme`, no CSS vars, no CPSE — and dev-warns ONCE, so `<PyreonUI>` degrades instead of crashing.
-
-**Example**
-
-```tsx
-// User code never calls this — it's how @pyreon/unistyle wires itself into
-// <PyreonUI> without ui-core depending on unistyle. Documented here because
-// "theme isn't enriched" / "no CSS variables" debugging starts here: import
-// "@pyreon/unistyle" somewhere in your app to register the real engine.
-```
-
-**Common mistakes**
-
-- Seeing an un-enriched theme (missing default breakpoints/spacing, no CSS variables) and not realizing `@pyreon/unistyle` was never imported — every styled `@pyreon` UI package except bare `@pyreon/rocketstyle` pulls it in transitively, but a minimal custom setup can miss it
-- Calling `setThemeEngine()` from app code — it is for a THEME ENGINE PACKAGE to register itself (the unistyle precedent); overwriting it from an app silently replaces every consumer's theme resolution
-
-**See also:** `PyreonUI`
-
----
-
 ### `resolveCssVariables` `function`
 
 ```ts
@@ -567,5 +540,7 @@ hoistNonReactStatics(Wrapped, Original)
 > **Provider replacement:** The legacy split (separate theme / mode / config providers) is removed. `PyreonUI` is the only correct mount; calling `init()` directly is the escape hatch for SSR or test environments where the provider tree is unavailable.
 
 > **System-mode subscription:** `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
+
+> **Un-enriched theme means unistyle is not loaded:** `@pyreon/unistyle` registers the theme engine (theme enrichment with default breakpoints/spacing, CSS variables, CPSE) into ui-core at module load, so ui-core carries no unistyle dependency. Without it in the module graph — a bare `@pyreon/rocketstyle`-only setup — `<PyreonUI>` falls back to an identity engine and dev-warns once. Missing default breakpoints/spacing or no CSS variables: `import '@pyreon/unistyle'` somewhere reachable from the app (every styled `@pyreon` UI package except bare rocketstyle pulls it in transitively).
 
 > **Low-level Provider / context:** The package also exports a low-level `Provider` (default export) + `context` from `context.tsx`. It feeds the core theme + mode context and is the path `@pyreon/rocketstyle`'s public `Provider` delegates to, so it is supported and does not warn. App code should still mount `<PyreonUI theme={theme}>`, which sets up every context layer, and read with `useMode()` / `useThemeValue()`.

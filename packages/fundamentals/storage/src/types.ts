@@ -26,6 +26,11 @@ export interface IndexedDBSignal<T> extends StorageSignal<T> {
   /** Resolves once the initial read from IndexedDB has settled. */
   whenReady(): Promise<void>
   /**
+   * Delete the stored value and reset the signal to its default. Resolves once
+   * the delete has committed (or failed and `onError` was notified).
+   */
+  remove(): Promise<void>
+  /**
    * Write a pending debounced value NOW. Resolves once it is persisted (or the
    * write failed and `onError` was notified).
    */

@@ -16,7 +16,8 @@
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
-import { parseFrontmatter, resolvePublishNow } from '@pyreon/zero-content/plugin'
+import { parseFrontmatter } from '@pyreon/zero-content/plugin'
+import { resolvePublishNow } from '@pyreon/zero-content/internal-server'
 import type { Plugin } from 'vite'
 import { rewriteBenchBlocks } from '../src/blog/bench'
 import { plannedPosts, type PostSource } from '../src/blog/planned'

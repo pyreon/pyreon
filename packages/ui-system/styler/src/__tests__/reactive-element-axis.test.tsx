@@ -19,7 +19,8 @@ import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it } from 'vitest'
-import { setStyleExtraction, styled } from '../styled'
+import { setStyleExtraction } from '../cpse-state'
+import { styled } from '../styled'
 
 const flush = async () => {
   await Promise.resolve()

@@ -5,7 +5,6 @@
 // needs a DOM, so run where the Node entry is used.
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  _resetRenderers,
   Button,
   Code,
   Column,
@@ -30,6 +29,7 @@ import {
   Text,
   unregisterRenderer,
 } from '../index'
+import { _resetRenderers } from '../internal'
 
 afterEach(() => {
   _resetRenderers()

@@ -1,11 +1,11 @@
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { formatUnit as coreFormatUnit } from '../core'
-import { _resetLocaleState, setLocale } from '../locale'
+import { resetLocaleState, setLocale } from '../locale'
 import * as units from '../units'
 import * as unitsCore from '../units/core'
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 const one = { maximumFractionDigits: 1 }
 

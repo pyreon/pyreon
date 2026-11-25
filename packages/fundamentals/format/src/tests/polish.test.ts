@@ -3,7 +3,7 @@
  */
 import * as core from '../core'
 import * as reactive from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { _warnedSize, _resetWarnings } from '../warn'
 import { clearAllTables } from './helpers'
 
@@ -17,7 +17,7 @@ beforeEach(() => {
 
 afterEach(() => {
   warn.mockRestore()
-  _resetLocaleState()
+  resetLocaleState()
   clearAllTables()
 })
 

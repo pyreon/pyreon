@@ -7,10 +7,18 @@ import { describe, expect, it } from 'vitest'
 import { h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { hydrateRoot, mount, onHydrationMismatch } from '@pyreon/runtime-dom'
-import { _resetClockState } from '@pyreon/ambient/testing'
+import { resetClockState } from '@pyreon/ambient/testing'
 import { setClock } from '@pyreon/ambient'
 import { DateTime, Num, RelativeTime } from './components'
-import { currencyFormatter, dateFormatter, formatBytes, formatDate, formatNumber, provideLocale, setLocale } from './index'
+import {
+  currencyFormatter,
+  dateFormatter,
+  formatBytes,
+  formatDate,
+  formatNumber,
+  provideLocale,
+  setLocale,
+} from './index'
 
 const tree = () =>
   h(
@@ -135,13 +143,13 @@ describe('<RelativeTime> hydrates with the server\'s clock and then updates once
 
     unmount()
     scratch.remove()
-    _resetClockState()
+    resetClockState()
 
     return html
   }
 
   afterEach(() => {
-    _resetClockState()
+    resetClockState()
     delete (globalThis as Record<string, unknown>).__PYREON_CLOCK__
   })
 

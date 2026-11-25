@@ -14,7 +14,7 @@
  */
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { previewPathFor } from '../preset'
+import { previewPathFor } from '../preview-path'
 
 describe('previewPathFor', () => {
   it('converts a real file: URL to a filesystem path (the SHIPPED arm)', () => {

@@ -530,7 +530,7 @@ Use the host view's document and window: `view.dom.ownerDocument.createElement(.
 ### `node:*` imports reachable from a client-safe entry
 
 (gate: `check-client-bundle-node-imports`): any `node:*` import in the graph of a client-safe main entry (e.g. `@pyreon/zero`) breaks the browser bundle and hydration. Type-only imports are safe; dead-code elimination does not help, because static imports are evaluated for side effects. Fixes:
-  1. Split the Node code into a server-only module that registers through a setter on the client-safe module (`packages/zero/zero/src/i18n-routing-als.ts` + `_setLocaleStoreReader` in `i18n-routing.ts`).
+  1. Split the Node code into a server-only module that registers through a setter on the client-safe module (`packages/zero/zero/src/i18n-routing-als.ts` + `_setLocaleStoreReader` in `i18n-routing-state.ts`).
   2. Export server helpers from a `/server` subpath.
   3. A lazy `await import('./node-module')` still emits a client chunk (a build warning plus a dead chunk) if the import site is reachable from the client entry. Move the import site itself into a server-only module (`i18n-routing-plugin.ts`, exported from `@pyreon/zero/server`).
 
@@ -577,6 +577,12 @@ The URL parser treats `\` as `/` in the authority position, so `\\evil.com`, `/\
 ### Writing URLs from `location.search` beside a hash-mode router
 
 In `@pyreon/router`'s default `mode: 'hash'`, the route and its query live in the fragment and `location.pathname` already contains `base`. `useUrlState` asks the registered router for mode and base (`routeOwnsHash`/`splitHashRoute`/`stripRouterBase` in `packages/fundamentals/url-state/src/url.ts`), preserves the fragment, and owns `location.search` only when no router is registered. `Router` exposes `mode` publicly. A hand-written router shim only confirms your own model; wire the real router. Tests: `router-url-ownership.test.ts`, `real-router-hash-mode.test.ts`.
+
+---
+
+### A pending OAuth flow looked up by `state` alone (login CSRF and OAuth mix-up)
+
+The `state` travels in the callback URL, so a store keyed by it cannot tell WHO started the flow or IN WHICH BROWSER. Login CSRF: an attacker starts a sign-in on a server, finishes it at the provider as themselves and sends the callback URL to a victim, whose browser completes it (PKCE does not help; the verifier is on the server). Mix-up (RFC 9700 §4.4): with two providers on one redirect URI, a malicious or compromised provider bounces the user to an honest one that sends no `iss` (GitHub, Facebook and many others), and the honest code plus the verifier reach the attacker's token endpoint, because the flow really is the attacker instance's. "Hand a foreign flow back to the store" is not a fix either: it races with the owner's `take`. The fix in `@pyreon/auth`: the store key is a digest of state + issuer + client id + redirect URI + browser binding (`flowKey` in `packages/fundamentals/auth/src/oidc.ts`), so no other party ever reads the flow. A server binds the browser with a `__Host-` cookie (`createFlowBinding` / `readFlowBinding`). Providers are registered PROCESS-WIDE by normalised redirect target (`claimRedirect` in `redirects.ts`, `PyreonRedirectClaims` natively) — not per store object: two `memoryFlowStore()`s, or a fresh store object per request over one backing store, share callbacks just the same. Sharing is allowed only between providers that send RFC 9207 `iss`, and a callback on a shared target must carry it. Native apps share one scheme, so the same rule holds there (the compiler warns about two issuers on one `nativeRedirectUri` per file; the runtime enforces). The registry cannot see a provider that is not alive at that moment — a page that builds only the chosen provider — so one redirect URI per provider stays the rule. The callback must arrive at the flow's own redirect URI (`redirect_mismatch`, web, Swift and Kotlin). Test the attack shapes, not the honest-second-instance shape: `state.test.ts`, "flows are bound to their client, redirect URI and browser".
 
 ---
 

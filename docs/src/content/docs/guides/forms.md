@@ -1,6 +1,6 @@
 ---
 title: "Forms & Validation"
-description: "How to build reactive forms in Pyreon with @pyreon/form — composable fields, per-field signals, blur-gated validation, arrays, and schema validation."
+description: "How to build reactive forms in Pyreon with @pyreon/form — one form declaration, per-field signals, blur-gated validation, arrays, and schema validation."
 ---
 
 `@pyreon/form` is signal-based form management: every field's `value`, `error`, `touched`, and `dirty` are independent signals, so a keystroke patches only that field's bound DOM. Validation runs on blur by default (so users aren't scolded mid-keystroke), with sync, async, and schema adapters.
@@ -14,20 +14,21 @@ description: "How to build reactive forms in Pyreon with @pyreon/form — compos
 
 - A single input whose value you read on submit — a plain `signal()` + `onInput` is fine.
 
-## Composable fields
+## Declaring a form
 
-Define fields once, infer the form shape from them:
+Declare the form once; `initialValues` types every field, validator and `useField` read:
 
 ```tsx
 // @check
-import { field, useForm, Form, useField, Submit } from '@pyreon/form'
-
-const email = field('email', '', (v) => (v.includes('@') ? undefined : 'Invalid email'))
-const password = field('password', '', (v) => (v.length >= 8 ? undefined : 'Too short'))
+import { useForm, Form, useField, Submit } from '@pyreon/form'
 
 function LoginForm() {
   const form = useForm({
-    fields: [email, password],
+    initialValues: { email: '', password: '' },
+    validators: {
+      email: (v) => (v.includes('@') ? undefined : 'Invalid email'),
+      password: (v) => (v.length >= 8 ? undefined : 'Too short'),
+    },
     onSubmit: (values) => console.warn('submit', values),
   })
 

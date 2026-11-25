@@ -12,6 +12,8 @@
  *   import { createRoot } from "react-dom/client"         // aliased by vite plugin
  */
 
+import { shallowEqualProps as shallowEqual } from '@pyreon/core/compat'
+
 export type { Props, VNode, VNodeChild } from '@pyreon/core'
 export { Fragment, createRef } from '@pyreon/core'
 // `createElement` / `h` route through the compat JSX runtime so a component
@@ -27,7 +29,6 @@ import {
   nativeCompat,
   Portal,
   provide as pyreonProvide,
-  shallowEqualProps as shallowEqual,
   Suspense,
   useContext as pyreonUseContext,
 } from '@pyreon/core'

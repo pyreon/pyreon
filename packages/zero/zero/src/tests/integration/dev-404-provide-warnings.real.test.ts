@@ -19,12 +19,14 @@ const FIXTURE_DIR = resolve(import.meta.dirname, 'fixture-provide-warnings')
 
 const aliasConfig = {
   conditions: ['bun'],
-  alias: {
-    '@pyreon/ui-core': resolve(import.meta.dirname, '../../../../../ui-system/ui-core/src/index.ts'),
-    '@pyreon/styler': resolve(import.meta.dirname, '../../../../../ui-system/styler/src/index.ts'),
-    '@pyreon/unistyle': resolve(import.meta.dirname, '../../../../../ui-system/unistyle/src/index.ts'),
-    '@pyreon/elements': resolve(import.meta.dirname, '../../../../../ui-system/elements/src/index.ts'),
-  },
+  // Anchored finds: a plain-string alias prefix-matches, so `@pyreon/ui-core`
+  // would rewrite `@pyreon/ui-core/internal` to `…/src/index.ts/internal`.
+  alias: [
+    { find: /^@pyreon\/ui-core$/, replacement: resolve(import.meta.dirname, '../../../../../ui-system/ui-core/src/index.ts') },
+    { find: /^@pyreon\/styler$/, replacement: resolve(import.meta.dirname, '../../../../../ui-system/styler/src/index.ts') },
+    { find: /^@pyreon\/unistyle$/, replacement: resolve(import.meta.dirname, '../../../../../ui-system/unistyle/src/index.ts') },
+    { find: /^@pyreon\/elements$/, replacement: resolve(import.meta.dirname, '../../../../../ui-system/elements/src/index.ts') },
+  ],
 }
 
 const optimizeDepsExclude = [
