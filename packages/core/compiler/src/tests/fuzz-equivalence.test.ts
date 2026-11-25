@@ -182,6 +182,11 @@ function genNestedFn(c: Ctx): string {
     `(${s}) => use(${s} + 1)`,
     `() => ${s}.set`,
     `() => <i title={${s} + 1}>{${s}}</i>`,
+    // A component prop in JSX a function builds (#4797): walked, `_rp`-wrapped.
+    `() => <Show when={${s}}><b>x</b></Show>`,
+    `(k) => <For each={${s}} by={(x) => x}>{(x) => <li title={k}>{x}</li>}</For>`,
+    // JSX built in a handler: a bare signal prop stays bare, a call stays a call.
+    `() => show(<D v={${s}} w={${s}()}>{${s}}</D>)`,
   ])
 }
 
@@ -298,6 +303,8 @@ function genPqSite(c: Ctx): string {
     '<ul>{[1].map((tag) => <li title={pq} onClick={() => use(pq, tag)}>x</li>)}</ul>',
     '<Comp9>{(tag) => use(pq, tag)}</Comp9>',
     '<Comp9 render={(tag) => <b>{pq}</b>} />',
+    '<Comp9 render={() => <Comp9 v={pq} />} />',
+    '<button onClick={() => use(<Comp9 v={pq} />)}>x</button>',
     '<p>{[1].map((props) => use(pq, props))}</p>',
   ])
 }
@@ -378,6 +385,24 @@ function genAttrs(c: Ctx): string {
   }
   if (c.signals.length && c.rnd4() < 0.3) {
     parts.push(`${pick(c.rnd4, [...EVENTS, 'ref', 'render', 'data-fn'])}={${genNestedFn(c)}}`)
+  }
+  // A spread whose object carries a JSX-building function (#4797): handler
+  // keys follow the handler rule, every other key the render-prop rule.
+  // Property shapes: keyed, shorthand (never auto-called), method, computed key,
+  // nested spread.
+  if (c.signals.length && c.rnd4() < 0.15) {
+    const s = pick(c.rnd4, c.signals)
+    const key = pick(c.rnd4, ['onClick', 'ref', 'render', 'title'])
+    const fn = genNestedFn(c)
+    parts.push(
+      pick(c.rnd4, [
+        `{...{ ${key}: ${fn} }}`,
+        `{...{ ${s}, ${key}: ${fn} }}`,
+        `{...{ ${key}() { return <b>{${s}}</b> } }}`,
+        `{...{ [${s} ? 'a' : 'b']: ${fn}, ${s} }}`,
+        `{...{ ...rest, ${key}: ${fn} }}`,
+      ]),
+    )
   }
   // A spread object with no JSX, on whatever element this is (DOM spreads
   // compile by one rule on the template and h() paths): a handler, a bare and

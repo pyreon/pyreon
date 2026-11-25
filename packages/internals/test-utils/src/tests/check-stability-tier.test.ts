@@ -256,9 +256,9 @@ describe('readTextIfExists', () => {
   })
 })
 
-// Rule 7. An unpublished package (`@pyreon/auth` while it is `private`) is outside rules 1-2,
+// Rule 7. An unpublished package (`"private": true`) is outside rules 1-2,
 // so a tier left on it would drift unchecked. Bisect-verified: with the field and status line
-// restored on auth, the real-repo spec fails with both messages.
+// restored on a private package, the real-repo spec fails with both messages.
 describe('private packages', () => {
   const field = renderStatusLine({ stability: 'experimental' })
 
@@ -284,8 +284,9 @@ describe('private packages', () => {
 
   it('lists the private packages and none of the published ones', () => {
     const names = listPrivatePackages(REPO).map((p) => p.name)
-    expect(names).toContain('@pyreon/auth')
     expect(names).toContain('@pyreon/test-utils')
+    // Published since 0.54.0: it carries a tier and is checked by rules 1-2.
+    expect(names).not.toContain('@pyreon/auth')
     expect(names).not.toContain('@pyreon/core')
   })
 })

@@ -35,6 +35,11 @@ public struct PyreonAuthError: Error, Equatable, CustomStringConvertible {
     public static let issuerMissing = PyreonAuthError("issuer_missing", "provider advertises iss but callback omitted it")
     public static let missingCode = PyreonAuthError("missing_code", "callback has no code")
     public static let unknownFlow = PyreonAuthError("unknown_flow", "no pending authorization for this state")
+    public static let invalidRedirectUri = PyreonAuthError("invalid_redirect_uri", "the redirect URI cannot be matched safely — write the host in punycode, and use no percent-encoded dots, backslash, whitespace or other non-ASCII character before the query")
+    /// Refresh failures that keep the session for a retry: the provider could not be reached or was unavailable.
+    public static let transientRefreshCodes: Set<String> = ["network_error", "provider_unavailable", "discovery_failed", "jwks_failed"]
+    public static let redirectShared = PyreonAuthError("redirect_shared", "another provider shares this redirect URI and this one does not send RFC 9207 iss — give each provider its own redirect URI")
+    public static let redirectMismatch = PyreonAuthError("redirect_mismatch", "callback did not arrive at this sign-in's redirect URI (mix-up)")
 }
 
 public enum PyreonJose {
@@ -92,7 +97,8 @@ public enum PyreonJose {
         let kty = alg == "RS256" ? "RSA" : "EC"
         let candidates = keys.filter { k in
             selects(header["kid"], k["kid"]) && unsetOr(k["alg"], alg) && unsetOr(k["use"], "sig")
-                && (k["kty"] as? String) == kty
+                && allowsVerify(k["key_ops"]) && (k["kty"] as? String) == kty
+                && (kty != "RSA" || rsaBits(k["n"]) >= 2048)
         }
         if candidates.isEmpty { throw bad("no_key", "no matching signing key") }
         guard let signature = decodeBase64url(segs[2]) else { throw bad("bad_signature", "signature is not base64url") }
@@ -109,9 +115,14 @@ public enum PyreonJose {
         let aud: [Any] = (claims["aud"] as? [Any]) ?? [claims["aud"] as Any]
         if !aud.contains(where: { ($0 as? String) == clientId }) { throw bad("bad_aud", "aud does not include this client") }
         if aud.count > 1 && (claims["azp"] as? String) != clientId { throw bad("bad_azp", "multi-audience token needs azp = client") }
+        // OIDC Core §2: azp, when present, is the party the token was issued to — it must be us.
+        if claims["azp"] != nil && (claims["azp"] as? String) != clientId { throw bad("bad_azp", "token was issued to another client (azp)") }
         guard let exp = number(claims["exp"]), exp + skew >= nowS else { throw bad("expired", "token expired") }
         if claims["nbf"] != nil {
             guard let nbf = number(claims["nbf"]), nbf - skew <= nowS else { throw bad("not_yet_valid", "token is not valid yet (nbf)") }
+        }
+        if claims["iat"] != nil {
+            guard let iat = number(claims["iat"]), iat - skew <= nowS else { throw bad("not_yet_valid", "token is issued in the future (iat)") }
         }
         guard let sub = claims["sub"] as? String, !sub.isEmpty else { throw bad("bad_token", "missing sub") }
         if let nonce, !PyreonPKCE.constantTimeEqual(claims["nonce"] as? String ?? "\u{0}", nonce) {
@@ -139,6 +150,21 @@ public enum PyreonJose {
     }
 
     /// One candidate key; a key that cannot be imported verifies nothing (as on the web).
+    /// RFC 7517 §4.3: a key whose `key_ops` is set must list "verify".
+    static func allowsVerify(_ ops: Any?) -> Bool {
+        if isUnset(ops) { return true }
+        guard let list = ops as? [Any] else { return false }
+        return list.contains { ($0 as? String) == "verify" }
+    }
+
+    /// Modulus size of an RSA JWK `n` in bits (0 when unreadable). Keys under 2048 bits are refused.
+    static func rsaBits(_ n: Any?) -> Int {
+        guard let s = n as? String, let d = decodeBase64url(s) else { return 0 }
+        let bytes = [UInt8](d).drop(while: { $0 == 0 })
+        guard let first = bytes.first else { return 0 }
+        return (bytes.count - 1) * 8 + (8 - first.leadingZeroBitCount)
+    }
+
     static func verify(alg: String, jwk: [String: Any], signature: Data, input: Data) -> Bool {
         if alg == "ES256" {
             guard (jwk["crv"] as? String) == "P-256",

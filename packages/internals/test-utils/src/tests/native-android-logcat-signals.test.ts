@@ -10,7 +10,18 @@ import { mkdtempSync, mkdirSync, readFileSync, statSync, truncateSync, writeFile
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { CAPTURE_LIMIT_BYTES, EXCERPT_LIMIT_BYTES, excerpt, isSystemProcessTag, scanDir, scanLogcat, summary } from '../../../../../scripts/native-android-logcat-signals'
+import {
+  CAPTURE_LIMIT_BYTES,
+  EXCERPT_LIMIT_BYTES,
+  excerpt,
+  isSystemProcessTag,
+  activityLine,
+  playServicesActivity,
+  scanDir,
+  scanLogcat,
+  scanPlayServices,
+  summary,
+} from '../../../../../scripts/native-android-logcat-signals'
 
 const at = (s: number) => `11-23 21:16:${String(s).padStart(2, '0')}.100`
 
@@ -91,6 +102,29 @@ const SILENT_KILL = [
   line(19, 600, 'I', 'am_proc_died', '[0,5013,com.pyreon,0,2]'),
 ].join('\n')
 
+/**
+ * Play services restarting mid-test while the app held its font provider: the
+ * shape of nightly run 45437790724 (trimmed from its logcat).
+ */
+const GMS_PROVIDER_KILL = [
+  started(20, 7175, 'offOriginNavigationIsBlockedOrHandedToTheSystem', 'com.pyreon.PyreonWebViewOriginScopeTest'),
+  line(21, 1053, 'I', 'FontLog', 'Received query name=Google Sans&weight=700&besteffort=false, URI content://com.google.android.gms.fonts [CONTEXT service_id=132 ]'),
+  line(21, 1053, 'I', 'FontLog', 'Received query Noto Color Emoji Compat, URI content://com.google.android.gms.fonts [CONTEXT service_id=132 ]'),
+  line(22, 1294, 'I', 'ChimeraModuleLdr', 'Module config changed, forcing restart due to module com.google.android.gms.appintegrity'),
+  line(22, 1053, 'I', 'ChimeraModuleLdr', 'Module config changed, forcing restart due to module com.google.android.gms.herrevad'),
+  line(22, 600, 'I', 'am_proc_died', '[0,1053,com.google.android.gms.persistent,0,3]'),
+  line(22, 600, 'I', 'ActivityManager', 'Killing 7175:com.pyreon.PyreonTasks/u0a174 (adj 0): depends on provider com.google.android.gms/.fonts.provider.FontsProvider in dying proc com.google.android.gms.persistent (adj -10000)'),
+  line(22, 600, 'I', 'am_kill', '[0,7175,com.pyreon.PyreonTasks,0,depends on provider com.google.android.gms/.fonts.provider.FontsProvider in dying proc com.google.android.gms.persistent (adj -10000)]'),
+  line(22, 600, 'I', 'am_proc_died', '[0,7175,com.pyreon.PyreonTasks,0,2]'),
+].join('\n')
+
+/** The app's OWN provider process dying takes the client with it: that is the app's failure. */
+const OWN_PROVIDER_KILL = [
+  started(23, 7300, 'fileAccessIsOff', 'com.pyreon.PyreonWebViewOriginScopeTest'),
+  line(24, 600, 'I', 'am_kill', '[0,7300,com.pyreon.PyreonTasks,0,depends on provider com.pyreon.PyreonTasks/.Store in dying proc com.pyreon.PyreonTasks:store (adj 0)]'),
+  line(24, 600, 'I', 'am_proc_died', '[0,7300,com.pyreon.PyreonTasks,0,2]'),
+].join('\n')
+
 const signals = (text: string) => scanLogcat('tasks', text).map((h) => `${h.signal} ${h.test} ×${h.count}`)
 
 describe('native-android-logcat-signals', () => {
@@ -135,6 +169,70 @@ describe('native-android-logcat-signals', () => {
     expect(signals(SILENT_KILL)).toEqual([`test-process-died ${t} ×1`])
   })
 
+  it('reports a kill by another package\'s dying provider as infra, and not also as a test death', () => {
+    const t = 'com.pyreon.PyreonWebViewOriginScopeTest#offOriginNavigationIsBlockedOrHandedToTheSystem'
+    expect(signals(GMS_PROVIDER_KILL)).toEqual([`app-killed-provider-died ${t} ×1`])
+    const [hit] = scanLogcat('tasks', GMS_PROVIDER_KILL)
+    expect(hit!.kind).toBe('infra')
+    expect(hit!.meaning).toMatch(/^INFRA: .*Not an app failure$/)
+    expect(summary([hit!])).toContain(`| tasks | infra | app-killed-provider-died | ${t} | 1 |`)
+  })
+
+  it("keeps the app's own provider process dying an app failure", () => {
+    const t = 'com.pyreon.PyreonWebViewOriginScopeTest#fileAccessIsOff'
+    expect(signals(OWN_PROVIDER_KILL)).toEqual([`test-process-died ${t} ×1`, `app-killed ${t} ×1`])
+    expect(scanLogcat('tasks', OWN_PROVIDER_KILL).every((h) => h.kind === 'app')).toBe(true)
+  })
+
+  it('keeps an infra kill inside a test that ends the renderer on purpose (PR run 45446201600)', () => {
+    const killed = GMS_PROVIDER_KILL.replace(
+      'offOriginNavigationIsBlockedOrHandedToTheSystem(com.pyreon.PyreonWebViewOriginScopeTest)',
+      'aRendererThatKeepsCrashingIsReloadedTwiceThenTheViewStaysEmpty(com.pyreon.PyreonWebViewRendererGoneTest)',
+    )
+    expect(signals(killed)).toEqual([
+      'app-killed-provider-died com.pyreon.PyreonWebViewRendererGoneTest#aRendererThatKeepsCrashingIsReloadedTwiceThenTheViewStaysEmpty ×1',
+    ])
+  })
+
+  it('counts Play services restarts (one per moment, with the running test) and Chromium font queries', () => {
+    const a = playServicesActivity('tasks', [NORMAL_TEST, GMS_PROVIDER_KILL].join('\n'))
+    expect(a.restarts).toEqual([
+      { at: '21:16:22.100', test: 'com.pyreon.PyreonWebViewOriginScopeTest#offOriginNavigationIsBlockedOrHandedToTheSystem' },
+    ])
+    // The `name=…&weight=…` query is Chromium's; Compose's emoji query is not counted.
+    expect(a.chromiumFontQueries).toBe(1)
+    expect(playServicesActivity('counter', NORMAL_TEST)).toEqual({ app: 'counter', restarts: [], chromiumFontQueries: 0 })
+
+    const dir = mkdtempSync(join(tmpdir(), 'logcat-gms-'))
+    writeFileSync(join(dir, 'tasks.txt'), GMS_PROVIDER_KILL)
+    mkdirSync(join(dir, 'tasks-media'))
+    const table = summary([], scanPlayServices(dir))
+    expect(table).toContain('None')
+    expect(table).toContain('| tasks | 21:16:22.100: com.pyreon.PyreonWebViewOriginScopeTest#offOriginNavigationIsBlockedOrHandedToTheSystem | 1 |')
+    // The same counts in the job log, which a green run keeps (the summary is not readable through the API).
+    expect(activityLine(a)).toBe(
+      'play-services tasks: chromium-font-queries=1 restarts=1: 21:16:22.100 (com.pyreon.PyreonWebViewOriginScopeTest#offOriginNavigationIsBlockedOrHandedToTheSystem)',
+    )
+  })
+
+  it('runs the emulator prep script first in every emulator step, and the script disables both WebView font features', () => {
+    const root = resolve(import.meta.dirname, '../../../../..')
+    const workflow = readFileSync(join(root, '.github/workflows/native-device.yml'), 'utf8')
+    const steps = workflow.split('uses: reactivecircus/android-emulator-runner@').slice(1)
+    expect(steps.length).toBeGreaterThanOrEqual(5)
+    for (const step of steps) {
+      const script = step.slice(step.indexOf('script: |') + 'script: |'.length)
+      const firstCommand = script
+        .split('\n')
+        .map((l) => l.trim())
+        .find((l) => l !== '' && !l.startsWith('#'))
+      expect(firstCommand).toBe('bash "$GITHUB_WORKSPACE/scripts/native-android-emulator-prep.sh"')
+    }
+    const prep = readFileSync(join(root, 'scripts/native-android-emulator-prep.sh'), 'utf8')
+    expect(prep).toContain('settings put global hide_error_dialogs 1')
+    expect(prep).toContain("--disable-features=AndroidDownloadableFontsMatching,PrefetchAndroidFonts' > /data/local/tmp/webview-command-line")
+  })
+
   it('warns when a capture hit the workflow size limit', () => {
     const dir = mkdtempSync(join(tmpdir(), 'logcat-cap-'))
     writeFileSync(join(dir, 'tasks.txt'), '')
@@ -168,7 +266,7 @@ describe('native-android-logcat-signals', () => {
     expect(statSync(join(findings, 'tasks.txt')).mode & 0o777).toBe(0o600)
     expect(ex).toContain('bundledSrcCannotLeaveTheAssetDirectory')
     expect(ex).not.toContain('PyreonWebViewRendererGoneTest')
-    expect(summary(hits)).toContain('| tasks | webview-renderer-gone | com.pyreon.PyreonWebViewOriginScopeTest#bundledSrcCannotLeaveTheAssetDirectory | 2 |')
+    expect(summary(hits)).toContain('| tasks | app | webview-renderer-gone | com.pyreon.PyreonWebViewOriginScopeTest#bundledSrcCannotLeaveTheAssetDirectory | 2 |')
     expect(scanDir(join(dir, 'missing'))).toEqual([])
 
     const huge = Array.from({ length: 40_000 }, (_, i) => line(10, 5004, 'I', 'chromium', `noise ${i} ${'x'.repeat(80)}`)).join('\n')

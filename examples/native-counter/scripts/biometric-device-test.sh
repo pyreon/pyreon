@@ -51,6 +51,23 @@ wait_text() {
   return 1
 }
 
+# An ANR dialog ("Pixel Launcher isn't responding") raised during boot, before
+# the step's prep script set hide_error_dialogs, owns the screen and is not
+# back-dismissable: the Settings launch below then polls a foreign window. Close
+# it (error dialogs close on ACTION_CLOSE_SYSTEM_DIALOGS), and tap "Wait" if it
+# is still up. 0 if there was one.
+clear_error_dialog() {
+  local screen
+  screen=$(dump)
+  grep -qE "isn(&apos;|')t responding" <<< "$screen" || return 1
+  echo "[biometric] an ANR dialog is up; closing it:"
+  grep -oE "text=\"[^\"]*isn(&apos;|')t responding\"" <<< "$screen" | head -1 || true
+  "$ADB" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+  sleep 1
+  tap_text 'wait' || true
+  return 0
+}
+
 touch_finger() { "$ADB" -s "$SERIAL" emu finger touch "$1" > /dev/null; }
 
 cleanup() {
@@ -75,12 +92,14 @@ asked=0
 for attempt in 1 2 3; do
   "$ADB" shell input keyevent KEYCODE_WAKEUP > /dev/null 2>&1 || true
   "$ADB" shell wm dismiss-keyguard > /dev/null 2>&1 || true
+  clear_error_dialog || true
   "$ADB" shell am force-stop com.android.settings > /dev/null 2>&1 || true
   "$ADB" shell am start -W -a android.settings.FINGERPRINT_ENROLL > /dev/null
   if wait_text "$pin_prompt" 30; then asked=1; break; fi
   echo "[biometric] attempt ${attempt}: Settings did not ask for the PIN. Screen:"
   screen=$(dump)
   grep -oE 'text="[^"]+"' <<< "$screen" | head -10 || true
+  clear_error_dialog || true
 done
 if [ "$asked" -ne 1 ]; then
   echo "[biometric] FAIL: Settings never asked for the PIN (a harness failure, not an app verdict)"; exit 1
