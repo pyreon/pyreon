@@ -36,6 +36,7 @@ const SPEC = JSON.stringify({
 })
 
 type Note = { id: string; title: string }
+
 type MutationComponent = (props: {
   id: string
   json: { title: string }
@@ -43,9 +44,11 @@ type MutationComponent = (props: {
 }) => VNodeChild
 
 const realFetch = globalThis.fetch
+
 afterEach(() => {
   globalThis.fetch = realFetch
 })
+
 afterAll(() => cleanEmitted('native-mutation-web'))
 
 const settle = async (): Promise<void> => {
@@ -63,6 +66,7 @@ describe('generated <Op>Mutation components on the web', () => {
       const req = input instanceof Request ? input : new Request(String(input), init)
       const body = await req.text()
       sent.push({ method: req.method, url: req.url, body })
+
       return new Promise<Response>((resolve) => {
         release = () =>
           resolve(new Response(JSON.stringify({ id: 'n1', ...JSON.parse(body) }), { headers: { 'content-type': 'application/json' } }))

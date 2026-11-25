@@ -91,11 +91,13 @@ const SPEC = JSON.stringify({
 })
 
 const out = generate(SPEC, resolveConfig({ input: 'x', target: 'multiplatform' }))
+
 const mod = (path: string): string => {
   const f = out.files.find((x) => x.path === path)
   if (!f) throw new Error(`no ${path}; have ${out.files.map((x) => x.path).join(', ')}`)
   return f.contents
 }
+
 const MODULES = ['notes.native.tsx', 'ops.native.tsx'] as const
 
 describe('a write is a native MUTATION component', () => {

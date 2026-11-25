@@ -22,6 +22,7 @@ import { cleanEmitted, emitToDisk } from './helpers/emit-to-disk'
 import { cleanTypecheck, TYPECHECK_BUDGET, typecheckSpec } from './helpers/typecheck'
 
 const json = (schema: unknown) => ({ description: 'ok', content: { 'application/json': { schema } } })
+
 const SPEC = JSON.stringify({
   openapi: '3.0.3',
   info: { title: 'Things', version: '1' },
@@ -43,6 +44,7 @@ const SPEC = JSON.stringify({
 })
 
 const PLUGINS = { plugins: ['schemas', 'client', 'queries'] } as const
+
 afterAll(() => {
   cleanEmitted('query-hook-args')
   cleanTypecheck('query-hook-args')

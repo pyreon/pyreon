@@ -804,6 +804,7 @@ export function nativeMutationBlocker(op: IrOperation): string | undefined {
   if (clash !== undefined) {
     return `its path parameter \`${clash.name}\` has the name of a prop the generated mutation component owns (${MUTATION_COMPONENT_PROPS.map((n) => `\`${n}\``).join(", ")}).`;
   }
+
   return undefined;
 }
 
@@ -831,8 +832,9 @@ export function emitWebEndpoints(
     const path = `endpoints/${tagFile(tag)}.ts`;
     const f = new SourceFile(path);
     f.import(relativeSpecifier(path, CLIENT_FILE), "api");
-    if (ops.some((op) => unchecked(op) && (op.errors?.length ?? 0) > 0))
+    if (ops.some((op) => unchecked(op) && (op.errors?.length ?? 0) > 0)) {
       f.import(relativeSpecifier(path, CLIENT_FILE), "unchecked");
+    }
     // VALUES for response schemas (a composite clause names several models);
     // TYPES for everything an input names — a parameter or a body can be a
     // `$ref` too (GitHub's spec does this heavily). An operation whose
@@ -867,7 +869,7 @@ export function emitWebEndpoints(
     }
 
     const lossless = usesBigInt(doc);
-    const decls = ops.map((op) => endpointDecl(op, validator, models, false, lossless, unchecked(op)));
+    const decls = ops.map((op) => endpointDecl(op, validator, models, { lossless, unchecked: unchecked(op) }));
     // An encoded body is typed through the encoder's own value type.
     if (decls.some((d) => d.generics.includes("FormValue"))) {
       f.importType(
@@ -912,12 +914,22 @@ export function emitWebEndpoints(
       unchecked,
       streamDecl: (op) => ({
         spec: endpointSpec(op),
-        ...endpointDecl(op, validator, models, true, lossless, unchecked(op)),
+        ...endpointDecl(op, validator, models, { asStream: true, lossless, unchecked: unchecked(op) }),
       }),
     });
     files.push(f);
   }
   return files;
+}
+
+/** How one endpoint declaration is emitted — see {@link endpointDecl}. */
+interface EndpointDeclFlags {
+  /** The raw-body twin of a JSON endpoint, which `<op>Stream` parses. */
+  asStream?: boolean;
+  /** `int64: 'bigint'`: schemas decode losslessly. */
+  lossless?: boolean;
+  /** Response validation is off: declared types only (#4815). */
+  unchecked?: boolean;
 }
 
 interface EndpointDecl {
@@ -949,9 +961,7 @@ function endpointDecl(
   op: IrOperation,
   validator: ValidatorName,
   models: ModelTypes,
-  asStream = false,
-  lossless = false,
-  unchecked = false,
+  { asStream = false, lossless = false, unchecked = false }: EndpointDeclFlags = {},
 ): EndpointDecl {
   const entries: string[] = [];
   // `asStream`: the raw-body twin of a JSON endpoint, which `<op>Stream`
@@ -965,13 +975,15 @@ function endpointDecl(
   const bodyType = (type: IrType, binding: string): string => {
     if (type.kind === "ref") return type.name;
     consts.push(`type ${binding} = ${tsType(type)}`);
+
     return binding;
   };
   let responseConst: string | undefined;
   let v = "undefined";
   if (unchecked) {
-    if (!asStream && op.response && op.response.kind !== "unknown")
+    if (!asStream && op.response && op.response.kind !== "unknown") {
       v = `(raw: unknown) => ${bodyType(op.response, `${op.id}$response`)}`;
+    }
   } else if (!asStream && op.response && op.response.kind !== "unknown") {
     const expr = schemaExpr(op.response, { native: false, validator, lossless });
     if (op.response.kind === "ref") {
