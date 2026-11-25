@@ -12,17 +12,8 @@
  * +0`; the onUpdate and inner-effect specs stay green, because they pin what
  * it must KEEP doing.
  */
-import {
-  _abortOwnerFrame,
-  _closeOwnerFrame,
-  _effectOwned,
-  _openOwnerFrame,
-  effect,
-  effectScope,
-  getCurrentScope,
-  setCurrentScope,
-  signal,
-} from '../index'
+import { effect, effectScope, getCurrentScope, setCurrentScope, signal } from '../index'
+import { _abortOwnerFrame, _closeOwnerFrame, _effectOwned, _openOwnerFrame } from '../internal'
 
 const subs = (s: { debug(): { subscriberCount: number } }) => s.debug().subscriberCount
 

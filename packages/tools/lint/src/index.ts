@@ -60,7 +60,7 @@ export {
 export { LineIndex } from './utils/source'
 export { watchAndLint } from './watcher'
 // Parallel driver — same results as `lint`, across a worker pool.
-export { _workerEntry, lintAsync, PARALLEL_FILE_THRESHOLD, partition, planRun, workerCountFor } from './parallel'
+export { lintAsync, PARALLEL_FILE_THRESHOLD, partition, planRun, workerCountFor } from './parallel'
 export type { RunPlan, SequentialReason } from './parallel'
 // "Why isn't this rule firing?" — a rule can be inert for four independent
 // reasons, three of which are invisible in config.

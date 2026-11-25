@@ -32,7 +32,6 @@ import {
   For,
   Fragment,
   h,
-  isNativeCompat,
   Match,
   onUnmount,
   Show,
@@ -40,7 +39,9 @@ import {
   Suspense,
   Switch,
 } from '@pyreon/core'
-import { _claimContextOwner, runUntracked, signal } from '@pyreon/reactivity'
+import { isNativeCompat } from '@pyreon/core/compat'
+import { runUntracked, signal } from '@pyreon/reactivity'
+import { _claimContextOwner } from '@pyreon/reactivity/internal'
 
 export { Fragment }
 

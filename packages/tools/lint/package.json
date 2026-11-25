@@ -39,6 +39,11 @@
       "import": "./lib/oxfmt.js",
       "types": "./lib/types/oxfmt.d.ts"
     },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
+    },
     "./oxlint/readable.json": "./oxlint/readable.json",
     "./oxlint/readable-strict.json": "./oxlint/readable-strict.json",
     "./package.json": "./package.json"

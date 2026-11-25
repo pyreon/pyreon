@@ -14,7 +14,18 @@
  *     callable's methods (`direct`, `dispose`, `_v`) and every owner of a
  *     computed (scope, inner registration) must still reach that node.
  */
-import { _bind, _renderBind, batch, computed, effect, effectScope, renderEffect, signal } from '../index'
+import {
+  _bind,
+  batch,
+  computed,
+  effect,
+  effectScope,
+  renderEffect,
+  signal,
+} from '../index'
+import {
+  _renderBind,
+} from '../internal'
 import { _computedNode } from '../computed'
 import { depCount, edgeCount } from './graph-internals'
 

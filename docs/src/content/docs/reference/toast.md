@@ -97,7 +97,7 @@ toast.remove()          // hard-remove all
 (message: string, options?: ToastOptions) => string
 ```
 
-Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), and `.promise(promise, messages)` for async operation tracking.
+Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), `.promise(promise, messages)` for async operation tracking, and `.list()`, a reactive read of the live queue (`readonly Readonly<Toast>[]`, oldest first) for a notification count or a custom history view.
 
 **Example**
 
@@ -124,11 +124,15 @@ toast.promise(fetchData(), {
 // Dismiss:
 toast.dismiss(id)  // one
 toast.dismiss()    // all
+
+// Read the live queue reactively:
+<span>{() => toast.list().length} notifications</span>
 ```
 
 **Common mistakes**
 
 - Forgetting to render `<Toaster />` — toasts are created but have no visual container to render into
+- Mutating the array `toast.list()` returns — it is the queue's own snapshot; change the queue through `toast()` / `toast.update` / `toast.dismiss` / `toast.remove`
 - Calling `toast.update()` after the toast has been auto-dismissed — the ID is no longer valid, the update is silently ignored
 - Using `toast.promise()` with a function instead of a promise — pass the promise directly, not `() => fetch(...)`
 - Expecting `toast.dismiss(id)` to remove the toast synchronously — it is SOFT (plays the ~200ms leave animation first); reach for `toast.remove(id)` when you need it gone instantly

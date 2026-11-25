@@ -11,10 +11,7 @@
  * mounted owner. The churn specs at the bottom pin that the count stays flat.
  */
 import {
-  _abortOwnerFrame,
   _bind,
-  _openOwnerFrame,
-  _sampleReads,
   batch,
   computed,
   createSelector,
@@ -24,6 +21,11 @@ import {
   signal,
   type SubscriberHost,
 } from '../index'
+import {
+  _abortOwnerFrame,
+  _openOwnerFrame,
+  _sampleReads,
+} from '../internal'
 import { depCount, directCount, rawEdgeCount as edgeCount } from './graph-internals'
 
 describe('effect', () => {

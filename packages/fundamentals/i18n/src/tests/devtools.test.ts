@@ -1,6 +1,5 @@
 import { createI18n } from '../create-i18n'
 import {
-  _resetDevtools,
   getActiveI18nInstances,
   getI18nInstance,
   getI18nSnapshot,
@@ -8,6 +7,7 @@ import {
   registerI18n,
   unregisterI18n,
 } from '../devtools'
+import { _resetDevtools } from '../internal'
 
 afterEach(() => _resetDevtools())
 

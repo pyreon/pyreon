@@ -28,13 +28,12 @@ import {
   isClient,
   type EffectScope,
   type OwnedReactiveNode,
-  _rdPreview,
-  _rdScopeNodes,
   runUntracked,
   type ReactiveFire,
   type ReactiveGraph,
   type UpdateCause,
 } from '@pyreon/reactivity'
+import { _rdPreview, _rdScopeNodes } from '@pyreon/reactivity/internal'
 // The same named import `index.ts` makes for `registerSingleton`: the build
 // inlines the one field (`var version = "0.53.0"`), so no JSON module reaches
 // the client and the hook adds no bytes the package did not already ship.

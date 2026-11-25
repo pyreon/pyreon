@@ -1,15 +1,17 @@
 import {
-  _captureRun,
-  _frameReads,
-  _releaseRun,
-  _replayReads,
-  _sampleReads,
   effect,
   onCleanup,
   type RunCapture,
   signal,
   type SubscriberHost,
 } from '../index'
+import {
+  _captureRun,
+  _frameReads,
+  _releaseRun,
+  _replayReads,
+  _sampleReads,
+} from '../internal'
 
 // The single-evaluation hand-off helpers (`mountAccessorChild` in
 // runtime-dom evaluates an accessor child once, then gives the value, its

@@ -23,10 +23,10 @@ import {
   COMPONENTS_BRAND,
   defineCollection,
   defineComponents,
-  isBrandedComponentsRegistry,
   mergeComponents,
 } from '../index'
 import { validateConfigShape } from '../config-loader'
+import { isBrandedComponentsRegistry } from '../internal-server'
 
 const NoopComp = () => null
 const Foo = NoopComp

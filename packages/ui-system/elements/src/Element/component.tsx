@@ -7,7 +7,8 @@
  * skipping children or switching sub-tags accordingly.
  */
 
-import { _mergePropsExcept, _pickProps, h, onMount } from '@pyreon/core'
+import { h, onMount } from '@pyreon/core'
+import { _mergePropsExcept, _pickProps } from '@pyreon/core/internal'
 import type { ComponentFn, VNodeChildAtom } from '@pyreon/core'
 import { resolveSlot } from '@pyreon/ui-core'
 import { PKG_NAME } from '../constants'

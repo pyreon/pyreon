@@ -196,8 +196,8 @@ export function isStandardSchema(
  * Synchronous only — surfaces async validation as a Promise return so
  * callers can probe for it and throw with a clear error.
  *
- * @internal — exported for advanced consumers who construct their own
- * Standard-Schema-derived parsers. Most users go through `extractParseFn`.
+ * For advanced consumers who construct their own Standard-Schema-derived
+ * parsers. Most users go through `extractParseFn`.
  */
 export function wrapStandardSchema<T extends Record<string, unknown>>(
   schema: StandardSchemaV1,

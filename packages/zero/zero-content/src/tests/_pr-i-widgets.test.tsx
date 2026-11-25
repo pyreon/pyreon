@@ -29,10 +29,7 @@ import { mountReactive, query } from '@pyreon/test-utils'
 import { signal } from '@pyreon/reactivity'
 import {
   Breadcrumbs,
-  buildBreadcrumbs,
   defineSidebar,
-  groupsFromConfig,
-  humanize,
   PrevNext,
   resolvePageLayout,
   resolvePrevNext,
@@ -41,6 +38,7 @@ import {
   type ContentLayout,
   type SidebarEntry,
 } from '../index'
+import { buildBreadcrumbs, groupsFromConfig, humanize } from '../internal'
 
 describe('PR-I — H11 — defineSidebar + config-driven Sidebar', () => {
   it('defineSidebar returns its input verbatim', () => {

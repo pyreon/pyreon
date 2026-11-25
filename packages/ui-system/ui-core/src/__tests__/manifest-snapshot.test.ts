@@ -25,7 +25,6 @@ describe('gen-docs — ui-core snapshot', () => {
       'ui-core/compose',
       'ui-core/cssVariablesPrePaintScript',
       'ui-core/get / set / merge / pick / omit / isEmpty / isEqual',
-      'ui-core/getThemeEngine / setThemeEngine',
       'ui-core/hoistNonReactStatics',
       'ui-core/init',
       'ui-core/isPyreonComponent',

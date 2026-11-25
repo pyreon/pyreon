@@ -16,7 +16,6 @@ export { createSelector } from './createSelector'
 export { defineCrossModuleState } from './cross-module-state'
 export { isClient, isServer } from './environment'
 export {
-  _resetSentinel,
   registerSingleton,
   withSilent,
   withSilentSync,
@@ -36,18 +35,6 @@ export type {
   UpdateCause,
 } from './reactive-devtools'
 export {
-  __resetReactiveDevtoolsForTesting,
-  _rdCloseBindingFrame,
-  _rdDropBinding,
-  _rdLabelBinding,
-  _rdLabelDirect,
-  _rdLabelSubscribers,
-  _rdNodeId,
-  _rdNoteTarget,
-  _rdOpenBindingFrame,
-  _rdRegistrySize,
-  _rdPreview,
-  _rdScopeNodes,
   activateReactiveDevtools,
   deactivateReactiveDevtools,
   formatUpdateCause,
@@ -77,22 +64,16 @@ export type {
   SignalValue,
 } from './type-helpers'
 export { clearReactiveTrace, getReactiveTrace } from './reactive-trace'
+// `_bind` is compiler ABI (emitted by `@pyreon/compiler`), so it stays here.
+// Every other `_` helper is on `@pyreon/reactivity/internal`.
 export {
   _bind,
-  _noopDispose,
-  _enterCleanupFrame,
-  _exitCleanupFrame,
   type CleanupFrameToken,
   type Effect,
   effect,
   onCleanup,
   type ReactiveSnapshotCapture,
   renderEffect,
-  _effectOwned,
-  _renderBind,
-  _openOwnerFrame,
-  _closeOwnerFrame,
-  _abortOwnerFrame,
   setErrorHandler,
   setSnapshotCapture,
 } from './effect'
@@ -105,11 +86,6 @@ export {
 } from './linked'
 export { createResource, type Resource } from './resource'
 export {
-  _claimContextOwner,
-  _currentScope,
-  _devOwner,
-  _swapPendingOwner,
-  _setRequestOwnerReader,
   EffectScope,
   effectScope,
   getContextOwner,
@@ -120,11 +96,6 @@ export {
   setCurrentScope,
 } from './scope'
 export {
-  _hasSubscribers,
-  _resumeSoleSubscriber,
-  _resumeSubscriber,
-  _suspendSoleSubscriber,
-  _suspendSubscriber,
   type ReadonlySignal,
   type Signal,
   type SignalDebugInfo,
@@ -134,11 +105,8 @@ export {
 } from './signal'
 export { type WrapSignalOptions, wrapSignal } from './wrap-signal'
 export { createStore, isStore, markRaw, shallowReactive, snapshot } from './store'
-export { _captureRun, _releaseRun, type RunCapture } from './effect'
+export type { RunCapture } from './effect'
 export {
-  _frameReads,
-  _replayReads,
-  _sampleReads,
   runUntracked,
   runUntracked as untrack,
   type SubscriberHost,

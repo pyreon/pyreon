@@ -115,7 +115,7 @@ export function formatErrorsByPath(
  *
  * @example
  * const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
- * const form = useForm({ fields: [emailField, ageField], schema: toFormValidator(schema), onSubmit })
+ * const form = useForm({ initialValues: { email: '', age: 0 }, schema: toFormValidator(schema), onSubmit })
  */
 export function toFormValidator<TValues>(
   schema: Schema<TValues>,

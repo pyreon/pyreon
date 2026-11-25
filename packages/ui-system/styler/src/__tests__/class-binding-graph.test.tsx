@@ -10,11 +10,11 @@
  */
 import { h } from '@pyreon/core'
 import {
-  __resetReactiveDevtoolsForTesting,
   activateReactiveDevtools,
   getReactiveGraph,
   signal,
 } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, describe, expect, it } from 'vitest'
 import { styled } from '../styled'

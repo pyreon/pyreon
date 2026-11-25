@@ -16,7 +16,6 @@ export {
   defineConfig,
   defineCollection,
   defineComponents,
-  isBrandedComponentsRegistry,
   mergeComponents,
 } from './config'
 export { COMPONENTS_BRAND } from './types'
@@ -52,15 +51,8 @@ export type { DetailsProps } from './components/Details'
 // via `registerExamples(import.meta.glob('./examples/**/*.tsx'))`.
 export { Example } from './components/Example'
 export type { ExampleProps } from './components/Example'
+export { registerExamples } from './components/example-registry'
 export {
-  _exampleCount,
-  _exampleKeys,
-  _resetExampleRegistry,
-  registerExamples,
-} from './components/example-registry'
-export {
-  _hasSharedSignal,
-  _sharedSignalCount,
   clearAllSharedSignals,
   getOrCreateSharedSignal,
 } from './components/shared-signal-registry'
@@ -69,7 +61,7 @@ export type { MathProps } from './components/Math'
 export { Mermaid } from './components/Mermaid'
 export type { MermaidProps } from './components/Mermaid'
 // PR-K — extended built-in component set (audit H2 + H14)
-export { APICard, deriveApiId } from './components/APICard'
+export { APICard } from './components/APICard'
 export type { APICardProps } from './components/APICard'
 export {
   CompatMatrix,
@@ -79,15 +71,12 @@ export type {
   CompatCellValue,
   CompatMatrixProps,
 } from './components/CompatMatrix'
-export {
-  PackageBadge,
-  renderInstallRows,
-} from './components/PackageBadge'
+export { PackageBadge } from './components/PackageBadge'
 export type {
   PackageBadgeProps,
   PackageManager,
 } from './components/PackageBadge'
-export { buildSrcdoc, Playground } from './components/Playground'
+export { Playground } from './components/Playground'
 export type { PlaygroundProps } from './components/Playground'
 export { PropTable } from './components/PropTable'
 export type { PropRow, PropTableProps } from './components/PropTable'
@@ -96,12 +85,7 @@ export type { TabsProps } from './components/Tabs'
 // PR-F audit H7 — `<Image>` re-exported as a built-in so the emit-jsx
 // local-image rewrite resolves via `virtual:zero-content/components`.
 export { Image } from './components/Image'
-export {
-  defineSidebar,
-  groupEntries,
-  groupsFromConfig,
-  Sidebar,
-} from './components/Sidebar'
+export { defineSidebar, Sidebar } from './components/Sidebar'
 export type {
   SidebarConfig,
   SidebarConfigGroup,
@@ -109,16 +93,12 @@ export type {
   SidebarEntry,
   SidebarProps,
 } from './components/Sidebar'
-export { filterHeadings, Toc } from './components/Toc'
+export { Toc } from './components/Toc'
 export type { TocProps } from './components/Toc'
 // PR-I — navigation widgets (audit M9 + M10)
 export { PrevNext, resolvePrevNext } from './components/PrevNext'
 export type { PrevNextProps } from './components/PrevNext'
-export {
-  Breadcrumbs,
-  buildBreadcrumbs,
-  humanize,
-} from './components/Breadcrumbs'
+export { Breadcrumbs } from './components/Breadcrumbs'
 export type { BreadcrumbCrumb, BreadcrumbsProps } from './components/Breadcrumbs'
 // PR-I — per-page layout override (audit M11)
 export { resolvePageLayout } from './frontmatter-layout'
@@ -132,13 +112,11 @@ export type {
 // ─── Search ────────────────────────────────────────────────────────────────
 
 export {
-  _resetSearchForTesting,
   loadSearchIndex,
   Search,
   useSearch,
 } from './search/search-runtime'
 export type {
-  SearchCatalog,
   SearchProps,
   UseSearchOptions,
   UseSearchResult,
@@ -147,14 +125,11 @@ export type {
 // ─── Runtime queries (getCollection / getEntry / getEntries) ──────────────
 //
 // Read from the plugin-emitted `virtual:zero-content/collections`
-// module — the virtual module imports `_setRegistry` from here at app
-// boot.
+// module — the virtual module imports `_setRegistry` from
+// `@pyreon/zero-content/internal` at app boot. The `_`-prefixed internals
+// and test-reset helpers live on that `./internal` subpath, not here.
 
 export {
-  _getRegistry,
-  _listCollections,
-  _resetRegistryForTesting,
-  _setRegistry,
   getCollection,
   getEntries,
   getEntry,
@@ -183,7 +158,6 @@ export { isPublished } from './publish'
 // RSS 2.0 and llms.txt into `dist/` at build close. For hand-written build
 // scripts use `@pyreon/zero`'s `generateRssFeed` and `@pyreon/zero/server`'s
 // `seoPlugin` / `aiPlugin`.
-export { joinUrl } from './seo/sitemap'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 

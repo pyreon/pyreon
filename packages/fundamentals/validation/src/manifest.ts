@@ -220,7 +220,7 @@ if (isPyreonAdapter(schema)) {
       kind: 'function',
       signature: '<T>(schema: StandardSchemaV1) => (value: unknown) => SchemaParseResult<T>',
       summary:
-        'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. @internal — most consumers go through extractParseFn.',
+        'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. Most consumers go through extractParseFn; call this directly when building your own Standard-Schema-derived parser.',
       example: `import { wrapStandardSchema } from '@pyreon/validation'
 
 const parse = wrapStandardSchema(schema)

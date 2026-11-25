@@ -10,11 +10,6 @@
  */
 import {
   _bind,
-  _frameReads,
-  _replayReads,
-  _resumeSoleSubscriber,
-  _sampleReads,
-  _suspendSoleSubscriber,
   batch,
   type Computed,
   computed,
@@ -25,6 +20,13 @@ import {
   signal,
   type SubscriberHost,
 } from '../index'
+import {
+  _frameReads,
+  _replayReads,
+  _resumeSoleSubscriber,
+  _sampleReads,
+  _suspendSoleSubscriber,
+} from '../internal'
 import { depCount, directCount, rawEdgeCount as edgeCount } from './graph-internals'
 
 const errors: unknown[] = []

@@ -1,4 +1,5 @@
-import { _enterCleanupFrame, _exitCleanupFrame, effect, onCleanup, signal } from '../index'
+import { effect, onCleanup, signal } from '../index'
+import { _enterCleanupFrame, _exitCleanupFrame } from '../internal'
 
 describe('_enterCleanupFrame / _exitCleanupFrame', () => {
   test('collects onCleanup outside any effect', () => {

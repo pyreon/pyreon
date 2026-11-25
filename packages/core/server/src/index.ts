@@ -105,7 +105,6 @@ export {
   getRegisteredServerIslands,
   SERVER_ISLAND_MINT,
   serverIsland,
-  _resetServerIslands,
 } from './server-island'
 export type { PrerenderOptions, PrerenderResult } from './ssg'
 // SSG

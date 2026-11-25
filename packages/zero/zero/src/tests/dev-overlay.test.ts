@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildHydrationReport } from '../dev-overlay'
+import { buildHydrationReport } from '../internal'
 
 describe('buildHydrationReport', () => {
   const ctx = {

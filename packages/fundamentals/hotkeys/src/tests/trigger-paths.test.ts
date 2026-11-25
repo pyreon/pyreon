@@ -5,7 +5,8 @@
  * carries the LAST combo's key), and a list of nothing but separators.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { _resetHotkeys, enableScope, registerHotkey, splitShortcutList, trigger } from '../index'
+import { enableScope, registerHotkey, splitShortcutList, trigger } from '../index'
+import { _resetHotkeys } from '../internal'
 
 afterEach(() => _resetHotkeys())
 

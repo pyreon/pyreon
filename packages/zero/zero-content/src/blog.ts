@@ -10,7 +10,7 @@
 //
 // Optional default styles: `import '@pyreon/zero-content/blog.css'`.
 
-export { blogCollection, blogSchema, normalizeBlogFrontmatter, validateBlogFrontmatter } from './blog/schema'
+export { blogCollection, blogSchema } from './blog/schema'
 export type {
   BlogCollectionOptions,
   BlogFrontmatter,
@@ -19,7 +19,7 @@ export type {
   FrontmatterDate,
 } from './blog/schema'
 
-export { defineBlog, pageFromParam, resolveBlogConfig } from './blog/define-blog'
+export { defineBlog } from './blog/define-blog'
 export type {
   Blog,
   BlogConfig,

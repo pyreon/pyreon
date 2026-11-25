@@ -16,13 +16,13 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import pyreonPlugin, {
+import pyreonPlugin, { type PyreonPluginOptions } from '../index'
+import {
   _compatAliasTable,
   _getCompatTarget,
   _isUnaliasedFrameworkImport,
   _unaliasedImportWarning,
-  type PyreonPluginOptions,
-} from '../index'
+} from '../internal'
 
 type Framework = 'react' | 'preact' | 'vue' | 'solid' | 'svelte'
 const FRAMEWORKS: Framework[] = ['react', 'preact', 'vue', 'solid', 'svelte']
@@ -32,9 +32,11 @@ function compatExports(fw: Framework): string[] {
     readFileSync(resolve(__dirname, `../../../${fw}-compat/package.json`), 'utf8'),
   ) as { exports: Record<string, unknown> }
 
-  return Object.keys(pkg.exports).map((k) =>
-    k === '.' ? `@pyreon/${fw}-compat` : `@pyreon/${fw}-compat/${k.slice(2)}`,
-  )
+  // `./internal` holds the package's test helpers (no semver promise); it is
+  // not a framework entry, so no framework specifier aliases to it.
+  return Object.keys(pkg.exports)
+    .filter((k) => k !== './internal')
+    .map((k) => (k === '.' ? `@pyreon/${fw}-compat` : `@pyreon/${fw}-compat/${k.slice(2)}`))
 }
 
 describe.each(FRAMEWORKS)('compat aliases — %s', (fw) => {
