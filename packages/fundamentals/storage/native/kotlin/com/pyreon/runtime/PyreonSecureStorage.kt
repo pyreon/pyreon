@@ -52,7 +52,7 @@
 // backend-injection constructor remains for apps that want their own store;
 // tests still pass `InMemorySecureBackend`.
 //
-// ## Key-first API (BREAKING, pre-1.0)
+// ## Key-first API (a breaking change made in 0.x)
 //
 // `write(key, value)` — key FIRST on every platform (web, Swift, Kotlin).
 // The original `write(value, key)` order was a live hazard: PMTC emits

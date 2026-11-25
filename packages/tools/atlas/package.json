@@ -3,6 +3,9 @@
   "version": "0.54.0",
   "description": "AI-native component workbench for the Pyreon ecosystem \u2014 derives, verifies, and serves a machine-readable component catalog.",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -64,6 +67,11 @@
       "bun": "./src/dev.ts",
       "import": "./lib/dev.js",
       "types": "./lib/types/dev.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [

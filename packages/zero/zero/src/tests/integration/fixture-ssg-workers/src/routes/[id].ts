@@ -15,5 +15,10 @@ export const loader = async (ctx: { params: { id: string } }) => {
 
 export default function Item() {
   const data = useLoaderData<{ id: string; x: number }>()
-  return h('article', null, h('h1', null, `Item ${data.id}`), h('p', null, `checksum ${data.x}`))
+  return h(
+    'article',
+    null,
+    h('h1', null, () => `Item ${data().id}`),
+    h('p', null, () => `checksum ${data().x}`),
+  )
 }

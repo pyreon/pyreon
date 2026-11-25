@@ -40,7 +40,7 @@ The scaffold pins the Android Gradle plugin, Kotlin, Compose and SDK levels it i
 
 - macOS 14.0+ (Sonoma), Xcode 15.0+
 - Swift 5.9+ (ships with Xcode 15)
-- iOS 17 deployment target (the runtime's `Package.swift` declares `.iOS(.v17)` / `.macOS(.v14)`; it uses SwiftUI's `@Observable`)
+- iOS 17 deployment target (the runtime's and the router's `Package.swift` declare `.iOS(.v17)` / `.macOS(.v14)`; they use SwiftUI's `@Observable`). iOS 17 is the oldest version Pyreon supports (see the [support matrix](/docs/stability-and-direction#support-matrix)).
 - `@pyreon/native-cli`, `@pyreon/native-runtime-swift` and `@pyreon/native-router-swift` installed from npm in the JavaScript project that holds your `.tsx` source
 
 ### Step 1 — Link the Swift runtime as a local SwiftPM package
@@ -142,6 +142,7 @@ init({ navigate: (to) => router.push(to) })
 ### Prerequisites
 
 - JDK 17 on `PATH`, the Android SDK, and Gradle (the scaffold's scripts call `gradle` directly)
+- `minSdk = 26` (Android 8.0) or higher in your app module: the oldest Android version Pyreon supports (see the [support matrix](/docs/stability-and-direction#support-matrix))
 - Kotlin with the Compose compiler plugin, and Jetpack Compose. Use the Android Gradle plugin, Kotlin and Compose BOM versions the scaffold pins in its generated `build.gradle.kts` files — those are the tested combination.
 - `@pyreon/native-cli`, `@pyreon/native-runtime-kotlin` and `@pyreon/native-router-kotlin` installed from npm in the JavaScript project that holds your `.tsx` source
 

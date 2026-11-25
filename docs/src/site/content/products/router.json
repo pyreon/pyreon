@@ -45,8 +45,8 @@
     "text": "`await router.push('/checkout')` resolves to `'committed'`, `'cancelled'` (a blocker, guard or middleware said no) or `'superseded'` (a newer navigation won). No guessing from the URL afterwards."
    },
    {
-    "title": "Accessible and smooth by default",
-    "text": "The root `<RouterView>` announces each new page through a polite live region. Navigations run inside `document.startViewTransition()` where it exists, and skip the animation when the user asks for reduced motion."
+    "title": "Accessible by default",
+    "text": "The root `<RouterView>` announces each new page through a polite live region. View Transitions are one option away (`viewTransition: true`), and skip the animation when the user asks for reduced motion."
    }
   ]
  },
@@ -60,7 +60,7 @@
   "after": {
    "label": "Pyreon",
    "caption": "Guards return `true`, `false` or a path. The loader types the component.",
-   "code": "import { signal } from '@pyreon/reactivity'\nimport { createRouter, useLoaderData, type LoaderData } from '@pyreon/router'\n\nconst signedIn = signal(false)\nconst loader = ({ params }: { params: Record<string, string> }) => fetchUser(params.id!)\n\nconst router = createRouter({\n  mode: 'history',\n  routes: [\n    { path: '/user/:id', component: User, loader },\n    { path: '/settings', component: Settings, beforeEnter: () => signedIn() || '/login' },\n  ],\n})\n\nfunction User() {\n  const user = useLoaderData<LoaderData<typeof loader>>()\n  return <h1>{user.name}</h1>\n}"
+   "code": "import { signal } from '@pyreon/reactivity'\nimport { createRouter, useLoaderData, type LoaderData } from '@pyreon/router'\n\nconst signedIn = signal(false)\nconst loader = ({ params }: { params: Record<string, string> }) => fetchUser(params.id!)\n\nconst router = createRouter({\n  mode: 'history',\n  routes: [\n    { path: '/user/:id', component: User, loader },\n    { path: '/settings', component: Settings, beforeEnter: () => signedIn() || '/login' },\n  ],\n})\n\nfunction User() {\n  const user = useLoaderData<LoaderData<typeof loader>>()\n  return <h1>{user().name}</h1>\n}"
   }
  },
  "extraSectionsHtml": null,
@@ -107,7 +107,7 @@
    },
    {
     "name": "View Transitions and route announcements",
-    "text": "on by default, reduced motion respected"
+    "text": "announcements on by default; transitions opt-in, reduced motion respected"
    },
    {
     "name": "Tab stacks:",
@@ -370,7 +370,7 @@
   },
   {
    "q": "Can I opt out of the announcements or transitions?",
-   "a": "`<RouterView announceRouteChanges={false} />` turns off the announcer, and `meta: { viewTransition: false }` skips the transition for one route."
+   "a": "`<RouterView announceRouteChanges={false} />` turns off the announcer, and transitions are off unless you turn them on — `createRouter({ viewTransition: true })`, or `meta: { viewTransition: true }` for one route (`false` opts a route out)."
   }
  ],
  "sources": [
@@ -403,7 +403,7 @@
    "path": "docs/src/content/docs/router.md \"Accessibility — route announcements\"; packages/core/router/src/announcer.ts"
   },
   {
-   "claim": "View Transitions automatic, skipped under prefers-reduced-motion, meta.viewTransition: false",
+   "claim": "View Transitions opt-in (viewTransition: true), skipped under prefers-reduced-motion, meta.viewTransition overrides",
    "path": "docs/src/content/docs/router.md \"View Transitions API\""
   },
   {

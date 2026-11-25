@@ -323,7 +323,7 @@ if (childOp) {
 // ─── CORRECTNESS GATE (orchestrator only, BEFORE any timing — children skip
 // it so neither library is pre-warmed in a measured process) ──────────────────────────
 // Without this, a "win" can be one side doing LESS work. Two shapes are
-// specifically at risk here: Pyreon's `values()` is epoch-CACHED while
+// specifically at risk here: Pyreon's `values()` is a MEMOISED computed while
 // TanStack reads `state.values` directly (a stale cache would read as a free
 // win), and `setFieldValue` must be observable IMMEDIATELY on both sides —
 // if one deferred the write, the hot-path comparison would be meaningless.

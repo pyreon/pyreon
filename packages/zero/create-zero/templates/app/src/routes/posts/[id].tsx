@@ -80,13 +80,16 @@ export async function loader(ctx: LoaderContext) {
 }
 
 export default function PostDetail() {
+  // An accessor: read it inside JSX, `useHead(() => …)` or an effect so the
+  // page follows the data when the loader re-runs.
   const data = useLoaderData<{ post: Post }>()
-  const post = data.post
 
-  useHead({
-    title: `${post.title} — Pyreon Zero`,
-    meta: [{ name: 'description', content: post.excerpt }],
-  })
+  const post = () => data().post
+
+  useHead(() => ({
+    title: `${post().title} — Pyreon Zero`,
+    meta: [{ name: 'description', content: post().excerpt }],
+  }))
 
   return (
     <article class="post-detail">
@@ -97,16 +100,16 @@ export default function PostDetail() {
         ← Back to Posts
       </Link>
 
-      <h1>{post.title}</h1>
+      <h1>{post().title}</h1>
 
       <div class="post-meta">
-        <span>{post.author}</span>
-        <span>{post.date}</span>
+        <span>{post().author}</span>
+        <span>{post().date}</span>
       </div>
 
       <div class="post-body">
         <For
-          each={post.body.split('\n\n')}
+          each={() => post().body.split('\n\n')}
           by={(p) => p}
         >
           {(paragraph) => <p style="margin-bottom: var(--space-lg);">{paragraph}</p>}

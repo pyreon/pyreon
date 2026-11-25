@@ -3,7 +3,8 @@
 // Plugin-owned: the compiler core only calls `emitKotlinSchemaItem` through the item emitter.
 
 import { KOTLIN_INT, kotlinMember, kotlinStr, localBase } from '@pyreon/native-compiler/plugin-api'
-import type { ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
+import type { EmailRule, ZodFieldConstraints, ZodFieldType, ZodSchemaDefnIR } from './ir'
+import { EMAIL_RFC5322_MAX_LENGTH, emailPattern } from './email-rule'
 import { HTTP_URL_PATTERN, URI_PATTERN } from './url-rule'
 
 /**
@@ -102,12 +103,7 @@ function emitKotlinScalarConstraints(
         )
       }
     }
-    if (c.email) {
-      const guard = nullableTarget ? `${targetName} != null && ` : ''
-      lines.push(
-        `${ind}if (${guard}!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${targetName}${nullableTarget ? '!!' : ''})) throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "email${ruleSuffix}")`,
-      )
-    }
+    if (c.email) lines.push(`${ind}${kotlinEmailCheck(c.email, targetName, nullableTarget, fieldName, ruleSuffix)}`)
     if (c.url) {
       const guard = nullableTarget ? `if (${targetName} != null) ` : ''
       const v = `${targetName}${nullableTarget ? '!!' : ''}`
@@ -278,6 +274,30 @@ function emitKotlinDiscriminatedUnion(zs: ZodSchemaDefnIR): string {
   lines.push(`}`)
 
   return lines.join('\n') + '\n'
+}
+
+/**
+ * The Kotlin statement that throws when `target` fails the authoring library's
+ * email rule (see `EmailRule`), not one rule for all.
+ */
+function kotlinEmailCheck(
+  rule: EmailRule,
+  target: string,
+  nullable: boolean,
+  fieldName: string,
+  ruleSuffix: string,
+): string {
+  const fail = `throw PyreonSchemaError.ConstraintViolation(${kotlinStr(fieldName)}, "email${ruleSuffix}")`
+  if (rule.kind === 'zod') {
+    const guard = nullable ? `${target} != null && ` : ''
+    return `if (${guard}!Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$").matches(${target}${nullable ? '!!' : ''})) ${fail}`
+  }
+  // `@pyreon/validate`'s grammar at its precision, IDN domains included.
+  const guard = nullable ? `if (${target} != null) ` : ''
+  const v = `${target}${nullable ? '!!' : ''}`
+  const len = rule.precision === 'rfc5322' ? `${v}.length > ${EMAIL_RFC5322_MAX_LENGTH} || ` : ''
+
+  return `${guard}if (${len}!Regex(${kotlinStr(emailPattern(rule.precision))}).containsMatchIn(${v})) ${fail}`
 }
 
 export function emitKotlinZodSchema(zs: ZodSchemaDefnIR): string {

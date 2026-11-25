@@ -423,7 +423,7 @@ The `run` column says which run each row comes from. Final-pass rows are one run
 | http | ky, ofetch, redaxios, axios | final | GET → JSON 1.17× vs ofetch (1,056 vs 1,240 ns); vs ofetch POST 1.30×, query 2.38×; 4.9–20.6× vs ky; 1.77–1.90× vs redaxios; 9.1–56.3× vs axios | create client 🤝 redaxios (83 vs 70 ns) and 🤝 ofetch; 5 s-timeout GET 🤝 ofetch; middleware 🤝 ofetch |
 | hotkeys | tinykeys, hotkeys-js, mousetrap | overnight | dispatch hit 1.7–7.5×, miss 6.0–118× (12 and 48 bindings); register + teardown 1.17× vs tinykeys, 9–14× vs the others | — |
 | url-state | nuqs | overnight | boolean 1.8×, array parse 2.1×, array serialize 1.2×, float 1.7× | **integer parse 1.1× slower** (8.1 vs 7.0 ns); string, number serialize and round-trip 🤝 |
-| form (headless store) | TanStack form-core | overnight | update 62.4×, reset 4.8×, read-all 1.2× | setup 🤝 |
+| form (headless store) | TanStack form-core | overnight | update 62.4×, reset 4.8× | setup 🤝; **read-all 1.1× slower** since `values()` became reactive (#4824): 8.9 vs 8.2 ns, local paired run under load, 2026-11-24 (was a 1.2× win, 6.9 ns) |
 | form (re-render count) | RHF, Formik | overnight | 0 re-renders / 10 keystrokes (RHF 0, Formik 10) | — |
 | query ⚠ happy-dom | react-query (same core) | overnight | data change → DOM 5.6×; mount 1.2×; 1 vs 8 derivations | — |
 | virtual ⚠ happy-dom | react-virtual (same core) | overnight | scroll → DOM 1.4× | **mount 10k list 1.1× slower** (real Chromium: Pyreon 1.15× faster, §2) |

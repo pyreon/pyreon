@@ -406,7 +406,7 @@ type Payload = NestValues<Values>
 // @pyreon/router — the loader's resolved data, no second annotation
 import { useLoaderData, type LoaderData } from '@pyreon/router'
 export const loader = async () => ({ posts: await fetchPosts() })
-const data = useLoaderData<LoaderData<typeof loader>>() // { posts: Post[] }
+const data = useLoaderData<LoaderData<typeof loader>>() // () => { posts: Post[] }
 
 // @pyreon/i18n — typed translation keys (opt-in, additive)
 const en = { nav: { home: 'Home' }, items_one: '{{count}} item', items_other: '{{count}} items' } as const

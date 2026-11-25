@@ -184,7 +184,7 @@ Right for editors/document previews (self-contained panes you wouldn't reimpleme
 
 - **`<Inline>` does NOT wrap on Android** (it's a `Row`). 5+ buttons overflow + the last becomes untappable. Keep horizontal groups short, or use `<Stack>` (vertical) for action lists.
 - **No `Double` confusion**: a fractional literal (`signal(9.99)`) infers `Double`; `/` always yields a float now. Integer signals stay `Int`.
-- **`useLoaderData<T>()`** reads a route `loader: () => …` (zero-param, expression body) auto-fired on navigation.
+- **`useLoaderData<T>()`** reads a route `loader: () => …` (zero-param, expression body) auto-fired on navigation. It returns an accessor, as on the web: `const data = useLoaderData<Post>()`, then `data().title` (lowers to `data.title`). A destructure (`const { title } = useLoaderData<Post>()`) warns and is not lowered.
 - Escape hatches for genuinely-per-platform UI: `<Web>` / `<NativeIOS>` / `<NativeAndroid>`.
 
 ## Minimal correct multiplatform app (copy this shape)

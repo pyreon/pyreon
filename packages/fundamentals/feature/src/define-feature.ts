@@ -8,6 +8,7 @@ import {
   createFetchTransport,
   createHttp,
   type HttpMethod,
+  pathPartEnd,
   type RequestOptions,
 } from '@pyreon/http'
 import { batch, signal } from '@pyreon/reactivity'
@@ -110,26 +111,26 @@ function createFetcher(baseFetcher?: typeof fetch) {
       })
     },
     getById<T>(url: string, id: string | number, abortSignal: AbortSignal): Promise<T> {
-      return request<T>('GET', `${url}/:id`, {
+      return request<T>('GET', itemUrl(url, ':id'), {
         params: { id },
         signal: abortSignal,
-        displayUrl: `${url}/${id}`,
+        displayUrl: itemUrl(url, String(id)),
       })
     },
     create<T>(url: string, data: unknown): Promise<T> {
       return request<T>('POST', url, { json: data, displayUrl: url })
     },
     update<T>(url: string, id: string | number, data: unknown): Promise<T> {
-      return request<T>('PUT', `${url}/:id`, {
+      return request<T>('PUT', itemUrl(url, ':id'), {
         params: { id },
         json: data,
-        displayUrl: `${url}/${id}`,
+        displayUrl: itemUrl(url, String(id)),
       })
     },
     delete(url: string, id: string | number): Promise<void> {
-      return request<void>('DELETE', `${url}/:id`, {
+      return request<void>('DELETE', itemUrl(url, ':id'), {
         params: { id },
-        displayUrl: `${url}/${id}`,
+        displayUrl: itemUrl(url, String(id)),
       })
     },
   }
@@ -630,4 +631,16 @@ export function defineFeature<TValues extends Record<string, unknown>>(
       }
     },
   }
+}
+
+/**
+ * `<url>/<segment>` with the segment added at the END OF THE PATH PART — before
+ * a `?query` / `#fragment` the feature's `api` URL carries. Appending after the
+ * whole string put `/:id` INSIDE the query (`/items?tenant=1/:id`), where
+ * `@pyreon/http` reads no placeholder: the request went to the list URL.
+ */
+function itemUrl(url: string, segment: string): string {
+  const end = pathPartEnd(url)
+
+  return `${url.slice(0, end)}/${segment}${url.slice(end)}`
 }

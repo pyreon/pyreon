@@ -94,7 +94,7 @@ export function runPyreonLintJson(): unknown {
   const outFile = join(dir, 'doctor.json')
   try {
     try {
-      execSync(`bun packages/tools/cli/src/index.ts doctor --only lint --json > ${JSON.stringify(outFile)}`, {
+      execSync(`bun packages/tools/cli/src/main.ts doctor --only lint --json > ${JSON.stringify(outFile)}`, {
         stdio: ['ignore', 'ignore', 'inherit'],
         maxBuffer: 256 * 1024 * 1024,
       })

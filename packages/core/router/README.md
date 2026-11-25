@@ -53,7 +53,7 @@ function User() {
   const route = useRoute<'/user/:id'>()
   const data = useLoaderData<{ name: string }>()
   const [search] = useTypedSearchParams({ page: 'number', q: 'string' })
-  return <h1>{data.name} (id={route().params.id}, page={search().page ?? 1})</h1>
+  return <h1>{data().name} (id={route().params.id}, page={search().page ?? 1})</h1>
 }
 
 mount(<App />, document.getElementById('app')!)
@@ -184,10 +184,11 @@ router.push({ name: 'typo' }) // ❌ TypeScript error
 
 Loaders run before the route renders. In-flight calls for the same `loaderKey` dedupe; cached results are served until `gcTime` expires. `router.invalidateLoader(key?)` clears entries. `<RouterLink prefetch>` (hover/viewport) routes through the SAME cache + in-flight dedup, so a prefetch and the click that follows share ONE loader run.
 
-Read loader data in the component:
+Read loader data in the component. `useLoaderData()` returns an accessor: read `data()` in JSX, an `effect` or a `computed`. The page stays mounted when the data changes under the same loader key (a `revalidate()`, an SWR refresh, a server loader re-run on a query-only navigation), and the accessor follows it; a value read once in the body does not.
 
 ```ts
 const data = useLoaderData<{ name: string }>()
+// <h1>{data().name}</h1>
 ```
 
 `LoaderContext.request?: Request` is populated on SSR (via `prefetchLoaderData(router, path, request)`) and for serverLoaders run by the data endpoint; `undefined` for isomorphic loaders running in the browser.
@@ -330,9 +331,9 @@ setTyped({ page: 2 }) // other query params and the hash are kept
 
 ## View Transitions
 
-Route changes auto-wrap in `document.startViewTransition()` when supported. Opt out per-route with `meta: { viewTransition: false }`.
+Opt-in: `createRouter({ routes, viewTransition: true })` wraps route changes in `document.startViewTransition()` where supported; per route, `meta: { viewTransition: true | false }` overrides the router's setting (meta merges down the matched chain). Off by default because a transition defers the DOM swap to the next frame (~16 ms after the click instead of under 1 ms) and leaves the page un-hit-testable while the cross-fade runs (250 ms by default). Skipped under `prefers-reduced-motion: reduce` and in `mode: 'memory'`.
 
-**`await router.push()` / `.replace()` resolves on `updateCallbackDone`** — the DOM commit, NOT the full animation:
+**With transitions on, `await router.push()` / `.replace()` resolves on `updateCallbackDone`** — the DOM commit, NOT the full animation:
 
 | Promise | Resolves when | Router awaits? |
 |---|---|---|
@@ -397,7 +398,7 @@ export const loader = async () => ({ posts: await fetchPosts() })
 
 function PostsPage() {
   const data = useLoaderData<LoaderData<typeof loader>>()
-  // data: { posts: Post[] } — follows the loader; no second annotation, no drift
+  // data(): { posts: Post[] } — follows the loader; no second annotation, no drift
 }
 ```
 

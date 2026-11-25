@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 import { resolve } from 'node:path'
-import { createTerm, formatElapsed, interrupted, onInterrupt } from '@pyreon/ansi'
+import {
+  createTerm,
+  exitAfterFlush as flushThenExit,
+  formatElapsed,
+  interrupted,
+  onInterrupt,
+  writeOut,
+} from '@pyreon/ansi'
 import { formatInitResult, formatRuleList, parsePresetList, parseRuleOptionsOverride } from './cli-helpers'
 import { loadConfig, loadConfigFromPath } from './config/loader'
 import { initConfig } from './init'
@@ -40,8 +47,8 @@ function printUsage() {
 `)
 }
 
-function printList() {
-  console.log(formatRuleList())
+function printList(): Promise<void> {
+  return writeOut(formatRuleList())
 }
 
 interface CliArgs {
@@ -190,7 +197,7 @@ export async function runCli(argv: string[]): Promise<number | null> {
   }
 
   if (args.showList) {
-    printList()
+    await printList()
     return 0
   }
 
@@ -270,26 +277,27 @@ export async function runCli(argv: string[]): Promise<number | null> {
   }
 
   if (args.format === 'json') {
-    console.log(formatJSON(result))
+    await writeOut(formatJSON(result))
   } else if (args.format === 'gha') {
     const gha = formatGha(result)
-    if (gha) console.log(gha)
+    if (gha) await writeOut(gha)
   } else if (args.format === 'compact') {
-    console.log(formatCompact(result))
+    await writeOut(formatCompact(result))
   } else {
     const output = formatText(result, {
       elapsedMs: performance.now() - startedAt,
       fixApplied: args.fix,
     })
-    if (output) console.log(output)
+    if (output) await writeOut(output)
   }
 
   return result.totalErrors > 0 ? 1 : 0
 }
 
+
 async function main() {
   const code = await runCli(process.argv.slice(2))
-  if (code !== null) process.exit(code)
+  if (code !== null) await flushThenExit(code)
 }
 
 // Only invoke `main()` when this module is the entry point. Importing

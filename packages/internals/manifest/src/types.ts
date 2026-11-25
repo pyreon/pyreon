@@ -143,7 +143,7 @@ export interface ApiEntry {
   stability?: 'stable' | 'experimental' | 'deprecated'
   /**
    * Version the API first shipped in. Feeds the MCP `get_changelog`
-   * tool (T2.5.8). Omit for pre-1.0 APIs where history is not tracked.
+   * tool (T2.5.8). Omit for APIs that predate version tracking.
    * Must be `MAJOR.MINOR.PATCH` form.
    */
   since?: SemVer

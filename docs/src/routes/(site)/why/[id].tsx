@@ -18,6 +18,10 @@ export async function loader({ params }: LoaderContext): Promise<WhyView> {
 
 export default function WhyRoute() {
   const view = useLoaderData<WhyView | undefined>()
-  if (!view) return null
-  return <WhyPage view={view} />
+  // An accessor, so the page follows its loader data (a client-only cold
+  // start fills it in after mount) instead of pinning the first read.
+  return () => {
+    const current = view()
+    return current ? <WhyPage view={current} /> : null
+  }
 }

@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { check, type CheckOptions } from '../check'
+import { stdoutToConsoleLog } from './stdout-to-console'
 
 let tmp: string
 let logs: string[]
@@ -32,6 +33,7 @@ beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'px-check-report-'))
   logs = []
   vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => logs.push(a.map(String).join(' ')))
+  stdoutToConsoleLog()
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 

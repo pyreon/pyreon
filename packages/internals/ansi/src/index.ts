@@ -9,6 +9,10 @@
  *   terminal theme (`PYREON_CLI_THEME`, `COLORFGBG`), Unicode support
  *   (locale) and layout width (window columns, capped at 100).
  * - `gha.ts`: GitHub Actions annotations for `--gha`.
+ * - `exit.ts`: `exitAfterFlush(code)`, the only way a command that printed
+ *   may exit (a bare `process.exit` truncates piped output).
+ * - `output.ts`: `writeOut(text)`, how a command prints a large or structured
+ *   report (never `console.log`, which Bun truncates on a full pipe).
  * - `interrupt.ts`: the Ctrl-C verdict line and exit code 130.
  * - `term.ts`: `createTerm()` binds those to one terminal; `term` is the
  *   process's stdout.
@@ -32,6 +36,9 @@ export {
 } from './detect.ts'
 export type { GhaAnnotation, GhaLevel } from './gha.ts'
 export { ghaAnnotation, ghaEscape, ghaLevel, ghaProperty } from './gha.ts'
+export { exitAfterFlush } from './exit.ts'
+export type { OutputStream } from './output.ts'
+export { isClosed, outputError, writeOut } from './output.ts'
 export type { InterruptOptions } from './interrupt.ts'
 export { onInterrupt } from './interrupt.ts'
 export type { Role, RoleColor, SymbolName } from './palette.ts'

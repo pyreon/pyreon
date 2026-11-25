@@ -53,7 +53,7 @@ export const loader = async () => fetch('/api/hello').then((r) => r.json())
 
 export default function Home() {
   const data = useLoaderData<{ message: string }>()
-  return <h1>{data.message}</h1>
+  return <h1>{data().message}</h1>
 }
 ```
 

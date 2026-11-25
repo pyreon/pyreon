@@ -127,7 +127,10 @@ describe('previewMiddleware — no cookie, and isPreview source shapes', () => {
 describe('preview × ISR — a preview visitor bypasses the cache and never populates it', () => {
   it('published page cached for the public; preview visitor gets a fresh draft render', async () => {
     let version = 'published-v1'
-    const Page = () => h('p', null, `${useLoaderData<{ v: string }>()?.v}`)
+    const Page = () => {
+      const data = useLoaderData<{ v: string }>()
+      return h('p', null, () => `${data()?.v}`)
+    }
     const routes: RouteRecord[] = [
       {
         path: '/',
