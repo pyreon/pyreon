@@ -196,9 +196,14 @@ interface SubscriberHostLike {
   _d?: Set<() => void> | null
 }
 
-/** The tracked subscribers of a source (graph edges), in subscription order. */
-function trackedSubs(host: Partial<SubscriberHostLike> | null): object[] {
+/**
+ * The tracked subscribers of a source (graph edges), in subscription order.
+ * A computed's edges hang off its graph node, which its callable holds in
+ * `_n`; callers may pass either.
+ */
+function trackedSubs(source: (Partial<SubscriberHostLike> & { _n?: Partial<SubscriberHostLike> }) | null): object[] {
   const out: object[] = []
+  const host = source?._n ?? source
   for (let l = host?._subs ?? null; l !== null; l = l.nextSub) out.push(l.sub)
   return out
 }
