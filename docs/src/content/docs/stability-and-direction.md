@@ -1,6 +1,6 @@
 ---
 title: Stability, Versioning & Direction
-description: How Pyreon versions and releases, which packages the semver promise covers, the deprecation policy, what "device-proven" means for the native targets, which parts are mature versus experimental, and the directions under consideration for the app ecosystem.
+description: How Pyreon versions and releases, which packages the semver promise covers, the supported Node.js, Bun, browser, iOS and Android versions, the deprecation policy, what "device-proven" means for the native targets, which parts are mature versus experimental, and the directions under consideration for the app ecosystem.
 ---
 
 Teams choosing a framework for a production app need to know how it changes, not just what it does today. This page states Pyreon's current guarantees and limits plainly. Nothing here is a dated commitment: where a direction is listed, it is a direction, not a promise.
@@ -11,6 +11,25 @@ Teams choosing a framework for a production app need to know how it changes, not
 - **From 1.0, Stable packages follow semantic versioning.** A breaking change to a Stable package ships only in a **major** release. A minor release adds features without breaking existing code, and a patch release fixes bugs. The promise covers Stable packages only; see [the two tiers](#two-tiers-stable-and-experimental).
 - **Before 1.0 (`0.x`), breaking changes are `minor` bumps.** Patch releases do not intentionally break APIs. A changeset is required for every consumer-affecting source change in a published package.
 - **Release notes** live in each package's `CHANGELOG.md` and are served by the MCP `get_changelog` tool, so an AI assistant can read what changed between the version you have and the latest. A release that breaks something says so in the changelog and, where a mechanical migration exists, ships a `pyreon upgrade` codemod for it.
+- **Moving to 1.0.** [Upgrading to 1.0](/docs/upgrading-to-v1) lists every breaking change between 0.54 and the 1.0 release candidate, with before-and-after code and the `pyreon upgrade` codemod that handles it, or the step you take by hand.
+
+## Support matrix
+
+Pyreon supports the platforms below, from the 1.0 release candidate on. Versions older than these are not supported. CI runs on newer versions than the floors (the current Node.js LTS and the Bun version in `.bun-version`), so a floor is the oldest version Pyreon is written for, not one every CI run exercises.
+
+| Platform | Supported versions | Where it is declared |
+| --- | --- | --- |
+| Node.js | Node.js 22 and later | `"engines": { "node": ">=22" }` in every published `@pyreon/*` package. Covers SSR, SSG, the Vite plugin, the CLIs and the compiler. |
+| Bun | Bun 1.3 and later | Bun has no `engines` check, so this table is the declaration. |
+| Browsers | Baseline 2024 | The browser versions that support every web feature that became [Baseline](https://web.dev/baseline) in 2024. browserslist (`baseline 2024`) resolves that to Chrome and Edge 130, Firefox 132, and Safari and iOS Safari 18.2, or later. |
+| iOS | iOS 17 and later (macOS 14 for macOS builds) | `.iOS(.v17)` / `.macOS(.v14)` in the `Package.swift` of `@pyreon/native-runtime-swift` and `@pyreon/native-router-swift`, and the deployment target `create-multiplatform` scaffolds. |
+| Android | minSdk 26 (Android 8.0) and later | `minSdk = 26` in the app `build.gradle.kts` that `create-multiplatform` scaffolds; the Kotlin runtime ships as source, so your app's `minSdk` applies. |
+
+The browser floor is what Pyreon's own code relies on; it does not change your app's Vite `build.target`. The `check-support-matrix` gate keeps the declarations in the right-hand column, this table and [SECURITY.md](https://github.com/pyreon/pyreon/blob/main/SECURITY.md) in agreement. A change to a floor is announced in the changelog and on this page.
+
+## Security
+
+Report a vulnerability privately through [GitHub security advisories](https://github.com/pyreon/pyreon/security/advisories/new), never in a public issue. [SECURITY.md](https://github.com/pyreon/pyreon/blob/main/SECURITY.md) says which versions receive security fixes and how quickly a report is answered.
 
 ## Two tiers: Stable and Experimental
 

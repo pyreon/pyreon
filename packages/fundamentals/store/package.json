@@ -83,6 +83,9 @@
     "zod": "^4.6.7",
     "zustand": "^5.1.0"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

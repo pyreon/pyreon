@@ -271,6 +271,9 @@
     "sharp": "^0.35.5",
     "typescript": "^6.0.3"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

@@ -95,6 +95,9 @@
     "mdast-util-mdx-jsx": "^3.2.1",
     "unist-util-visit": "^5.2.0"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

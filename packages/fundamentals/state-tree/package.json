@@ -73,6 +73,9 @@
     "zod": "^4.6.7",
     "@pyreon/native-compiler": "workspace:*"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

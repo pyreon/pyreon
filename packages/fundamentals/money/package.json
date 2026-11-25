@@ -58,6 +58,9 @@
     "currency.js": "2.0.4",
     "dinero.js": "2.0.2"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

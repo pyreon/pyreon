@@ -36,6 +36,9 @@
       "types": "./lib/types/native-plugin.d.ts"
     }
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

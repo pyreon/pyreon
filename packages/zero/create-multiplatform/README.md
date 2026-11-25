@@ -101,9 +101,9 @@ The generated `.pyreonlintrc.json` enables the opt-in `portable` `@pyreon/lint` 
 
 | Target | Required |
 | --- | --- |
-| Web | Node 18+ or Bun |
-| iOS | macOS, Xcode 15+, xcodegen (`brew install xcodegen`) |
-| Android | JDK 17, Android SDK, Gradle (handled by the wrapper) |
+| Web | Node.js 22+ or Bun 1.3+ |
+| iOS | macOS, Xcode 15+, xcodegen (`brew install xcodegen`). The app runs on iOS 17 and later. |
+| Android | JDK 17, Android SDK, Gradle (handled by the wrapper). The app runs on Android 8.0 (`minSdk 26`) and later. |
 
 The web target needs no platform-specific toolchain — scaffold the project and build only `npm run dev` if you don't need native immediately.
 

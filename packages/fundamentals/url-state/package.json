@@ -64,6 +64,9 @@
     "@pyreon/vitest-config": "workspace:*",
     "nuqs": "^2.10.3"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

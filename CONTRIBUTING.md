@@ -6,8 +6,8 @@ Thanks for your interest in contributing to Pyreon! This guide will help you get
 
 ### Prerequisites
 
-- [Bun](https://bun.sh/) v1.1+
-- Node.js 20+ (for some tooling)
+- [Bun](https://bun.sh/): the version in `.bun-version` (the repository's toolchain; apps built with Pyreon need Bun 1.3 or later)
+- Node.js 22+ (for some tooling; the published packages declare `"engines": { "node": ">=22" }`, held by `scripts/check-support-matrix.ts`)
 
 ### Getting Started
 

@@ -138,7 +138,7 @@ The `best-practices` category (opt-in best-practice `@pyreon/lint` rules) is **a
 
 ### Selecting gates
 
-`--only <gate>[,<gate>]` runs just those gates; `--skip` leaves gates out. An unknown argument is a usage error (exit 1) rather than being ignored, because an ignored selector would widen the run to every gate. The pre-1.0 `--audit-tests` / `--check-*` shortcuts are removed: use `--only audit-tests`, `--only islands-audit`, `--only ssg-audit`, `--only content-audit` or `--only native-audit`.
+`--only <gate>[,<gate>]` runs just those gates; `--skip` leaves gates out. An unknown argument is a usage error (exit 1) rather than being ignored, because an ignored selector would widen the run to every gate. The `--audit-tests` / `--check-*` shortcuts were removed in 0.54: use `--only audit-tests`, `--only islands-audit`, `--only ssg-audit`, `--only content-audit` or `--only native-audit`.
 
 ### Output formats
 
