@@ -3,8 +3,6 @@
 // without going through the bin entry point (e.g. test harnesses,
 // build-tool integrations).
 
-import { exitAfterFlush as flushThenExit } from '@pyreon/ansi'
-
 export { build, findTsxFiles } from './build'
 export type { BuildOptions, BuildResult } from './build'
 
@@ -28,16 +26,6 @@ export type {
 
 // Explicit entries for the published Node binary and programmatic callers.
 export { main, mainWithPlugins } from './cli'
-/**
- * For the hand-written `bin/pyreon-native.js`, which cannot import the
- * private, bundled `@pyreon/ansi`: exit once stdout/stderr have flushed, so a
- * piped `check --json` is never cut off (#4799).
- * @internal
- */
-export function exitAfterFlush(code: number): Promise<never> {
-  return flushThenExit(code)
-}
-
 export { check, checkSource, watchCheck } from './check'
 export type { CheckOptions, CheckSourceOptions, CheckResult, CheckFinding } from './check'
 

@@ -8,7 +8,8 @@
 // The scaffolded builds invoke this through `npx pyreon-native build …`
 // (scripts/build-ios.sh, scripts/build-android.sh), so Node — not Bun — is
 // the runtime that has to work.
-import { exitAfterFlush, mainWithPlugins } from '../lib/index.js'
+import { mainWithPlugins } from '../lib/index.js'
+import { exitAfterFlush } from '../lib/internal.js'
 
 const argv = process.argv.slice(2)
 const code = await mainWithPlugins(argv)

@@ -14,8 +14,10 @@
  * It also holds `lintSlice`, the worker body (so tests run it without
  * spawning), and the CLI's test seams: the `--list` / `--init` renderers and
  * the `--preset` / `--rule-options` value parsers (the `./cli` entry exports
- * only `runCli`).
+ * only `runCli`), and `exitAfterFlush` for the hand-written bin.
  */
+
+import { exitAfterFlush as flushThenExit } from '@pyreon/ansi'
 
 export {
   formatInitResult,
@@ -25,3 +27,13 @@ export {
 } from './cli-helpers'
 export { lintSlice } from './lint-slice'
 export { _workerEntry } from './parallel'
+
+/**
+ * For the hand-written `bin/pyreon-lint.js`, which cannot import the private,
+ * bundled `@pyreon/ansi`: exit once stdout/stderr have flushed, so a piped
+ * `--format json` report stays whole (#4799).
+ * @internal
+ */
+export function exitAfterFlush(code: number): Promise<never> {
+  return flushThenExit(code)
+}

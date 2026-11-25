@@ -64,6 +64,11 @@
       "bun": "./src/dev.ts",
       "import": "./lib/dev.js",
       "types": "./lib/types/dev.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [

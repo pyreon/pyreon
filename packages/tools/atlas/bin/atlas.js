@@ -2,7 +2,8 @@
 // Hand-written bin (never bundled) — invokes the CLI entry EXPLICITLY rather
 // than relying on an `import.meta.main` self-run guard, which does not survive
 // the library build (see .agents/rules/testing.md "Test the shipped ENTRY").
-import { exitAfterFlush, runCli } from '../lib/cli.js'
+import { runCli } from '../lib/cli.js'
+import { exitAfterFlush } from '../lib/internal.js'
 
 // `atlas verify --json | head` closes the pipe early. That is the reader's
 // choice, not a failure, so exit quietly instead of printing an EPIPE trace.

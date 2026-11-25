@@ -294,19 +294,10 @@ export async function runCli(argv: string[]): Promise<number | null> {
   return result.totalErrors > 0 ? 1 : 0
 }
 
-/**
- * Re-exported for the hand-written `bin/pyreon-lint.js`, which cannot import
- * the private, bundled `@pyreon/ansi` itself. Exiting through it keeps a
- * piped `--format json` report whole (#4799).
- * @internal
- */
-export function exitAfterFlush(code: number): Promise<never> {
-  return flushThenExit(code)
-}
 
 async function main() {
   const code = await runCli(process.argv.slice(2))
-  if (code !== null) await exitAfterFlush(code)
+  if (code !== null) await flushThenExit(code)
 }
 
 // Only invoke `main()` when this module is the entry point. Importing
