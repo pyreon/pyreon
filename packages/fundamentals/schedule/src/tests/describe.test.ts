@@ -34,14 +34,18 @@ describe('describeRule', () => {
   it('weekday and month names can be given in the case form a language needs (#4845)', () => {
     const rule = { every: 'week', on: { weekdays: [3] }, start: '2026-11-25T19:00', count: 4 } as const
     const cs = {
-      everyWeek: 'Každý týden', onWeekdays: 've {list}', atTimes: 'v {list}', times: '{n}krát', nthWeekday: '{nth} {weekday}', last: 'poslední', everyMonth: 'každý měsíc', everyYear: 'každý rok', inMonths: 'v {list}', onMonthDays: '{list}.',
+      everyWeek: 'Každý týden', onWeekdays: 've {list}', onNthWeekdays: 'v {list}', atTimes: 'v {list}', times: '{n}krát', nthWeekday: '{nth} {weekday}', last: 'poslední', everyMonth: 'každý měsíc', everyYear: 'každý rok', inMonths: 'v {list}', onMonthDays: '{list}.',
       weekdays: ['pondělí', 'úterý', 'středu', 'čtvrtek', 'pátek', 'sobotu', 'neděli'],
-      nthWeekdays: ['pondělí', 'úterý', 'středa', 'čtvrtek', 'pátek', 'sobota', 'neděle'],
+      // after "v poslední" Czech takes the accusative too (v poslední středu, v poslední pátek)
+      nthWeekdays: ['pondělí', 'úterý', 'středu', 'čtvrtek', 'pátek', 'sobotu', 'neděli'],
       months: ['lednu', 'únoru', 'březnu', 'dubnu', 'květnu', 'červnu', 'červenci', 'srpnu', 'září', 'říjnu', 'listopadu', 'prosinci'],
     }
 
     expect(describeRule(rule, { locale: 'cs', messages: cs })).toBe('Každý týden ve středu v 19:00, 4krát')
-    expect(describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, start: '2026-11-27' }, { locale: 'cs', messages: cs })).toBe('Každý měsíc ve poslední pátek')
+    expect(describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, start: '2026-11-27' }, { locale: 'cs', messages: cs })).toBe('Každý měsíc v poslední pátek')
+    expect(describeRule({ every: 'month', on: { weekdays: [{ weekday: 3, nth: -1 }] }, start: '2026-11-25' }, { locale: 'cs', messages: cs })).toBe('Každý měsíc v poslední středu')
+    // without onNthWeekdays the weekday phrase is used, as before
+    expect(describeRule({ every: 'month', on: { weekdays: [{ weekday: 5, nth: -1 }] }, start: '2026-11-27' }, { messages: { onWeekdays: 'ON {list}' } })).toBe('Every month ON the last Friday')
     expect(describeRule({ every: 'year', start: '2026-11-18' }, { locale: 'cs', messages: cs })).toBe('Každý rok v listopadu 18.')
     // nthWeekdays falls back to weekdays, then to Intl
     expect(describeRule({ every: 'month', on: { weekdays: [{ weekday: 3, nth: 1 }] }, start: '2026-11-04' }, { messages: { weekdays: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] } })).toBe('Every month on the first c')

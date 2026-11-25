@@ -395,7 +395,7 @@ describeRule({ every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-1
 
 The templates use `{n}`, `{list}`, `{nth}`, `{weekday}` and `{date}` placeholders (single braces, so an i18n library that interpolates `{{name}}` leaves them alone).
 
-Languages that inflect a name after a preposition need more than the frame. `messages.weekdays` gives the seven weekday names (Monday first) as they read inside `onWeekdays`, `messages.nthWeekdays` as they read inside `nthWeekday` (it falls back to `weekdays`), and `messages.months` the twelve month names inside `inMonths`; without them the names are `Intl`'s, which are nominative. Times follow the locale's hour cycle through `Intl` (`7:00 PM` in `en-US`, `19:00` in `cs`, `HH:mm` when no `locale` is given), and `formatTime` replaces them:
+Languages that inflect a name after a preposition need more than the frame. `messages.weekdays` gives the seven weekday names (Monday first) as they read inside `onWeekdays`, `messages.nthWeekdays` as they read inside `nthWeekday` (it falls back to `weekdays`), and `messages.months` the twelve month names inside `inMonths`; without them the names are `Intl`'s, which are nominative. The n-th weekdays ("the last Friday") are wrapped by their own `onNthWeekdays` phrase (it falls back to `onWeekdays`), since the preposition can differ: Czech says `ve středu` but `v poslední pátek`. Times follow the locale's hour cycle through `Intl` (`7:00 PM` in `en-US`, `19:00` in `cs`, `HH:mm` when no `locale` is given), and `formatTime` replaces them:
 
 ```ts
 // @check

@@ -19,8 +19,13 @@ export interface RuleMessages {
   everyNMinutes: string
   /** `{list}` is the weekday names. */
   onWeekdays: string
-  /** `{nth}` and `{weekday}`: one n-th weekday; the entries are joined into the `{list}` of `onWeekdays`. */
+  /** `{nth}` and `{weekday}`: one n-th weekday; the entries are joined into the `{list}` of `onNthWeekdays`. */
   nthWeekday: string
+  /**
+   * `{list}` is the n-th weekdays (`nthWeekday` entries). Its own phrase, because a language may need another preposition
+   * before "the last Friday" than before "Friday" (Czech `ve středu` but `v poslední pátek`). Default: `onWeekdays`.
+   */
+  onNthWeekdays?: string | undefined
   /** `{list}` is the day numbers. */
   onMonthDays: string
   /** `{list}` is the month names. */
@@ -134,7 +139,7 @@ function daySentence(plan: Plan, locale: string | undefined, m: RuleMessages): s
   if (plan.nth !== null) {
     const each = plan.nth.map((e) => fill(m.nthWeekday, { nth: e.nth === -1 ? m.last : e.nth < 0 ? `${m.last} ${-e.nth}` : (ordinal[e.nth - 1] ?? String(e.nth)), weekday: names(locale, 'weekday', [e.weekday], m.nthWeekdays ?? m.weekdays)[0]! }))
 
-    parts.push(fill(m.onWeekdays, { list: join(each, m) }))
+    parts.push(fill(m.onNthWeekdays ?? m.onWeekdays, { list: join(each, m) }))
   }
   if (plan.monthDays !== null) parts.push(fill(m.onMonthDays, { list: join(plan.monthDays.map((d) => monthDayText(d, m)), m) }))
 

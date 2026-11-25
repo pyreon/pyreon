@@ -139,6 +139,17 @@ function Row<Meta>(props: RowProps<Meta>): VNodeChild {
   )
 }
 
+/**
+ * The resource row that holds the tab stop: the chosen one while it is drawn, else the nearest drawn row. A windowed list
+ * removes the rows scrolled away, and a tab stop on a removed row would leave the grid with no tab stop at all.
+ */
+function drawnRow(id: string | undefined, m: TimelineModel, byId: Map<string, { index: number }>, w: RowWindow): string | undefined {
+  const index = id === undefined ? undefined : byId.get(id)?.index
+  if (index === undefined || (index >= w.start && index < w.end) || w.end <= w.start) return id
+
+  return m.rows[Math.min(Math.max(index, w.start), w.end - 1)]?.resource.id ?? id
+}
+
 /** The hours written along the top when only one or two days are shown. */
 function hourMarks(from: number, to: number): number[] {
   const marks: number[] = []
@@ -202,11 +213,11 @@ export function TimelineView<Meta = unknown>(props: TimelineViewProps<Meta>): VN
   const focus = computed(() => {
     const m = model()
     const at = focusAt()
-    const id = at.id !== undefined && byId().has(at.id) ? at.id : m.rows[0]?.resource.id
+    const chosen = at.id !== undefined && byId().has(at.id) ? at.id : m.rows[0]?.resource.id
     const cursor = calendar.cursor().date
     const date = at.date !== undefined && m.dates.includes(at.date) ? at.date : m.dates.includes(cursor) ? cursor : m.dates[0]
 
-    return { id, date }
+    return { id: drawnRow(chosen, m, byId(), window()), date }
   })
   let root: HTMLElement | null = null
 
@@ -234,7 +245,8 @@ export function TimelineView<Meta = unknown>(props: TimelineViewProps<Meta>): VN
       role="grid"
       data-view="timeline"
       aria-label={() => `${calendar.messages().views.timeline ?? 'Timeline'}, ${calendar.title()}`}
-      aria-rowcount={() => model().rows.length + 1}
+      // the header, then a row per resource (or the one empty-state row)
+      aria-rowcount={() => Math.max(model().rows.length, 1) + 1}
       aria-colcount={() => model().dates.length + 1}
       // a grid with no cells is still a scrolling region: it takes the focus itself so a keyboard can reach and scroll it
       tabIndex={() => (empty() ? 0 : -1)}
@@ -242,7 +254,18 @@ export function TimelineView<Meta = unknown>(props: TimelineViewProps<Meta>): VN
       ref={(el: HTMLElement | null) => {
         root = el
       }}
-      onScroll={(e: Event) => scroll.set((e.currentTarget as HTMLElement).scrollTop)}
+      onScroll={(e: Event) => {
+        const el = e.currentTarget as HTMLElement
+        const hadFocus = el.contains(document.activeElement)
+        scroll.set(el.scrollTop)
+        // the focused row scrolled out of the drawn window and was removed: the focus goes to the tab stop, now on a drawn
+        // row (after the window is redrawn, which the scroll position schedules)
+        if (hadFocus) {
+          queueMicrotask(() => {
+            if (!el.contains(document.activeElement)) el.querySelector<HTMLElement>('[role=gridcell][tabindex="0"]')?.focus({ preventScroll: true })
+          })
+        }
+      }}
       onKeyDown={(e: KeyboardEvent) => {
         const target = e.target as HTMLElement
         const hit = target.closest<HTMLElement>('.pcal-event[data-key]')

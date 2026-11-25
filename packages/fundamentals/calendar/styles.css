@@ -981,6 +981,8 @@
 
 .pcal-tl-cell:focus-visible {
   outline-offset: -2px;
+  /* above the opening-hours stripes (absolutely positioned, opaque), which would otherwise cover the inset ring */
+  z-index: 1;
 }
 
 /* opening hours, as the time grid shades them: a day with hours is tinted, and its open stretches are drawn light over the tint */

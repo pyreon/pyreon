@@ -185,7 +185,60 @@ describe('the timeline in Chromium', () => {
     const root = render(<div class="pcal"><TimelineView calendar={calendar} /></div>)
     await sleep()
     expect(await violations(root)).toEqual([])
-    expect(root.querySelector('[role=grid]')!.getAttribute('tabindex')).toBe('0')
+    const grid = root.querySelector('[role=grid]')!
+    expect(grid.getAttribute('tabindex')).toBe('0')
+    // the header and the empty-state row: the count and the index agree
+    expect(grid.getAttribute('aria-rowcount')).toBe('2')
+    expect(grid.querySelector('.pcal-tl-row')!.getAttribute('aria-rowindex')).toBe('2')
+  })
+
+  it('150 rooms (windowed): the tab stop follows the drawn rows, so Tab still enters the grid after a scroll', async () => {
+    const { grid, root } = timeline(150)
+    await sleep()
+    const active = (): HTMLElement => document.activeElement as HTMLElement
+    grid.scrollTop = 3000
+    await sleep()
+    expect(grid.querySelector('.pcal-tl-row[data-resource="r1"]')).toBeNull()
+    expect(grid.querySelectorAll('[tabindex="0"]').length).toBe(1)
+    ;(root.querySelector('.before') as HTMLElement).focus()
+    await userEvent.keyboard('{Tab}')
+    expect(active().getAttribute('role')).toBe('gridcell')
+    expect(grid.contains(active())).toBe(true)
+  })
+
+  it('150 rooms (windowed): a focused row scrolled out of the drawn rows hands the focus to a drawn cell, not <body>', async () => {
+    const { grid } = timeline(150)
+    await sleep()
+    grid.querySelector<HTMLElement>('[role=gridcell][tabindex="0"]')!.focus()
+    expect(grid.contains(document.activeElement)).toBe(true)
+    grid.scrollTop = 3000
+    await sleep()
+    expect(grid.querySelector('.pcal-tl-row[data-resource="r1"]')).toBeNull()
+    expect(document.activeElement).not.toBe(document.body)
+    expect((document.activeElement as HTMLElement).getAttribute('role')).toBe('gridcell')
+    expect(grid.contains(document.activeElement)).toBe(true)
+  })
+
+  it("a focused cell's ring is painted above the opening-hours stripe", async () => {
+    const { grid, root } = timeline(2)
+    await sleep()
+    ;(root.querySelector('.before') as HTMLElement).focus()
+    await userEvent.keyboard('{Tab}')
+    const cell = document.activeElement as HTMLElement
+    // Wednesday 18 November has opening hours: its cell has an open stripe over it
+    expect(cell.dataset.date).toBe('2026-11-18')
+    expect(cell.matches(':focus-visible')).toBe(true)
+    const band = [...grid.querySelectorAll<HTMLElement>('.pcal-tl-row[data-resource="r1"] .pcal-tl-open')].find((b) => {
+      const r = b.getBoundingClientRect()
+      const c = cell.getBoundingClientRect()
+
+      return r.left >= c.left && r.right <= c.right
+    })!
+    // hit testing follows paint order: let the stripe take hits and ask which one is on top at its top edge, where the ring is
+    band.style.pointerEvents = 'auto'
+    const r = band.getBoundingClientRect()
+    const hit = document.elementFromPoint(r.left + r.width / 2, cell.getBoundingClientRect().top + 1)
+    expect(hit === cell || cell.contains(hit)).toBe(true)
   })
 
   it('opening hours are drawn: the closed days are tinted and the open hours light', async () => {
