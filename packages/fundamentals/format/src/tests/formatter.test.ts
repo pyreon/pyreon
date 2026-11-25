@@ -188,7 +188,7 @@ describe('derivation', () => {
   it('invalid input warns once in dev and never throws', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(core.numberFormatter(en)('x' as never)).toBe('')
-    expect(core.currencyFormatter('EURO', en)(5)).toBe('')
+    expect(core.currencyFormatter('Euro', en)(5)).toBe('')
     expect(core.dateFormatter(en)('2026-02-30')).toBe('')
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()

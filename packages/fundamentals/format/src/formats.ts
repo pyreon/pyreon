@@ -10,6 +10,7 @@ import {
   bytesIn,
   compactIn,
   currencyIn,
+  currencyOptions,
   numberIn,
   numberRangeIn,
   numberToPartsIn,
@@ -21,6 +22,7 @@ import { localeOf, zoneOf } from './pick'
 import { describe, programmerError, quote } from './warn'
 import type {
   BoundFormatters,
+  CurrencyInput,
   DefinedFormats,
   ExtendedSpec,
   FormatSpec,
@@ -107,7 +109,7 @@ export function createFormatterWith(given: FormatterBase): BoundFormatters {
 
   return {
     number: (v, o) => numberIn(L(o), v, o),
-    currency: (v, c, o) => currencyIn(L(o), v, c, o),
+    currency: ((v: CurrencyInput, a?: unknown, b?: unknown) => currencyIn(L(currencyOptions(v, a, b)), v, a, b)) as BoundFormatters['currency'],
     percent: (v, o) => percentIn(L(o), v, o),
     compact: (v, o) => compactIn(L(o), v, o),
     unit: (v, u, o) => unitIn(L(o), v, u, o),

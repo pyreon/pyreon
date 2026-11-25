@@ -59,7 +59,7 @@ describe('the float-input rule', () => {
 describe('currencies', () => {
   afterEach(() => _resetCurrencies())
 
-  it('digits come from the platform; codes must be upper case and known', () => {
+  it('digits are ISO 4217 minor units; codes must be upper case and known', () => {
     expect([currencyDigits('EUR'), currencyDigits('JPY'), currencyDigits('KWD'), currencyDigits('BHD')]).toEqual([2, 0, 3, 3])
     expect(isCurrency('EUR')).toBe(true)
     expect(isCurrency('eur')).toBe(false)
@@ -76,7 +76,7 @@ describe('currencies', () => {
     expect(money(5, 'PTS').amount).toBe('5')
     expect(isCurrency('PTS')).toBe(true)
     expect(() => defineCurrency('PTS', { digits: 1 })).toThrow(/already defined with 0 digits/)
-    expect(() => defineCurrency('EUR', { digits: 3 })).toThrow(/already defined with 2 digits/)
+    expect(() => defineCurrency('PTS', { digits: 1 })).toThrow(/Define each code once/)
     expect(() => defineCurrency('x', { digits: 1 })).toThrow(/2 to 12 upper-case/)
     expect(() => defineCurrency('ABC1', { digits: 99 })).toThrow(/digits to be a whole number from 0 to 30/)
     for (let i = 1; i < 64; i++) defineCurrency(`T${i}`, { digits: 2 })
@@ -84,10 +84,53 @@ describe('currencies', () => {
     expect(() => defineCurrency('ONEMORE', { digits: 2 })).toThrow(/at most 64 currencies/)
   })
 
-  it('the remembered platform digit counts are bounded (all ISO codes asked, at most 64 kept) and still correct afterwards', () => {
-    for (const code of Intl.supportedValuesOf('currency')) currencyDigits(code)
-    expect(_currencyStats().remembered).toBeLessThanOrEqual(64)
-    expect(currencyDigits('JPY')).toBe(0)
+  it('digits are the same on every engine: ISO 4217, never the platform display digits (#4803)', () => {
+    // V8 (Node, Chrome) reports CLDR display digits (HUF 0, IQD 0), JavaScriptCore (Bun, Safari) ISO 4217's (HUF 2, IQD 3).
+    const iso: Record<string, number> = { HUF: 2, IDR: 2, COP: 2, PKR: 2, IQD: 3, IRR: 2, ISK: 0, TWD: 2, CLP: 0, UGX: 0, JPY: 0, KWD: 3, CLF: 4, UYW: 4, EUR: 2 }
+
+    for (const [code, digits] of Object.entries(iso)) expect(currencyDigits(code), code).toBe(digits)
+    expect(fromMinor(12345, 'HUF').amount).toBe('123.45')
+    expect(isMoney({ amount: '100.00', currency: 'HUF' })).toBe(true)
+    expect(isMoney({ amount: '100', currency: 'HUF' })).toBe(false)
+  })
+
+  it('which codes exist is ISO 4217 list one on every engine, never the platform list', () => {
+    const spy = vi.spyOn(Intl, 'supportedValuesOf')
+    // V8 lists none of these; JavaScriptCore lists all, plus withdrawn codes.
+    for (const code of ['VED', 'XAU', 'XAG', 'XUA', 'XTS', 'XXX', 'CHE', 'CHW', 'BOV', 'COU', 'MXV', 'USN', 'XAD', 'XCG', 'ZWG', 'SLE'])
+      {expect(isCurrency(code), code).toBe(true)}
+    expect(money('1.00', 'VED')).toEqual({ amount: '1.00', currency: 'VED' })
+    expect(currencyDigits('XAU')).toBe(2)
+    // Withdrawn codes some engines still list are not current ISO 4217 codes.
+    for (const code of ['BGN', 'ANG', 'BYR', 'HRK', 'DEM', 'SLL', 'ZWL', 'CUC']) expect(isCurrency(code), code).toBe(false)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+    defineCurrency('HRK', { digits: 2 })
+    expect(money('7.53', 'HRK').amount).toBe('7.53')
+  })
+
+  it('an engine reporting other digits does not change them', () => {
+    const real = Intl.NumberFormat
+    const spy = vi.spyOn(Intl, 'NumberFormat').mockImplementation(((locale: string, options: Intl.NumberFormatOptions) => {
+      const f = new real(locale, options)
+      const resolved = f.resolvedOptions()
+
+      return Object.assign(f, { resolvedOptions: () => ({ ...resolved, maximumFractionDigits: 7 }) })
+    }) as never)
+
+    expect([currencyDigits('HUF'), currencyDigits('JPY'), currencyDigits('KWD')]).toEqual([2, 0, 3])
+    spy.mockRestore()
+  })
+
+  it('defineCurrency gives an ISO currency the digits a payment provider uses (#4803)', () => {
+    defineCurrency('ISK', { digits: 2 })
+    defineCurrency('ISK', { digits: 2 })
+    expect(currencyDigits('ISK')).toBe(2)
+    expect(fromMinor(12345, 'ISK')).toEqual({ amount: '123.45', currency: 'ISK' })
+    expect(toMinor(money('123.45', 'ISK'))).toBe(12345n)
+    expect(() => defineCurrency('ISK', { digits: 0 })).toThrow(/ISK is already defined with 2 digits/)
+    defineCurrency('EUR', { digits: 2 })
+    expect(_currencyStats().registered).toBe(2)
   })
 })
 
