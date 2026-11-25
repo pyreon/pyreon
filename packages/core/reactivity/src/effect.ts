@@ -18,8 +18,8 @@ import {
   type Link,
   type WatcherNode,
   _b,
+  _cx,
   _t,
-  checkDirty,
   endBatch,
   purgeDeps,
   settleFirstRun,
@@ -203,7 +203,7 @@ class EffectNode implements WatcherNode, Effect {
   run(): void {
     const f = this._f
     if ((f & F_DISPOSED) !== 0) return
-    if ((f & F_DIRTY) !== 0 || ((f & F_PENDING) !== 0 && checkDirty(this))) this._exec(false)
+    if ((f & F_DIRTY) !== 0 || ((f & F_PENDING) !== 0 && _cx.k(this))) this._exec(false)
     else this._f &= ~F_PENDING
   }
 
@@ -569,7 +569,7 @@ class BindingNode implements WatcherNode {
   run(): void {
     const f = this._f
     if ((f & F_DISPOSED) !== 0) return
-    if ((f & F_DIRTY) !== 0 || ((f & F_PENDING) !== 0 && checkDirty(this))) {
+    if ((f & F_DIRTY) !== 0 || ((f & F_PENDING) !== 0 && _cx.k(this))) {
       if (process.env.NODE_ENV !== 'production') _rdRecordFire(this)
       if ((f & F_STATIC) !== 0) {
         // Static deps: no tracking frame (reads see `_t.e === null` in the flush).
