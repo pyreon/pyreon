@@ -554,9 +554,23 @@ describe('createHandler — stream mode', () => {
     // Suspense boundary would still enqueue its resolved HTML even
     // after the consumer hung up — wasted work + cancel-resistant
     // leaks under load.
+    //
+    // The ordering is driven by deferreds the test controls, not by timers:
+    // a 5 ms abort raced against a 50 ms boundary timer lost under load (the
+    // abort is armed only after `await handler(...)`, which can itself take
+    // longer than 50 ms on a busy runner), and the boundary resolved first.
     const { Suspense } = await import('@pyreon/core')
+    let markStarted!: () => void
+    const started = new Promise<void>((r) => {
+      markStarted = r
+    })
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
     async function Slow() {
-      await new Promise<void>((r) => setTimeout(r, 50))
+      markStarted()
+      await gate
       return h('div', null, 'loaded-too-late')
     }
     const App: ComponentFn = () =>
@@ -569,16 +583,19 @@ describe('createHandler — stream mode', () => {
 
     const ac = new AbortController()
     const res = await handler(new Request('http://localhost/', { signal: ac.signal }))
-    // Abort BEFORE the 50ms Suspense boundary resolves. The fallback
-    // streams synchronously (well before this fires).
-    setTimeout(() => ac.abort(), 5)
+    // The boundary is in flight (Slow is parked on the gate). Abort first,
+    // THEN let the boundary resolve: its post-resolve enqueue must see the
+    // aborted signal and skip.
+    await started
+    ac.abort()
+    release()
 
     const html = await res.text()
     // Fallback was emitted before the abort fired.
     expect(html).toContain('loading-shown')
     // Post-resolve enqueue MUST be skipped — the resolved content +
     // its swap-script call never landed because the signal aborted
-    // before the Suspense boundary's 50ms timer fired.
+    // before the Suspense boundary resolved.
     expect(html).not.toContain('loaded-too-late')
     expect(html).not.toMatch(/__NS\(\s*["']pyreon-s-/)
   })

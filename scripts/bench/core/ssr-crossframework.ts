@@ -123,8 +123,7 @@ const { renderToString: reactRenderToString } = await import('react-dom/server')
 const { h: preactCreateElement } = await import('preact')
 const { render: preactRender } = await import('preact-render-to-string')
 const { transformSync } = await import('@babel/core')
-const solidPresetMod: any = await import('babel-preset-solid')
-const solidPreset = solidPresetMod.default ?? solidPresetMod
+const { default: solidPreset } = await import('babel-preset-solid')
 const { renderToString: solidRenderToString } = await import('solid-js/web')
 const { writeFileSync, unlinkSync } = await import('node:fs')
 

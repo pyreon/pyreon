@@ -2271,11 +2271,14 @@ function parseArgs(argv: string[]): { example?: string; mode?: Mode; adapter?: s
   const args: { example?: string; mode?: Mode; adapter?: string } = {}
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
-    if (a === '--only' && argv[i + 1]) {
-      args.mode = argv[++i] as Mode
-    } else if (a === '--adapter' && argv[i + 1]) {
-      args.adapter = argv[++i]
-    } else if (!a?.startsWith('--')) {
+    const next = argv[i + 1]
+    if (a === '--only' && next) {
+      args.mode = next as Mode
+      i++
+    } else if (a === '--adapter' && next) {
+      args.adapter = next
+      i++
+    } else if (a !== undefined && !a.startsWith('--')) {
       args.example = a
     }
   }

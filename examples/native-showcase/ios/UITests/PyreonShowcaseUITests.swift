@@ -70,9 +70,10 @@ final class PyreonShowcaseUITests: XCTestCase {
         let text = "Pick up oat milk"
         if capture {
             // one key at a time, so the recording shows the typing
+            XCTAssertTrue(field.waitForKeyboardFocus(in: app, timeout: 10), "today-input never took keyboard focus")
             for ch in text { field.typeText(String(ch)) }
         } else {
-            field.typeText(text)
+            field.typeWhenFocused(text, in: app, expecting: text)
         }
         beat("typed", hold: 0.6)
 

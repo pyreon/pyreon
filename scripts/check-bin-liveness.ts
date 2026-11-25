@@ -39,7 +39,7 @@ function checkFlagBin(
   name: string,
   binRel: string,
   args: string[],
-  opts: { okExits?: number[]; stderrOk?: boolean } = {},
+  opts: { okExits?: number[] | undefined; stderrOk?: boolean | undefined } = {},
 ): Result {
   const okExits = opts.okExits ?? [0]
   const bin = join(repoRoot, binRel)
@@ -52,7 +52,7 @@ function checkFlagBin(
   if (out.length === 0) {
     return { name, ok: false, detail: `exit ${r.status} but EMPTY output — the no-op bug shape (bin ran nothing)` }
   }
-  return { name, ok: true, detail: `${args.join(' ')} → ${out.split('\n')[0].slice(0, 60)}` }
+  return { name, ok: true, detail: `${args.join(' ')} → ${(out.split('\n')[0] ?? '').slice(0, 60)}` }
 }
 
 /** Spawn an MCP stdio server, send a JSON-RPC `initialize`, require a response. */

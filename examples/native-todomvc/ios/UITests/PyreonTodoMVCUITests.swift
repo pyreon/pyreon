@@ -98,8 +98,7 @@ final class PyreonTodoMVCUITests: XCTestCase {
             field.waitToExist(timeout: 10),
             "new-todo field did not appear"
         )
-        field.tap()
-        field.typeText(marker + "\n")
+        field.tapAndType(marker + "\n", in: app)
         XCTAssertTrue(
             app.staticTexts[marker].firstMatch.waitToExist(timeout: 10),
             "Added todo did not render before the relaunch"
@@ -141,8 +140,7 @@ final class PyreonTodoMVCUITests: XCTestCase {
         let marker = "anim-\(UUID().uuidString.prefix(8))"
         let field = app.textFields["new-todo"].firstMatch
         XCTAssertTrue(field.waitToExist(timeout: 10), "new-todo field did not appear")
-        field.tap()
-        field.typeText(marker + "\n")
+        field.tapAndType(marker + "\n", in: app)
 
         // (1) ENTER — the new row appears in the TransitionGroup-wrapped list.
         XCTAssertTrue(

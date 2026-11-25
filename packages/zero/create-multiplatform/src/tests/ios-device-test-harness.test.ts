@@ -10,6 +10,13 @@
 // `waitToExist(timeout:)`, which has the same contract (true as soon as the
 // element exists, false at the deadline), asks at once and then ten times a
 // second.
+//
+// #4753: `field.tap(); field.typeText(…)` raced the keyboard. The keys went out
+// before the tap made the field first responder, a slow simulator dropped some
+// of them, and the login form submitted a short username. Every UITests target
+// carries the same `KeyboardInput.swift` (`tapAndType` / `typeWhenFocused`: wait
+// for keyboard focus, type, verify, re-type once), and no suite types straight
+// after tapping.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -39,6 +46,14 @@ const uiTests = uiTestsUnder(join(repo, 'examples')).map((path) => ({
   src: code(readFileSync(path, 'utf8')),
 }))
 
+/** `X.tap()` whose next statement is `X.typeText(` — typing before focus (#4753). */
+function typesRightAfterTap(src: string): boolean {
+  return /\b([A-Za-z_][\w.]*)\.tap\(\)[ \t]*\n\s*\1\.typeText\(/.test(code(src))
+}
+
+const KEYBOARD_INPUT = 'KeyboardInput.swift'
+const uiTestDirs = [...new Set(uiTests.map((t) => t.path.slice(0, t.path.lastIndexOf('/'))))]
+
 describe('iOS device-test harness', () => {
   it('finds the XCUITest files', () => {
     // A moved directory must not turn every rule below into a vacuous pass.
@@ -49,6 +64,29 @@ describe('iOS device-test harness', () => {
   it.each(uiTests)('$path never pays the one-second first poll', ({ path, src }) => {
     const slowWait = /\.waitForExistence\s*\(/.test(src)
     expect(slowWait, `${path}: use waitToExist(timeout:), which checks at once`).toBe(false)
+  })
+
+  it('typesRightAfterTap flags a tap-then-type on the same element only', () => {
+    expect(typesRightAfterTap('field.tap()\nfield.typeText("ab")')).toBe(true)
+    expect(typesRightAfterTap('a.b.tap()\n    // a comment\n    a.b.typeText("x")')).toBe(true)
+    expect(typesRightAfterTap('field.tapAndType("ab", in: app)')).toBe(false)
+    expect(typesRightAfterTap('field.tap()\nbeat()\nfield.typeText("ab")')).toBe(false)
+    expect(typesRightAfterTap('view.tap()\napp.typeText("QQ")')).toBe(false)
+  })
+
+  it.each(uiTests)('$path waits for keyboard focus before typing', ({ path, src }) => {
+    expect(typesRightAfterTap(src), `${path}: use tapAndType(_:in:expecting:) (KeyboardInput.swift)`).toBe(false)
+  })
+
+  it.each(uiTestDirs)('%s carries the shared KeyboardInput.swift', (dir) => {
+    const file = join(repo, dir, KEYBOARD_INPUT)
+    const reference = join(repo, 'examples/native-tasks/ios/UITests', KEYBOARD_INPUT)
+    const same = readFileSync(file, 'utf8') === readFileSync(reference, 'utf8')
+    expect(same, `${dir}/${KEYBOARD_INPUT} must be a copy of the native-tasks one`).toBe(true)
+    // The contract, not just the bytes: focus is awaited before the keys go out.
+    const src = code(readFileSync(reference, 'utf8'))
+    const waitsThenTypes = /func typeWhenFocused[\s\S]*?waitForKeyboardFocus[\s\S]*?typeText\(text\)/.test(src)
+    expect(waitsThenTypes, 'typeWhenFocused must wait for keyboard focus before typeText').toBe(true)
   })
 
   it.each(uiTests)('$path declares the wait it uses', ({ path, src }) => {

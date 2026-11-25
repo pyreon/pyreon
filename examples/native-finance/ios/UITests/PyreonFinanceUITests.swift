@@ -136,8 +136,7 @@ final class PyreonFinanceUITests: XCTestCase {
 
         let field = app.textFields["login-username"]
         XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
-        field.tap()
-        field.typeText("ab")
+        field.tapAndType("ab", in: app, expecting: "ab")
         app.buttons["login-submit"].tap()
 
         XCTAssertTrue(
@@ -162,8 +161,7 @@ final class PyreonFinanceUITests: XCTestCase {
 
         let field = app.textFields["login-username"]
         XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
-        field.tap()
-        field.typeText("alice")
+        field.tapAndType("alice", in: app, expecting: "alice")
         app.buttons["login-submit"].tap()
 
         XCTAssertTrue(
@@ -191,8 +189,7 @@ final class PyreonFinanceUITests: XCTestCase {
 
         let field = app.textFields["login-username"]
         XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
-        field.tap()
-        field.typeText("alice")
+        field.tapAndType("alice", in: app, expecting: "alice")
         app.buttons["login-submit"].tap()
 
         XCTAssertTrue(
@@ -216,8 +213,7 @@ final class PyreonFinanceUITests: XCTestCase {
 
         let field = app.textFields["login-username"]
         XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
-        field.tap()
-        field.typeText("alice")
+        field.tapAndType("alice", in: app, expecting: "alice")
         app.buttons["login-submit"].tap()
         XCTAssertTrue(
             app.otherElements["dashboard-page"].waitToExist(timeout: 15),
@@ -262,8 +258,7 @@ final class PyreonFinanceUITests: XCTestCase {
 
         let field = app.textFields["login-username"]
         XCTAssertTrue(field.waitToExist(timeout: 30), "Username field did not render")
-        field.tap()
-        field.typeText("alice")
+        field.tapAndType("alice", in: app, expecting: "alice")
         app.buttons["login-submit"].tap()
         XCTAssertTrue(
             app.otherElements["dashboard-page"].waitToExist(timeout: 15),
@@ -272,11 +267,9 @@ final class PyreonFinanceUITests: XCTestCase {
 
         let desc = app.textFields["new-tx-desc"]
         XCTAssertTrue(desc.waitToExist(timeout: 10), "Add-transaction field did not render")
-        desc.tap()
-        desc.typeText("Coffee")
+        desc.tapAndType("Coffee", in: app, expecting: "Coffee")
         let amount = app.textFields["new-tx-amount"]
-        amount.tap()
-        amount.typeText("-5")
+        amount.tapAndType("-5", in: app, expecting: "-5")
         app.buttons["new-tx-add"].tap()
 
         // The handler ran: 2700 + (−5).
@@ -336,8 +329,7 @@ final class PyreonFinanceUITests: XCTestCase {
 
         let field = app.textFields["login-username"]
         XCTAssertTrue(field.waitToExist(timeout: 15), "Username field did not render")
-        field.tap()
-        field.typeText("alice")
+        field.tapAndType("alice", in: app, expecting: "alice")
         app.buttons["login-submit"].tap()
         XCTAssertTrue(
             app.otherElements["dashboard-page"].waitToExist(timeout: 15),
