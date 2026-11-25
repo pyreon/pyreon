@@ -75,7 +75,8 @@ import {
   innerBuildActiveInProcess,
   innerBuildFlagSet,
 } from './build-flags'
-import { adoptRouteBase, resolveConfig } from './config'
+import { adoptRouteBase } from './adopt-route-base'
+import { resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
 import { writeServiceWorker } from './pwa'

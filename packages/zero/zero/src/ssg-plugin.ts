@@ -36,7 +36,8 @@ import {
   SSR_BUILD_FLAG,
   innerBuildActiveInProcess,
 } from './build-flags'
-import { adoptRouteBase, resolveConfig } from './config'
+import { adoptRouteBase } from './adopt-route-base'
+import { resolveConfig } from './config'
 import { isApiRoute } from './api-routes'
 import { collectFileRouteModes, parseFileRoutes, scanRouteFiles, scanRouteFilesWithExports, type FileRouteModeEntry } from './fs-router'
 import { expandRoutesForLocales, type I18nRoutingConfig } from './i18n-routing'

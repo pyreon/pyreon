@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { adoptRouteBase, defineConfig, detectPlatformAdapter, isRelativeBase, resolveConfig, routeBaseOf } from '../config'
+import { adoptRouteBase } from '../adopt-route-base'
+import { defineConfig, detectPlatformAdapter, isRelativeBase, resolveConfig, routeBaseOf } from '../config'
 
 describe('defineConfig', () => {
   it('returns the config as-is', () => {
