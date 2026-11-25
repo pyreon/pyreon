@@ -40,9 +40,9 @@
 // as the iOS host (`pyreonMayOpenExternally`). Only a user gesture can open one.
 //
 // DOWNLOADS (#4828). `systemDownload` hands an http(s) URL to the system
-// DownloadManager; `saveDownloadBytes` offers the bytes a page handed over (a
-// `blob:` / `data:` download) to the system "save as" picker. See "Downloads" in
-// PyreonWebView.kt.
+// DownloadManager (redirects followed here first, so the page's cookies reach
+// only its own origin); `saveDownloadFile` offers a page download's cache file to
+// the system "save as" picker. See "Downloads" in PyreonWebView.kt.
 //
 // CONSOLE. Not overridden: the default WebChromeClient already logs a page's
 // `console.*` to logcat (tag `chromium`, `[INFO:CONSOLE(n)]`), which is where an
@@ -109,8 +109,8 @@ internal class PyreonWebChrome(private val context: Context) {
     var permissionLauncher: ActivityResultLauncher<Array<String>>? = null
     var saveLauncher: ActivityResultLauncher<Intent>? = null
 
-    /** The download the "save as" picker is open for (at most one; a newer one replaces it). */
-    private var pendingSave: Pair<PyreonWebViewDownload, ByteArray>? = null
+    /** The download the "save as" picker is open for: its cache file and what to run when it is settled. */
+    private var pendingSave: Triple<PyreonWebViewDownload, File, () -> Unit>? = null
 
     private val files = PyreonOnceSlot<Array<Uri>>()
     /** The camera's output, while a capture is in flight (deleted if cancelled). */
@@ -473,60 +473,80 @@ internal class PyreonWebChrome(private val context: Context) {
 
     // ---- downloads -----------------------------------------------------------
 
-    /** An http(s) download: the system DownloadManager fetches it, with a notification. */
-    fun systemDownload(download: PyreonWebViewDownload, userAgent: String?) {
+    /**
+     * An http(s) download: the system DownloadManager fetches it, with a
+     * notification. [done] runs on the main thread with whether it was queued.
+     */
+    fun systemDownload(download: PyreonWebViewDownload, userAgent: String?, allowedOrigin: String?, done: (Boolean) -> Unit) {
         val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
         if (manager == null) {
             Log.w(TAG, "[Pyreon] <WebView>: no DownloadManager on this device; \"${download.filename}\" was not downloaded.")
+            done(false)
             return
         }
         val mime = download.mimeType.ifEmpty {
             MimeTypeMap.getSingleton().getMimeTypeFromExtension(download.filename.substringAfterLast('.', "").lowercase()).orEmpty()
         }
-        fun request(publicDir: Boolean) = DownloadManager.Request(Uri.parse(download.url)).apply {
-            if (mime.isNotEmpty()) setMimeType(mime)
-            // The page's session: a signed-in download needs its cookies.
-            CookieManager.getInstance().getCookie(download.url)?.let { addRequestHeader("Cookie", it) }
-            if (!userAgent.isNullOrEmpty()) addRequestHeader("User-Agent", userAgent)
-            setTitle(download.filename)
-            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            if (publicDir) {
-                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, download.filename)
-            } else {
-                setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, download.filename)
-            }
-        }
         val publicDir = pyreonDownloadToPublicDir(
             Build.VERSION.SDK_INT,
             granted(android.Manifest.permission.WRITE_EXTERNAL_STORAGE),
         )
-        try {
-            manager.enqueue(request(publicDir))
-        } catch (e: RuntimeException) {
-            // SecurityException / IllegalStateException: the public folder was refused.
-            if (!publicDir) {
-                Log.w(TAG, "[Pyreon] <WebView>: \"${download.filename}\" could not be downloaded: ${e.message}")
-                return
+        // Network (the redirect walk) off the main thread.
+        Thread {
+            val target = pyreonResolveDownloadRedirects(download.url, allowedOrigin, userAgent)
+            fun request(toPublicDir: Boolean) = DownloadManager.Request(Uri.parse(target)).apply {
+                if (mime.isNotEmpty()) setMimeType(mime)
+                // The page's session, for its own origin only.
+                if (pyreonDownloadCookieAllowed(target, allowedOrigin)) {
+                    CookieManager.getInstance().getCookie(target)?.let { addRequestHeader("Cookie", it) }
+                }
+                if (!userAgent.isNullOrEmpty()) addRequestHeader("User-Agent", userAgent)
+                setTitle(download.filename)
+                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                if (toPublicDir) {
+                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, download.filename)
+                } else {
+                    setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, download.filename)
+                }
             }
-            try {
-                manager.enqueue(request(false))
-            } catch (e2: RuntimeException) {
-                Log.w(TAG, "[Pyreon] <WebView>: \"${download.filename}\" could not be downloaded: ${e2.message}")
+            val queued = try {
+                manager.enqueue(request(publicDir))
+                true
+            } catch (e: RuntimeException) {
+                // SecurityException / IllegalStateException: the public folder was refused.
+                if (publicDir) {
+                    try {
+                        manager.enqueue(request(false))
+                        true
+                    } catch (e2: RuntimeException) {
+                        Log.w(TAG, "[Pyreon] <WebView>: \"${download.filename}\" could not be downloaded: ${e2.message}")
+                        false
+                    }
+                } else {
+                    Log.w(TAG, "[Pyreon] <WebView>: \"${download.filename}\" could not be downloaded: ${e.message}")
+                    false
+                }
             }
-        }
+            pyreonWebViewMainHandler.post { done(queued) }
+        }.start()
     }
 
-    /** Bytes a page handed over: the user picks where they go (`ACTION_CREATE_DOCUMENT`). */
-    fun saveDownloadBytes(download: PyreonWebViewDownload, bytes: ByteArray) {
+    /**
+     * A page download's cache [file]: the user picks where it goes
+     * (`ACTION_CREATE_DOCUMENT`). [done] runs once it is settled — saved,
+     * cancelled or failed — and the cache file is deleted then.
+     */
+    fun saveDownloadFile(download: PyreonWebViewDownload, file: File, done: () -> Unit) {
         val launcher = saveLauncher
         if (launcher == null) {
             Log.w(TAG, "[Pyreon] <WebView>: saving \"${download.filename}\" needs a ComponentActivity host; the download was dropped.")
+            file.delete()
+            done()
             return
         }
-        if (pendingSave != null) {
-            Log.w(TAG, "[Pyreon] <WebView>: a newer download replaced \"${pendingSave!!.first.filename}\" before it was saved.")
-        }
-        pendingSave = download to bytes
+        // The download rule allows one at a time, so this is defensive.
+        settleSave()
+        pendingSave = Triple(download, file, done)
         val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = download.mimeType.ifEmpty { "application/octet-stream" }
@@ -535,22 +555,44 @@ internal class PyreonWebChrome(private val context: Context) {
         try {
             launcher.launch(intent)
         } catch (e: ActivityNotFoundException) {
-            pendingSave = null
             Log.w(TAG, "[Pyreon] <WebView>: no app can save \"${download.filename}\" (no document provider).")
+            settleSave()
         }
     }
 
+    /** Drop the pending save, if any: delete its cache file and run its `done`. */
+    private fun settleSave() {
+        val (_, file, done) = pendingSave ?: return
+        pendingSave = null
+        file.delete()
+        done()
+    }
+
     fun onSaveResult(resultCode: Int, data: Intent?) {
-        val (download, bytes) = pendingSave ?: return
+        val (download, file, done) = pendingSave ?: return
         pendingSave = null
         val uri = data?.data
-        if (resultCode != Activity.RESULT_OK || uri == null) return
-        try {
-            context.contentResolver.openOutputStream(uri, "w")?.use { it.write(bytes) }
-                ?: Log.w(TAG, "[Pyreon] <WebView>: the chosen location for \"${download.filename}\" cannot be written.")
-        } catch (e: Exception) {
-            Log.w(TAG, "[Pyreon] <WebView>: saving \"${download.filename}\" failed: ${e.message}")
+        if (resultCode != Activity.RESULT_OK || uri == null) {
+            file.delete()
+            done()
+            return
         }
+        // Copied off the main thread: it can be hundreds of megabytes.
+        Thread {
+            try {
+                val out = context.contentResolver.openOutputStream(uri, "w")
+                if (out == null) {
+                    Log.w(TAG, "[Pyreon] <WebView>: the chosen location for \"${download.filename}\" cannot be written.")
+                } else {
+                    out.use { o -> file.inputStream().use { it.copyTo(o) } }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "[Pyreon] <WebView>: saving \"${download.filename}\" failed: ${e.message}")
+            } finally {
+                file.delete()
+                pyreonWebViewMainHandler.post { done() }
+            }
+        }.start()
     }
 
     // ---- fullscreen video ----------------------------------------------------
@@ -587,7 +629,7 @@ internal class PyreonWebChrome(private val context: Context) {
         dismissDialog()
         hideCustomView()
         // A save the user has not answered is dropped with the view.
-        pendingSave = null
+        settleSave()
     }
 }
 
@@ -662,4 +704,43 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+/**
+ * Follow [url]'s redirects (HEAD, at most 5) to the URL the file is actually
+ * served from, sending the page's cookies only to hops on its own origin
+ * ([pyreonDownloadCookieAllowed]). DownloadManager would otherwise repeat the
+ * Cookie header to every redirect target. Any failure keeps the last URL
+ * reached. Blocking: call it off the main thread.
+ */
+internal fun pyreonResolveDownloadRedirects(url: String, allowedOrigin: String?, userAgent: String?): String {
+    var current = url
+    repeat(5) {
+        val connection = try {
+            java.net.URL(current).openConnection() as? java.net.HttpURLConnection ?: return current
+        } catch (e: Exception) {
+            return current
+        }
+        try {
+            connection.instanceFollowRedirects = false
+            connection.requestMethod = "HEAD"
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 10_000
+            if (!userAgent.isNullOrEmpty()) connection.setRequestProperty("User-Agent", userAgent)
+            if (pyreonDownloadCookieAllowed(current, allowedOrigin)) {
+                CookieManager.getInstance().getCookie(current)?.let { connection.setRequestProperty("Cookie", it) }
+            }
+            val code = connection.responseCode
+            val location = connection.getHeaderField("Location")
+            if (code !in 300..399 || location == null) return current
+            val next = java.net.URL(java.net.URL(current), location).toString()
+            if (pyreonWebViewDownloadRoute(next) != PyreonDownloadRoute.SYSTEM) return current
+            current = next
+        } catch (e: Exception) {
+            return current
+        } finally {
+            connection.disconnect()
+        }
+    }
+    return current
 }

@@ -109,24 +109,32 @@
 // (including the `blob:` / `data:` URLs a page builds for an export), for a
 // `Content-Disposition: attachment` response, or for a MIME type it cannot
 // display: WebKit fails the navigation and the user sees no reaction. The
-// coordinator therefore turns each of those into a `WKDownload`:
+// coordinator therefore turns each of those into a `WKDownload` — but only
+// under the same scope as the bridge, plus a user gesture
+// (`pyreonWebViewDownloadVerdict`, the same rule as the Android host):
 //
-// - `decidePolicyFor navigationAction` answers `.download` when the action
-//   `shouldPerformDownload` (the `download` attribute), BEFORE the origin
-//   policy: a download does not move the main frame, so it is not a navigation
-//   the origin scope has to stop.
-// - `decidePolicyFor navigationResponse` answers `.download` for an attachment
-//   or a MIME type WebKit cannot show (`pyreonWebViewResponseIsDownload`).
-// - `decideDestinationUsing` reports the download to `onDownload` (URL, a
-//   sanitised file name, MIME type) and then, unless `saveDownloads` is false,
-//   writes it to a fresh temporary directory; `downloadDidFinish` presents the
-//   SHARE SHEET with the file (Save to Files, AirDrop, Mail, …) and deletes the
-//   temporary copy once the sheet closes. With `saveDownloads: false` the
-//   destination is nil, which cancels the download: the app has been told and
-//   handles it itself. On macOS the file goes to the user's Downloads folder
-//   under a free name instead.
-// - A download is never written without the user acting on the sheet, so a
-//   hosted page cannot place files anywhere on its own.
+// - FRAME: the download must come from the MAIN frame while it shows the
+//   allowed origin (`sourceFrame` for an `<a download>`, `isForMainFrame` for a
+//   response). An ad iframe gets nothing.
+// - USER ACTIVATION: a trusted click / key / touch in the main frame within
+//   the last 5 s. It is recorded by a script in an ISOLATED content world
+//   (`.defaultClient`), which the page's own scripts can neither see nor
+//   forge, and each activation allows ONE download.
+// - ONE AT A TIME: while a download is in flight or its sheet / panel is
+//   open, another is refused (a page looping `a.click()` cannot stack sheets
+//   or fill the temporary directory).
+// - A refused download is cancelled with a `[Pyreon] <WebView>` log;
+//   `onDownload` is NOT called.
+//
+// An allowed one is written to a fresh temporary directory. With
+// `saveDownloads: true` (default) `downloadDidFinish` reports it to
+// `onDownload` (URL, a sanitised file name, MIME type) and presents the SHARE
+// SHEET (iOS: Save to Files, AirDrop, Mail, …) or a SAVE PANEL (macOS); the
+// temporary copy is deleted once that closes. A failed download is not
+// reported. With `saveDownloads: false` the download is reported as it starts
+// and then cancelled (a nil destination): the app handles it itself. Nothing
+// is written anywhere the user can see without the user acting on the sheet or
+// panel.
 //
 // ## Policy posture (App Store / Play Store)
 //
@@ -168,12 +176,19 @@ public struct PyreonWebViewDownload: Sendable, Equatable {
 
 /// The name a download is saved under. The first usable candidate wins (the
 /// name WebKit suggests — the `download` attribute or `Content-Disposition` —
-/// then the URL's last path segment); each is reduced to a single path
-/// component: `/`, `\`, `:` and control characters become `_`, and leading
-/// dots and surrounding spaces are dropped, so the name can neither leave the
-/// target directory nor hide itself. Capped at 200 characters (keeping the
-/// extension). "download" when nothing usable is left. Same rule as the Kotlin
-/// `pyreonWebViewDownloadFilename`.
+/// then the URL's last path segment); each is reduced to ONE safe path
+/// component:
+///
+/// - `/`, `\`, `:`, C0 and C1 controls and DEL become `_`;
+/// - bidi marks, embeddings, overrides and isolates (U+200E/F, U+202A–202E,
+///   U+2066–2069) are removed, so `photo\u{202E}gpj.apk` cannot pose as a JPEG;
+/// - the space characters `pyreonWebViewNameTrim` lists are trimmed from both
+///   ends, then leading dots (no hidden or `..` names);
+/// - at most 255 UTF-8 BYTES (the file-system limit, not characters), keeping a
+///   short extension and cutting the rest on a grapheme boundary.
+///
+/// "download" when nothing usable is left. Same rule, byte for byte, as the
+/// Kotlin `pyreonWebViewDownloadFilename`.
 func pyreonWebViewDownloadFilename(_ candidates: String?...) -> String {
     for candidate in candidates {
         guard let candidate else { continue }
@@ -183,26 +198,100 @@ func pyreonWebViewDownloadFilename(_ candidates: String?...) -> String {
     return "download"
 }
 
+/// The space characters trimmed from a name's ends (identical list in Kotlin).
+let pyreonWebViewNameTrim: Set<UInt32> = [
+    0x20, 0xA0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006,
+    0x2007, 0x2008, 0x2009, 0x200A, 0x202F, 0x205F, 0x3000, 0xFEFF,
+]
+
+/// The most UTF-8 bytes a saved name may take.
+let pyreonWebViewNameMaxBytes = 255
+
+private func _pyreonIsBidiControl(_ v: UInt32) -> Bool {
+    v == 0x200E || v == 0x200F || (0x202A...0x202E).contains(v) || (0x2066...0x2069).contains(v)
+}
+
+private func _pyreonTrimName(_ s: String) -> String {
+    var scalars = Array(s.unicodeScalars)
+    while let first = scalars.first, pyreonWebViewNameTrim.contains(first.value) { scalars.removeFirst() }
+    while let last = scalars.last, pyreonWebViewNameTrim.contains(last.value) { scalars.removeLast() }
+    var out = String.UnicodeScalarView()
+    out.append(contentsOf: scalars)
+    return String(out)
+}
+
 private func _pyreonCleanFilename(_ raw: String) -> String {
     var out = String.UnicodeScalarView()
     for scalar in raw.unicodeScalars {
-        if scalar.value < 0x20 || scalar.value == 0x7F || scalar == "/" || scalar == "\\" || scalar == ":" {
+        let v = scalar.value
+        if _pyreonIsBidiControl(v) { continue }
+        if v < 0x20 || v == 0x7F || (0x80...0x9F).contains(v) || scalar == "/" || scalar == "\\" || scalar == ":" {
             out.append("_")
         } else {
             out.append(scalar)
         }
     }
-    var name = String(out).trimmingCharacters(in: .whitespaces)
+    var name = _pyreonTrimName(String(out))
     while name.hasPrefix(".") { name.removeFirst() }
-    name = name.trimmingCharacters(in: .whitespaces)
+    name = _pyreonTrimName(name)
     // A name made only of separators is no name.
     if name.allSatisfy({ $0 == "_" }) { return "" }
-    if name.count > 200 {
-        let ext = (name as NSString).pathExtension
-        let keep = ext.isEmpty || ext.count > 16 ? "" : "." + ext
-        name = String(name.prefix(200 - keep.count)) + keep
+    if name.utf8.count > pyreonWebViewNameMaxBytes {
+        var ext = ""
+        if let dot = name.lastIndex(of: "."), dot != name.startIndex {
+            let candidate = String(name[dot...])
+            if candidate.count > 1, candidate.utf8.count <= 32 { ext = candidate }
+        }
+        let stem = ext.isEmpty ? name : String(name.dropLast(ext.count))
+        var kept = ""
+        var bytes = 0
+        let budget = pyreonWebViewNameMaxBytes - ext.utf8.count
+        for character in stem {
+            let size = String(character).utf8.count
+            if bytes + size > budget { break }
+            kept.append(character)
+            bytes += size
+        }
+        name = kept + ext
     }
     return name
+}
+
+/// How long a user gesture in the main frame allows a download (as a
+/// browser's transient activation).
+let pyreonWebViewActivationWindowMs: Double = 5_000
+/// A download still "in flight" after this long no longer blocks the next one
+/// (a WebKit callback that never came must not disable downloads for good).
+let pyreonWebViewDownloadBusyStaleMs: Double = 120_000
+
+/// Why a download was allowed or refused (see "Downloads" in the file header).
+enum PyreonWebViewDownloadVerdict: Equatable {
+    case allow
+    /// From a sub-frame, or while the main frame is not on the allowed origin.
+    case notMainFrame
+    /// No unused user gesture in the main frame within the activation window.
+    case noActivation
+    /// Another download is in flight or waiting for the user.
+    case busy
+}
+
+/// The download rule, shared with the Android host (`pyreonWebViewDownloadVerdict`).
+/// `activationAgeMs` is the age of the newest UNUSED gesture (nil: none).
+func pyreonWebViewDownloadVerdict(
+    fromMainFrame: Bool,
+    onAllowedOrigin: Bool,
+    activationAgeMs: Double?,
+    busy: Bool
+) -> PyreonWebViewDownloadVerdict {
+    guard fromMainFrame, onAllowedOrigin else { return .notMainFrame }
+    guard let age = activationAgeMs, age >= 0, age <= pyreonWebViewActivationWindowMs else { return .noActivation }
+    return busy ? .busy : .allow
+}
+
+/// Whether a download that started at `since` still blocks a new one.
+func pyreonWebViewDownloadBusy(since: Double?, nowMs: Double) -> Bool {
+    guard let since else { return false }
+    return nowMs - since < pyreonWebViewDownloadBusyStaleMs
 }
 
 /// The last path segment of a URL string, for a name when nothing better is
@@ -226,20 +315,6 @@ func pyreonWebViewResponseIsDownload(canShowMIMEType: Bool, contentDisposition: 
     return !canShowMIMEType
 }
 
-/// `name`, or `name (2)`, `name (3)`, … before the extension: the first that
-/// `exists` says is free. Used for the macOS Downloads folder.
-func pyreonWebViewFreeFilename(_ name: String, exists: (String) -> Bool) -> String {
-    if !exists(name) { return name }
-    let ns = name as NSString
-    let ext = ns.pathExtension
-    let stem = ext.isEmpty ? name : ns.deletingPathExtension
-    var n = 2
-    while true {
-        let candidate = ext.isEmpty ? "\(stem) (\(n))" : "\(stem) (\(n)).\(ext)"
-        if !exists(candidate) { return candidate }
-        n += 1
-    }
-}
 
 #if canImport(WebKit)
 import WebKit
@@ -504,6 +579,20 @@ func pyreonWebViewReloadStillDue(_ history: PyreonRendererLossHistory, generatio
 /// shim forwards to (`window.webkit.messageHandlers.pyreonNative`).
 private let _pyreonMessageHandlerName = "pyreonNative"
 
+/// The handler the activation recorder posts to. It lives in the ISOLATED
+/// `.defaultClient` content world: the page's own scripts cannot see it, so
+/// they cannot forge a gesture to unlock a download.
+private let _pyreonActivationHandlerName = "pyreonActivation"
+
+/// Records TRUSTED user gestures in the main frame (see "Downloads").
+private let _pyreonActivationRecorder =
+    "(function(){var h=window.webkit.messageHandlers.\(_pyreonActivationHandlerName);"
+    + "function r(e){if(e.isTrusted)h.postMessage(e.type);}"
+    + "['click','keydown','touchend','pointerup'].forEach(function(t){document.addEventListener(t,r,true);});})();"
+
+/// Monotonic milliseconds, for the activation window.
+private func _pyreonNowMs() -> Double { ProcessInfo.processInfo.systemUptime * 1000 }
+
 /// The document-start shim defining the unified reverse-bridge API. Same
 /// `window.pyreonPostMessage(...)` contract on web + Android.
 private let _pyreonReverseBridgeShim =
@@ -541,9 +630,46 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     /// Download callback and whether the host saves downloads (see "Downloads").
     var onDownload: ((PyreonWebViewDownload) -> Void)?
     var saveDownloads = true
-    /// Where each in-flight download is being written. An entry is removed when
-    /// its download finishes or fails, so the table holds only live downloads.
-    var downloadDestinations: [ObjectIdentifier: URL] = [:]
+    /// Where each in-flight download is being written, with what it reports. An
+    /// entry is removed when its download finishes or fails, so the table holds
+    /// only live downloads (at most one: see `downloadBusySince`).
+    var downloadDestinations: [ObjectIdentifier: (file: URL, info: PyreonWebViewDownload)] = [:]
+    /// When the newest UNUSED user gesture in the main frame happened (ms of
+    /// uptime), recorded by the isolated-world script; a download consumes it.
+    var lastActivationMs: Double?
+    /// Set while an allowed download is in flight or its sheet / panel is open.
+    var downloadBusySince: Double?
+
+    /// Apply the download rule (see "Downloads" in the file header). Allowing
+    /// consumes the gesture and marks the host busy; refusing logs why.
+    func admitDownload(fromMainFrame: Bool, frameOrigin: String?, url: URL?) -> Bool {
+        let now = _pyreonNowMs()
+        let verdict = pyreonWebViewDownloadVerdict(
+            fromMainFrame: fromMainFrame,
+            onAllowedOrigin: !initialLoadPending && frameOrigin != nil && frameOrigin == allowedOrigin,
+            activationAgeMs: lastActivationMs.map { now - $0 },
+            busy: pyreonWebViewDownloadBusy(since: downloadBusySince, nowMs: now)
+        )
+        guard verdict == .allow else {
+            let why: String
+            switch verdict {
+            case .notMainFrame: why = "it did not come from the main frame of the page the app loaded"
+            case .noActivation: why = "no tap or key press in the page came before it (each one allows a single download)"
+            case .busy: why = "another download is still in progress or waiting for the user"
+            case .allow: why = ""
+            }
+            print("[Pyreon] <WebView>: refused a download of \"\(url?.absoluteString ?? "")\": \(why).")
+            return false
+        }
+        lastActivationMs = nil
+        downloadBusySince = now
+        return true
+    }
+
+    /// The allowed download is over (saved, dismissed, failed or cancelled).
+    func downloadSettled() {
+        downloadBusySince = nil
+    }
 
     /// Whether the main frame currently shows the allowed origin.
     func mainFrameAllowed(_ webView: WKWebView) -> Bool {
@@ -559,7 +685,14 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
         // `<a download>`: a download leaves the main frame where it is, so it is
         // decided before (and outside) the origin policy.
         if navigationAction.shouldPerformDownload {
-            decisionHandler(.download)
+            let source = navigationAction.sourceFrame
+            let origin = pyreonWebViewOrigin(
+                scheme: source.securityOrigin.protocol,
+                host: source.securityOrigin.host,
+                port: source.securityOrigin.port
+            )
+            let allowed = admitDownload(fromMainFrame: source.isMainFrame, frameOrigin: origin, url: navigationAction.request.url)
+            decisionHandler(allowed ? .download : .cancel)
             return
         }
         let decision = pyreonWebViewNavigationDecision(
@@ -592,7 +725,18 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
             canShowMIMEType: navigationResponse.canShowMIMEType,
             contentDisposition: disposition
         )
-        decisionHandler(download ? .download : .allow)
+        guard download else {
+            decisionHandler(.allow)
+            return
+        }
+        // Not a page: it is downloaded only under the download rule; otherwise
+        // the navigation is cancelled (it could not have been shown either).
+        let allowed = admitDownload(
+            fromMainFrame: navigationResponse.isForMainFrame,
+            frameOrigin: pyreonWebViewOrigin(webView.url),
+            url: navigationResponse.response.url
+        )
+        decisionHandler(allowed ? .download : .cancel)
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
@@ -617,25 +761,34 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
             filename: pyreonWebViewDownloadFilename(suggestedFilename, pyreonWebViewDownloadURLName(url)),
             mimeType: response.mimeType ?? ""
         )
-        onDownload?(info)
-        // nil cancels the download: the app was told and handles it itself.
-        guard saveDownloads, let destination = _pyreonDownloadDestination(filename: info.filename) else {
+        guard saveDownloads else {
+            // Reported as it starts, then cancelled (nil): the app handles it.
+            onDownload?(info)
+            downloadSettled()
             completionHandler(nil)
             return
         }
-        downloadDestinations[ObjectIdentifier(download)] = destination
+        guard let destination = _pyreonDownloadDestination(filename: info.filename) else {
+            downloadSettled()
+            completionHandler(nil)
+            return
+        }
+        downloadDestinations[ObjectIdentifier(download)] = (destination, info)
         completionHandler(destination)
     }
 
     func downloadDidFinish(_ download: WKDownload) {
-        guard let file = downloadDestinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
-        _pyreonDeliverDownload(file, from: webView)
+        guard let entry = downloadDestinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        // Reported once the file exists: a failed download is never reported.
+        onDownload?(entry.info)
+        _pyreonDeliverDownload(entry.file, from: webView) { [weak self] in self?.downloadSettled() }
     }
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        guard let file = downloadDestinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
-        _pyreonDiscardDownload(file)
-        print("[Pyreon] <WebView>: the download of \"\(file.lastPathComponent)\" failed: \(error.localizedDescription)")
+        downloadSettled()
+        guard let entry = downloadDestinations.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        _pyreonDiscardDownload(entry.file)
+        print("[Pyreon] <WebView>: the download of \"\(entry.info.filename)\" failed, so it was not reported: \(error.localizedDescription)")
     }
 
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
@@ -686,6 +839,11 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
+        // A trusted gesture in the main frame, from the isolated-world recorder.
+        if message.name == _pyreonActivationHandlerName {
+            if message.frameInfo.isMainFrame { lastActivationMs = _pyreonNowMs() }
+            return
+        }
         guard message.name == _pyreonMessageHandlerName else { return }
         // Only the main frame of the allowed origin may talk to the app: an
         // ad iframe or a page the user navigated to gets nothing through.
@@ -910,6 +1068,10 @@ private func _syncPyreonWebView(
 private func _makePyreonWebView(coordinator: _PyreonWebViewCoordinator, domStorage: Bool) -> WKWebView {
     let contentController = WKUserContentController()
     contentController.add(coordinator, name: _pyreonMessageHandlerName)
+    contentController.add(coordinator, contentWorld: .defaultClient, name: _pyreonActivationHandlerName)
+    contentController.addUserScript(
+        WKUserScript(source: _pyreonActivationRecorder, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient)
+    )
     contentController.addUserScript(
         WKUserScript(
             source: _pyreonReverseBridgeShim,
@@ -935,6 +1097,27 @@ enum _PyreonDialogKind {
     case alert
     case confirm
     case prompt(defaultText: String?)
+}
+
+/// A download is written to a directory of its own under the temporary
+/// directory (WebKit refuses a destination that exists) and handed to the user
+/// from there.
+private func _pyreonDownloadDestination(filename: String) -> URL? {
+    let dir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("pyreon-downloads", isDirectory: true)
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    do {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    } catch {
+        print("[Pyreon] <WebView>: cannot save the download \"\(filename)\": \(error.localizedDescription)")
+        return nil
+    }
+    return dir.appendingPathComponent(filename, isDirectory: false)
+}
+
+/// Remove a download's temporary directory.
+private func _pyreonDiscardDownload(_ file: URL) {
+    try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
 }
 
 #if canImport(UIKit)
@@ -983,39 +1166,23 @@ private func _pyreonOpenExternally(_ url: URL) {
     UIApplication.shared.open(url)
 }
 
-/// iOS saves a download through the share sheet, so it is written to a
-/// directory of its own under the temporary directory first (WebKit refuses a
-/// destination that exists).
-private func _pyreonDownloadDestination(filename: String) -> URL? {
-    let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("pyreon-downloads", isDirectory: true)
-        .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    do {
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    } catch {
-        print("[Pyreon] <WebView>: cannot save the download \"\(filename)\": \(error.localizedDescription)")
-        return nil
-    }
-    return dir.appendingPathComponent(filename, isDirectory: false)
-}
-
-/// Remove a download's temporary directory.
-private func _pyreonDiscardDownload(_ file: URL) {
-    try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
-}
 
 /// Hand a finished download to the user: the share sheet, anchored to the web
 /// view (an iPad presents it as a popover). The temporary copy is removed once
 /// the sheet closes, whatever the user chose.
 @MainActor
-private func _pyreonDeliverDownload(_ file: URL, from webView: WKWebView?) {
+private func _pyreonDeliverDownload(_ file: URL, from webView: WKWebView?, done: @escaping @MainActor () -> Void) {
     guard let webView, let presenter = _pyreonTopViewController(for: webView) else {
         print("[Pyreon] <WebView>: the download \"\(file.lastPathComponent)\" finished, but the view is not in a window to present the share sheet on; discarded.")
         _pyreonDiscardDownload(file)
+        done()
         return
     }
     let sheet = UIActivityViewController(activityItems: [file], applicationActivities: nil)
-    sheet.completionWithItemsHandler = { _, _, _, _ in _pyreonDiscardDownload(file) }
+    sheet.completionWithItemsHandler = { _, _, _, _ in
+        _pyreonDiscardDownload(file)
+        done()
+    }
     if let popover = sheet.popoverPresentationController {
         popover.sourceView = webView
         popover.sourceRect = CGRect(x: webView.bounds.midX, y: webView.bounds.midY, width: 0, height: 0)
@@ -1064,23 +1231,29 @@ private func _pyreonOpenExternally(_ url: URL) {
     NSWorkspace.shared.open(url)
 }
 
-/// macOS saves a download straight into the user's Downloads folder, under a
-/// name no file there has yet.
-private func _pyreonDownloadDestination(filename: String) -> URL? {
-    guard let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return nil }
-    let name = pyreonWebViewFreeFilename(filename) { candidate in
-        FileManager.default.fileExists(atPath: dir.appendingPathComponent(candidate).path)
-    }
-    return dir.appendingPathComponent(name, isDirectory: false)
-}
-
-private func _pyreonDiscardDownload(_ file: URL) {
-    try? FileManager.default.removeItem(at: file)
-}
-
+/// macOS asks where to save a finished download (a save panel, as Safari does
+/// when it is set to ask), then moves the temporary copy there.
 @MainActor
-private func _pyreonDeliverDownload(_ file: URL, from webView: WKWebView?) {
-    // Already in Downloads; the Dock's Downloads stack shows it.
+private func _pyreonDeliverDownload(_ file: URL, from webView: WKWebView?, done: @escaping @MainActor () -> Void) {
+    let panel = NSSavePanel()
+    panel.nameFieldStringValue = file.lastPathComponent
+    let finish: (NSApplication.ModalResponse) -> Void = { response in
+        if response == .OK, let target = panel.url {
+            do {
+                if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.removeItem(at: target) }
+                try FileManager.default.moveItem(at: file, to: target)
+            } catch {
+                print("[Pyreon] <WebView>: saving the download \"\(file.lastPathComponent)\" failed: \(error.localizedDescription)")
+            }
+        }
+        _pyreonDiscardDownload(file)
+        done()
+    }
+    if let window = webView?.window {
+        panel.beginSheetModal(for: window, completionHandler: finish)
+    } else {
+        finish(panel.runModal())
+    }
 }
 #endif
 

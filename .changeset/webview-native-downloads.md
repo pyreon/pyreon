@@ -8,7 +8,9 @@
 
 Two new props:
 
-- `onDownload={(d) => …}` is called once per download, before it is saved, with `{ url, filename, mimeType }` (`WebViewDownload`). The file name comes from the link's `download` attribute, the `Content-Disposition` header or the URL, reduced to one safe path component.
-- `saveDownloads` (default `true`, a literal) saves the file where the user can find it. On iOS that is a `WKDownload` followed by the share sheet (Save to Files, AirDrop, …). On Android an `http(s)` URL goes to `DownloadManager` with the page's cookies and its notification, and a `blob:` / `data:` URL is read inside the page (up to 50 MB) and offered to the system "save as" picker. `saveDownloads={false}` leaves every download to `onDownload`.
+- `onDownload={(d) => …}` receives `{ url, filename, mimeType }` (`WebViewDownload`) once the download is ready to hand to the user (a download that cannot be fetched or read is not reported). The file name comes from the link's `download` attribute, the `Content-Disposition` header or the URL, reduced to one safe path component of at most 255 UTF-8 bytes with bidi controls removed.
+- `saveDownloads` (default `true`, a literal) saves the file where the user can find it. On iOS that is a `WKDownload` followed by the share sheet (Save to Files, AirDrop, …). On Android an `http(s)` URL goes to `DownloadManager` with its notification and the page's cookies (sent only to the page's own origin; redirects are resolved first), and a `blob:` / `data:` URL is streamed from the page in chunks (up to 256 MB) and offered to the system "save as" picker. `saveDownloads={false}` reports each download as it starts and leaves it to the app.
 
-On the web the browser handles downloads in the `<iframe>` itself, and both props are ignored. On Android, a page must not revoke a `blob:` URL right after clicking it, because the host reads the blob after the click.
+Downloads are scoped like the message bridge: only the main frame on the page the app loaded, after a tap or key press there (one download per gesture), and one at a time. A download from an iframe, without a gesture, or while another is in flight is refused with a `[Pyreon] <WebView>` log and does not reach `onDownload`.
+
+On the web the browser handles downloads in the `<iframe>` itself, and both props are ignored. The usual export snippet (`a.click(); URL.revokeObjectURL(a.href)`) works on Android too: the host starts reading a `blob:` link as it is clicked.

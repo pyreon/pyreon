@@ -190,8 +190,23 @@ private fun downloads() {
     expect(pyreonWebViewDownloadFilename("a\u0000b\nc") == "a_b_c", "control characters")
     expect(pyreonWebViewDownloadFilename("///", "x.txt") == "x.txt", "an all-separator name is no name")
     expect(pyreonWebViewDownloadFilename("Résumé 2026.pdf") == "Résumé 2026.pdf", "unicode and spaces kept")
+    // Bidi controls removed (no "photo<RLO>gpj.apk" posing as a JPEG); C1 controls become "_".
+    expect(pyreonWebViewDownloadFilename("photo‮gpj.apk") == "photogpj.apk", "RLO removed")
+    expect(pyreonWebViewDownloadFilename("a‎⁦b⁩‏.txt") == "ab.txt", "marks and isolates removed")
+    expect(pyreonWebViewDownloadFilename("a\u0085b\u009Fc") == "a_b_c", "C1 controls replaced")
+    // One trim rule (same list as Swift), then leading dots.
+    expect(pyreonWebViewDownloadFilename("　  .x.txt﻿ ") == "x.txt", "trim set, then leading dots")
+    // At most 255 UTF-8 BYTES, extension kept, cut on a character boundary.
+    fun bytes(s: String) = s.toByteArray(Charsets.UTF_8).size
     val long = pyreonWebViewDownloadFilename("a".repeat(300) + ".pdf")
-    expect(long.length == 200 && long.endsWith(".pdf"), "capped at 200 with the extension: ${long.length}")
+    expect(bytes(long) == 255 && long.endsWith(".pdf"), "ASCII capped at 255 bytes: ${bytes(long)}")
+    val cjk = pyreonWebViewDownloadFilename("報".repeat(120) + ".csv")
+    expect(bytes(cjk) in 241..255 && cjk.endsWith(".csv"), "CJK capped by bytes: ${bytes(cjk)}")
+    expect(cjk.dropLast(4).all { it == '報' }, "no CJK character split")
+    val emoji = pyreonWebViewDownloadFilename("😀".repeat(80) + ".png")
+    expect(bytes(emoji) in 249..255 && emoji.endsWith(".png"), "emoji capped by bytes: ${bytes(emoji)}")
+    expect(emoji.dropLast(4).chunked(2).all { it == "😀" }, "no surrogate pair split")
+    expect(pyreonWebViewDownloadFilename("short.csv") == "short.csv", "a short name is untouched")
 
     // URL names.
     expect(pyreonWebViewDownloadURLName("https://x.test/files/q3%20final.csv?x=1#y") == "q3 final.csv", "http segment, decoded")
@@ -219,21 +234,52 @@ private fun downloads() {
     expect(!pyreonDownloadToPublicDir(28, false), "API 28 without permission → app directory")
     expect(pyreonDownloadToPublicDir(26, true), "API 26 with permission")
 
-    // Script building: every interpolated value is a JS string literal.
+    // Cookies only to the page's exact origin.
+    expect(pyreonDownloadCookieAllowed("https://x.test/a.pdf", "https://x.test"), "same origin")
+    expect(!pyreonDownloadCookieAllowed("https://cdn.test/a.pdf", "https://x.test"), "other host")
+    expect(!pyreonDownloadCookieAllowed("http://x.test/a.pdf", "https://x.test"), "other scheme")
+    expect(!pyreonDownloadCookieAllowed("https://x.test:8443/a", "https://x.test"), "other port")
+    expect(!pyreonDownloadCookieAllowed("https://x.test/a", null), "no page origin")
+    expect(!pyreonDownloadCookieAllowed("https://x.test/a", "file://"), "a file page has no cookies to send")
+
+    // The download rule — mirror of PyreonWebViewTests.downloads() (Swift).
+    expect(pyreonWebViewDownloadVerdict(true, true, 100, false) == PyreonWebViewDownloadVerdict.ALLOW, "allowed")
+    expect(pyreonWebViewDownloadVerdict(false, true, 100, false) == PyreonWebViewDownloadVerdict.NOT_MAIN_FRAME, "sub-frame refused")
+    expect(pyreonWebViewDownloadVerdict(true, false, 100, false) == PyreonWebViewDownloadVerdict.NOT_MAIN_FRAME, "other origin refused")
+    expect(pyreonWebViewDownloadVerdict(true, true, null, false) == PyreonWebViewDownloadVerdict.NO_ACTIVATION, "no gesture refused")
+    expect(pyreonWebViewDownloadVerdict(true, true, 5_001, false) == PyreonWebViewDownloadVerdict.NO_ACTIVATION, "stale gesture refused")
+    expect(pyreonWebViewDownloadVerdict(true, true, -1, false) == PyreonWebViewDownloadVerdict.NO_ACTIVATION, "future gesture refused")
+    expect(pyreonWebViewDownloadVerdict(true, true, 5_000, true) == PyreonWebViewDownloadVerdict.BUSY, "busy refused")
+    expect(pyreonWebViewDownloadVerdict(false, false, null, true) == PyreonWebViewDownloadVerdict.NOT_MAIN_FRAME, "frame is checked first")
+    expect(!pyreonWebViewDownloadBusy(null, 0), "idle")
+    expect(pyreonWebViewDownloadBusy(1_000, 60_000), "in flight")
+    expect(!pyreonWebViewDownloadBusy(1_000, 1_000 + PYREON_WEBVIEW_DOWNLOAD_BUSY_STALE_MS), "a lost callback stops blocking")
+
+    // Activations: one per download, exact match for blob:/data:, expiry, bounded.
+    val blob = "blob:https://x.test/uuid-1"
+    val intents = mutableListOf(PyreonDownloadIntent(blob, "a.csv", 1_000))
+    expect(pyreonWebViewTakeIntent(intents, "blob:https://ad.test/uuid-9", PyreonDownloadRoute.PAGE, 1_500) == null, "an ad frame's blob matches no main-frame link")
+    expect(pyreonWebViewTakeIntent(intents, blob, PyreonDownloadRoute.PAGE, 1_500)?.name == "a.csv", "the activated link")
+    expect(pyreonWebViewTakeIntent(intents, blob, PyreonDownloadRoute.PAGE, 1_600) == null, "an activation is used once (a click loop gets one)")
+    intents.add(PyreonDownloadIntent("https://x.test/export", null, 2_000))
+    expect(pyreonWebViewTakeIntent(intents, "https://cdn.test/q3.csv", PyreonDownloadRoute.SYSTEM, 2_500)?.href == "https://x.test/export", "http(s) after a redirect takes the newest")
+    intents.add(PyreonDownloadIntent("https://x.test/export", null, 3_000))
+    expect(pyreonWebViewTakeIntent(intents, "https://x.test/export", PyreonDownloadRoute.SYSTEM, 9_000) == null, "an expired activation is dropped")
+    expect(intents.isEmpty(), "expired ones are removed")
+    val many = mutableListOf<PyreonDownloadIntent>()
+    for (k in 0 until 20) pyreonWebViewRecordIntent(many, PyreonDownloadIntent("h$k", null, k.toLong()))
+    expect(many.size == PYREON_WEBVIEW_MAX_DOWNLOAD_INTENTS && many.first().href == "h12", "bounded, newest kept")
+
+    // Scripts: every interpolated value is a JS string literal.
     expect(pyreonJsString("a\"b\\c\n</script> ") == "\"a\\\"b\\\\c\\n\\u003c/script>\\u2028\"", "js string: ${pyreonJsString("a\"b\\c\n</script> ")}")
     val hostile = "blob:https://x.test/\"));alert(1)//"
-    expect(pyreonWebViewDownloadFetchScript(hostile, "tok", "1").contains(pyreonJsString(hostile)), "fetch script quotes the URL")
-    expect(!pyreonWebViewDownloadFetchScript(hostile, "tok", "1").contains("fetch(\"blob:https://x.test/\"))"), "the URL cannot close the call")
-    expect(pyreonWebViewDownloadNameScript(hostile).contains(pyreonJsString(hostile)), "name script quotes the URL")
-    expect(pyreonWebViewDownloadFetchScript("data:,x", "t", "7").contains("n.download(t,i,"), "posts through the download bridge")
-
-    // evaluateJavascript results.
-    expect(pyreonJsonStringResult("\"a.csv\"") == "a.csv", "a string result")
-    expect(pyreonJsonStringResult("\"q\\\"3\\u00e9\\n\"") == "q\"3é\n", "escapes decoded")
-    expect(pyreonJsonStringResult("null") == null, "null")
-    expect(pyreonJsonStringResult("42") == null, "a number is not a name")
-    expect(pyreonJsonStringResult("\"bad\\x\"") == null, "malformed")
-    expect(pyreonJsonStringResult(null) == null, "no result")
+    val fetchScript = pyreonWebViewDownloadFetchScript(hostile, "tok", "1")
+    expect(fetchScript.contains(pyreonJsString(hostile)), "fetch script quotes the URL")
+    expect(!fetchScript.contains("\"blob:https://x.test/\"))"), "the URL cannot close the string")
+    expect(fetchScript.contains("__pyreonDownloadBlobs") && fetchScript.contains("downloadChunk(t,i,"), "reads the click-time stash, streams chunks")
+    val shim = pyreonWebViewDownloadShim("tok\"x")
+    expect(shim.contains(pyreonJsString("tok\"x")), "shim quotes the token")
+    expect(shim.contains("fetch(h)") && shim.contains("navigator.userActivation"), "shim reads blobs at click time, under user activation")
 }
 
 private fun rendererGone() {

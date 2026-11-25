@@ -1209,20 +1209,33 @@ export function ChartHost() {
 - **Downloads (native)**: when the page starts a download (an `<a download>`
   link, including the `blob:` and `data:` URLs a page builds for an export, a
   `Content-Disposition: attachment` response, or a file type the engine cannot
-  display), the host calls `onDownload` with the URL, a safe file name and the
-  MIME type, and then saves the file where the user can find it:
+  display), the host saves the file where the user can find it and calls
+  `onDownload` with the URL, a safe file name (one path component, at most 255
+  UTF-8 bytes, bidi controls removed) and the MIME type:
 
   | | `http(s)` | `blob:` / `data:` |
   | --- | --- | --- |
   | iOS | WebKit fetches it, then the share sheet (Save to Files, AirDrop, …) | same |
-  | Android | `DownloadManager` → Downloads, with the system notification | read from the page, then the system "save as" picker |
+  | Android | `DownloadManager` → Downloads, with the system notification | streamed from the page, then the system "save as" picker |
 
-  `saveDownloads={false}` turns the saving off, so every download only reaches
-  `onDownload` and the app decides (open an `http(s)` URL itself, ignore it,
-  or ask the page for the content over `onMessage`). Nothing is written
-  without the user seeing it. On Android a `blob:` download is read from the
-  page after the click, so a page must not revoke the blob URL immediately
-  (revoke it after a timeout), and it is limited to 50 MB. Before Android 10,
+  Only the page the app loaded can download, and only for the user: a
+  download must come from the MAIN frame on the host's origin, after a tap or
+  key press there (each one allows a single download), and one at a time. A
+  download from an iframe (an ad), without a gesture, or while another is in
+  flight is refused with a `[Pyreon] <WebView>` log, and `onDownload` is not
+  called. `onDownload` fires once the file is ready to hand over; a download
+  that cannot be fetched or read is not reported.
+
+  `saveDownloads={false}` turns the saving off, so every allowed download only
+  reaches `onDownload` (as it starts) and the app decides (open an `http(s)`
+  URL itself, ignore it, or ask the page for the content over `onMessage`).
+  Nothing is written where the user can see it without the user choosing it.
+  On Android the page's cookies go only to its own origin (the host follows
+  redirects itself before `DownloadManager` gets the URL), a `blob:` link is
+  read as it is clicked, so the usual `a.click(); URL.revokeObjectURL(url)`
+  works, and a `blob:` / `data:` download streams over in chunks (up to
+  256 MB). A `blob:` URL a page starts downloading without clicking a link is
+  refused (no gesture on a link). Before Android 10,
   `DownloadManager` saves into the app's own Downloads directory unless the
   app holds `WRITE_EXTERNAL_STORAGE`. On the web the browser downloads from
   the `<iframe>` itself, with its own UI, and both props are ignored.

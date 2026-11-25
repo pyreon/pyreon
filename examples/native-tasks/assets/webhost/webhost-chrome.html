@@ -60,16 +60,16 @@
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       )
     }
-    // A detached link clicked from script, as export helpers do. The blob is
-    // revoked a minute later, not at once: the Android host reads it from the
-    // page after the click.
+    // The common export snippet: a detached link clicked from script, its blob
+    // URL revoked right after the click. The host must still save it (the
+    // Android shim starts reading the blob in the click itself).
     function doDownload() {
       var blob = new Blob(['id,title\n1,Write the docs\n'], { type: 'text/csv' })
       var a = document.createElement('a')
       a.href = URL.createObjectURL(blob)
       a.download = 'pyreon-tasks.csv'
       a.click()
-      setTimeout(function () { URL.revokeObjectURL(a.href) }, 60000)
+      URL.revokeObjectURL(a.href)
     }
     var input = document.getElementById('file')
     input.addEventListener('change', function () {

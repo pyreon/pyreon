@@ -124,17 +124,26 @@ export interface WebViewProps {
    * `<a download>` link (including `blob:` and `data:` URLs the page built
    * itself, e.g. a CSV export), a response sent with
    * `Content-Disposition: attachment`, or a response whose MIME type the
-   * engine cannot display. It is called once per download, BEFORE the file
-   * is saved, with the URL, a safe file name and the MIME type (`''` when
-   * the engine does not know it).
+   * engine cannot display. It receives the URL, a safe file name (one path
+   * component, at most 255 UTF-8 bytes, no bidi controls) and the MIME type
+   * (`''` when unknown).
    *
-   * Unless `saveDownloads={false}`, the host then saves the file where the
-   * user can find it:
+   * WHICH downloads (native, the same rule on iOS and Android): only one
+   * the MAIN frame starts while it shows the page the app loaded, after a tap
+   * or key press in that frame (each gesture allows ONE download), and one at
+   * a time. A download from an iframe (an ad), without a gesture, or while
+   * another is in flight is refused with a `[Pyreon] <WebView>` log and
+   * `onDownload` is not called.
+   *
+   * With `saveDownloads={false}` it is called as the download starts and the
+   * app handles it. Otherwise the host saves the file where the user can find
+   * it, and calls `onDownload` once the file is ready to hand over (a download
+   * that cannot be fetched or read is not reported):
    *
    * | target  | `http(s)`                                   | `blob:` / `data:`                          |
    * | ------- | ------------------------------------------- | ------------------------------------------ |
    * | iOS     | fetched by WebKit, then the share sheet (Save to Files, AirDrop, …) | same                |
-   * | Android | `DownloadManager` → Downloads, with the system notification | read from the page, then the system "save as" picker |
+   * | Android | `DownloadManager` → Downloads, with the system notification | streamed from the page, then the system "save as" picker |
    *
    * WEB: the browser handles downloads in the `<iframe>` itself (its own
    * download UI); `onDownload` and `saveDownloads` are native-only and are

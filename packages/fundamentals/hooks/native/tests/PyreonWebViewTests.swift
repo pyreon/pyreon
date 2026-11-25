@@ -58,20 +58,42 @@ enum PyreonWebViewTests {
         check(pyreonWebViewDownloadFilename("a\u{0}b\nc") == "a_b_c", "control characters replaced")
         check(pyreonWebViewDownloadFilename("///", "x.txt") == "x.txt", "an all-separator name is no name")
         check(pyreonWebViewDownloadFilename("Résumé 2026.pdf") == "Résumé 2026.pdf", "unicode and spaces kept")
+        // Bidi controls are removed (no "photo<RLO>gpj.apk" posing as a JPEG); C1 controls become "_".
+        check(pyreonWebViewDownloadFilename("photo\u{202E}gpj.apk") == "photogpj.apk", "RLO removed")
+        check(pyreonWebViewDownloadFilename("a\u{200E}\u{2066}b\u{2069}\u{200F}.txt") == "ab.txt", "marks and isolates removed")
+        check(pyreonWebViewDownloadFilename("a\u{85}b\u{9F}c") == "a_b_c", "C1 controls replaced")
+        // One trim rule: the listed spaces (NBSP, ideographic, BOM, …) at both ends.
+        check(pyreonWebViewDownloadFilename("\u{3000}\u{A0} .x.txt\u{FEFF} ") == "x.txt", "trim set, then leading dots")
+        // At most 255 UTF-8 BYTES, extension kept, cut on a grapheme boundary.
         let long = pyreonWebViewDownloadFilename(String(repeating: "a", count: 300) + ".pdf")
-        check(long.count == 200 && long.hasSuffix(".pdf"), "capped at 200, extension kept: \(long.count)")
+        check(long.utf8.count == 255 && long.hasSuffix(".pdf"), "ASCII capped at 255 bytes: \(long.utf8.count)")
+        let cjk = pyreonWebViewDownloadFilename(String(repeating: "報", count: 120) + ".csv")
+        check(cjk.utf8.count <= 255 && cjk.hasSuffix(".csv") && cjk.utf8.count > 240, "CJK capped by bytes: \(cjk.utf8.count)")
+        check(cjk.dropLast(4).allSatisfy { $0 == "報" }, "no character split")
+        let family = "👨‍👩‍👧‍👦"
+        let emoji = pyreonWebViewDownloadFilename(String(repeating: family, count: 20) + ".png")
+        check(emoji.utf8.count <= 255 && emoji.hasSuffix(".png"), "emoji capped by bytes: \(emoji.utf8.count)")
+        check(emoji.dropLast(4).allSatisfy { String($0) == family }, "ZWJ sequences kept whole")
+        check(pyreonWebViewDownloadFilename("short.csv") == "short.csv", "a short name is untouched")
+
+        // The download rule: main frame on the allowed origin, a fresh unused gesture, one at a time.
+        check(pyreonWebViewDownloadVerdict(fromMainFrame: true, onAllowedOrigin: true, activationAgeMs: 100, busy: false) == .allow, "allowed")
+        check(pyreonWebViewDownloadVerdict(fromMainFrame: false, onAllowedOrigin: true, activationAgeMs: 100, busy: false) == .notMainFrame, "sub-frame refused")
+        check(pyreonWebViewDownloadVerdict(fromMainFrame: true, onAllowedOrigin: false, activationAgeMs: 100, busy: false) == .notMainFrame, "other origin refused")
+        check(pyreonWebViewDownloadVerdict(fromMainFrame: true, onAllowedOrigin: true, activationAgeMs: nil, busy: false) == .noActivation, "no gesture refused")
+        check(pyreonWebViewDownloadVerdict(fromMainFrame: true, onAllowedOrigin: true, activationAgeMs: 5_001, busy: false) == .noActivation, "stale gesture refused")
+        check(pyreonWebViewDownloadVerdict(fromMainFrame: true, onAllowedOrigin: true, activationAgeMs: -1, busy: false) == .noActivation, "future gesture refused")
+        check(pyreonWebViewDownloadVerdict(fromMainFrame: true, onAllowedOrigin: true, activationAgeMs: 5_000, busy: true) == .busy, "busy refused")
+        check(pyreonWebViewDownloadVerdict(fromMainFrame: false, onAllowedOrigin: false, activationAgeMs: nil, busy: true) == .notMainFrame, "frame is checked first")
+        check(!pyreonWebViewDownloadBusy(since: nil, nowMs: 0), "idle")
+        check(pyreonWebViewDownloadBusy(since: 1_000, nowMs: 60_000), "in flight")
+        check(!pyreonWebViewDownloadBusy(since: 1_000, nowMs: 1_000 + pyreonWebViewDownloadBusyStaleMs), "a lost callback stops blocking")
 
         // URL names: only for a URL with a real path.
         check(pyreonWebViewDownloadURLName("https://x.test/files/q3.csv?x=1") == "q3.csv", "http path segment")
         check(pyreonWebViewDownloadURLName("https://x.test/") == nil, "no segment")
         check(pyreonWebViewDownloadURLName("blob:https://x.test/8c1d-uuid") == nil, "blob has no name")
         check(pyreonWebViewDownloadURLName("data:text/csv,a,b") == nil, "data has no name")
-
-        // A free name in a folder (macOS Downloads).
-        let taken: Set<String> = ["a.csv", "a (2).csv", "notes"]
-        check(pyreonWebViewFreeFilename("b.csv") { taken.contains($0) } == "b.csv", "free name kept")
-        check(pyreonWebViewFreeFilename("a.csv") { taken.contains($0) } == "a (3).csv", "numbered before the extension")
-        check(pyreonWebViewFreeFilename("notes") { taken.contains($0) } == "notes (2)", "no extension")
 
         let d = PyreonWebViewDownload(url: "blob:x", filename: "a.csv", mimeType: "text/csv")
         check(d == PyreonWebViewDownload(url: "blob:x", filename: "a.csv", mimeType: "text/csv"), "value type")
