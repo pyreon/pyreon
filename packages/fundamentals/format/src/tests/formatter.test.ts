@@ -5,14 +5,14 @@
  */
 import * as core from '../core'
 import * as reactive from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { clearAllTables } from './helpers'
 
 const LOCALES = ['en-US', 'en-GB', 'cs', 'de', 'fr', 'ja', 'ar', 'hi', 'pt-BR']
 const AT = Date.UTC(2026, 10, 18, 14, 30)
 
 afterEach(() => {
-  _resetLocaleState()
+  resetLocaleState()
   clearAllTables()
 })
 
@@ -188,7 +188,7 @@ describe('derivation', () => {
   it('invalid input warns once in dev and never throws', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(core.numberFormatter(en)('x' as never)).toBe('')
-    expect(core.currencyFormatter('EURO', en)(5)).toBe('')
+    expect(core.currencyFormatter('Euro', en)(5)).toBe('')
     expect(core.dateFormatter(en)('2026-02-30')).toBe('')
     expect(warn).toHaveBeenCalled()
     warn.mockRestore()

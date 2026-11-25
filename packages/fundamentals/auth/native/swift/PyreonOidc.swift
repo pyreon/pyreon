@@ -15,6 +15,137 @@ public struct PyreonAuthFlow: Codable, Equatable {
     public let createdAt: TimeInterval
 }
 
+/// What a redirect URI is matched on — the same rule as the web `redirectTarget`, held to the shared
+/// vectors in `native/tests/redirect-vectors.json`: `scheme host path`, scheme and host lowercased,
+/// default ports (80 http, 443 https) dropped, the path as written (not percent-decoded), `/` for an
+/// empty http(s) path, the scheme-specific part for an opaque URI; query and fragment ignored.
+public enum PyreonRedirect {
+    public static func target(_ s: String) -> String? {
+        // Spellings the three parsers disagree on are refused everywhere (see the web rule).
+        let head = String(s.prefix { $0 != "?" && $0 != "#" })
+        if head.contains("\\") || head.contains(where: { $0.isWhitespace }) || head.lowercased().contains("%2e")
+            || !head.allSatisfy({ $0.isASCII }) { return nil }
+        if let r = head.range(of: "://"), head[r.upperBound...].prefix(while: { $0 != "/" }).contains("%") { return nil }
+        guard let c = URLComponents(string: s), let rawScheme = c.scheme else { return nil }
+        let scheme = rawScheme.lowercased()
+        // `encodedHost` keeps an ASCII (punycode) host as written; Foundation may decode it in `host`.
+        var host = (c.encodedHost ?? c.percentEncodedHost ?? "").lowercased()
+        if let port = c.port, !((scheme == "http" && port == 80) || (scheme == "https" && port == 443)) { host += ":\(port)" }
+        var path = c.percentEncodedPath
+        if path.hasPrefix("/") { path = removeDotSegments(path) }
+        if path.isEmpty && (scheme == "http" || scheme == "https") { path = "/" }
+        return "\(scheme) \(host) \(path)"
+    }
+
+    /// RFC 3986 §5.2.4 for an absolute path, as the web URL parser applies it.
+    static func removeDotSegments(_ path: String) -> String {
+        var out: [Substring] = []
+        let segs = path.dropFirst().split(separator: "/", omittingEmptySubsequences: false)
+        for (i, seg) in segs.enumerated() {
+            let last = i == segs.count - 1
+            if seg == "." { if last { out.append("") }; continue }
+            if seg == ".." {
+                if !out.isEmpty { out.removeLast() }
+                if last { out.append("") }
+                continue
+            }
+            out.append(seg)
+        }
+        return "/" + out.joined(separator: "/")
+    }
+}
+
+/// Which issuers have a live `PyreonOidcAuth` on which redirect target — process-wide, the same rule
+/// as the web `claimRedirect` (RFC 9700 §4.4 mix-up). A target is SHARED while two or more issuers
+/// hold it; on a shared target a provider must send RFC 9207 `iss` (sign-in refuses one that does not
+/// advertise it, `redirect_shared`) and every callback must carry `iss` (`issuer_missing`). Native
+/// apps nearly always share one scheme, so give each provider its own path: `com.example.app:/oauth/google`.
+public final class PyreonRedirectClaims: @unchecked Sendable {
+    public static let shared = PyreonRedirectClaims()
+    private struct Claim { var count: Int; var iss: Bool? }
+    private let lock = NSLock()
+    private var claims: [String: [String: Claim]] = [:]
+
+    /// Register one instance; the returned token releases it (idempotent).
+    public func claim(redirectUri: String, issuer: String) -> PyreonRedirectToken {
+        let target = PyreonRedirect.target(redirectUri) ?? redirectUri
+        let name = issuer.hasSuffix("/") ? String(issuer.dropLast()) : issuer
+        add(target: target, issuer: name)
+        return PyreonRedirectToken(registry: self, target: target, issuer: name)
+    }
+
+    fileprivate func add(target: String, issuer: String) {
+        lock.lock()
+        claims[target, default: [:]][issuer, default: Claim(count: 0, iss: nil)].count += 1
+        lock.unlock()
+    }
+
+    fileprivate func release(target: String, issuer: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var byIssuer = claims[target], var c = byIssuer[issuer] else { return }
+        c.count -= 1
+        if c.count > 0 { byIssuer[issuer] = c } else { byIssuer[issuer] = nil }
+        claims[target] = byIssuer.isEmpty ? nil : byIssuer
+    }
+
+    fileprivate func isShared(_ target: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return (claims[target]?.count ?? 0) > 1
+    }
+
+    /// Record whether the provider sends `iss`; false when that is not allowed (shared target, no `iss`).
+    fileprivate func advertise(target: String, issuer: String, iss: Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        claims[target]?[issuer]?.iss = iss
+        return iss || (claims[target]?.count ?? 0) < 2
+    }
+
+    /// Forget every claim (tests).
+    public func reset() {
+        lock.lock()
+        claims = [:]
+        lock.unlock()
+    }
+}
+
+/// One instance's claim on its redirect target.
+public final class PyreonRedirectToken: @unchecked Sendable {
+    private let registry: PyreonRedirectClaims
+    public let target: String
+    private let issuer: String
+    private let lock = NSLock()
+    private var released = false
+
+    fileprivate init(registry: PyreonRedirectClaims, target: String, issuer: String) {
+        self.registry = registry
+        self.target = target
+        self.issuer = issuer
+    }
+
+    public var isShared: Bool { registry.isShared(target) }
+    public func advertise(iss: Bool) -> Bool { registry.advertise(target: target, issuer: issuer, iss: iss) }
+
+    public func release() {
+        lock.lock()
+        let first = !released
+        released = true
+        lock.unlock()
+        if first { registry.release(target: target, issuer: issuer) }
+    }
+
+    /// Register again after `release()` (a disposed instance that signs in again).
+    public func reclaimIfReleased() {
+        lock.lock()
+        let again = released
+        released = false
+        lock.unlock()
+        if again { registry.add(target: target, issuer: issuer) }
+    }
+}
+
 /// The https rule every endpoint follows, shared with the web `assertHttps`.
 public enum PyreonAuthURL {
     static let loopback: Set<String> = ["localhost", "127.0.0.1", "::1", "[::1]"]
@@ -30,7 +161,7 @@ public enum PyreonAuthURL {
 
     /// Authorization-request parameters the flow owns; `authorizationParams` may not set them.
     public static let reservedParams: Set<String> = [
-        "response_type", "client_id", "redirect_uri", "scope", "state", "nonce", "code_challenge", "code_challenge_method",
+        "response_type", "response_mode", "client_id", "redirect_uri", "scope", "state", "nonce", "code_challenge", "code_challenge_method",
     ]
 }
 
@@ -143,6 +274,12 @@ public final class PyreonAuthCore {
             throw PyreonAuthError.unknownFlow
         }
         if now.timeIntervalSince1970 - flow.createdAt > Self.flowTtl { throw PyreonAuthError.flowExpired }
+        // A flow started for another provider must never reach this provider's token endpoint
+        // (OAuth mix-up), whether or not the callback carries RFC 9207 `iss`.
+        guard flow.issuer == issuer else { throw PyreonAuthError.issuerMismatch }
+        // RFC 9700 §4.4: without `iss`, the redirect URI is what says which provider answered.
+        guard let got = PyreonRedirect.target(callback.absoluteString), got == PyreonRedirect.target(flow.redirectUri)
+        else { throw PyreonAuthError.redirectMismatch }
         if let e = q("error") { throw PyreonAuthError.providerError(e) }
         guard PyreonPKCE.constantTimeEqual(state, flow.state) else { throw PyreonAuthError.stateMismatch }
         if let iss = q("iss") { guard iss == issuer else { throw PyreonAuthError.issuerMismatch } }

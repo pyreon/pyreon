@@ -29,9 +29,8 @@ interface PrevNextResolved {
 
 /**
  * Pure resolver — given a flat entry list and a current URL, return the
- * prev/next entries. Exported for testing + downstream reuse.
- *
- * @internal exported for testing
+ * prev/next entries. `<PrevNext>` renders from it; call it directly to
+ * build a custom prev/next UI.
  */
 export function resolvePrevNext(
   entries: SidebarEntry[],

@@ -113,8 +113,8 @@ const DIRECTIVE_MAP: Record<string, string> = {
 }
 
 /**
- * Build a CSP header string from directives.
- * Exported for testing.
+ * Build a CSP header string from directives — the value `cspMiddleware`
+ * sets, for a hand-written server or a static host's header config.
  */
 export function buildCspHeader(directives: CspDirectives, nonce?: string): string {
   const parts: string[] = []

@@ -291,7 +291,7 @@ The path is the issue's path segments joined with `.`. Path-less issues land und
 `toFormValidator(schema, t?)` adapts any `@pyreon/validate` schema into the `(values) => Record<field, errorMessage>` function `@pyreon/form` expects as its `schema` option. It runs `schema.safeParse`, maps each issue's path to a per-field error via `formatErrorsByPath` (so i18n keys resolve through `t`), and returns `{}` on success.
 
 ```ts
-import { useForm, field } from '@pyreon/form'
+import { useForm } from '@pyreon/form'
 import { s } from '@pyreon/validate'
 import { toFormValidator } from '@pyreon/validate'
 import { useI18n } from '@pyreon/i18n'
@@ -304,7 +304,7 @@ const schema = s.object({
 })
 
 const form = useForm({
-  fields: [field('email', ''), field('age', 0)],
+  initialValues: { email: '', age: 0 },
   schema: toFormValidator(schema, t),
   onSubmit: (values) => save(values),
 })
@@ -997,7 +997,6 @@ Types: `FieldMeta`, `Input<S>`, `Output<S>`, `ParseResult`, `ReactiveSource`, `P
 | `getFormatValidator` | `(name: string) => FormatValidator \| undefined` | The validator installed for a named format, if any. |
 | `uninstallFormatValidator` | `(name: string) => void` | Remove an installed format validator (falls back to the built-in). |
 | `resolveFormat` | `(name, light: FormatValidator) => FormatValidator` | The installed validator for `name`, else `light`. |
-| `installServerCheck` / `getServerCheck` / `uninstallServerCheck` | `(key, fn?: ServerCheckFn)` | The registry behind `.serverCheck(key)`. Apps normally use `registerServerCheck` from `@pyreon/validate/server`; these are exported for tests. |
 | `validateCreditCard` / `validateIp` / `validatePhone` / `isIPv6` | `(value: string) => boolean` | The lightweight client format validators, for standalone use. |
 
 Types: `ValidateConfig`, `FormatValidator`, `ServerCheckFn` (`(value, context?) => boolean \| Promise<boolean>`), `EmailPrecision` (`'html5' \| 'standard' \| 'rfc5322'`), `UrlOpts`.

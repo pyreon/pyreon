@@ -23,7 +23,6 @@ import {
 } from '@pyreon/core'
 import {
   _bind,
-  _noopDispose,
   computed,
   EffectScope,
   effectScope,
@@ -32,6 +31,7 @@ import {
   setCurrentScope,
   signal,
 } from '@pyreon/reactivity'
+import { _noopDispose } from '@pyreon/reactivity/internal'
 import { transformSync } from 'esbuild'
 import { afterEach, describe, expect, it } from 'vitest'
 import {

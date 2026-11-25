@@ -1,6 +1,5 @@
 import { computed, signal } from '@pyreon/reactivity'
 import {
-  _resetDevtools,
   getActiveForms,
   getFormInstance,
   getFormSnapshot,
@@ -8,6 +7,7 @@ import {
   registerForm,
   unregisterForm,
 } from '../devtools'
+import { _resetDevtools } from '../internal'
 
 // Minimal form-like object for testing (avoids needing the full useForm + DOM)
 function createMockForm(values: Record<string, unknown>) {

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { _resetRegistry, _resetStorageListener, useStorage } from '../index'
+import { useStorage } from '../index'
+import { _resetRegistry, _resetStorageListener } from '../internal'
 
 /**
  * REGRESSION: one consumer's `.remove()` must not cut the others (or itself)

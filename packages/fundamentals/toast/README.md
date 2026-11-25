@@ -50,6 +50,7 @@ toast.promise(saveDraft(), {
 | `toast.dismiss(id?)` | dismiss one or every toast (soft — plays the leave animation) | |
 | `toast.remove(id?)` | remove one or every toast instantly (hard — no leave animation) | |
 | `toast.promise(promise, opts)` | transitions loading → success / error automatically | |
+| `toast.list()` | reactive read of the live queue (`readonly Readonly<Toast>[]`, oldest first), e.g. a notification count | |
 
 ```ts
 toast(message: string | VNodeChild, options?: ToastOptions): string
@@ -146,14 +147,19 @@ Fully custom toast content IS supported — `message`, `description`, and `icon`
 
 ## Testing
 
+Use the helpers in `@pyreon/testing/toast`:
+
 ```ts
-import { _reset, _toasts } from '@pyreon/toast'
+import { clearToasts, expectToast, findToast } from '@pyreon/testing/toast'
 import { afterEach } from 'vitest'
 
-afterEach(_reset)
+afterEach(clearToasts)
+
+expectToast(/saved/) // a matching toast exists now
+await findToast(/saved/) // wait for one to appear
 ```
 
-`_reset()` clears the queue and timers; `_toasts` is the raw `Signal<Toast[]>` for assertions.
+`clearToasts()` clears the queue and timers.
 
 ## Gotchas
 

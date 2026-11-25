@@ -4,14 +4,16 @@
  * the devtools inspector). Ids only; pruned ids drop out on read.
  */
 import {
-  __resetReactiveDevtoolsForTesting,
-  _rdScopeNodes,
   computed,
   effect,
   effectScope,
   setCurrentScope,
   signal,
 } from '../index'
+import {
+  __resetReactiveDevtoolsForTesting,
+  _rdScopeNodes,
+} from '../internal'
 import { _rdPrune } from '../reactive-devtools'
 
 afterEach(() => {

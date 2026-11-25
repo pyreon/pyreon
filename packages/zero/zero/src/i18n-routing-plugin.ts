@@ -5,8 +5,8 @@ import {
   extractLocaleFromPath,
   type I18nRoutingConfig,
   type LocaleStore,
-  matchLocale,
 } from './i18n-routing'
+import { matchLocale } from './i18n-locale-guards'
 
 // ─── i18nRouting — SERVER-ONLY Vite plugin ──────────────────────────────────
 //

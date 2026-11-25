@@ -14,7 +14,7 @@ Seven Kotlin sources under `src/main/kotlin/com/pyreon/router/`:
 
 | File | What it is |
 |---|---|
-| `PyreonRouter.kt` | The router model — a `MutableState<List<String>>` path stack, `push`/`replace`/`back`/`forward`/`reset`, `redirect`, `params`/`query`, a `routes: MutableState<List<RouteRecord>>` table, `beforeEachGuards`/`afterEachHooks`, `loaderData`, and `resolveCurrentChain()`. |
+| `PyreonRouter.kt` | The router model — a `MutableState<List<String>>` path stack of ROUTE paths (no query or fragment — the same shape as the Swift router; each entry's query is kept beside it, `currentPath` reassembles the URL and `routePath` is the route alone), `push`/`replace`/`back`/`forward`/`reset`, `redirect`, `params`/`query`, a `routes: MutableState<List<RouteRecord>>` table, `beforeEachGuards`/`afterEachHooks`, `loaderData` (keyed by the route path with the query dropped, `PyreonRouter.loaderKey`), and `resolveCurrentChain()`. |
 | `RouteRecord` (in `PyreonRouter.kt`) | One route definition: `path`, `children` (nested layouts — declared BEFORE `component` in the constructor specifically so Kotlin's trailing-lambda syntax keeps binding to `component`), `beforeEnter` (a per-route guard), then `component` last. |
 | `RouterProvider.kt` | `@Composable` container — exposes the router via the `LocalPyreonRouter` `CompositionLocal`. |
 | `RouterView.kt` | Renders the matched route at the current nesting depth (`LocalRouterDepth`), with a `notFoundComponent` wildcard fallback and a manual-`when`-dispatch fallback for apps that don't configure `routes`. |

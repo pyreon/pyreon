@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _resetRegistry, _resetStorageListener, useSessionStorage, useStorage } from '../index'
+import { useSessionStorage, useStorage } from '../index'
+import { _resetRegistry, _resetStorageListener } from '../internal'
 import { serialize } from '../utils'
 
 /**

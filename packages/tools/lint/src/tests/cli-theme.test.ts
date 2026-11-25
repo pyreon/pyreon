@@ -6,7 +6,7 @@
  */
 import { stripAnsi } from '@pyreon/ansi'
 import { describe, expect, it } from 'vitest'
-import { formatInitResult, formatRuleList } from '../cli'
+import { formatInitResult, formatRuleList } from '../cli-helpers'
 import { formatGha } from '../reporter'
 import type { LintResult } from '../types'
 import { formatRuleState, type RuleState } from '../why-off'

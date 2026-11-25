@@ -12,7 +12,8 @@
  */
 import { transformJSX } from '@pyreon/compiler'
 import { _fuse, _lc, _rp, _rpd, _wrapSpread, For, Fragment, h, mergeProps } from '@pyreon/core'
-import { _bind, _hasSubscribers, computed, signal } from '@pyreon/reactivity'
+import { _bind, computed, signal } from '@pyreon/reactivity'
+import { _hasSubscribers } from '@pyreon/reactivity/internal'
 import { renderToString } from '@pyreon/runtime-server'
 import { transformSync } from 'esbuild'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'

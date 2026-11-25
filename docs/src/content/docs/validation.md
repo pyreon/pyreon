@@ -235,7 +235,7 @@ The bridge ships a small set of duck-typed helpers, mostly used by schema-driven
 
 - **`isStandardSchema(value)`** -- type guard detecting the `~standard` property. Used to decide whether a `schema` option is a raw Standard Schema.
 - **`isPyreonAdapter(value)`** -- type guard detecting a Pyreon `TypedSchemaAdapter` (the `_infer` brand plus a callable `parse`).
-- **`wrapStandardSchema(schema)`** -- convert a Standard Schema into a synchronous `SchemaParseResult` parser returning the *coerced value* (not form errors). Surfaces async validation as a `Promise` return. `@internal` -- most consumers go through `extractParseFn`.
+- **`wrapStandardSchema(schema)`** -- convert a Standard Schema into a synchronous `SchemaParseResult` parser returning the *coerced value* (not form errors). Surfaces async validation as a `Promise` return. Most consumers go through `extractParseFn`; call it directly when building your own Standard-Schema-derived parser.
 - **`extractParseFn(schema)`** -- the primary schema-driven entry point for `@pyreon/store` + `@pyreon/state-tree`: accepts *either* a `TypedSchemaAdapter` (uses its sync `parse`) *or* a raw Standard Schema (wraps via `wrapStandardSchema`) and returns one uniform sync parser. Throws a `[Pyreon]`-prefixed error if the value is neither shape, or if a Pyreon adapter is missing its `parse`.
 - **`formatIssues(issues, op)`** -- format normalized issues into a readable `[Pyreon] Schema validation failed (<op>): ...` message (truncates after 5 issues).
 
@@ -1229,7 +1229,7 @@ The adapters wrap JavaScript schema libraries (zod / valibot / arktype), so they
 | `standardSchemaToValidator(schema)`  | `<TValues>(schema: StandardSchemaV1) => SchemaValidateFn<TValues>`           | Convert a raw Standard Schema into a whole-object `SchemaValidateFn` (sync fast-path: sync schema → plain record; async schema → Promise). The bridge behind passing a raw schema. |
 | `isStandardSchema(value)`            | `(value: unknown) => value is StandardSchemaV1`                              | Type guard — detect a Standard Schema by its `~standard.validate` function (objects and callables; `version` / `vendor` are not checked at runtime). |
 | `isPyreonAdapter(value)`             | `(value: unknown) => value is PyreonAdapterShape<Record<string, unknown>>`   | Type guard — detect a Pyreon `TypedSchemaAdapter` (`_infer` + callable `parse`).                                              |
-| `wrapStandardSchema(schema)`         | `<T>(schema: StandardSchemaV1) => (value) => SchemaParseResult<T>`           | Convert a Standard Schema into a sync coerced-value parser (async → `Promise` return). `@internal`.                          |
+| `wrapStandardSchema(schema)`         | `<T>(schema: StandardSchemaV1) => (value) => SchemaParseResult<T>`           | Convert a Standard Schema into a sync coerced-value parser (async → `Promise` return). Most code uses `extractParseFn`.     |
 | `extractParseFn(schema)`             | `<T>(schema: unknown) => (value) => SchemaParseResult<T>`                    | Uniform sync parser from a `TypedSchemaAdapter` OR a raw Standard Schema. Throws on neither. Store / state-tree entry point.  |
 | `formatIssues(issues, op)`           | `(issues: SchemaIssue[], op: string) => string`                             | Format normalized issues into a readable `[Pyreon] Schema validation failed (<op>): ...` message.                            |
 

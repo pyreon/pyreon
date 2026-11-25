@@ -15,8 +15,8 @@
 import type { RouteRecord } from '@pyreon/router'
 import { resolveRoute } from '@pyreon/router'
 import type { Middleware, MiddlewareContext } from '@pyreon/server'
-import type { CreateActionMiddlewareOptions } from './actions'
-import { _actionDeclaringRoute, _isKnownAction, createActionMiddleware, resolveActionOptions } from './actions'
+import type { CreateActionMiddlewareOptions } from './actions-core'
+import { _actionDeclaringRoute, _isKnownAction, createActionMiddleware, resolveActionOptions } from './actions-core'
 import { ACTION_QUERY_PARAM } from './form'
 import { ROUTE_GATE_TAG } from './route-gate'
 import { createFormActionMiddleware } from './form-actions-server'
@@ -35,8 +35,6 @@ import {
 import type { RouteMiddlewareEntry, ZeroConfig } from './types'
 
 export const DATA_ENDPOINT = '/_pyreon/data'
-
-export { ROUTE_MIDDLEWARE_RAN }
 
 export interface RequestPipelineOptions {
   routes: RouteRecord[]

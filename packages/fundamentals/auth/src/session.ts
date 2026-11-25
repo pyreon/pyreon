@@ -44,6 +44,7 @@ function hmacKey(secret: string): Promise<CryptoKey> {
     k = crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
     hmacKeys.set(secret, k)
   }
+
   return k
 }
 
@@ -56,6 +57,7 @@ export async function signSession(payload: SessionPayload, opts: SessionOptions,
   const body = base64url(enc.encode(JSON.stringify({ ...payload, exp: Math.floor(now / 1000) + (opts.maxAge ?? 28_800), jti: randomToken(8) })))
   const value = `${body}.${await hmac(opts.secrets[0]!, body)}`
   if (value.length > MAX_COOKIE_BYTES) throw new Error('[Pyreon] auth: session exceeds the 4096-byte cookie limit — store a session id instead')
+
   return value
 }
 
@@ -76,13 +78,29 @@ export async function verifySession(value: string, opts: SessionOptions, now = D
     if (opts.isRevoked) {
       if (typeof p.jti !== 'string' || (await opts.isRevoked(p.jti, p))) return null
     }
+
     return p
   } catch {
     return null
   }
 }
 
-/** `Set-Cookie` with secure defaults: HttpOnly, Secure, SameSite=Lax, host-prefixed. */
+// RFC 6265 §4.1.1: a cookie name is an HTTP token, a value is cookie-octets (no space, `"`,
+// `,`, `;` or a backslash). Anything else could end the attribute list early (`sid; Domain=evil`).
+const COOKIE_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/
+const COOKIE_VALUE = /^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*$/
+
+/**
+ * `Set-Cookie` with secure defaults: HttpOnly, Secure, SameSite=Lax, host-prefixed. Throws on a
+ * name or value that is not a valid cookie token (it would inject attributes) and on a negative or
+ * fractional `maxAge`.
+ */
 export function sessionCookie(name: string, value: string, maxAge = 28_800): string {
+  if (!COOKIE_NAME.test(name)) throw new Error(`[Pyreon] auth: invalid cookie name ${JSON.stringify(name)} — use letters, digits and -_.`)
+  if (!COOKIE_VALUE.test(value)) {
+    throw new Error('[Pyreon] auth: invalid cookie value — no spaces, quotes, commas, semicolons or backslashes (signSession output is always valid)')
+  }
+  if (!Number.isInteger(maxAge) || maxAge < 0) throw new Error('[Pyreon] auth: cookie maxAge must be a non-negative integer (seconds)')
+
   return `__Host-${name}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`
 }

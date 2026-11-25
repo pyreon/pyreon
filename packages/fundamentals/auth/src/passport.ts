@@ -14,7 +14,13 @@ export interface PassportRequest {
   headers: Record<string, string>
   query: Record<string, string>
   body: Record<string, unknown>
-  /** Strategies such as passport-oauth2 keep state/verifier here; back it with the pending-flow store. */
+  /**
+   * Strategies such as passport-oauth2 keep their `state` / PKCE verifier here and check it on the
+   * callback. That check is what binds the sign-in to the browser, so this object must be the SAME
+   * browser's session on both requests: load it from a server-side store keyed by a cookie of that
+   * browser (`createFlowBinding` / `readFlowBinding` works), never by the `state` in the callback URL
+   * — that would let anyone holding the URL complete the sign-in (login CSRF).
+   */
   session: Record<string, unknown>
 }
 

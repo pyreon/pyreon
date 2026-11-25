@@ -19,7 +19,8 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { createHttp } from '../client'
-import { _setSourceTextSupport, losslessJson, parseJsonLossless, stringifyJsonLossless } from '../json'
+import { losslessJson, parseJsonLossless, stringifyJsonLossless } from '../json'
+import { _setSourceTextSupport } from '../internal'
 import { createMock } from '../mock'
 
 const UNSAFE = '9007199254740993'

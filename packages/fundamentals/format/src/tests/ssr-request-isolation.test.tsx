@@ -11,7 +11,7 @@
 import { h } from '@pyreon/core'
 import { renderToString, runWithRequestContext } from '@pyreon/runtime-server'
 import * as format from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { _resetWarnings } from '../warn'
 
 const { formatNumber, formatDate, provideLocale, provideTimeZone } = format
@@ -19,7 +19,7 @@ const { formatNumber, formatDate, provideLocale, provideTimeZone } = format
 const tick = (ms = 1) => new Promise<void>((r) => setTimeout(r, ms))
 const raw = (locale: string) => new Intl.NumberFormat(locale).format(1234567.5)
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 describe('request isolation (server)', () => {
   it('two interleaved request scopes never see each other\'s locale', async () => {
