@@ -554,6 +554,28 @@ export function createPanelApp(
     return `${r.kind === 'derived' ? 'computed' : r.kind} · ${plural(r.fires, 'write')} · ${r.value}`
   }
 
+  function note(text: string): HTMLElement {
+    return el('p', { class: 'note', text })
+  }
+
+  /** The props preview of the selected component (`here` is null until its detail arrives). */
+  function propsSection(here: ComponentDetail | null): Node {
+    if (!here) return note('Reading…')
+    if (here.props === null) return note('Needs a framework build that exposes component props.')
+    const props = Object.entries(here.props)
+
+    return props.length === 0 ? note('No props.') : kv(props)
+  }
+
+  /** The signals, computeds and effects the selected component created. */
+  function ownedSection(here: ComponentDetail | null): Node {
+    if (!reactiveAvailable) return note('Needs a framework build with the reactive devtools bridge.')
+    if (!here) return note('Reading…')
+    if (here.owned.length === 0) return note('Created no signal, computed or effect in its setup.')
+
+    return kv(here.owned.map((r) => [displayName(r.name, r.loc), nodeSummary(r)]))
+  }
+
   function renderInspector(): void {
     const entry = selectedId === null ? undefined : index.map.get(selectedId)
     if (!entry) {
@@ -582,28 +604,7 @@ export function createPanelApp(
       el('div', { class: 'sec-h', text: 'props' }),
     ]
     const here = detail && detail.id === entry.id ? detail : null
-    if (!here) {
-      nodes.push(el('p', { class: 'note', text: 'Reading…' }))
-    } else if (here.props === null) {
-      nodes.push(el('p', { class: 'note', text: 'Needs a framework build that exposes component props.' }))
-    } else {
-      const props = Object.entries(here.props)
-      nodes.push(
-        props.length === 0
-          ? el('p', { class: 'note', text: 'No props.' })
-          : kv(props.map(([k, v]) => [k, v])),
-      )
-    }
-    nodes.push(el('div', { class: 'sec-h', text: 'owns' }))
-    if (!reactiveAvailable) {
-      nodes.push(el('p', { class: 'note', text: 'Needs a framework build with the reactive devtools bridge.' }))
-    } else if (!here) {
-      nodes.push(el('p', { class: 'note', text: 'Reading…' }))
-    } else if (here.owned.length === 0) {
-      nodes.push(el('p', { class: 'note', text: 'Created no signal, computed or effect in its setup.' }))
-    } else {
-      nodes.push(kv(here.owned.map((r) => [displayName(r.name, r.loc), nodeSummary(r)])))
-    }
+    nodes.push(propsSection(here), el('div', { class: 'sec-h', text: 'owns' }), ownedSection(here))
     nodes.push(el('div', { class: 'sec-h', text: 'reactive reads' }))
     if (!reactiveAvailable) {
       nodes.push(el('p', { class: 'note', text: 'Needs a framework build with the reactive devtools bridge.' }))

@@ -98,6 +98,7 @@ function latestFired(reads: ComponentRead[], fires: ReactiveFire[]): ComponentRe
   for (const r of reads) {
     if (r.lastFire !== null && (latest === null || r.lastFire > (latest.lastFire ?? 0))) latest = r
   }
+
   return latest
 }
 
@@ -239,6 +240,7 @@ export function createHook(devtools: PyreonDevtools, opts: HookOptions): Hook {
     const pool = detail.reads.some((r) => r.lastFire !== null) ? detail.reads : detail.owned
     const latest = latestFired(pool, reactive.getFires())
     if (latest) detail.cause = compactCause(reactive.getUpdateCause(latest.id))
+
     return detail
   }
 

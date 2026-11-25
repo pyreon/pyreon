@@ -31,6 +31,7 @@ function start(extra: Partial<Parameters<typeof createHook>[1]> = {}): Hook {
     host: 'localhost:5173',
     ...extra,
   })
+
   return hook
 }
 
@@ -57,9 +58,11 @@ afterEach(() => {
 function App() {
   return h('main', null, h(Header, null), h(Composer, null))
 }
+
 function Header() {
   return h('header', null, 'Inbox')
 }
+
 function Composer() {
   return h('p', { class: 'composer' })
 }
@@ -68,6 +71,7 @@ function mountApp(): HTMLElement {
   const container = document.createElement('div')
   document.body.appendChild(container)
   disposeApp = mount(h(App, null), container)
+
   return container
 }
 
@@ -175,6 +179,7 @@ describe('createHook', () => {
         external()
         doubled()
       })
+
       return h('section', { class: 'counter' }, props.label)
     }
     const container = document.createElement('div')
