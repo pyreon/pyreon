@@ -47,7 +47,10 @@ public struct PyreonRouteLoader<Content: View>: View {
         load: @escaping () -> Any,
         @ViewBuilder content: @escaping () -> Content
     ) {
-        self.path = path
+        // Keyed by the route, query excluded (`PyreonRouter.loaderKey`): a
+        // query-only navigation (url-state) must neither hide the content
+        // nor re-run the loader.
+        self.path = PyreonRouter.loaderKey(path)
         self.load = load
         self.content = content
     }

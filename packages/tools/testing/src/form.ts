@@ -52,7 +52,7 @@ export interface RenderFormResult<TValues extends Record<string, unknown>> {
  *
  * @example
  *   const { form, fill, submit } = renderForm(() =>
- *     useForm({ fields: { email: field('') }, onSubmit }),
+ *     useForm({ initialValues: { email: '' }, onSubmit }),
  *   )
  *   fill({ email: 'ada@lovelace.dev' })
  *   await submit()
@@ -71,7 +71,7 @@ export function renderForm<TValues extends Record<string, unknown>>(
         const field = form.fields[key]
         if (field === undefined) {
           throw new Error(
-            `[Pyreon] fill(): "${key}" is not a registered field (known: ${Object.keys(form.fields).join(', ') || 'none'}). Declare it in useForm({ fields }) or register it via form.registerField().`,
+            `[Pyreon] fill(): "${key}" is not a registered field (known: ${Object.keys(form.fields).join(', ') || 'none'}). Declare it in useForm({ initialValues }) or register it via form.registerField().`,
           )
         }
         form.setFieldValue(key, values[key] as TValues[typeof key])

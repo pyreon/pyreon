@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { _resetCookieWarnings } from '../cookie'
-import { _resetRegistry, useCookie, useStorage } from '../index'
+import { useCookie, useStorage } from '../index'
+import { _resetRegistry } from '../internal'
 
 function clearAllCookies(): void {
   for (const cookie of document.cookie.split(';')) {

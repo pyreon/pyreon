@@ -144,7 +144,84 @@ public final class PyreonRouter {
     /// Active route path stack. Drives the NavigationStack(path:)
     /// binding inside RouterProvider's body. Mutating this array
     /// (push / pop / replace) triggers SwiftUI's navigation animation.
-    public var path: [String]
+    ///
+    /// Each element is a ROUTE path WITHOUT its query or fragment (`/search`,
+    /// never `/search?q=cat`): the element is the pushed screen's identity in
+    /// `.navigationDestination(for: String.self)`, and a query-only change
+    /// (`setQueryParam`, url-state, a same-route `replace`) must keep the
+    /// screen and its `@State` — the native twin of web #4814. Each entry's
+    /// tail (`?query#fragment`) lives in `entrySuffixes`; `currentPath`
+    /// reassembles the URL. The Kotlin router's `path` has the same shape.
+    ///
+    /// A direct write is normalised (see `didSet`): an element carrying
+    /// `?…` / `#…` is split and its tail kept as that entry's suffix; a bare
+    /// element keeps its suffix when it is unchanged at the same position (so
+    /// SwiftUI's back-swipe pop through the binding stays consistent), else
+    /// starts with none.
+    public var path: [String] {
+        didSet {
+            let normalized = Self.normalizeStack(path, old: oldValue, suffixes: entrySuffixes)
+            // Re-entering the setter runs this `didSet` once more against the
+            // raw value, so the suffixes are written AFTER it.
+            if normalized.routes != path { path = normalized.routes }
+            entrySuffixes = normalized.suffixes
+        }
+    }
+
+    /// The URL tail (`?q=1#sec`, `#intro` or "") of every entry of the ACTIVE
+    /// stack: index 0 is the stack's root view, index `i` is `path[i - 1]`.
+    /// Always `path.count + 1` long (kept so by `path`'s `didSet`).
+    private var entrySuffixes: [String] = [""]
+
+    /// Normalise a stack write against the previous stack and its suffixes:
+    /// every element is split into route + tail; an element carrying a tail
+    /// stores it as its entry's suffix; a bare element keeps its old suffix
+    /// when it is unchanged at the same position, else starts with none; the
+    /// root's suffix (index 0) is always kept.
+    static func normalizeStack(
+        _ raw: [String], old: [String], suffixes: [String]
+    ) -> (routes: [String], suffixes: [String]) {
+        var routes: [String] = []
+        var out: [String] = [suffixes.first ?? ""]
+        for (i, element) in raw.enumerated() {
+            let entry = splitEntry(element)
+            routes.append(entry.route)
+            if !entry.suffix.isEmpty {
+                out.append(entry.suffix)
+            } else {
+                let keep = i < old.count && old[i] == entry.route && i + 1 < suffixes.count
+                out.append(keep ? suffixes[i + 1] : "")
+            }
+        }
+        return (routes, out)
+    }
+
+    /// Split a URL into its route and its tail (`?query#fragment`, either part
+    /// optional). The fragment is KEPT: it belongs to the entry like the query.
+    static func splitEntry(_ full: String) -> (route: String, suffix: String) {
+        guard let cut = full.firstIndex(where: { $0 == "?" || $0 == "#" }) else { return (full, "") }
+        return (String(full[..<cut]), String(full[cut...]))
+    }
+
+    /// Reassemble a stack element and its tail into a URL.
+    static func joinEntry(_ route: String, _ suffix: String) -> String {
+        route + suffix
+    }
+
+    /// The `#fragment` part of an entry tail, `#` included, or "".
+    static func fragmentOf(_ suffix: String) -> String {
+        guard let hash = suffix.firstIndex(of: "#") else { return "" }
+        return String(suffix[hash...])
+    }
+
+    /// The URL tail of the visible entry (the root's when the stack is empty).
+    private var topSuffix: String {
+        get { path.count < entrySuffixes.count ? entrySuffixes[path.count] : "" }
+        set {
+            while entrySuffixes.count <= path.count { entrySuffixes.append("") }
+            entrySuffixes[path.count] = newValue
+        }
+    }
 
     /// Phase B8 — forward-history stack. Captures paths that were
     /// popped via `back()` so a subsequent `forward()` can re-push
@@ -155,6 +232,7 @@ public final class PyreonRouter {
     /// Not exposed publicly: this is the implementation detail behind
     /// `forward()`. `canGoForward` exposes the readable boolean for
     /// UI components that want to disable a "forward" button.
+    /// Entries are full URLs (route + query), split again on `forward()`.
     @ObservationIgnored
     private var _forwardStack: [String] = []
 
@@ -163,9 +241,16 @@ public final class PyreonRouter {
     /// disable a "forward" affordance (rare on iOS — atypical UX).
     public var canGoForward: Bool { !_forwardStack.isEmpty }
 
-    /// Convenience accessor for the top-of-stack path. Mirrors
-    /// `router.currentRoute().path` on the web side.
+    /// Convenience accessor for the top-of-stack URL, query included
+    /// (`/search?q=cat`). Mirrors `router.currentRoute().fullPath` on the web.
     public var currentPath: String {
+        Self.joinEntry(routePath, topSuffix)
+    }
+
+    /// The visible route WITHOUT its query (`/search`) — the screen's
+    /// identity, and the key route loaders and `useLoaderData()` use (the
+    /// web's default loader key also ignores the query).
+    public var routePath: String {
         path.last ?? activeTabRoot ?? "/"
     }
 
@@ -180,7 +265,26 @@ public final class PyreonRouter {
 
     /// The pushed entries (root excluded — a tab's root is its stack's ROOT
     /// view) of every tab EXCEPT the active one, whose entries live in `path`.
-    public var tabPaths: [String: [String]] = [:]
+    /// Route parts only, like `path`; a write is normalised the same way.
+    public var tabPaths: [String: [String]] = [:] {
+        didSet {
+            var routes: [String: [String]] = [:]
+            var suffixes: [String: [String]] = [:]
+            for (name, stack) in tabPaths {
+                let normalized = Self.normalizeStack(
+                    stack, old: oldValue[name] ?? [], suffixes: tabSuffixes[name] ?? [""])
+                routes[name] = normalized.routes
+                suffixes[name] = normalized.suffixes
+            }
+            // Re-entering the setter runs this `didSet` again on the raw value,
+            // so the suffixes are written AFTER it.
+            if routes != tabPaths { tabPaths = routes }
+            tabSuffixes = suffixes
+        }
+    }
+
+    /// Each parked tab's `entrySuffixes` (root first), keyed like `tabPaths`.
+    private var tabSuffixes: [String: [String]] = [:]
 
     /// The active tab's root path, when the router has tabs.
     public var activeTabRoot: String? {
@@ -202,14 +306,31 @@ public final class PyreonRouter {
             set: { [weak self] next in
                 guard let self else { return }
                 if name == self.activeTab {
-                    guard next != self.path else { return }
-                    self.path = next
-                    self.updateParamsFromPath(self.currentPath)
+                    self.applyStackWrite(next)
                 } else {
+                    // `tabPaths`' `didSet` reconciles the tab's suffixes.
                     self.tabPaths[name] = next
                 }
             }
         )
+    }
+
+    /// The `NavigationStack(path:)` binding of a single-stack router. SwiftUI
+    /// writes through it on the back button and the swipe-back gesture; the
+    /// write re-resolves `params` and `query` like `back()` does (a direct
+    /// `$router.path` binding left both describing the popped screen).
+    public func stackBinding() -> Binding<[String]> {
+        Binding(
+            get: { [weak self] in self?.path ?? [] },
+            set: { [weak self] next in self?.applyStackWrite(next) }
+        )
+    }
+
+    /// A stack write from SwiftUI (pop by gesture / back button).
+    private func applyStackWrite(_ next: [String]) {
+        guard next != path else { return }
+        path = next
+        updateParamsFromPath(currentPath)
     }
 
     /// Select a tab. Switching keeps every tab's stack and shows the selected
@@ -220,29 +341,43 @@ public final class PyreonRouter {
         guard let tab = tabs.first(where: { $0.name == name }) else { return }
         if name == activeTab {
             guard !path.isEmpty else { return }
-            if !allowNavigation(to: tab.root) { return }
+            let rootURL = Self.joinEntry(tab.root, entrySuffixes.first ?? "")
+            if !allowNavigation(to: rootURL) { return }
             path = []
             _forwardStack.removeAll()
-            updateParamsFromPath(tab.root)
-            runAfterEach(tab.root)
+            updateParamsFromPath(currentPath)
+            runAfterEach(currentPath)
             return
         }
         let saved = tabPaths[name] ?? []
-        let destination = saved.last ?? tab.root
+        let savedSuffixes = tabSuffixes[name] ?? [""]
+        let destination = Self.joinEntry(
+            saved.last ?? tab.root,
+            saved.count < savedSuffixes.count ? savedSuffixes[saved.count] : "")
         if !allowNavigation(to: destination) { return }
         activateTab(name)
         _forwardStack.removeAll()
-        updateParamsFromPath(destination)
-        runAfterEach(destination)
+        updateParamsFromPath(currentPath)
+        runAfterEach(currentPath)
     }
 
     /// Make `name` the active tab, parking the current tab's entries and
     /// loading `name`'s. Ungated — callers run the guards first.
     private func activateTab(_ name: String) {
         guard name != activeTab else { return }
-        if let current = activeTab { tabPaths[current] = path }
-        path = tabPaths[name] ?? []
-        tabPaths[name] = nil
+        let incomingStack = tabPaths[name] ?? []
+        let incomingSuffixes = tabSuffixes[name] ?? [""]
+        let outgoingSuffixes = entrySuffixes
+        // Each write's `didSet` reconciles against the stack it replaced, so
+        // the suffixes are restored AFTER the matching stack write.
+        var parked = tabPaths
+        parked[name] = nil
+        if let current = activeTab { parked[current] = path }
+        tabPaths = parked
+        if let current = activeTab { tabSuffixes[current] = outgoingSuffixes }
+        tabSuffixes[name] = nil
+        path = incomingStack
+        entrySuffixes = incomingSuffixes
         activeTab = name
     }
 
@@ -276,12 +411,14 @@ public final class PyreonRouter {
         let isRoot = Self.isTabRoot(target, candidate)
         guard target.name != activeTab || isRoot else { return false }
         activateTab(target.name)
+        let entry = Self.splitEntry(candidate)
         if isRoot {
             path = []
         } else {
-            path.append(candidate)
+            path.append(entry.route)
         }
-        updateParamsFromPath(candidate)
+        topSuffix = entry.suffix
+        updateParamsFromPath(currentPath)
         return true
     }
 
@@ -473,19 +610,34 @@ public final class PyreonRouter {
             let tab = (allowed ? target.flatMap { Self.tabFor($0, in: tabs) } : nil) ?? firstTab
             self.activeTab = tab.name
             if let target, allowed, !Self.isTabRoot(tab, target) {
-                self.path = [target]
+                let entry = Self.splitEntry(target)
+                self.path = [entry.route]
+                self.entrySuffixes = ["", entry.suffix]
+            } else if let target, allowed {
+                // A deep link to the tab's root: the root entry carries its query.
+                self.path = []
+                self.entrySuffixes = [Self.splitEntry(target).suffix]
             } else {
                 self.path = []
+                self.entrySuffixes = [""]
             }
+        } else if allowed {
+            let entries = initialPath.map(Self.splitEntry)
+            self.path = entries.map(\.route)
+            self.entrySuffixes = [""] + entries.map(\.suffix)
         } else {
-            self.path = allowed ? initialPath : []
+            self.path = []
+            self.entrySuffixes = [""]
         }
         // Resolve any params that the initial top-of-stack path produces,
         // so apps that start on `/users/42` have `params["id"] == "42"`
         // immediately — no need to call push/replace just to populate.
         // A REFUSED initial path never committed, so it contributes no params.
-        if allowed, !initialPath.isEmpty, let resolved = self.resolve(initialPath.last!) {
-            self.params = resolved.params
+        if allowed, let last = initialPath.last {
+            if let resolved = Self.resolveChainInStatic(routes, last)?.first {
+                self.params = resolved.params
+            }
+            self.query = Self.parseQuery(Self.splitPathAndQuery(last).query)
         }
         // WARM links — a URL handed to an app that is already running. The
         // newest router owns them (single listener slot, see PyreonDeepLink),
@@ -576,7 +728,7 @@ public final class PyreonRouter {
     /// entry array. `RouterView` reads this + depth from the
     /// environment to render the right level.
     public func resolveCurrentChain() -> [ChainEntry]? {
-        return resolveChainIn(routes, currentPath)
+        return resolveChainIn(routes, routePath)
     }
 
     /// Resolve the CURRENT top-of-stack path against the route table.
@@ -585,7 +737,7 @@ public final class PyreonRouter {
     /// can call it during render — treat as an internal-API surface
     /// on the package.
     public func resolveCurrentRoute() -> ChainEntry? {
-        return resolve(currentPath)
+        return resolve(routePath)
     }
 
     /// Recompute `params` from `committed` against the route table.
@@ -761,8 +913,7 @@ public final class PyreonRouter {
             // chain (the guard is the active gate; the nested
             // mutation IS the chain's outcome) and the afterEach
             // fan-out (the outer level fires it).
-            self.path.append(path)
-            updateParamsFromPath(path)
+            commitPush(path)
             return
         }
         if !allowNavigation(to: path) { return }
@@ -771,11 +922,10 @@ public final class PyreonRouter {
             runAfterEach(path)
             return
         }
-        self.path.append(path)
+        commitPush(path)
         // Phase A4: resolve the matched route + extract params atomically
         // with the path mutation, so observers see a consistent snapshot
-        // (params + path always describe the same route).
-        updateParamsFromPath(path)
+        // (params + path always describe the same route) — `commitPush` did it.
         // Phase B8: a NEW navigation invalidates any forward history.
         // Same convention as a browser — once the user navigates
         // somewhere new, you can't "redo" back through the old branch.
@@ -793,12 +943,7 @@ public final class PyreonRouter {
     public func replace(_ path: String) {
         if _inGuard {
             // Re-entry from a guard's redirect — skip the chain.
-            if self.path.isEmpty {
-                self.path.append(path)
-            } else {
-                self.path[self.path.count - 1] = path
-            }
-            updateParamsFromPath(path)
+            commitReplace(path)
             return
         }
         if !allowNavigation(to: path) { return }
@@ -807,16 +952,36 @@ public final class PyreonRouter {
             runAfterEach(path)
             return
         }
-        if self.path.isEmpty {
-            self.path.append(path)
-        } else {
-            self.path[self.path.count - 1] = path
-        }
-        // Phase A4: same params-after-path contract as `push`.
-        updateParamsFromPath(path)
+        // Phase A4: same params-after-path contract as `push` (in `commitReplace`).
+        commitReplace(path)
         // Phase B8: replace is a NEW navigation; clear forward history.
         _forwardStack.removeAll()
         runAfterEach(path)
+    }
+
+    /// Append `url`'s route as a new stack entry carrying its query.
+    private func commitPush(_ url: String) {
+        let entry = Self.splitEntry(url)
+        path.append(entry.route)
+        topSuffix = entry.suffix
+        updateParamsFromPath(currentPath)
+    }
+
+    /// Swap the visible entry for `url`. A replace that keeps the ROUTE (only
+    /// the query differs) leaves the stack element untouched — writing it
+    /// would hand SwiftUI a new destination value and rebuild the screen —
+    /// and only rewrites the entry's query. That includes the root view: a
+    /// replace to the visible root's route updates the root's query instead
+    /// of pushing a second copy of the root over it.
+    private func commitReplace(_ url: String) {
+        let entry = Self.splitEntry(url)
+        if path.isEmpty {
+            if entry.route != routePath { path.append(entry.route) }
+        } else if path[path.count - 1] != entry.route {
+            path[path.count - 1] = entry.route
+        }
+        topSuffix = entry.suffix
+        updateParamsFromPath(currentPath)
     }
 
     /// "Throw redirect" — the canonical native equivalent of the
@@ -860,8 +1025,9 @@ public final class PyreonRouter {
     /// undo/redo semantic.
     public func back() {
         guard !self.path.isEmpty else { return }
+        let poppedSuffix = topSuffix
         let popped = self.path.removeLast()
-        _forwardStack.append(popped)
+        _forwardStack.append(Self.joinEntry(popped, poppedSuffix))
         updateParamsFromPath(currentPath)
     }
 
@@ -883,9 +1049,7 @@ public final class PyreonRouter {
     /// to wire its own "forward" button or programmatic redo.
     public func forward() {
         guard !_forwardStack.isEmpty else { return }
-        let path = _forwardStack.removeLast()
-        self.path.append(path)
-        updateParamsFromPath(path)
+        commitPush(_forwardStack.removeLast())
     }
 
     /// Store a route's loaded data under its path. Called by the loader
@@ -905,6 +1069,10 @@ public final class PyreonRouter {
     /// (Swift dictionaries preserve insertion order since Swift 5) is
     /// dropped.
     public func setLoaderData(_ path: String, _ value: Any) {
+        // Keyed by the ROUTE, query excluded — the web's default loader key.
+        // A url-state write is a query-only navigation; keying by the full
+        // URL hid the route's content and re-ran its loader on every write.
+        let path = Self.loaderKey(path)
         if loaderData[path] == nil {
             // NEW key: cap-evict the oldest insertion first, then track
             // this path as the newest.
@@ -926,6 +1094,17 @@ public final class PyreonRouter {
     /// hundreds of stale payloads.
     static let MAX_LOADER_ENTRIES: Int = 50
 
+    /// The `loaderData` key for a URL: its route part, query and fragment
+    /// dropped (`/search?q=cat` → `/search`).
+    public static func loaderKey(_ url: String) -> String {
+        splitPathAndQuery(url).path
+    }
+
+    /// The visible route's loaded data, read under its `loaderKey`.
+    public func loaderData(for url: String) -> Any? {
+        loaderData[Self.loaderKey(url)]
+    }
+
     /// Clear the entire path stack — navigates back to the root view.
     /// Matches the web-side pattern of calling `router.replace('/')`
     /// for "logout / forget everything".
@@ -935,7 +1114,9 @@ public final class PyreonRouter {
     /// after reset would be surprising.
     public func reset() {
         self.path.removeAll()
+        topSuffix = ""
         _forwardStack.removeAll()
+        updateParamsFromPath(currentPath)
     }
 
     /// Phase C5.2 — match an incoming path against a pattern, extracting
@@ -1055,15 +1236,19 @@ public final class PyreonRouter {
     /// committed URL in place. `replace` semantics, not `push`: changing a
     /// filter should not add a back-stack entry per keystroke, which mirrors
     /// `useUrlState`'s default on the web.
+    ///
+    /// Only the visible entry's QUERY changes — never the `path` element, which
+    /// is the screen's identity: rewriting it made SwiftUI rebuild the screen
+    /// and drop its `@State` on every url-state write. On the root view (empty
+    /// stack) the root entry's query is updated, so `currentPath` reflects it.
     public func setQueryParam(_ key: String, _ value: String?) {
         var next = query
         if let value { next[key] = value } else { next.removeValue(forKey: key) }
         guard next != query else { return }
         query = next
-        guard let top = path.last else { return }
-        let base = Self.splitPathAndQuery(top).path
+        // The fragment stays with the entry.
         let serialized = Self.serializeQuery(next)
-        path[path.count - 1] = serialized.isEmpty ? base : "\(base)?\(serialized)"
+        topSuffix = (serialized.isEmpty ? "" : "?\(serialized)") + Self.fragmentOf(topSuffix)
     }
 
 }

@@ -7,7 +7,8 @@
  * signal creations happen during typical patterns and checks we aren't
  * accidentally allocating signals on the hot mount path.
  */
-import { __resetReactiveDevtoolsForTesting, signal } from '@pyreon/reactivity'
+import { signal } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { cpuClock } from '@pyreon/test-utils'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { _disable, _reset } from '../counters'

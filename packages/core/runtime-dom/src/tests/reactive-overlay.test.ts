@@ -12,11 +12,11 @@
  */
 import { query } from '@pyreon/test-utils'
 import {
-  __resetReactiveDevtoolsForTesting,
   computed,
   effect,
   signal,
 } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { installDevTools } from '../devtools'
 import { _bindText } from '../template'

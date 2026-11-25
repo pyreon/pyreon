@@ -1,7 +1,6 @@
 import { Fragment, h } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import {
-  _resetRenderers,
   createDocument,
   Document,
   Heading,
@@ -13,6 +12,7 @@ import {
   Section,
   Text,
 } from '../index'
+import { _resetRenderers } from '../internal'
 import type { DocNode } from '../index'
 
 // Regression: composing primitives through the Pyreon JSX runtime / `h()`

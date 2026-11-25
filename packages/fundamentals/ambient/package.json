@@ -27,6 +27,11 @@
       "bun": "./src/testing.ts",
       "import": "./lib/testing.js",
       "types": "./lib/types/testing.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [

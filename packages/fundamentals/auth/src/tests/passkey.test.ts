@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { base64url, derToRaw, passkeyChallenge, verifyAssertion } from '../index'
+import { passkeyChallenge, verifyAssertion } from '../index'
+import { base64url } from '../pkce'
+import { derToRaw } from '../passkey'
 
 const RP = 'app.example'
 const ORIGIN = 'https://app.example'

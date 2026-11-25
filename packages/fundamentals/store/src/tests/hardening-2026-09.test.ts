@@ -2,7 +2,6 @@ import { signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import {
-  __clearStoreHydrationForTesting,
   addStorePlugin,
   defineStore,
   dehydrateStores,
@@ -12,6 +11,7 @@ import {
   type MutationInfo,
   defineSchemaStore,
 } from '../index'
+import { __clearStoreHydrationForTesting } from '../internal'
 
 beforeEach(() => {
   resetAllStores()

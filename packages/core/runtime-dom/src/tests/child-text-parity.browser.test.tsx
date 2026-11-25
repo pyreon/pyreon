@@ -8,7 +8,8 @@
  * The compiled sinks are called the way the compiler emits them (the happy-dom
  * twin locks that emit through the real `transformJSX`).
  */
-import { _childText, h } from '@pyreon/core'
+import { h } from '@pyreon/core'
+import { _childText } from '@pyreon/core/internal'
 import { signal } from '@pyreon/reactivity'
 import { flush } from '@pyreon/test-utils/browser'
 import { afterEach, describe, expect, it } from 'vitest'

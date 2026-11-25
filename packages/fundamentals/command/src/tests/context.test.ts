@@ -1,9 +1,11 @@
-import { _resetHotkeys, getRegisteredHotkeys } from '@pyreon/hotkeys'
+import { getRegisteredHotkeys } from '@pyreon/hotkeys'
+import { _resetHotkeys } from '@pyreon/hotkeys/internal'
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { _resetDefaultCommands, createCommands, provideCommands, useCommand, useCommands } from '../index'
+import { createCommands, provideCommands, useCommand, useCommands } from '../index'
+import { _resetDefaultCommands } from '../internal'
 import type { Commands } from '../index'
 
 let root: HTMLElement

@@ -22,7 +22,7 @@
  * Requires the optional peer `@pyreon/toast`.
  */
 import type { Toast, ToastType } from '@pyreon/toast'
-import { _reset, _toasts } from '@pyreon/toast'
+import { _reset, _toasts } from '@pyreon/toast/internal'
 import { waitFor } from '@testing-library/dom'
 
 /** A matcher for a toast's `message` (or `description`): substring or RegExp. */

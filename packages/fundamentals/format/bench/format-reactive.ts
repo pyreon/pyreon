@@ -28,6 +28,7 @@ const { effect, effectScope, signal } = await import('@pyreon/reactivity')
 const reactive = await import('../lib/index.js')
 const ambient = await import('@pyreon/ambient')
 const ambientTesting = await import('@pyreon/ambient/testing')
+const ambientInternal = await import('@pyreon/ambient/internal')
 const { createI18n } = await import('@pyreon/i18n')
 
 type Id = 'pyreon' | 'i18n' | 'raw-cached' | 'tolocale'
@@ -78,7 +79,7 @@ function buildTick(arm: Id): TickFixture {
   let clock = T0
   const at = (): number => clock
   if (arm === 'pyreon') {
-    ambientTesting._resetClockState()
+    ambientTesting.resetClockState()
     ambient.setClock(at)
     const scope = effectScope()
 
@@ -95,7 +96,7 @@ function buildTick(arm: Id): TickFixture {
     return {
       tick: () => {
         clock += TICK_MS
-        ambientTesting._fireAll()
+        ambientInternal._fireAll()
       },
       text: () => out,
       at,

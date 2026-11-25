@@ -40,6 +40,11 @@
       "bun": "./src/router.ts",
       "import": "./lib/router.js",
       "types": "./lib/types/router.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [

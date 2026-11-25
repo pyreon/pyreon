@@ -1,4 +1,5 @@
 import type { Middleware, MiddlewareContext } from '@pyreon/server'
+import { sharedBucketWarning } from './rate-limit-state'
 
 // ─── Rate limiting middleware ───────────────────────────────────────────────
 
@@ -168,14 +169,6 @@ export function rateLimitMiddleware(config: RateLimitConfig = {}): Middleware {
 /** Bucket every caller shares when no trustworthy identifier is reachable. */
 const SHARED_BUCKET_KEY = 'shared'
 
-// Once per process, not once per middleware instance — an app mounting the
-// limiter on three route groups should say this once, not three times.
-let warnedSharedBucket = false
-
-/** Reset the once-per-process warning latch. Test-only. */
-export function _resetRateLimitWarning(): void {
-  warnedSharedBucket = false
-}
 
 /**
  * Build the default key extractor for a given `trustProxy` setting.
@@ -213,8 +206,8 @@ function makeDefaultKeyFn(trustProxy: boolean | number): (ctx: MiddlewareContext
     const peer = ctx.locals['remoteAddress']
     if (typeof peer === 'string' && peer.length > 0) return peer
 
-    if (!warnedSharedBucket) {
-      warnedSharedBucket = true
+    if (!sharedBucketWarning.warned) {
+      sharedBucketWarning.warned = true
       console.warn(
         '[Pyreon] rateLimitMiddleware: no trustworthy client identifier — every ' +
           'request shares ONE bucket. Pass `trustProxy` (the number of reverse ' +

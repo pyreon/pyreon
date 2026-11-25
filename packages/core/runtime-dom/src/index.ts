@@ -70,7 +70,6 @@ export {
   _bindText,
   _bindProp,
   _ref,
-  _declareRootDecoration,
   _mountChild,
   _mountSlot,
   _textSlot,

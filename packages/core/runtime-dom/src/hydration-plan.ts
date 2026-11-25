@@ -28,7 +28,7 @@
  * time.
  */
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { _rdLabelBinding, _renderBind } from '@pyreon/reactivity'
+import { _rdLabelBinding, _renderBind } from '@pyreon/reactivity/internal'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
 import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'

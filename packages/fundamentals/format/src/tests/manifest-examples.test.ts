@@ -13,7 +13,7 @@ import * as convertModule from '../convert'
 import * as unitsModule from '../units'
 import { h } from '@pyreon/core'
 import manifest from '../manifest'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 
 const normalise = (s: string): string => s.replace(/[   ]/g, ' ')
 const show = (v: unknown): string => (typeof v === 'string' ? JSON.stringify(normalise(v)) : v === undefined ? 'undefined' : JSON.stringify(v))
@@ -44,7 +44,7 @@ function evaluate(example: string): Array<{ expr: string; shown: string; actual:
   return checks
 }
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 const examples: Array<[string, string]> = [
   ['longExample', manifest.longExample],

@@ -29,7 +29,7 @@ import {
   _maskComments,
   _maskStringsAndComments,
   _offsetToLineCol,
-} from '../index'
+} from '../internal'
 
 /** Masking must never change the length — offsets index the original. */
 const sameLength = (src: string, masked: string): void => {

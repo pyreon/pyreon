@@ -1,7 +1,7 @@
 import { signal, wrapSignal } from '@pyreon/reactivity'
 import { getEntry, releaseWithOwner, retainEntry, setEntry, warnIfOptionsDiffer } from './registry'
 import type { CookieOptions, StorageSignal } from './types'
-import { deserialize, isBrowser, serialize } from './utils'
+import { attempt, deserialize, isBrowser, serialize } from './utils'
 
 // ─── Server-side cookie source ───────────────────────────────────────────────
 
@@ -92,8 +92,16 @@ function getCookieString(): string {
 }
 
 function readCookie(key: string): string | null {
-  const cookies = parseCookies(getCookieString())
-  return cookies.get(key) ?? null
+  let cookieString: string
+  try {
+    cookieString = getCookieString()
+  } catch {
+    // `document.cookie` throws `SecurityError` in a sandboxed or cookie-averse
+    // document. No cookie can be read there: the default applies.
+    return null
+  }
+
+  return parseCookies(cookieString).get(key) ?? null
 }
 
 // ─── Cookie writing ──────────────────────────────────────────────────────────
@@ -158,6 +166,32 @@ function writeCookie<T>(key: string, value: T, options: CookieOptions<T>): void 
   }
 
   document.cookie = cookie
+  verifyStored(key, pair, options)
+}
+
+// `document.cookie = …` never throws when the browser REFUSES a cookie: one
+// over the ~4 KB limit, `sameSite: 'none'` without `secure`, `secure` on an
+// insecure page, a `domain` the page may not set. The cookie is silently not
+// stored, and reads go on returning the OLD value. Read it back and report the
+// refusal through `onError` like every other failed write (#4812). Skipped when
+// the write is a deletion (expiry in the past) or the cookie is not visible
+// from this page (`path` not a prefix of the current path), where reading it
+// back proves nothing.
+function verifyStored<T>(key: string, pair: string, options: CookieOptions<T>): void {
+  if (options.maxAge !== undefined && options.maxAge <= 0) return
+  if (options.expires && options.expires.getTime() <= Date.now()) return
+  const path = options.path ?? '/'
+  const here = globalThis.location?.pathname ?? '/'
+  if (path !== '/' && here !== path && !here.startsWith(path.endsWith('/') ? path : `${path}/`)) return
+  const stored = getCookieString()
+    .split(';')
+    .some((part) => part.trim() === pair)
+  if (stored) return
+  throw new Error(
+    process.env.NODE_ENV !== 'production'
+      ? `[Pyreon] useCookie("${key}"): the browser did not store the cookie (over the ~${COOKIE_SIZE_LIMIT}-byte limit, \`sameSite: 'none'\` without \`secure\`, \`secure\` on an http page, or a \`domain\` this page may not set). Reads keep returning the previously stored value. Store large values with useIndexedDB or useStorage.`
+      : `[Pyreon] useCookie("${key}"): the browser did not store the cookie`,
+  )
 }
 
 // Dev-only, once per message id. Bounded by (keys × 3 kinds).
@@ -233,10 +267,13 @@ export function useCookie<T>(
 
   // `wrapSignal` delegates reads (incl. `.direct` + `_v`) to the shared base
   // `sig` and routes writes through our cookie writer; `.update` defaults.
+  // A cookie write the browser refuses (`document.cookie` throws in a
+  // sandboxed document) must not escape `.set()` / `.remove()` after the signal
+  // already moved: it goes to `onError`, like every other backend (#4812).
   const storageSig = wrapSignal(sig, {
     set: (value: T) => {
       sig.set(value)
-      writeCookie(key, value, options)
+      attempt(options, () => writeCookie(key, value, options))
     },
   }) as unknown as StorageSignal<T>
 
@@ -244,7 +281,7 @@ export function useCookie<T>(
   // later `.set()` writes the cookie again (see `createStorageSignal`).
   storageSig.remove = () => {
     sig.set(defaultValue)
-    deleteCookie(key, options)
+    attempt(options, () => deleteCookie(key, options))
   }
 
   setEntry('cookie', key, storageSig, defaultValue, options)

@@ -14,10 +14,10 @@
  *     matches.
  */
 import { describe, expect, it } from 'vitest'
-import { buildPageSearchEntry } from '../plugin'
 import { makeSearchDoc } from '../search/index-builder'
 import { resultDeepLink } from '../search/search-runtime'
 import type { Heading } from '../types'
+import { buildPageSearchEntry } from '../internal-server'
 
 const H = (text: string, slug = text.toLowerCase().replace(/\s+/g, '-')): Heading => ({
   level: 2,

@@ -221,7 +221,7 @@ test.describe('demos, by pointer and keyboard', () => {
     await demo.getByRole('button', { name: 'Sign in with the provider' }).focus()
     await page.keyboard.press('Enter')
     await expect(demo).toContainText('bad_nonce', { timeout: 8000 })
-    await expect(demo).toContainText('next release')
+    await expect(demo).toContainText('@pyreon/auth is Experimental')
   })
 
   test('query: identical data does not re-run the data reader', async ({ page }) => {
