@@ -217,10 +217,10 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
     },
     describe: (g, m) => {
       const title = props.title ?? m?.untitled ?? 'Candlestick chart'
-      if (g.candles.length === 0) return describeCandles(title, 0, '', '', '', m)
+      if (g.candles.length === 0) return describeCandles({ title, count: 0, min: '', max: '', close: '' }, m)
       const ext = ohlcExtent(g.candles)
       const fmt = props.format ?? String
-      return describeCandles(title, g.candles.length, fmt(ext.min), fmt(ext.max), fmt(g.candles[g.candles.length - 1]!.close), m)
+      return describeCandles({ title, count: g.candles.length, min: fmt(ext.min), max: fmt(ext.max), close: fmt(g.candles[g.candles.length - 1]!.close) }, m)
     },
     a11y: (g) => {
       return {

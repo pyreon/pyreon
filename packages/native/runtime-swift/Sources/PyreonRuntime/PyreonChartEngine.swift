@@ -3184,7 +3184,10 @@ public struct ChartMessages: Codable {
   public var truncated: String? = nil
   public var selected: String? = nil
   public var close: String? = nil
-  public init(untitled: String? = nil, noData: String? = nil, overview: String? = nil, overviewPlain: String? = nil, oneSeries: String? = nil, manySeries: String? = nil, empty: String? = nil, rising: String? = nil, falling: String? = nil, flat: String? = nil, trend: String? = nil, bandTrend: String? = nil, at: String? = nil, category: String? = nil, upper: String? = nil, lower: String? = nil, size: String? = nil, withError: String? = nil, noValue: String? = nil, datum: String? = nil, scaleNote: String? = nil, valueAxis: String? = nil, xAxis: String? = nil, truncated: String? = nil, selected: String? = nil, close: String? = nil) {
+  public var gauge: String? = nil
+  public var candlestick: String? = nil
+  public var heatmap: String? = nil
+  public init(untitled: String? = nil, noData: String? = nil, overview: String? = nil, overviewPlain: String? = nil, oneSeries: String? = nil, manySeries: String? = nil, empty: String? = nil, rising: String? = nil, falling: String? = nil, flat: String? = nil, trend: String? = nil, bandTrend: String? = nil, at: String? = nil, category: String? = nil, upper: String? = nil, lower: String? = nil, size: String? = nil, withError: String? = nil, noValue: String? = nil, datum: String? = nil, scaleNote: String? = nil, valueAxis: String? = nil, xAxis: String? = nil, truncated: String? = nil, selected: String? = nil, close: String? = nil, gauge: String? = nil, candlestick: String? = nil, heatmap: String? = nil) {
     self.untitled = untitled
     self.noData = noData
     self.overview = overview
@@ -3211,6 +3214,9 @@ public struct ChartMessages: Codable {
     self.truncated = truncated
     self.selected = selected
     self.close = close
+    self.gauge = gauge
+    self.candlestick = candlestick
+    self.heatmap = heatmap
   }
 }
 
@@ -3226,6 +3232,38 @@ public struct A11yInput {
     self.series = series
     self.format = format
     self.messages = messages
+  }
+}
+
+public struct CandleSummary: Codable {
+  public var title: String
+  public var count: Int
+  public var min: String
+  public var max: String
+  public var close: String
+  public init(title: String, count: Int, min: String, max: String, close: String) {
+    self.title = title
+    self.count = count
+    self.min = min
+    self.max = max
+    self.close = close
+  }
+}
+
+public struct HeatSummary: Codable {
+  public var title: String
+  public var columns: Int
+  public var rows: Int
+  public var cells: Int
+  public var min: String
+  public var max: String
+  public init(title: String, columns: Int, rows: Int, cells: Int, min: String, max: String) {
+    self.title = title
+    self.columns = columns
+    self.rows = rows
+    self.cells = cells
+    self.min = min
+    self.max = max
   }
 }
 
@@ -14522,6 +14560,35 @@ public func applyChartAction(_ s: ChartActionState, _ a: ChartActionInput) -> Ch
   }
 
 public func fillMessage(_ template: String, _ key: String, _ value: String) -> String { { (s: String, f: String, r: String) -> String in s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }(template, "{\(key)}", value) }
+
+public func describeGauge(_ title: String, _ value: String, _ max: String, _ messages: ChartMessages?) -> String {
+    let g1 = fillMessage((messages?.gauge ?? "{title}: {value} of {max}."), "title", title)
+    return fillMessage(fillMessage(g1, "value", value), "max", max)
+  }
+
+public func describeCandles(_ s: CandleSummary, _ messages: ChartMessages?) -> String {
+    if s.count == 0 {
+      return fillMessage((messages?.noData ?? "{title}: no data."), "title", s.title)
+    }
+    let c1 = fillMessage(fillMessage((messages?.candlestick ?? "{title}: {count} periods, range {min} to {max}, last close {close}."), "title", s.title), "count", "\(s.count)")
+    return fillMessage(fillMessage(fillMessage(c1, "min", s.min), "max", s.max), "close", s.close)
+  }
+
+public func describeHeatmap(_ s: HeatSummary, _ messages: ChartMessages?) -> String {
+    if s.cells == 0 {
+      return fillMessage((messages?.noData ?? "{title}: no data."), "title", s.title)
+    }
+    let h1 = fillMessage(fillMessage((messages?.heatmap ?? "{title}: {columns} columns by {rows} rows, values {min} to {max}."), "title", s.title), "columns", "\(s.columns)")
+    return fillMessage(fillMessage(fillMessage(h1, "rows", "\(s.rows)"), "min", s.min), "max", s.max)
+  }
+
+public func tableCaption(_ title: String, _ shown: Int, _ total: Int, _ messages: ChartMessages?) -> String {
+    if shown >= total {
+      return title
+    }
+    let c1 = fillMessage((messages?.truncated ?? "{title} (first {shown} of {total} rows)"), "title", title)
+    return fillMessage(fillMessage(c1, "shown", "\(shown)"), "total", "\(total)")
+  }
 
 public func scaleNoteText(_ yScale: String, _ xScale: String, _ messages: ChartMessages?) -> String {
     let template = (messages?.scaleNote ?? " The {axis} axis is on a {scale} scale.")

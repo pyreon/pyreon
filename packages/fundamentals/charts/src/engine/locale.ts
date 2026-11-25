@@ -63,6 +63,7 @@ export function dateFormatter(tag: string): Formatter {
   } catch {
     df = new Intl.DateTimeFormat('en', { timeZone: 'UTC', month: 'short', day: 'numeric', ...pack?.date })
   }
+
   return (ms: Double): string => (Number.isFinite(ms) ? df.format(new Date(ms)) : '')
 }
 
@@ -75,5 +76,6 @@ export function chartMessagesFor(tag: string | undefined, own: ChartMessages | u
   const pack = tag === undefined ? undefined : registry.get(tag)?.messages
   if (pack === undefined) return own
   if (own === undefined) return pack
+
   return { ...pack, ...own }
 }

@@ -30,6 +30,7 @@ beforeEach(() => {
   setLocale('en-US')
   setTimeZone('UTC')
 })
+
 afterEach(() => {
   for (const c of cleanups.splice(0)) c()
 })

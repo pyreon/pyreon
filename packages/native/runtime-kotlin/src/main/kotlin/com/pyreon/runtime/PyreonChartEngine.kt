@@ -388,9 +388,13 @@ data class ChartActionState(var zoom: ZoomWindow, var hover: Long, var selected:
 
 data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var rValues: List<Double>? = null)
 
-data class ChartMessages(var untitled: String? = null, var noData: String? = null, var overview: String? = null, var overviewPlain: String? = null, var oneSeries: String? = null, var manySeries: String? = null, var empty: String? = null, var rising: String? = null, var falling: String? = null, var flat: String? = null, var trend: String? = null, var bandTrend: String? = null, var at: String? = null, var category: String? = null, var upper: String? = null, var lower: String? = null, var size: String? = null, var withError: String? = null, var noValue: String? = null, var datum: String? = null, var scaleNote: String? = null, var valueAxis: String? = null, var xAxis: String? = null, var truncated: String? = null, var selected: String? = null, var close: String? = null)
+data class ChartMessages(var untitled: String? = null, var noData: String? = null, var overview: String? = null, var overviewPlain: String? = null, var oneSeries: String? = null, var manySeries: String? = null, var empty: String? = null, var rising: String? = null, var falling: String? = null, var flat: String? = null, var trend: String? = null, var bandTrend: String? = null, var at: String? = null, var category: String? = null, var upper: String? = null, var lower: String? = null, var size: String? = null, var withError: String? = null, var noValue: String? = null, var datum: String? = null, var scaleNote: String? = null, var valueAxis: String? = null, var xAxis: String? = null, var truncated: String? = null, var selected: String? = null, var close: String? = null, var gauge: String? = null, var candlestick: String? = null, var heatmap: String? = null)
 
 data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null, var messages: ChartMessages? = null)
+
+data class CandleSummary(var title: String, var count: Long, var min: String, var max: String, var close: String)
+
+data class HeatSummary(var title: String, var columns: Long, var rows: Long, var cells: Long, var min: String, var max: String)
 
 data class A11yTable(var headers: List<String>, var rows: List<List<String>>, var total: Long)
 
@@ -11680,6 +11684,35 @@ fun applyChartAction(s: ChartActionState, a: ChartActionInput): ChartActionState
   }
 
 fun fillMessage(template: String, key: String, value: String): String = template.replaceFirst("{${key}}", value)
+
+fun describeGauge(title: String, value: String, max: String, messages: ChartMessages?): String {
+    val g1 = fillMessage((messages?.gauge ?: "{title}: {value} of {max}."), "title", title)
+    return fillMessage(fillMessage(g1, "value", value), "max", max)
+  }
+
+fun describeCandles(s: CandleSummary, messages: ChartMessages?): String {
+    if (s.count == 0L) {
+      return fillMessage((messages?.noData ?: "{title}: no data."), "title", s.title)
+    }
+    val c1 = fillMessage(fillMessage((messages?.candlestick ?: "{title}: {count} periods, range {min} to {max}, last close {close}."), "title", s.title), "count", "${s.count}")
+    return fillMessage(fillMessage(fillMessage(c1, "min", s.min), "max", s.max), "close", s.close)
+  }
+
+fun describeHeatmap(s: HeatSummary, messages: ChartMessages?): String {
+    if (s.cells == 0L) {
+      return fillMessage((messages?.noData ?: "{title}: no data."), "title", s.title)
+    }
+    val h1 = fillMessage(fillMessage((messages?.heatmap ?: "{title}: {columns} columns by {rows} rows, values {min} to {max}."), "title", s.title), "columns", "${s.columns}")
+    return fillMessage(fillMessage(fillMessage(h1, "rows", "${s.rows}"), "min", s.min), "max", s.max)
+  }
+
+fun tableCaption(title: String, shown: Long, total: Long, messages: ChartMessages?): String {
+    if (shown >= total) {
+      return title
+    }
+    val c1 = fillMessage((messages?.truncated ?: "{title} (first {shown} of {total} rows)"), "title", title)
+    return fillMessage(fillMessage(c1, "shown", "${shown}"), "total", "${total}")
+  }
 
 fun scaleNoteText(yScale: String, xScale: String, messages: ChartMessages?): String {
     val template = (messages?.scaleNote ?: " The {axis} axis is on a {scale} scale.")

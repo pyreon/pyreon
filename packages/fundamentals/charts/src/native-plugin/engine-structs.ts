@@ -13981,6 +13981,48 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
             }
           ]
         }
+      },
+      {
+        "name": "gauge",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "candlestick",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
+      },
+      {
+        "name": "heatmap",
+        "type": {
+          "kind": "union",
+          "branches": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "undefined"
+            }
+          ]
+        }
       }
     ],
     "external": true
@@ -14063,6 +14105,84 @@ export const CHART_ENGINE_STRUCTS: readonly StructIR[] = [
               "kind": "undefined"
             }
           ]
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "CandleSummary",
+    "fields": [
+      {
+        "name": "title",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "count",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "min",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "max",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "close",
+        "type": {
+          "kind": "string"
+        }
+      }
+    ],
+    "external": true
+  },
+  {
+    "name": "HeatSummary",
+    "fields": [
+      {
+        "name": "title",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "columns",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "rows",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "cells",
+        "type": {
+          "kind": "number"
+        }
+      },
+      {
+        "name": "min",
+        "type": {
+          "kind": "string"
+        }
+      },
+      {
+        "name": "max",
+        "type": {
+          "kind": "string"
         }
       }
     ],
@@ -14168,6 +14288,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "CalendarParsed",
   "CalendarValue",
   "CandleOptions",
+  "CandleSummary",
   "CandlestickFrame",
   "ChartActionInput",
   "ChartActionState",
@@ -14233,6 +14354,7 @@ export const CHART_ENGINE_DECLARED_NAMES: readonly string[] = [
   "HeatCell",
   "HeatGrid",
   "HeatSelection",
+  "HeatSummary",
   "HeatmapOptions",
   "IntRatio",
   "LabelSample",

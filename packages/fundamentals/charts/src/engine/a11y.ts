@@ -141,18 +141,37 @@ export function describeGauge(title: string, value: string, max: string, message
   return fillMessage(fillMessage(g1, 'value', value), 'max', max)
 }
 
+/** What `describeCandles` says: the periods, the range and the last close, already formatted. */
+export interface CandleSummary {
+  title: string
+  count: number
+  min: string
+  max: string
+  close: string
+}
+
 /** `<CandlestickChart>`'s description: how many periods, the range, the last close. */
-export function describeCandles(title: string, count: number, min: string, max: string, close: string, messages?: ChartMessages | undefined): string {
-  if (count === 0) return fillMessage(messages?.noData ?? '{title}: no data.', 'title', title)
-  const c1 = fillMessage(fillMessage(messages?.candlestick ?? '{title}: {count} periods, range {min} to {max}, last close {close}.', 'title', title), 'count', `${count}`)
-  return fillMessage(fillMessage(fillMessage(c1, 'min', min), 'max', max), 'close', close)
+export function describeCandles(s: CandleSummary, messages?: ChartMessages | undefined): string {
+  if (s.count === 0) return fillMessage(messages?.noData ?? '{title}: no data.', 'title', s.title)
+  const c1 = fillMessage(fillMessage(messages?.candlestick ?? '{title}: {count} periods, range {min} to {max}, last close {close}.', 'title', s.title), 'count', `${s.count}`)
+  return fillMessage(fillMessage(fillMessage(c1, 'min', s.min), 'max', s.max), 'close', s.close)
+}
+
+/** What `describeHeatmap` says: the grid's size and its value range, already formatted. */
+export interface HeatSummary {
+  title: string
+  columns: number
+  rows: number
+  cells: number
+  min: string
+  max: string
 }
 
 /** `<HeatmapChart>`'s description: the grid's size and value range. */
-export function describeHeatmap(title: string, columns: number, rows: number, cells: number, min: string, max: string, messages?: ChartMessages | undefined): string {
-  if (cells === 0) return fillMessage(messages?.noData ?? '{title}: no data.', 'title', title)
-  const h1 = fillMessage(fillMessage(messages?.heatmap ?? '{title}: {columns} columns by {rows} rows, values {min} to {max}.', 'title', title), 'columns', `${columns}`)
-  return fillMessage(fillMessage(fillMessage(h1, 'rows', `${rows}`), 'min', min), 'max', max)
+export function describeHeatmap(s: HeatSummary, messages?: ChartMessages | undefined): string {
+  if (s.cells === 0) return fillMessage(messages?.noData ?? '{title}: no data.', 'title', s.title)
+  const h1 = fillMessage(fillMessage(messages?.heatmap ?? '{title}: {columns} columns by {rows} rows, values {min} to {max}.', 'title', s.title), 'columns', `${s.columns}`)
+  return fillMessage(fillMessage(fillMessage(h1, 'rows', `${s.rows}`), 'min', s.min), 'max', s.max)
 }
 
 /** The accessible table's caption: the title, and how many rows of how many when only the first rows are built. */
@@ -167,6 +186,7 @@ export function scaleNoteText(yScale: string, xScale: string, messages?: ChartMe
   const template = messages?.scaleNote ?? ' The {axis} axis is on a {scale} scale.'
   const y = yScale === '' || yScale === 'linear' ? '' : fillMessage(fillMessage(template, 'axis', messages?.valueAxis ?? 'value'), 'scale', yScale)
   const x = xScale === '' || xScale === 'linear' ? '' : fillMessage(fillMessage(template, 'axis', messages?.xAxis ?? 'x'), 'scale', xScale)
+
   return y + x
 }
 
@@ -292,6 +312,7 @@ export function describeChart(input: A11yInput): string {
     sentence = fillMessage(sentence, 'high', fmt(hi))
     parts.push(sentence)
   }
+
   return parts.join(' ')
 }
 
@@ -303,6 +324,7 @@ export function percentChange(first: Double, last: Double): string {
   const ratio = last / first
   if (ratio >= 2.0) return `${Math.floor(ratio * 10.0 + 0.5) / 10.0}×`
   const p = Math.floor(Math.abs(ratio - 1.0) * 100.0 + 0.5)
+
   return `${p}%`
 }
 
@@ -320,6 +342,7 @@ export function describeDatum(input: A11yInput, series: number, index: number): 
   const value = v !== v ? m?.noValue ?? 'no value' : fmt(v)
   const at = index < input.categories.length ? fillMessage(m?.at ?? ' at {category}', 'category', input.categories[index]!) : ''
   const d1 = fillMessage(fillMessage(m?.datum ?? '{label}: {value}{at}, {index} of {count}', 'label', s.label), 'value', value)
+
   return fillMessage(fillMessage(fillMessage(d1, 'at', at), 'index', `${index + 1}`), 'count', `${s.values.length}`)
 }
 
@@ -352,6 +375,7 @@ function withError(fmt: Formatter, v: Double, s: A11ySeries, i: number, template
   const h = hi[i]!
   // Infinities are gaps too, matching the cell rule beside it (#3390).
   if (!isFiniteNumber(l) || !isFiniteNumber(h)) return fmt(v)
+
   return fillMessage(fillMessage(fillMessage(template, 'value', fmt(v)), 'low', fmt(l)), 'high', fmt(h))
 }
 
@@ -384,6 +408,7 @@ export function chartTable(input: A11yInput, limit: number = -1): A11yTable {
   const count = limit >= 0 && limit < n ? limit : n
   const rows: string[][] = []
   for (let i = 0; i < count; i++) rows.push(chartTableRow(input, i))
+
   return { headers, rows, total: n }
 }
 
@@ -436,5 +461,6 @@ export function chartTableRow(input: A11yInput, i: number): string[] {
       }
     }
   }
+
   return row
 }

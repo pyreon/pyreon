@@ -84,6 +84,7 @@ describe('the chart components take the words from the locale pack or `messages`
     document.body.append(root)
     roots.push(root)
     mount(vnode, root)
+
     return root
   }
   afterEach(() => {

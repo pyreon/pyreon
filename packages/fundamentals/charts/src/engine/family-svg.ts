@@ -447,9 +447,9 @@ export function candlestickToSvg<T>(options: CandlestickToSvgOptions<T>): string
        guard; that an UNTITLED chart derives no description at all is a
        separate a11y gap worth closing on its own. */
     const title = options.title ?? options.messages?.untitled ?? 'Candlestick chart'
-    if (candles.length === 0) return describeCandles(title, 0, '', '', '', options.messages)
+    if (candles.length === 0) return describeCandles({ title, count: 0, min: '', max: '', close: '' }, options.messages)
     const ext = ohlcExtent(candles)
-    return describeCandles(title, candles.length, fmt(ext.min), fmt(ext.max), fmt(candles[candles.length - 1]!.close), options.messages)
+    return describeCandles({ title, count: candles.length, min: fmt(ext.min), max: fmt(ext.max), close: fmt(candles[candles.length - 1]!.close) }, options.messages)
   }))
 }
 
@@ -567,7 +567,7 @@ export function heatmapToSvg<T>(options: HeatmapToSvgOptions<T>): string {
        `svgTail` only calls this deriver when `title` is defined. Kept as a
        guard; that an UNTITLED chart derives no description at all is a
        separate a11y gap worth closing on its own. */
-    return describeHeatmap(options.title ?? options.messages?.untitled ?? 'Heatmap', nc, nr, grid.cells.length, String(grid.min), String(grid.max), options.messages)
+    return describeHeatmap({ title: options.title ?? options.messages?.untitled ?? 'Heatmap', columns: nc, rows: nr, cells: grid.cells.length, min: String(grid.min), max: String(grid.max) }, options.messages)
   }))
 }
 

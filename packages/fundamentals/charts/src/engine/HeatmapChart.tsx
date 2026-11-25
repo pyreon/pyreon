@@ -143,7 +143,7 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
     },
     describe: (g, m) => {
       const fmt = props.format ?? String
-      return describeHeatmap(props.title ?? m?.untitled ?? 'Heatmap', g.grid.cols.length, g.grid.rows.length, g.grid.cells.length, fmt(g.grid.min), fmt(g.grid.max), m)
+      return describeHeatmap({ title: props.title ?? m?.untitled ?? 'Heatmap', columns: g.grid.cols.length, rows: g.grid.rows.length, cells: g.grid.cells.length, min: fmt(g.grid.min), max: fmt(g.grid.max) }, m)
     },
     a11y: (g) => ({
       title: props.title,

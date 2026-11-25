@@ -495,6 +495,7 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
   if (explicit !== undefined) return explicit
   const box = el.parentElement
   const w = box === null ? 0 : box.clientWidth
+
   return w > 0 ? w : 300
 }
 
@@ -751,6 +752,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
           morphFrom = geoSnap
           tweenFrom = null
           startTween()
+
           return spec
         }
         morphFrom = null
@@ -768,6 +770,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }
     if (tweenT >= 1.0 || tweenFrom === null) return spec
     const frame = tweenValues(tweenFrom, cur, tweenT)
+
     return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: frame[i]! })) }
   }
   // Command-level tween for a shape change under `universalTransition`: the
@@ -786,6 +789,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       coreTweenT = 1.0
       coreTweenFrom = null
       coreTweenTo = null
+
       return
     }
     const duration = props.updateDuration ?? theme().updateMs
@@ -819,6 +823,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       coreTweenT = 1.0
       coreTweenFrom = null
       coreTweenTo = null
+
       return cmds
     }
     if (coreTweenFrom !== null && coreTweenTo !== null && coreTweenT < 1.0) {
@@ -829,6 +834,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         startCoreTween()
       }
       lastCoreCmds = cmds
+
       return out
     }
     let out = cmds
@@ -839,6 +845,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       out = universalTweenCmds(coreTweenFrom, coreTweenTo, 0.0)
     }
     lastCoreCmds = cmds
+
     return out
   }
   // Toolbox state: the magicType override, and last-draw hit boxes.
@@ -889,6 +896,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     // `fill` makes the array packed rather than holey, so `.map` visits it.
     const rows = new Array<T>(n).fill(undefined as T)
     colRows = { marks, n, rows }
+
     return rows
   }
   // The theme in scope (provider → system scheme) with the prop merged over
@@ -967,6 +975,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       for (const k of lttbIndices(xs, rows.map((d, i) => Number(m.y(d, i))), per)) keepSet.add(k)
     }
     if (keepSet.size === 0 || keepSet.size >= rows.length) return null
+
     return [...keepSet].sort((a, b) => a - b)
   }
 
@@ -996,6 +1005,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const built = seriesMode ? applySeriesSelection(withStates, selectedSeries()) : withStates
     // The handle's `legendInverseSelect` flips over the series the chart drew.
     if (props.handle !== undefined && props.handle.seriesCount.peek() !== built.series.length) props.handle.seriesCount.set(built.series.length)
+
     return built
   }
   const buildSpecInner = (allRows: readonly T[], w: Double, hgt: Double): ChartSpec => {
@@ -1029,6 +1039,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
     })), theme().palette, theme().ramp)
     const resolvedCats = full !== null ? full.categories : resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i)))
+
     return {
     width: w,
     height: hgt,
@@ -1292,6 +1303,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     lastFrame = painted
     lastW = w
     lastH = hgt
+
     return painted
   }
 
@@ -1307,6 +1319,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const buckets = Math.max(1, Math.floor(w / 2.0))
     const next = { rows: allRows, marks: props.marks, w, values: minMaxBuckets(first?.values ?? [], buckets), color: first?.color ?? '#000000' }
     navCache = next
+
     return next
   }
   /** The navigator strip — engine-laid-out (iOS and Android drive the same one); `navRect` is what the drag measures against. */
@@ -1323,6 +1336,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       theme().grid,
     )
     navRect = l.strip
+
     return l.cmds
   }
 
@@ -1348,6 +1362,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }
     const x0 = cx - bw / 2.0
     const x1 = cx + bw / 2.0
+
     return [{
       kind: 'polyline',
       points: [{ x: x0, y: plot.y }, { x: x1, y: plot.y }, { x: x1, y: plot.y + plot.h }, { x: x0, y: plot.y + plot.h }, { x: x0, y: plot.y }],
@@ -1523,6 +1538,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       if (p === undefined) continue
       out.push({ kind: 'circle', center: p, radius: Math.max(3.0, sr.radius), fill: sr.color })
     }
+
     return out
   }
 
@@ -1540,6 +1556,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const committed = brushSel()
     if (committed === null) return []
     const vis = bf.brushBand(plot, committed, zoomWin() ?? { start: 0.0, end: 1.0 }, readData().length)
+
     return vis.visible ? drawBand(xFlip(plot, vis.lo), xFlip(plot, vis.hi)) : []
   }
 
@@ -1558,6 +1575,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const ctx = el.getContext('2d')
     if (ctx === null) return null
     const spec = withFrameDomain(buildSpec(readData(), plotW > 0.0 ? plotW : w, hgt - topOffset - bottomOffset))
+
     return { spec, layout: layoutChart(spec, sharedCanvasMeasure(ctx, FONT)) }
   }
   /** The plot rect at the current size (in PLOT space — right of a side legend, under the chrome) — gestures are plot-relative. */
@@ -1650,12 +1668,14 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (pts.length < 2) return 0.0
     const dx = pts[0]!.x - pts[1]!.x
     const dy = pts[0]!.y - pts[1]!.y
+
     return Math.sqrt(dx * dx + dy * dy)
   }
   const pinchCenterFrac = (plot: Rect): Double => {
     const pts = [...pointers.values()]
     if (pts.length < 2 || plot.w <= 0.0) return 0.5
     const mid = (pts[0]!.x + pts[1]!.x) / 2.0 - leftOffset
+
     return (xFlip(plot, mid) - plot.x) / plot.w
   }
 
@@ -1682,6 +1702,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       navDrag = null
       suppressClick = true
       ev.preventDefault()
+
       return
     }
     dragStartX = localX(ev.clientX, rect)
@@ -1697,6 +1718,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       dragMode = 'nav'
       suppressClick = false
       ev.preventDefault()
+
       return
     }
     // A new gesture re-arms the click decision. Without this, a drag whose
@@ -1775,6 +1797,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         setZoom(next)
       }
       ev.preventDefault()
+
       return
     }
     if (dragMode !== null) {
@@ -1796,6 +1819,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
           draw()
         }
         dragLastX = x
+
         return
       }
       if (dragMode === 'nav') {
@@ -1819,6 +1843,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         draw()
       }
       dragLastX = x
+
       return
     }
     const w = drawWidth(el, props.width)
@@ -1885,6 +1910,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         const it = props.zoomPresets?.[hit]
         const next = zmc.presetWindow(it === undefined ? 0 : it.count, readData().length)
         setZoom(next)
+
         return
       }
     }
@@ -1979,6 +2005,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
             }
           }
         }
+
         return
       }
     }
@@ -2009,6 +2036,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
             announce.set(`${target} ${nowHidden ? 'hidden' : 'shown'}`)
           }
         })
+
         return
       }
     }
@@ -2041,6 +2069,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (el === null || f === null) return -1
     const rect = el.getBoundingClientRect()
     const idx = plotHitBarsIn(f.spec, f.layout, localX(ev.clientX, rect) - leftOffset, ev.clientY - rect.top - topOffset)
+
     return idx < 0 ? idx : globalOf(idx, viewRange(readData()).from)
   }
 
@@ -2055,6 +2084,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (m !== null && m.rows === rows && m.marks === props.marks && m.x === props.x && m.palette === palette) return m
     const next = { rows, marks: props.marks, x: props.x, palette, series: resolveMarks(rows, props.marks, palette, theme().ramp), categories: resolveCategories(rows, props.x) }
     lastFull = next
+
     return next
   }
   let a11yMemo: { rows: readonly T[]; marks: readonly Mark<T>[]; labels: readonly string[] | undefined; format: Formatter | undefined; title: string | undefined; locale: string | undefined; messages: ChartMessages | undefined; input: A11yInput } | null = null
@@ -2093,6 +2123,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       })),
     }
     a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, locale, messages: own, input }
+
     return input
   }
 
@@ -2114,6 +2145,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const w = props.width ?? 600
     const hgt = props.height ?? 200
     const svg = ser.svg(frameAt(w, hgt, ser.measure()), w, hgt, { fontFamily: FONT, idPrefix: `${tableId}-frame` })
+
     return props.width === undefined ? svg.replace(`width="${w}"`, 'width="100%"') : svg
   }
   const ssrFrameNode = h('div', {
@@ -2149,6 +2181,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       const own = props.description
       if (own !== undefined) return typeof own === 'string' ? own : own(input)
       if (!labelReady() && chartRowCount(input) > DEFER_ROWS) return props.title ?? input.messages?.untitled ?? 'Chart'
+
       return describeChart(input) + scaleNote()
     },
     ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
@@ -2172,6 +2205,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         tweenFrame = 0.0
         coreTweenFrame = 0.0
         frameCache = null
+
         return
       }
       startEntrance()

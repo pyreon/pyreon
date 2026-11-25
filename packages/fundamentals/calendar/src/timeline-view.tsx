@@ -11,6 +11,7 @@ import type { TimelineBlock, TimelineRow } from './timeline'
 import type { TimelineModel } from './view-models'
 import type { EventOccurrence, PlainDate } from './types'
 import { windowRows } from './window'
+import type { RowWindow } from './window'
 
 /** Pixels of one lane of events in a row, and the space around a row's lanes (the stylesheet's row is these numbers). */
 const LANE = 28
@@ -146,6 +147,23 @@ function hourMarks(from: number, to: number): number[] {
   return marks
 }
 
+/** The rows to draw: all of them, or (above the `windowed` threshold) the ones on screen, with their offset and the total height. */
+function rowWindow(windowed: () => boolean | number | undefined, model: () => TimelineModel, scroll: () => number, viewport: () => number): () => RowWindow {
+  const windowing = computed(() => {
+    const w = windowed()
+    const n = model().rows.length
+
+    return w === undefined ? n > WINDOW_ABOVE : typeof w === 'number' ? n > w : w
+  })
+
+  return computed(() => {
+    const heights = model().rows.map(rowHeight)
+    if (windowing()) return windowRows(heights, scroll(), viewport(), 4)
+
+    return { start: 0, end: heights.length, offset: 0, total: heights.reduce((a, b) => a + b, 0) }
+  })
+}
+
 /** The timeline view's own props. */
 export interface TimelineViewProps<Meta = unknown> extends ViewProps<Meta> {
   /**
@@ -178,19 +196,7 @@ export function TimelineView<Meta = unknown>(props: TimelineViewProps<Meta>): VN
   // the empty state is a value of its own, so a scroll or an edit does not rebuild the body
   const empty = computed(() => model().rows.length === 0)
   const byId = computed(() => new Map(model().rows.map((r, i) => [r.resource.id, { row: r, index: i }])))
-  const windowing = computed(() => {
-    const w = props.windowed
-    const n = model().rows.length
-
-    return w === undefined ? n > WINDOW_ABOVE : typeof w === 'number' ? n > w : w
-  })
-  const window = computed(() => {
-    const heights = model().rows.map(rowHeight)
-    if (windowing()) return windowRows(heights, scroll(), viewport(), 4)
-    const total = heights.reduce((a, b) => a + b, 0)
-
-    return { start: 0, end: heights.length, offset: 0, total }
-  })
+  const window = rowWindow(() => props.windowed, model, scroll, viewport)
   // the cell with the grid's one tab stop: a resource and a day (the calendar's cursor day until the arrows move it)
   const focusAt = signal<{ id: string | undefined; date: PlainDate | undefined }>({ id: undefined, date: undefined })
   const focus = computed(() => {
@@ -220,83 +226,7 @@ export function TimelineView<Meta = unknown>(props: TimelineViewProps<Meta>): VN
     'timeline',
   )
 
-  /** Move the tab stop to a resource's day and focus it, scrolling a windowed row into the drawn rows first. */
-  const moveTo = (rowIndex: number, dayIndex: number): void => {
-    const m = model()
-    const row = m.rows[Math.min(Math.max(rowIndex, 0), m.rows.length - 1)]
-    const date = m.dates[Math.min(Math.max(dayIndex, 0), m.dates.length - 1)]
-    if (row === undefined || date === undefined || root === null) return
-    const el = root
-    const at = byId().get(row.resource.id)?.index ?? 0
-    const w = window()
-    if (at < w.start + 1 || at >= w.end - 1) {
-      // below the header: the row's top, less a third of the viewport so it is not at the very edge
-      let top = 0
-      for (let i = 0; i < at; i++) top += rowHeight(m.rows[i] as TimelineRow)
-      const next = Math.max(0, top - viewport() / 3)
-      el.scrollTop = next
-      scroll.set(next)
-    }
-    focusAt.set({ id: row.resource.id, date })
-    const selector = `.pcal-tl-row[data-resource="${CSS.escape(row.resource.id)}"] [role=gridcell][data-date="${date}"]`
-    const cell = el.querySelector<HTMLElement>(selector)
-    if (cell !== null) cell.focus()
-    else queueMicrotask(() => el.querySelector<HTMLElement>(selector)?.focus())
-  }
-
-  /** The grid keyboard on a cell (or on an event, for the moves): returns whether it handled the key. */
-  const gridKey = (cell: HTMLElement, e: KeyboardEvent, fromEvent: boolean): boolean => {
-    const m = model()
-    const id = cell.closest<HTMLElement>('.pcal-tl-row')?.dataset.resource
-    const row = id === undefined ? -1 : (byId().get(id)?.index ?? -1)
-    const day = m.dates.indexOf(cell.dataset.date as PlainDate)
-    if (row < 0 || day < 0) return false
-    const back = isRtl(root) ? 1 : -1
-    switch (e.key) {
-      case 'ArrowLeft':
-        moveTo(row, day + back)
-        return true
-      case 'ArrowRight':
-        moveTo(row, day - back)
-        return true
-      case 'ArrowUp':
-        moveTo(row - 1, day)
-        return true
-      case 'ArrowDown':
-        moveTo(row + 1, day)
-        return true
-      case 'Home':
-        moveTo(e.ctrlKey || e.metaKey ? 0 : row, e.ctrlKey || e.metaKey ? day : 0)
-        return true
-      case 'End':
-        moveTo(e.ctrlKey || e.metaKey ? m.rows.length - 1 : row, e.ctrlKey || e.metaKey ? day : m.dates.length - 1)
-        return true
-      case 'PageUp':
-        moveTo(row - 10, day)
-        return true
-      case 'PageDown':
-        moveTo(row + 10, day)
-        return true
-      case 'Escape':
-        if (!fromEvent) return false
-        moveTo(row, day)
-        return true
-      case 'Enter':
-      case 'F2':
-      case ' ': {
-        if (fromEvent) return false
-        const first = cell.querySelector<HTMLElement>('.pcal-event[data-key]')
-        if (first !== null) first.focus()
-        else if (id !== undefined && e.key !== 'F2') {
-          const slot = calendar.timeGrid().slot
-          calendar.select({ date: m.dates[day] as PlainDate, minute: m.from }, { date: m.dates[day] as PlainDate, minute: Math.max(m.from, m.to - slot) }, 'time', id)
-        }
-        return true
-      }
-      default:
-        return false
-    }
-  }
+  const keys = timelineKeyboard({ calendar, model, byId, window, viewport, scroll, focusAt, root: () => root })
 
   return (
     <div
@@ -326,33 +256,10 @@ export function TimelineView<Meta = unknown>(props: TimelineViewProps<Meta>): VN
           if (calendar.editing() !== null) return
         }
         const cell = target.closest<HTMLElement>('.pcal-tl-cell')
-        if (cell !== null && gridKey(cell, e, hit !== null)) e.preventDefault()
+        if (cell !== null && keys(cell, e, hit !== null)) e.preventDefault()
       }}
     >
-      <div class="pcal-tl-head" role="row" aria-rowindex={1}>
-        <div class="pcal-tl-corner" role="columnheader">
-          {() => calendar.messages().resource}
-        </div>
-        <div class="pcal-tl-axis" role="none">
-          <div class="pcal-tl-days" role="none">
-            {() =>
-              model().dates.map((d) => (
-                <div class="pcal-tl-day" role="columnheader" data-today={calendar.todayDate() === d ? '' : undefined} aria-label={dayLabel(d, calendar.locale())}>
-                  <span class="pcal-colhead-weekday">{dayWeekday(Number(new Date(`${d}T00:00:00Z`).getUTCDay() || 7), calendar.locale(), 'short')}</span>
-                  <span class="pcal-colhead-date">{formatDate(d, { locale: calendar.locale(), day: 'numeric' })}</span>
-                </div>
-              ))
-            }
-          </div>
-          {() =>
-            model().dates.length <= 2 ? (
-              <div class="pcal-tl-hours" aria-hidden="true">
-                {model().dates.flatMap(() => hourMarks(model().from, model().to).map((h) => <span style={`inset-inline-start:${(((h * 60 - model().from) / (model().to - model().from)) * 100).toFixed(3)}%`}>{h}</span>))}
-              </div>
-            ) : null
-          }
-        </div>
-      </div>
+      <TimelineHead calendar={calendar} model={() => model()} />
       {() =>
         empty() ? (
           // a grid's children are rows: the empty state is a row whose one cell spans the columns
@@ -384,6 +291,136 @@ export function TimelineView<Meta = unknown>(props: TimelineViewProps<Meta>): VN
       }
     </div>
   )
+}
+
+/** The header row: the resource column's head and a column header per shown day (with the hours along the top for one or two days). */
+function TimelineHead<Meta>(props: { calendar: Calendar<Meta>; model: () => TimelineModel }): VNodeChild {
+  const calendar = props.calendar
+  const model = props.model
+
+  return (
+  <div class="pcal-tl-head" role="row" aria-rowindex={1}>
+    <div class="pcal-tl-corner" role="columnheader">
+      {() => calendar.messages().resource}
+    </div>
+    <div class="pcal-tl-axis" role="none">
+      <div class="pcal-tl-days" role="none">
+        {() =>
+          model().dates.map((d) => (
+            <div class="pcal-tl-day" role="columnheader" data-today={calendar.todayDate() === d ? '' : undefined} aria-label={dayLabel(d, calendar.locale())}>
+              <span class="pcal-colhead-weekday">{dayWeekday(Number(new Date(`${d}T00:00:00Z`).getUTCDay() || 7), calendar.locale(), 'short')}</span>
+              <span class="pcal-colhead-date">{formatDate(d, { locale: calendar.locale(), day: 'numeric' })}</span>
+            </div>
+          ))
+        }
+      </div>
+      {() =>
+        model().dates.length <= 2 ? (
+          <div class="pcal-tl-hours" aria-hidden="true">
+            {model().dates.flatMap(() => hourMarks(model().from, model().to).map((h) => <span style={`inset-inline-start:${(((h * 60 - model().from) / (model().to - model().from)) * 100).toFixed(3)}%`}>{h}</span>))}
+          </div>
+        ) : null
+      }
+    </div>
+  </div>
+  )
+}
+
+/** Where a grid key moves the focus from a resource's day: `[row, day]` (clamped later), or `null` for a key that does not move it. */
+function gridMove(key: string, at: { row: number; day: number; rows: number; days: number; rtl: boolean; ctrl: boolean }): [number, number] | null {
+  const back = at.rtl ? 1 : -1
+  const moves: Record<string, [number, number]> = {
+    ArrowLeft: [at.row, at.day + back],
+    ArrowRight: [at.row, at.day - back],
+    ArrowUp: [at.row - 1, at.day],
+    ArrowDown: [at.row + 1, at.day],
+    Home: at.ctrl ? [0, at.day] : [at.row, 0],
+    End: at.ctrl ? [at.rows - 1, at.day] : [at.row, at.days - 1],
+    PageUp: [at.row - 10, at.day],
+    PageDown: [at.row + 10, at.day],
+  }
+
+  return moves[key] ?? null
+}
+
+interface KeyboardContext<Meta> {
+  calendar: Calendar<Meta>
+  model: () => TimelineModel
+  byId: () => Map<string, { row: TimelineRow; index: number }>
+  window: () => { start: number; end: number }
+  viewport: () => number
+  scroll: { set(value: number): void }
+  focusAt: { set(value: { id: string | undefined; date: PlainDate | undefined }): void }
+  root: () => HTMLElement | null
+}
+
+/**
+ * The grid keyboard of the timeline, on a cell (or on a bar at rest, for the moves and Escape): the arrows by day and
+ * resource, Home and End (with Ctrl, the first and last resource), PageUp and PageDown by ten, Enter into the day's events
+ * (or selecting the day when it has none), Escape from an event back to its cell. Returns whether it handled the key.
+ */
+function timelineKeyboard<Meta>(c: KeyboardContext<Meta>): (cell: HTMLElement, e: KeyboardEvent, fromEvent: boolean) => boolean {
+  /** Move the tab stop to a resource's day and focus it, scrolling a windowed row into the drawn rows first. */
+  const moveTo = (rowIndex: number, dayIndex: number): void => {
+    const m = c.model()
+    const row = m.rows[Math.min(Math.max(rowIndex, 0), m.rows.length - 1)]
+    const date = m.dates[Math.min(Math.max(dayIndex, 0), m.dates.length - 1)]
+    const el = c.root()
+    if (row === undefined || date === undefined || el === null) return
+    const at = c.byId().get(row.resource.id)?.index ?? 0
+    const w = c.window()
+    if (at < w.start + 1 || at >= w.end - 1) {
+      // the row's top, less a third of the viewport so it is not at the very edge
+      let top = 0
+      for (let i = 0; i < at; i++) top += rowHeight(m.rows[i] as TimelineRow)
+      const next = Math.max(0, top - c.viewport() / 3)
+      el.scrollTop = next
+      c.scroll.set(next)
+    }
+    c.focusAt.set({ id: row.resource.id, date })
+    const selector = `.pcal-tl-row[data-resource="${CSS.escape(row.resource.id)}"] [role=gridcell][data-date="${date}"]`
+    const cell = el.querySelector<HTMLElement>(selector)
+    if (cell !== null) cell.focus()
+    else queueMicrotask(() => el.querySelector<HTMLElement>(selector)?.focus())
+  }
+  /** Enter on a cell: into its first event, or select the day of that resource when it has none. */
+  const enter = (cell: HTMLElement, id: string, day: number): void => {
+    const first = cell.querySelector<HTMLElement>('.pcal-event[data-key]')
+    if (first !== null) {
+      first.focus()
+
+      return
+    }
+    const m = c.model()
+    const date = m.dates[day] as PlainDate
+    c.calendar.select({ date, minute: m.from }, { date, minute: Math.max(m.from, m.to - c.calendar.timeGrid().slot) }, 'time', id)
+  }
+
+  return (cell, e, fromEvent) => {
+    const m = c.model()
+    const id = cell.closest<HTMLElement>('.pcal-tl-row')?.dataset.resource
+    const row = id === undefined ? -1 : (c.byId().get(id)?.index ?? -1)
+    const day = m.dates.indexOf(cell.dataset.date as PlainDate)
+    if (id === undefined || row < 0 || day < 0) return false
+    const move = gridMove(e.key, { row, day, rows: m.rows.length, days: m.dates.length, rtl: isRtl(c.root()), ctrl: e.ctrlKey || e.metaKey })
+    if (move !== null) {
+      moveTo(move[0], move[1])
+
+      return true
+    }
+    if (e.key === 'Escape' && fromEvent) {
+      moveTo(row, day)
+
+      return true
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && !fromEvent) {
+      enter(cell, id, day)
+
+      return true
+    }
+
+    return false
+  }
 }
 
 /**

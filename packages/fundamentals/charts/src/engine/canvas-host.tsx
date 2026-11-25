@@ -51,6 +51,7 @@ function ensureChildren(parent: Element, tag: string, n: number): Element[] {
   const doc = parent.ownerDocument
   while (parent.children.length > n) parent.lastElementChild?.remove()
   while (parent.children.length < n) parent.appendChild(doc.createElement(tag))
+
   return Array.from(parent.children)
 }
 
@@ -116,6 +117,7 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
       title()
       if (!ready()) return
       schedule(el, () => untrack(read))
+
       return
     }
     const t = read()
@@ -190,6 +192,7 @@ export function a11yTableNode(read: () => A11yTable, id: string, title: () => st
   // re-parsed) and the effect above keeps it current from there. On a pure
   // client mount the payload is empty and the effect builds it, as before.
   const html = isServer ? tableHtml(read(), title(), messages?.()) : ''
+
   return h('div', { style: `${OFFSCREEN};contain:strict` }, h('table', { id, style: 'table-layout:fixed;width:1px', dangerouslySetInnerHTML: { __html: html }, ref: (el: HTMLTableElement | null) => {
     host.set(el)
     if (el !== null && !ready.peek()) afterPaint(() => ready.set(true))
@@ -218,6 +221,7 @@ export function tableHtml(t: A11yTable, title: string, messages?: ChartMessages 
     }
     out += '</tbody>'
   }
+
   return out
 }
 
@@ -239,6 +243,7 @@ export function shiftCmds(cmds: DrawCmd[], dx: Double, dy: Double): DrawCmd[] {
     const g = (c as { grad?: ChartGradient }).grad
     return g === undefined ? next : ({ ...next, grad: { ...g, from: pt(g.from), to: pt(g.to) } } as DrawCmd)
   }
+
   return cmds.map((c): DrawCmd => {
     switch (c.kind) {
       case 'unclip':
@@ -271,6 +276,7 @@ function clampTooltip(at: Pt, size: Size, bounds: Rect): Pt {
   if (x < bounds.x) x = bounds.x
   if (y + size.h > bounds.y + bounds.h) y = bounds.y + bounds.h - size.h
   if (y < bounds.y) y = bounds.y
+
   return { x, y }
 }
 
@@ -511,11 +517,13 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
   if (explicit !== undefined) return explicit
   const box = el.parentElement
   const w = box === null ? 0 : box.clientWidth
+
   return w > 0 ? w : 300
 }
 
 const prefersReducedMotion = (): boolean => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 const hasRaf = (): boolean => typeof requestAnimationFrame === 'function'
+
 const cancelFrame = (id: number): void => {
   if (id !== 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id)
 }
@@ -556,6 +564,7 @@ function withItemHooks<L>(spec: CanvasHostSpec<L>): CanvasHostSpec<L> {
   const tooltip = spec.tooltip
   const cursor = spec.cursor
   const select = spec.select
+
   return {
     ...spec,
     // A family with no tooltip of its own (the gauge) gains one only when an
@@ -568,6 +577,7 @@ function withItemHooks<L>(spec: CanvasHostSpec<L>): CanvasHostSpec<L> {
       if (props.itemTooltip === undefined) return base
       if (it === null) return null
       const lines = base === null ? [] : Array.isArray(base) ? base : (base.lines ?? [])
+
       return props.itemTooltip(it, lines, press)
     },
     cursor: (layout, px, py) => {
@@ -575,6 +585,7 @@ function withItemHooks<L>(spec: CanvasHostSpec<L>): CanvasHostSpec<L> {
       if (props.itemCursor === undefined && props.itemSilent === undefined) return own
       const it = item(layout, px, py)
       if (it === null || quiet(it)) return ''
+
       return props.itemCursor === undefined ? own : props.itemCursor(it)
     },
     select: select === undefined ? undefined : (layout, px, py) => {
@@ -747,6 +758,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     }
     const box = props.frame ?? { x: left, y: top, w: Math.max(0, w - left - right), h: Math.max(0, hgt - top - bottom) }
     if (layout === null || top > 0 || left > 0 || right > 0 || bottom > 0 || props.frame !== undefined) layout = lay(box, measure, t)
+
     return { w, hgt, box, layout, chrome, toolBoxes }
   }
 
@@ -756,6 +768,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const i = focusIdx()
     if (i < 0 || spec.focusRect === undefined) return []
     const r = spec.focusRect(f.layout, i)
+
     return r === null ? [] : [focusRing(transposed() ? transposeRect(r) : r)]
   }
 
@@ -833,6 +846,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
         lastFamily = family
         startTween()
         paint(ctx, present([...f.chrome, ...transitionFrame(tweenFrom, family, 0.0), ...ringCmds(f)], w), w, hgt, FONT)
+
         return
       }
       // A shape change snaps, and cancels any tween still running toward the old shape.
@@ -870,6 +884,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     if (f !== null && f.w === w && f.hgt === hgt) return f
     const ctx = el.getContext('2d')
     if (ctx === null) return null
+
     return frame(w, hgt, sharedCanvasMeasure(ctx, FONT), theme())
   }
 
@@ -995,6 +1010,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const w = el === null ? (props.width ?? 300) : drawWidth(el, props.width)
     const hgt = props.height ?? spec.defaultHeight
     const measure: MeasureText = (text, size) => text.length * size * 0.6
+
     return lay(props.frame ?? { x: 0, y: 0, w, h: hgt }, measure, theme())
   }
   /** The a11y input, computed once per draw (the description, the table and the keyboard all read it). */
@@ -1009,6 +1025,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     // keyboard announcements (all engine functions of it) read the same ones.
     const input = messages === undefined ? raw : { ...raw, messages }
     a11yMemo = { version, w, messages, input }
+
     return input
   }
 
@@ -1080,6 +1097,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
         // not capturable — drag without it
       }
     }
+
     return true
   }
   const dragMove = (ev: PointerEvent): boolean => {
@@ -1090,6 +1108,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const p = localPoint(el, ev)
     dragMoved = true
     chartDrag.move(f.layout, p.x, p.y)
+
     return true
   }
   const roamDown = (ev: PointerEvent): void => {
@@ -1153,6 +1172,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
       a11yVersion()
       const own = props.description
       if (own !== undefined) return typeof own === 'string' ? own : own(a11yNow())
+
       return spec.describe === undefined ? describeChart(a11yNow()) : spec.describe(layoutForA11y(), props.messages)
     },
     'aria-describedby': () => tableOn() ? tableId : undefined,
@@ -1173,6 +1193,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
         tweenFrame = 0
         effectFrame = 0
         last = null
+
         return
       }
       startEntrance()
@@ -1240,6 +1261,7 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
     const f = frame(w, hgt, measure, t)
     const family = transposed() ? transposeCmds(spec.render(f.layout, measure, t, 1.0, 0.0)) : spec.render(f.layout, measure, t, 1.0, 0.0)
     const svg = ser.svg(present([...f.chrome, ...family], w), w, hgt, { fontFamily: FONT, idPrefix: `${tableId}-frame` })
+
     return props.width === undefined ? svg.replace(`width="${w}"`, 'width="100%"') : svg
   }
   const ssrFrameNode = h('div', {
@@ -1264,5 +1286,6 @@ export function canvasHost<L>(rawSpec: CanvasHostSpec<L>): VNode {
   // The table owns its effects in a component scope, so disabling it disposes them.
   const AccessibleTable = (): VNode => a11yTableNode(() => chartTable(a11yNow(), A11Y_TABLE_MAX), tableId, () => props.title ?? props.messages?.untitled ?? spec.caption, () => chartRowCount(a11yNow()), () => props.messages)
   const extras: (VNode | (() => VNode | null))[] = [ssrFrameNode, tipNode, liveNode, () => tableOn() ? h(AccessibleTable, null) : null]
+
   return h('div', { style: 'position:relative' }, canvasNode, ...extras)
 }

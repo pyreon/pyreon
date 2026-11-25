@@ -36,6 +36,7 @@ beforeEach(async () => {
   setTimeZone('UTC')
   await page.viewport(1280, 900)
 })
+
 afterEach(() => {
   for (const c of cleanups.splice(0)) c()
 })
