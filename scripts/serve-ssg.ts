@@ -154,6 +154,20 @@ export function matchRedirect(
 }
 
 /**
+ * The `404.html` nearest to a missing URL: its own directory's, then each
+ * parent's, ending at the served root's. Never outside the root.
+ */
+export function nearest404(root: string, pathname: string): string | undefined {
+  const segments = pathname.split('/').filter((s) => s.length > 0 && s !== '.' && s !== '..')
+  for (let n = segments.length; n >= 0; n -= 1) {
+    const candidate = resolve(join(root, ...segments.slice(0, n), '404.html'))
+    if (!candidate.startsWith(root)) continue
+    if (existsSync(candidate)) return candidate
+  }
+  return undefined
+}
+
+/**
  * Build the fetch handler. Exported so unit tests can construct a
  * handler against a synthetic root + rule set without spinning up a
  * real `Bun.serve`.
@@ -233,8 +247,11 @@ export function createServeHandler(
 
     // 404 fallback. Static hosts serve `404.html` for unmatched URLs;
     // mirror that so e2e tests for missing routes see the right output.
-    const fourOhFour = join(root, '404.html')
-    if (existsSync(fourOhFour)) {
+    // The NEAREST one up the path: a site deployed under a subdirectory
+    // (a GitHub Pages project site at `/<repo>/`) answers its own missing
+    // URLs with `/<repo>/404.html`, not the domain root's.
+    const fourOhFour = nearest404(root, url.pathname)
+    if (fourOhFour) {
       return new Response(readFileSync(fourOhFour), {
         status: 404,
         headers: { 'content-type': 'text/html; charset=utf-8' },

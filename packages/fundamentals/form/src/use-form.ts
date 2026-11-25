@@ -1,10 +1,8 @@
 import { createUniqueId, onUnmount } from '@pyreon/core'
 import type { Signal } from '@pyreon/reactivity'
-import { batch, computed, effect, isServer, signal } from '@pyreon/reactivity'
+import { batch, computed, effect, isServer, signal, untrack } from '@pyreon/reactivity'
 import type { SchemaValidateFn } from '@pyreon/validation'
 import { isStandardSchema, standardSchemaToValidator } from '@pyreon/validation'
-import type { FieldDefinition, InferFieldValues } from './field'
-import { isFieldDefinition } from './field'
 import { findPathAncestorConflict, nearestAncestorField, nestValues } from './path'
 import type {
   FieldErrorProps,
@@ -241,22 +239,15 @@ export function resolveSchemaValidator<TValues extends Record<string, unknown>>(
 }
 
 /**
- * Options for the field-definition-based useForm overload.
- * Types are inferred from the field definitions array.
+ * Does this validation result represent a REAL error?
+ *
+ * `undefined` and `''` both mean "valid". The empty string matters because it
+ * is what a validator's valid branch naturally returns when its invalid branch
+ * returns a message (`v.length < 3 ? 'too short' : ''`), and treating it as an
+ * error produced a form that could never submit and never said why.
  */
-export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<string, unknown>[]> {
-  /** Array of field definitions created via `field()`. */
-  fields: readonly [...TDefs]
-  /** Called with validated values on successful submit. */
-  onSubmit: (values: InferFieldValues<TDefs>) => void | Promise<void>
-  /** Schema-level validator (runs after field validators). */
-  schema?: UseFormOptions<InferFieldValues<TDefs>>['schema']
-  /** When to validate: 'blur' (default), 'change', or 'submit'. */
-  validateOn?: 'blur' | 'change' | 'submit'
-  /** Debounce delay in ms for validators. */
-  debounceMs?: number
-  /** Focus the first errored field on a failed submit (default true). */
-  focusOnError?: boolean
+export function isRealError(err: ValidationError): boolean {
+  return err !== undefined && err !== ''
 }
 
 /**
@@ -277,70 +268,10 @@ export interface UseFormFieldsOptions<TDefs extends readonly FieldDefinition<str
  * // h('input', form.register('email'))
  * // h('input', { type: 'checkbox', ...form.register('remember', { type: 'checkbox' }) })
  */
-/**
- * Create a form from field definitions — types inferred from the fields array.
- *
- * @example
- * ```ts
- * const email = field('email', '', (v) => !v.includes('@') ? 'Invalid' : undefined)
- * const password = field('password', '', (v) => v.length < 8 ? 'Too short' : undefined)
- *
- * const form = useForm({
- *   fields: [email, password],
- *   onSubmit: (values) => { // values: { email: string; password: string } }
- * })
- * ```
- */
-// oxlint-disable-next-line no-explicit-any
-/**
- * Does this validation result represent a REAL error?
- *
- * `undefined` and `''` both mean "valid". The empty string matters because it
- * is what a validator's valid branch naturally returns when its invalid branch
- * returns a message (`v.length < 3 ? 'too short' : ''`), and treating it as an
- * error produced a form that could never submit and never said why.
- */
-export function isRealError(err: ValidationError): boolean {
-  return err !== undefined && err !== ''
-}
-
-export function useForm<TDefs extends FieldDefinition<string, any>[]>(
-  // The exported UseFormFieldsOptions IS the overload's type — an inline
-  // literal here silently drifted (it omitted `focusOnError`, so
-  // fields-overload users couldn't opt out of a default-ON behavior: TS2769).
-  options: UseFormFieldsOptions<TDefs>,
-): FormState<InferFieldValues<TDefs>>
-/**
- * Create a form with explicit initial values and validators.
- */
-export function useForm<TValues extends Record<string, unknown>>(
-  options: UseFormOptions<TValues>,
-): FormState<TValues>
 // oxlint-disable-next-line no-unnecessary-type-arguments
 export function useForm<TValues extends Record<string, unknown> = Record<string, unknown>>(
-  options: UseFormFieldsOptions<readonly FieldDefinition[]> | UseFormOptions<TValues>,
+  options: UseFormOptions<TValues>,
 ): FormState<TValues> {
-  // ── Field-definition overload: translate to legacy format ──────────────
-  if ('fields' in options && Array.isArray(options.fields) && options.fields.length > 0 && isFieldDefinition(options.fields[0])) {
-    const defs = options.fields as readonly FieldDefinition[]
-    const initialValues: Record<string, unknown> = {}
-    const validators: Record<string, ValidateFn<unknown, Record<string, unknown>>> = {}
-    for (const def of defs) {
-      initialValues[def.name] = def.defaultValue
-      if (def.validator) validators[def.name] = def.validator
-    }
-    return useForm<TValues>({
-      initialValues,
-      validators,
-      onSubmit: options.onSubmit,
-      schema: options.schema,
-      validateOn: options.validateOn,
-      debounceMs: options.debounceMs,
-      focusOnError: options.focusOnError,
-    } as unknown as UseFormOptions<TValues>) as FormState<TValues>
-  }
-
-  // ── Legacy path ───────────────────────────────────────────────────────
   const opts = options as UseFormOptions<Record<string, unknown>>
   const { initialValues: rawInitialValues, onSubmit, validators, schema: schemaInput, validateOn = 'blur', debounceMs, focusOnError = true } = opts
 
@@ -376,7 +307,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   //
   // STATIC-BY-DEFAULT FIELD MODEL. `fieldEntries` starts from `initialValues`
   // and is the shape the whole form is built on: `values()`/`getValues()`
-  // iterate it (epoch-cached), the submit payload is assembled from it, and
+  // iterate it (memoised / epoch-cached), the submit payload is assembled from it, and
   // dirty/touched aggregation keys on it. There is NO lazy AUTO-registration
   // (a field first seen by `useField`/`register` would NOT be in `fieldEntries`,
   // so its value would never reach `onSubmit` — a silent data-loss bug), which
@@ -453,22 +384,21 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // immediately, reusing the exact same validation path as auto-validation.
   const fieldRunValidation: Partial<Record<keyof TValues, (v: unknown) => Promise<ValidationError>>> = {}
 
-  // Epoch-cached snapshot of all values. Rebuilding the object on every
-  // `values()` / `getValues()` read was O(N) (~109ns for 12 fields vs a plain
-  // store's ~7ns property read). Instead we keep a monotonically-bumped
-  // `_valuesEpoch` (incremented by every value-mutation METHOD — setValue,
-  // field.reset, setInitialValues) and rebuild the snapshot only when the
-  // epoch advanced since the last read. A clean read is then an integer
-  // compare + cached-object return (~store speed), and the write path pays
-  // only one integer increment (no signal/subscriber → no Set promotion on
-  // the value signals → the 46ns keystroke path is untouched).
+  // Two snapshots of all values, for two kinds of reader:
   //
-  // Contract: the snapshot reflects mutations through the form's methods.
-  // A direct `form.fields.x.value.set(...)` (bypassing `setValue`) bypasses
-  // the epoch — same as it already bypasses dirty-tracking + auto-validation;
-  // use `setFieldValue` for tracked updates. This matches the live-store
-  // model of TanStack/RHF (their values object is equally "stale" if you
-  // mutate underlying state out-of-band).
+  // - INTERNAL reads (validators' `allValues`, the schema input, submit) use
+  //   the epoch cache below: rebuilt only when a value-mutation METHOD
+  //   (setValue, field.reset, setInitialValues, register/unregister) bumped
+  //   `_valuesEpoch`, so a clean read is an integer compare + cached-object
+  //   return and nothing subscribes to the value signals. A direct
+  //   `form.fields.x.value.set(...)` bypasses the epoch (as it bypasses
+  //   dirty-tracking + auto-validation).
+  // - The PUBLIC `values()` / `getValues()` read `valuesComputed` (declared
+  //   after the field state): a lazy computed over every value signal and the
+  //   field set. A clean read returns its cached object; it re-derives only
+  //   after a change, including a direct `value.set(...)`, and a computed /
+  //   effect over it tracks every field (#4824). It subscribes to the value
+  //   signals only once something has read it.
   let _valuesEpoch = 0
   let _valuesCache: TValues | undefined
   let _valuesCacheEpoch = -1
@@ -952,6 +882,21 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   // count signals. Pre-fix these iterated all N fields on every recompute
   // (and re-allocated the `fieldEntries.map` array). Post-fix they're
   // pure scalar reads. See `_invalidCount` / `_dirtyCount` setup above.
+  // The PUBLIC values snapshot — see the note on the epoch cache above.
+  // Lazy: allocated per form, but it reads (and so subscribes to) the value
+  // signals only once `values()` / `getValues()` is first called.
+  const valuesComputed = computed((): TValues => {
+    _fieldsVersion()
+    const values = {} as TValues
+    for (const [name] of fieldEntries) {
+      const f = fields[name]
+      ;(values as Record<string, unknown>)[name] = f
+        ? f.value()
+        : (currentInitials as Record<string, unknown>)[name]
+    }
+
+    return values
+  })
   const isValid = computed(() => _invalidCount() === 0)
   const isDirty = computed(() => _dirtyCount() > 0)
   const isSubmitted = computed(() => submitCount() > 0)
@@ -960,21 +905,28 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
   function getValuesPublic(): TValues
   function getValuesPublic<K extends keyof TValues>(field: K): TValues[K]
   function getValuesPublic<K extends keyof TValues>(field?: K): TValues | TValues[K] {
-    if (field === undefined) return getValues()
-    return fields[field].value.peek()
+    if (field === undefined) return valuesComputed()
+
+    // Tracked like `fields[field].value()` — a computed/effect over
+    // `getValues('x')` re-runs when `x` changes.
+    return fields[field].value()
   }
 
   // Aggregate dirty/touched records (only the dirty/touched fields present).
   // Reactive: reads each field's signal, so calling inside a reactive scope
   // tracks the set (matching react-hook-form's reactive dirtyFields/touchedFields).
   const dirtyFields = (): Partial<Record<keyof TValues, boolean>> => {
+    _fieldsVersion() // track the field SET (registerField / unregisterField)
     const out = {} as Partial<Record<keyof TValues, boolean>>
     for (const [name] of fieldEntries) if (fields[name].dirty()) out[name] = true
+
     return out
   }
   const touchedFields = (): Partial<Record<keyof TValues, boolean>> => {
+    _fieldsVersion()
     const out = {} as Partial<Record<keyof TValues, boolean>>
     for (const [name] of fieldEntries) if (fields[name].touched()) out[name] = true
+
     return out
   }
 
@@ -986,12 +938,25 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     field: K,
   ): FieldState<TValues[K]> | undefined => fields[field]
 
+  // Internal (untracked) — `reset({ keepErrors })` snapshots through it.
   const getErrors = (): Partial<Record<keyof TValues, ValidationError>> => {
     const errors = {} as Partial<Record<keyof TValues, ValidationError>>
     for (const [name] of fieldEntries) {
       const err = fields[name].error.peek()
       if (isRealError(err)) errors[name] = err
     }
+    return errors
+  }
+  // PUBLIC `errors()`: tracked, like `dirtyFields()` / `touchedFields()` — a
+  // computed over it re-runs when any field's error (or the field set) changes.
+  const errorsTracked = (): Partial<Record<keyof TValues, ValidationError>> => {
+    _fieldsVersion()
+    const errors = {} as Partial<Record<keyof TValues, ValidationError>>
+    for (const [name] of fieldEntries) {
+      const err = fields[name].error()
+      if (isRealError(err)) errors[name] = err
+    }
+
     return errors
   }
 
@@ -1255,8 +1220,9 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     abortController = null
     // Snapshot any state the caller asked to preserve, BEFORE the reset wipes it.
     const keepErrors = resetOptions?.keepErrors ? { ...getErrors() } : undefined
-    const keepTouched = resetOptions?.keepTouched ? { ...touchedFields() } : undefined
-    const keepDirty = resetOptions?.keepDirty ? { ...dirtyFields() } : undefined
+    // Untracked: `reset()` called inside a caller's effect must not subscribe it.
+    const keepTouched = resetOptions?.keepTouched ? { ...untrack(touchedFields) } : undefined
+    const keepDirty = resetOptions?.keepDirty ? { ...untrack(dirtyFields) } : undefined
     // Batch the reset writes: every field's reset() touches multiple
     // signals (value/error/touched/dirty), then submitCount + submitError.
     // Without batch(), N-field form fires 4N+2 separate notify cycles.
@@ -1298,7 +1264,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     if (!fields[field]) {
       throw new Error(
         `[Pyreon] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
+          `Declare it in useForm({ initialValues }) — @pyreon/form does not auto-register fields.`,
       )
     }
     fields[field].setValue(value)
@@ -1308,7 +1274,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     if (!fields[field]) {
       throw new Error(
         `[Pyreon] Field "${String(field)}" does not exist. Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array) — @pyreon/form does not auto-register fields.`,
+          `Declare it in useForm({ initialValues }) — @pyreon/form does not auto-register fields.`,
       )
     }
     fields[field].error.set(error)
@@ -1410,7 +1376,7 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
       throw new Error(
         `[Pyreon] register("${field}"): field "${field}" does not exist. ` +
           `Available fields: ${fieldEntries.map(([n]) => n).join(', ')}. ` +
-          `Declare it in useForm({ initialValues }) (or the fields array), or add it at runtime via ` +
+          `Declare it in useForm({ initialValues }), or add it at runtime via ` +
           `registerField("${field}", initialValue) — @pyreon/form does not auto-register fields.`,
       )
     }
@@ -1613,6 +1579,14 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     const key = name as keyof TValues & string
     const fieldState = fields[key]
     if (!fieldState) return
+    // One batch: the reset below writes the field's signals and the removal
+    // bumps the field set — a `values()` consumer must see ONE change (the
+    // field gone), never an in-between snapshot with the reset value.
+    batch(() => removeField(key, fieldState))
+  }
+
+  const removeField = (key: keyof TValues & string, fieldState: FieldState<TValues[keyof TValues & string]>): void => {
+    const name = key as string
     // Reset FIRST so the field's error/dirty subscribers fire and cleanly
     // zero its contribution to `_invalidCount` / `_dirtyCount` before removal.
     fieldState.reset()
@@ -1660,9 +1634,10 @@ export function useForm<TValues extends Record<string, unknown> = Record<string,
     isSubmitted,
     isSubmitSuccessful,
     submitError,
-    values: getValues,
+    // The computed itself (no wrapper call): `values()` is the hottest read.
+    values: valuesComputed as () => TValues,
     getValues: getValuesPublic,
-    errors: getErrors,
+    errors: errorsTracked,
     dirtyFields,
     touchedFields,
     setFieldValue,

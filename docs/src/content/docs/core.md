@@ -939,6 +939,8 @@ scheme applies.
 
 Refs provide mutable containers for DOM element references. The runtime sets `ref.current` (or calls a callback ref) once, while the component mounts, and sets it to `null` (or calls the callback with `null`) when the element is removed. This holds for every ref form and for both compiled JSX and `h()`.
 
+A ref fires after its element's children are mounted (or, during hydration, adopted) and its attributes are applied, so it sees the element's rendered content and computed attributes, and anything it adds or removes stays. This holds for a `ref` passed inside a spread (`<div {...props}>`) too. An element's children's refs fire before its own. In a compiled template every ref fires once the whole template is built, so a ref may also see its element's later siblings, which the `h()` path has not mounted yet.
+
 When a ref fires, the element belongs to the page's `document`, so `el.ownerDocument.defaultView` is the window. It may **not yet be in the live document**, though: a subtree is built and then inserted as a whole. Read layout (`getBoundingClientRect`, `getComputedStyle`), focus, or attach observers that need a connected element in `onMount`, as below.
 
 ### createRef
@@ -1523,7 +1525,7 @@ When the boundary catches an error, the internal `error.set(err)` call is deferr
 
 #### Error Boundary Internals
 
-`ErrorBoundary` uses a module-level stack of handler functions. During setup, it pushes a handler onto the stack. When a child component throws during mount, `dispatchToErrorBoundary()` invokes the innermost handler. The handler stores the error in a signal; when the signal becomes non-null, the fallback renders instead of the children.
+`ErrorBoundary` provides its handler through context during setup, so the boundary a throw reaches is the one that encloses the component in the tree, never a sibling that happens to be mounted. When a child component throws during mount, `dispatchToErrorBoundary()` resolves the nearest handler through the context owner chain and invokes it. Code that fails after mount (a `<Defer>` chunk that rejects, an async component) resolves its boundary at setup and hands it the error when it fails. The handler stores the error in a signal; when the signal becomes non-null, the fallback renders instead of the children.
 
 ### Async
 
@@ -1652,7 +1654,7 @@ function Page() {
 
 Exactly one of the three triggers is supplied per `<Defer>`. `when` is mutually exclusive with `on`.
 
-- **`when={() => signal()}`** -- signal-driven. Load the chunk when the accessor becomes truthy. Repeated truthy emissions are no-ops; the chunk loads exactly once per `Defer` instance even if the condition oscillates (e.g. a modal that opens, closes, then opens again). This is the modal / on-demand-panel pattern.
+- **`when={open}`** -- signal-driven. Load the chunk when the condition becomes truthy. Like `<Show when>`, it takes a value or an accessor: `when={open}` (a signal or computed, also a component-local one), `when={open()}` and `when={() => open()}` all stay reactive. Repeated truthy emissions are no-ops; the chunk loads exactly once per `Defer` instance even if the condition oscillates (e.g. a modal that opens, closes, then opens again). This is the modal / on-demand-panel pattern.
 - **`on="visible"`** -- viewport-driven. Load the chunk when the wrapper scrolls into view, detected with an `IntersectionObserver`. Tune the pre-load distance with `rootMargin` (default `'200px'`, so the chunk usually finishes loading before the user reaches it). Best for below-the-fold content like a comments section.
 - **`on="idle"`** -- idle-driven. Load the chunk during browser idle time via `requestIdleCallback`. Best for non-critical work that should warm up after the page is interactive but doesn't block anything.
 
@@ -1681,8 +1683,8 @@ interface DeferProps<P extends Props> {
    * synthesizes it; the explicit form requires it.
    */
   chunk?: () => Promise<{ default: ComponentFn<P> } | ComponentFn<P>>
-  /** Signal-driven trigger -- load when truthy. Mutually exclusive with `on`. */
-  when?: () => boolean
+  /** Signal-driven trigger -- load when truthy. A value or an accessor. Mutually exclusive with `on`. */
+  when?: unknown | (() => unknown)
   /** Viewport / idle trigger. Mutually exclusive with `when`. */
   on?: 'visible' | 'idle'
   /**
@@ -1698,7 +1700,7 @@ interface DeferProps<P extends Props> {
 }
 ```
 
-A rejected `chunk()` is thrown during rendering and can be caught by an `ErrorBoundary` (the same recovery path as `lazy()`):
+A rejected `chunk()` (offline, a deploy replaced the hashed file) goes to the enclosing `ErrorBoundary` like any other render error, whether the load started at mount or later. `reset()` remounts the `Defer`, which retries the load. Without a boundary the failure is reported to `registerErrorHandler`, logged in development, and the slot renders nothing:
 
 ```tsx
 <ErrorBoundary fallback={(err, reset) => <ChunkFailed error={err} retry={reset} />}>
@@ -1894,7 +1896,7 @@ function createUniqueId(): string
 | `normalizeStyleValue`, `toKebabCase`, `CSS_UNITLESS` | The style normalization the renderer uses (number → `px` unless unitless). |
 | `reportError(ctx)` | Dispatches an `ErrorContext` to every handler registered with `registerErrorHandler`. |
 | `isUnsafeUrl`, `isUrlAttr`, `URL_ATTRS` | The URL guard used for `href`/`src`-like attributes. |
-| `nativeCompat`, `isNativeCompat` | Marks a component to bypass compat-mode wrapping. See [nativeCompat](/docs/native-compat). |
+| `nativeCompat` | Marks a component to bypass compat-mode wrapping. See [nativeCompat](/docs/native-compat). |
 
 ## Telemetry
 
@@ -1936,6 +1938,20 @@ interface ErrorContext {
   props?: Record<string, unknown>
 }
 ```
+
+#### Errors thrown during unmount
+
+A throw from user code while a component unmounts never stops the rest of the teardown; it is logged and reported, and how it is labelled depends on where the code was registered:
+
+| Thrown by | Logged as | `component` / `phase` |
+| --- | --- | --- |
+| an `onUnmount` hook, or the cleanup an `onMount` callback returned | `[Pyreon] Error in onUnmount hook of <Name>` | `Name` / `'unmount'` |
+| a ref callback receiving `null`, or an object ref's `current` setter | `[Pyreon] Error in ref callback` | `'ref callback'` / `'unmount'` |
+| an `onCleanup` registered inside `onMount`, or inside an `effect()` | `[pyreon] Unhandled effect error` | `'Effect'` / `'effect'` |
+
+The last row goes through the reactivity error handler (`setErrorHandler`), which has no component: `EffectScope.stop()` runs those cleanups and cannot name the component that owns the scope. Use `onUnmount` (or return a cleanup from `onMount`) when the report should carry the component's name.
+
+A ref also receives `null` when a dynamic spread (`<div {...props()}>`) re-applies with a new props object. A throw there is reported with `phase: 'unmount'` too: it is the release of that ref, even though the element stays.
 
 ### Multiple Error Handlers
 
@@ -2199,7 +2215,7 @@ const Accordion = defineComponent(
 
 ## Internal APIs
 
-These APIs are used by the renderer and are not intended for application code.
+These APIs are used by the renderer and are not intended for application code. They live on the internal `@pyreon/core/internal` subpath (no semver promise), together with `setContextStackProvider`, `getContextStackLength`, `removeContextFrame` and `REACTIVE_PROP`.
 
 ### runWithHooks
 

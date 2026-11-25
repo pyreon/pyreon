@@ -108,7 +108,6 @@ export type { I18nRoutingConfig, LocaleContext } from "./i18n-routing";
 export {
 	buildLocalePath,
 	extractLocaleFromPath,
-	_registerI18nConfig,
 	setLocale,
 	useLocale,
 } from "./i18n-routing";
@@ -147,4 +146,4 @@ export type {
 // client entry so consumer code can import it directly without
 // pulling server-only modules.
 export type { RssConfig, RssItem } from "./seo-rss";
-export { generateRssFeed, toRfc822 } from "./seo-rss";
+export { generateRssFeed } from "./seo-rss";

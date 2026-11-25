@@ -1,8 +1,8 @@
-// router.revalidate() must re-render the LEAF page with the fresh data, not
-// only refresh `_loaderData`. `useLoaderData()` is a plain context snapshot,
-// so a leaf that is not re-mounted keeps showing the old data — the
-// mutation-then-refresh flow (a server action followed by revalidate) was a
-// silent no-op in the DOM.
+// router.revalidate() must show the fresh data in the LEAF page, not only
+// refresh `_loaderData` — the mutation-then-refresh flow (a server action
+// followed by revalidate) was once a silent no-op in the DOM. The key is
+// unchanged, so the page stays mounted and `useLoaderData()` (an accessor)
+// delivers the new data in place (#4814).
 import { h } from '@pyreon/core'
 import { mount } from '@pyreon/runtime-dom'
 import { describe, expect, it } from 'vitest'
@@ -14,7 +14,7 @@ describe('router.revalidate() re-renders the leaf', () => {
     let version = 0
     const Page = () => {
       const data = useLoaderData<{ version: number }>()
-      return h('p', { id: 'v' }, `v${data.version}`)
+      return h('p', { id: 'v' }, () => `v${data().version}`)
     }
     const routes: RouteRecord[] = [
       { path: '/', component: () => null },

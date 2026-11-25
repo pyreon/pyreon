@@ -176,7 +176,7 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 (#4382): a literal element child compiles to a `_tpl` item on the client and to raw HTML (`_ssr`) on the server, neither of which has props to merge. Kinetic's per-item hidden class/style was dropped on the server (initially-hidden items prerendered VISIBLE, a flash before hydration); runtime-dom's `<Transition><div/></Transition>` treated the `_tpl` item as a component, warned, and never animated; `_ssr` dropped `key` while the client kept the keyed element on `h()`, so a group saw different keys on each side.
   - Decorate every child shape: VNode (merge props), `_tpl` item (apply at mount; `wrapNativeItem` in kinetic, `NativeTransitionChild` in runtime-dom), server raw HTML (`withRootAttrs`). Declare the client decoration with `_declareRootDecoration` so hydration adopts the decorated server root instead of re-creating it.
-  - A keyed root is never templated on either side. A child's own `style` may be a STRING: merge it as text (kinetic `mergeStyles`), never by object spread. A numeric custom property (`--i: 2`) takes no unit (`normalizeStyleValue`).
+  - A keyed root is never lowered to `_ssr` on the server (it stays a VNode, key included). On the client it is a `_tpl` item that carries the same `key` (`_tpl`'s fourth argument), so readers of child keys see the same keys on both sides: read a child's key as `child.key` on ANY object child, never only after an `isVNode` check (kinetic's group did, and tracked compiled keyed children by position). A child's own `style` may be a STRING: merge it as text (kinetic `mergeStyles`), never by object spread. A numeric custom property (`--i: 2`) takes no unit (`normalizeStyleValue`).
   - Tests: kinetic `ssr-compiled-children.test.tsx` (h()-path oracle, both renderers, hydration adopts), runtime-dom `transition-compiled-child.test.tsx`, compiler `native-equivalence` (keyed-root cases).
 
 ---
@@ -204,11 +204,32 @@ The path returns `text/html`, so every hover logs a strict-MIME error and wastes
 
 ---
 
+### [FIXED, 2026-11] A recovery that is not bounded by the range it runs in
+
+(#4764). Four shapes of one class, all after a server/client divergence:
+  - A `<For>` with no block at its cursor claimed "the rest of the parent" and deleted to the parent's end: inside a reactive range that took the range's own boundary marker and every later sibling (`<App> threw during hydration: … insertBefore … not a child`). With no cursor it inserted at the parent's end, past `anchor`. Delete up to `anchor`, insert before `domNode ?? anchor` (`insertMarker` takes the reference node).
+  - The cursor skips plain comments and stops only at structural markers, so a walk inside `adoptReactiveRange` reached the range's `<!--/$-->` PAST `mountReactive`'s boundary comment. Walk with the structural `end` as the anchor, then move the boundary after what the walk mounted (`adoptUnmarkedRange` already did this).
+  - A static child's tag/text recovery leaves the server node at the cursor for the next sibling. A sibling whose server output opens with a MARKER cannot claim it and took it as content: no row adopted, later siblings re-created; a later static element was re-created too (typed input lost). `skipRefused` (one identity slot, emptied on every walk entry and exit in `setHydrating`) skips the stale element/text run up to that marker, or up to the first element with the static sibling's tag, and drops it; it never passes a comment or `anchor`. It does not prove the target is this child's (an unmarked #4448 accessor can take the next accessor's range); the walk that follows repairs any difference.
+  - A compiled literal slot in a marked range (`_setChildAt`) never swept what its value left unclaimed before the close marker: `sweepUnclaimed(parent, cursor, first, end)` is now the one bounded sweep (the async-range sweep uses it too), keeping its "nothing claimed, keep the markup" rule.
+  - The SSR emit does not bracket static children in an h()-rendered parent, by choice (bytes per child): the recovery is the client's.
+  - An adopted reactive range carries no start marker (`adoptReactiveRange`): content plus `mountReactive`'s boundary, exactly a fresh mount's shape, so user code that positions by child index (a ref inserting "in the middle") gets the same result on both paths. Its start is the node before the range, read once. The run's cleanup is the walk's own cleanups (they remove what they own); the claimed set lives only for the adoption-time stale filter, because keeping it for teardown pinned every adopted top-level node for the accessor's life (leak class H; `hydration-recovery-4764.test.tsx` GC test).
+  - A static slot's scope-owned cleanup (`_setChild`, `_setChildAt`) runs inside `_detachAsUnit`: a ref that throws from the ref tail stops the scope after the slots adopted, and must dispose effects without removing server nodes, as the h() path keeps them.
+  - Tests: `runtime-dom/src/tests/hydration-recovery-4764.test.tsx` + `.browser`.
+
+---
+
+### [FIXED, 2026-11] Compiled refs ran before their element's children
+
+(#4764): the compiler emitted `_ref` at the attribute's position, and `_applyProps` / `_bindSpread` applied a spread's `ref` there too, before the slot lines and before the template's attribute effects. A ref that cleared its element removed the `<!>` / `' '` placeholders, and a client MOUNT threw (`_setChildAt`, `_textSlot`, `mountElement` insertBefore); a static `_setChild` overwrote what a ref added; a ref read an empty computed `class`; during hydration a ref saw server content before it was claimed (false mismatch reports). The h() path calls a ref after the element's children and props. Rule: every ref that reaches a template element (literal or spread-carried) runs from one post-order ref tail after every other bind line, in BOTH backends; never patch the slot helpers to tolerate a detached placeholder. Tests: `hydration-recovery-4764.test.tsx` (literal / spread / dynamic-spread ref x child-shape matrix, mount and hydrate), compiler `jsx.test.ts`, `native-equivalence.test.ts`.
+
+---
+
 ### Unclaimed server DOM must be removed before `hydrateRoot` returns
 
 The hydration barrier promises everything on screen is live. Otherwise a warm-server/cold-client divergence (rows vs "Loading…") shows both, and the server rows have no handlers.
   - `adoptReactiveRange` snapshots the server range before the walk and removes every unclaimed node in the first render. Stop the snapshot at `mountReactive`'s own anchor (it sits inside the range), or the boundary is swept and the accessor never renders again.
   - `hydrateElement` and `hydrateRoot` sweep from the residual cursor to the element/container end. The sweep is skipped when nothing precedes the cursor, so a component whose setup throws keeps its inert server markup instead of going blank (matching a degraded page, not destroying it).
+  - That guard is for code that can throw: a client value that renders nothing statically (nullish, boolean, `''`, or an array of those: `rendersNothing`) sweeps and reports (`tag`, expected nothing), on `hydrateElement` and on a compiled marked slot (#4764). An `h()` element whose only child is `[]` is flattened to no children and keeps the old behaviour.
   - A static-text mismatch replaces the stale node and advances, so the next sibling adopts its own server node.
   - Parity fuzz cannot see this (its oracle is zero mismatches). Tests: `runtime-dom/src/tests/hydrate-mismatch-sweeps-server-range.test.tsx`, `hydrate-boundary-sweep.test.tsx` (hydrate-vs-cold-mount oracle). Compiled-emit test harnesses must provide every helper the emit imports (`_setChild`, `_setChildAt`, `_fuse`) and assert that they do.
 
@@ -312,6 +333,7 @@ Setting `input.value`/`textarea.value` as a property never creates the content a
   - Runtime: `mountElement`/`hydrateElement` skip `value` in the pre-children `applyProps` pass and apply it via `applySelectValueProp` afterwards.
   - SSR: drop the attribute and mark the matching `<option selected>` (String()-coerced first match; option text fallback). The select frame reaches options via `AsyncLocalStorage`.
   - `value == null`/boolean emits nothing. Known gaps: a spread `value` on the template path still applies before children (broken only with dynamic options); array values on `multiple` are unsupported on both sides.
+  - **Options that arrive AFTER mount (#4820)**: applying once after the first children mount is not enough — a `<For>` over a list that loads later appends options to a select whose value was already dropped. A select whose value matches NO option yet observes its own children (`MutationObserver`, `childList`+`subtree`, only while unmatched), applies the value once the option exists and disconnects. **Never re-apply a value that already matched** (maintainer decision: do not fight the user — re-applying undid picks, declining `onChange`s and removed options, and blanked an unmatched select); `multiple` and nullish are skipped. **Keep it out of plain `mount`** (maintainer: an edge case must not cost every app ~150 B): `applyValueProp` (compiler `_setValue`, now also emitted for `<select value>`) calls a nullable `selectWaitHook`, installed by `_selectWait()` from `select-wait.ts`; the compiler emits `import { _selectWait } …; _selectWait();` in each client module containing `<select value>` or `<select {...spread}>` (a spread may carry `value`; `isSelectWithValue` / `has_select_value`, byte-identical), `setStaticProp` routes a select `value` from a spread through `applyValueProp` too, and `h()`-only apps call it themselves. `mount` +32 B gz.
   - happy-dom models select semantics correctly here. Tests: `runtime-dom/src/tests/select-value.test.tsx` (+ `.browser.test.tsx`), `compiler/src/tests/select-value-emit.test.ts`, native-equivalence "select value binding (PZ-09)", `runtime-server/src/tests/select-value-ssr.test.ts`.
 
 ---

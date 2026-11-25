@@ -40,6 +40,11 @@
       "bun": "./src/router.ts",
       "import": "./lib/router.js",
       "types": "./lib/types/router.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [
@@ -77,6 +82,9 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.1.0",
     "axe-core": "^4.14.1"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

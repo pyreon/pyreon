@@ -12,7 +12,7 @@ import { grants, type PermissionSet } from '../permission-sets'
 import { counterDelta } from '../perf-counters'
 import { fieldToControl, validateValues } from '../schema-controls'
 import { hotKeys, type StoreTimeline } from '../store-timeline'
-import { parseUrlState, pathBase, serializeUrlState } from '../url-state'
+import { parseUrlState, serializeUrlState } from '../url-state'
 
 const comp = (over: Partial<WorkbenchComponent> & { id: string }): WorkbenchComponent =>
   ({
@@ -123,23 +123,6 @@ describe('store timeline — hot keys ordering', () => {
       { key: 'a', writes: 3 },
       { key: 'b', writes: 2 },
     ])
-  })
-})
-
-describe('url-state — pathBase against a path that does not end in the id', () => {
-  it('returns the whole path when the id is not its last segment', () => {
-    // A defensive pairing: the caller resolves the id from the same pathname,
-    // so a mismatch means the two disagree — and dropping a segment on a guess
-    // would write a URL pointing at a directory that does not exist.
-    expect(pathBase('/atlas/modal/', 'button')).toBe('/atlas/modal/')
-  })
-
-  it('strips it when it IS the last segment', () => {
-    expect(pathBase('/atlas/button/', 'button')).toBe('/atlas/')
-  })
-
-  it('adds the trailing slash a path URL needs', () => {
-    expect(pathBase('/atlas/button', 'button')).toBe('/atlas/')
   })
 })
 

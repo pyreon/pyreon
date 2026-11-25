@@ -153,6 +153,10 @@ export function renderAddGuide(
       lines.push(`    ${t.accent(t.sym('step'))} Use it:`)
     }
     lines.push(indent(recipe.usage))
+    if (recipe.devDependencies) {
+      lines.push(`    ${t.accent(t.sym('step'))} Dev dependencies for ${recipe.devDependencies.for}:`)
+      lines.push(indent(devInstallCommand(run.pm, recipe.devDependencies.packages)))
+    }
     lines.push(`    ${t.dim('docs')}  ${t.info(`https://pyreon.dev${recipe.docs}`)}`)
   }
   lines.push('')
@@ -162,6 +166,12 @@ export function renderAddGuide(
       : verdict(t, 'ok', `installed ${plural(names.length, 'package')}`, [run.pm, formatElapsed(run.elapsedMs)]),
   )
   return lines.join('\n')
+}
+
+/** The dev-dependency install line for a package manager (`bun add -d …`). */
+export function devInstallCommand(pm: string, packages: readonly string[]): string {
+  const flag = pm === 'npm' ? 'install -D' : pm === 'bun' ? 'add -d' : 'add -D'
+  return `${pm} ${flag} ${packages.join(' ')}`
 }
 
 function indent(code: string): string {

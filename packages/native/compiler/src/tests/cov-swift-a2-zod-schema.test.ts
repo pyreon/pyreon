@@ -52,7 +52,10 @@ describe('scalar constraint guards — one arm per rule, per type', () => {
   })
 
   it('email / url / uuid each get their own check', () => {
-    expect(out).toContain('mailVal.range(of: "^[A-Z0-9._%+-]+@')
+    // `s.string().email()` lowers @pyreon/validate's own grammar (IDN domains
+    // included, #4821), not zod's ASCII approximation.
+    expect(out).toContain('mailVal.range(of: "^(?!\\\\.)')
+    expect(out).toContain('\\\\p{L}')
     expect(out).toContain('rule: "email"')
     // This schema is `@pyreon/validate`'s `s`, whose `.url()` is http(s)
     // with a host -- NOT zod's any-scheme rule, which this spec used to

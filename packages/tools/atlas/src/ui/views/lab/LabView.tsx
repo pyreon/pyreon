@@ -58,7 +58,7 @@ export function LabView(props: { model: WorkbenchModel }) {
                         </C.LabTileName>
                         <C.LabTileMode>{d ? 'dark' : 'light'}</C.LabTileMode>
                       </C.LabTileHead>
-                      <C.LabTileBody>{() => m.preview({ dark: d, brandId: b.id })}</C.LabTileBody>
+                      <C.LabTileBody data-allow-reload="">{() => m.preview({ dark: d, brandId: b.id })}</C.LabTileBody>
                     </C.LabTile>
                   </PyreonUI>
                 )),

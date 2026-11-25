@@ -2,8 +2,8 @@
 import { h } from '@pyreon/core'
 import { createRouter, setActiveRouter } from '@pyreon/router'
 import { afterEach, describe, expect, it } from 'vitest'
+import { _registerI18nConfig } from '../internal'
 import {
-  _registerI18nConfig,
   detectLocaleFromHeader,
   extractLocaleFromPath,
   localeSignal,

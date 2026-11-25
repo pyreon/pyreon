@@ -1,10 +1,9 @@
-import { effectScope, setContextOwner } from '@pyreon/reactivity'
+import { effectScope, getContextOwner, setContextOwner } from '@pyreon/reactivity'
 import {
   createContext,
   createRef,
   Dynamic,
   defineComponent,
-  dispatchToErrorBoundary,
   ErrorBoundary,
   For,
   ForSymbol,
@@ -21,18 +20,22 @@ import {
   Portal,
   PortalSymbol,
   popContext,
-  propagateError,
   provide,
   pushContext,
   registerErrorHandler,
   reportError,
-  runWithHooks,
   Show,
   Suspense,
   Switch,
   useContext,
   withContext,
 } from '../index'
+import { nearestErrorBoundary } from '../component'
+import {
+  dispatchToErrorBoundary,
+  propagateError,
+  runWithHooks,
+} from '../internal'
 import { jsxDEV } from '../jsx-dev-runtime'
 import { Fragment as JsxFragment, jsx, jsxs } from '../jsx-runtime'
 import type { ComponentFn, Props, VNode, VNodeChild } from '../types'
@@ -630,6 +633,16 @@ describe('Suspense', () => {
 // ─── ErrorBoundary ───────────────────────────────────────────────────────────
 
 describe('ErrorBoundary', () => {
+  // ErrorBoundary provides its handler on the context owner: give every test a
+  // fresh owner so one test's boundary never answers another's dispatch.
+  let prevOwner: ReturnType<typeof setContextOwner> = null
+  beforeEach(() => {
+    prevOwner = setContextOwner(effectScope())
+  })
+  afterEach(() => {
+    setContextOwner(prevOwner)
+  })
+
   test('is a component function', () => {
     expect(typeof ErrorBoundary).toBe('function')
   })
@@ -648,7 +661,6 @@ describe('ErrorBoundary', () => {
   })
 
   test('returns a reactive getter', () => {
-    // Must run inside runWithHooks since ErrorBoundary calls onUnmount
     const { vnode, hooks } = runWithHooks(() => {
       return h(
         'div',
@@ -660,8 +672,10 @@ describe('ErrorBoundary', () => {
       )
     }, {})
     expect(vnode).not.toBeNull()
-    // Should have registered onUnmount for cleanup
-    expect(hooks.unmount!.length).toBeGreaterThanOrEqual(1)
+    // The handler is scoped to the boundary's owner (no module-level stack
+    // entry to clean up on unmount — it dies with the owner scope).
+    expect(hooks.unmount).toBeNull()
+    expect(nearestErrorBoundary()).toBeTypeOf('function')
   })
 
   test('renders children when no error', () => {
@@ -695,6 +709,16 @@ describe('ErrorBoundary', () => {
 // ─── dispatchToErrorBoundary ─────────────────────────────────────────────────
 
 describe('dispatchToErrorBoundary()', () => {
+  // ErrorBoundary provides its handler on the context owner: give every test a
+  // fresh owner so one test's boundary never answers another's dispatch.
+  let prevOwner: ReturnType<typeof setContextOwner> = null
+  beforeEach(() => {
+    prevOwner = setContextOwner(effectScope())
+  })
+  afterEach(() => {
+    setContextOwner(prevOwner)
+  })
+
   test('dispatches to the most recently pushed boundary', async () => {
     // Previous ErrorBoundary tests may have left handlers on the stack,
     // so we test by pushing our own known handler.
@@ -1112,7 +1136,17 @@ describe('setContextStackProvider', () => {
 // ─── ErrorBoundary advanced ──────────────────────────────────────────────────
 
 describe('ErrorBoundary — advanced', () => {
-  test('handler returns false when already in error state (double error)', async () => {
+  // ErrorBoundary provides its handler on the context owner: give every test a
+  // fresh owner so one test's boundary never answers another's dispatch.
+  let prevOwner: ReturnType<typeof setContextOwner> = null
+  beforeEach(() => {
+    prevOwner = setContextOwner(effectScope())
+  })
+  afterEach(() => {
+    setContextOwner(prevOwner)
+  })
+
+  test('handler returns false when already in error state (double error)', () => {
     let result: VNodeChild = null
 
     runWithHooks(() => {
@@ -1131,16 +1165,40 @@ describe('ErrorBoundary — advanced', () => {
     expect(handled1).toBe(true)
     expect(getter()).toBe('Error: Error: first')
 
-    // Second error while already in error state should NOT be handled
+    // Second error while already in error state: no outer boundary takes it
     const handled2 = dispatchToErrorBoundary(new Error('second'))
     expect(handled2).toBe(false)
-
-    // Clean up the boundary
-    const { popErrorBoundary: pop } = await import('../component')
-    pop()
   })
 
-  test('reset function clears error and re-renders children', async () => {
+  test('an error arriving while the boundary shows its fallback goes to the OUTER boundary', () => {
+    let outerResult: VNodeChild = null
+    let innerResult: VNodeChild = null
+    runWithHooks(() => {
+      outerResult = ErrorBoundary({ fallback: (err) => `Outer: ${err}`, children: 'outer child' })
+      return null
+    }, {})
+    // The inner boundary sets up under a child owner of the outer one.
+    const outerOwner = getContextOwner()!
+    const inner = effectScope()
+    inner._parent = outerOwner
+    setContextOwner(inner)
+    runWithHooks(() => {
+      innerResult = ErrorBoundary({ fallback: (err) => `Inner: ${err}`, children: 'inner child' })
+      return null
+    }, {})
+    const outerGet = outerResult as unknown as () => VNodeChild
+    const innerGet = innerResult as unknown as () => VNodeChild
+
+    expect(dispatchToErrorBoundary('first')).toBe(true)
+    expect(innerGet()).toBe('Inner: first')
+    expect(outerGet()).toBe('outer child')
+
+    // The inner fallback "threw": the outer boundary catches it.
+    expect(dispatchToErrorBoundary('second')).toBe(true)
+    expect(outerGet()).toBe('Outer: second')
+  })
+
+  test('reset function clears error and re-renders children', () => {
     let result: VNodeChild = null
     let capturedReset: (() => void) | undefined
 
@@ -1166,10 +1224,6 @@ describe('ErrorBoundary — advanced', () => {
     // Reset
     capturedReset?.()
     expect(getter()).toBe('child content')
-
-    // Clean up
-    const { popErrorBoundary: pop } = await import('../component')
-    pop()
   })
 })
 

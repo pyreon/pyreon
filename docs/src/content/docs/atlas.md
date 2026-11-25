@@ -241,7 +241,13 @@ Explicit entries win — Vite matches in order, and these are placed first.
 pyreon atlas dev . --port=5210
 ```
 
-Real Vite + the real Pyreon compiler over your source. The workbench is the Pyreon app shell: a 48px top bar (Canvas / Docs / Lab, ⌘K search, the theme toggle), the **catalog** on the left, and in the main column the **scenario strip**, the **canvas** and the **13 panels** under it (the split is draggable, and ↑↓ on the divider). Below 860px the catalog becomes a drawer: a modal that takes focus, keeps Tab inside, and closes on Escape, the scrim, or a choice — focus returns to its toggle.
+The workbench is a `@pyreon/zero` app that ships inside `@pyreon/atlas` (`/` and `/:component` file routes under one layout), served by zero's dev mode with the real Pyreon compiler over your source. Your components are imported by absolute path, so your own `src/routes` and `index.html` are never touched. `atlas dev` and `atlas build` need `vite`, `@pyreon/vite-plugin` and `@pyreon/zero` as dev dependencies (`atlas scan` needs none of them):
+
+```bash
+bun add -d vite @pyreon/vite-plugin @pyreon/zero
+```
+
+The workbench is the Pyreon app shell: a 48px top bar (Canvas / Docs / Lab, ⌘K search, the theme toggle), the **catalog** on the left, and in the main column the **scenario strip**, the **canvas** and the **13 panels** under it (the split is draggable, and ↑↓ on the divider). Below 860px the catalog becomes a drawer: a modal that takes focus, keeps Tab inside, and closes on Escape, the scrim, or a choice — focus returns to its toggle.
 
 - **Catalog** — the derived components, nested by directory, each with ONE verdict dot folded from its scenarios: filled green when every scenario passed, red when one failed, a hollow amber ring when nothing verified it (never smoothed into a pass). It has its own persistent filter (the ⌘K dialog's query is the dialog's, cleared on exit), parts sit under their parent, and ↑↓ walk exactly the rows it shows.
 - **Scenario strip** — the selected component's scenarios as tabs above the canvas, each with its verdict dot; the active one's verdict is the chip on the right, and an authored `play` script gets a ▶ there. Editing a control leaves every tab unselected ("edited args") — the canvas no longer shows a verified state verbatim.
@@ -311,7 +317,7 @@ pyreon atlas build . --out atlas-dist --base /my-repo/
 # atlas build: 108 component(s) → /…/atlas-dist
 ```
 
-Compiles the workbench into plain files for any static host: one URL per component (`/button/`), no server. The two panels Node answers in `atlas dev` — the Docs source block and the Reactivity Lens — are baked at build time into one small JSON file per component under `_atlas/rpc/`, fetched when that component's panel asks. File paths in them are project-relative, so a public deploy does not publish your machine's directory layout. The site is a production build: the dev-only analysis panels (Update cause, Perf, Reactive coverage) live in `atlas dev`.
+Compiles the workbench into plain files for any static host: one URL per component (`/button/`), no server. It is the same zero app `atlas dev` serves, built by zero's SSG pass: every route is client-rendered, so each component page is the workbench shell written at its own path, and a plain file server needs no rewrite rules. `--base` must be absolute (`/` or `/my-repo/`); a relative base is refused before any work. The two panels Node answers in `atlas dev` — the Docs source block and the Reactivity Lens — are baked at build time into one small JSON file per component under `_atlas/rpc/`, fetched when that component's panel asks. File paths in them are project-relative, so a public deploy does not publish your machine's directory layout. The site is a production build: the dev-only analysis panels (Update cause, Perf, Reactive coverage) live in `atlas dev`.
 
 The output directory is **emptied first**, so it must be new, empty, or a previous `atlas build` output (marked by a `.atlas-build-output` file). `--out .`, the source directory, or a non-empty directory atlas did not write is refused before anything is touched.
 

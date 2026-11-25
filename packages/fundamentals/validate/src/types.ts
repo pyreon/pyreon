@@ -113,9 +113,20 @@ export type Output<S> = S extends StandardSchemaV1<infer _I, infer O> ? O : unkn
 export type Input<S> = S extends StandardSchemaV1<infer I, infer _O> ? I : unknown
 
 /**
- * Translation function shape — matches `@pyreon/i18n`'s `t` signature
- * (one of several equivalent overloads). Kept structural so the package
- * doesn't depend on `@pyreon/i18n` directly (avoids a circular: i18n
- * may want to consume validate helpers in the future).
+ * Translation function shape — accepts `@pyreon/i18n`'s `t` (including a
+ * typed instance's `t(key: 'a.b' | …, values?: InterpolationValues)`) and any
+ * other translate function of the shape `(key, params?) => string`. Kept
+ * structural so the package doesn't depend on `@pyreon/i18n` directly (avoids
+ * a circular: i18n may want to consume validate helpers in the future).
+ *
+ * Declared through a METHOD signature on purpose: TypeScript compares method
+ * parameters bivariantly even under `strictFunctionTypes`, so a translate
+ * function whose `key` is a narrower key union or whose `params` is a narrower
+ * record (i18n's `InterpolationValues`) is accepted, while a function of a
+ * different shape (`(key: number) => string`, one returning non-string) is
+ * still rejected. A plain function type compared those parameters
+ * contravariantly and refused i18n's `t` (#4822).
  */
-export type TFn = (key: string, params?: Record<string, unknown>) => string
+export type TFn = {
+  translate(key: string, params?: Readonly<Record<string, unknown>>): string
+}['translate']

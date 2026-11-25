@@ -700,7 +700,7 @@ describe('JSX transform — template emission', () => {
   test('emits _tpl for root spread with _applyProps in bind', () => {
     const result = t('<div {...props}><span /></div>')
     expect(result).toContain('_tpl(')
-    expect(result).toContain('_applyProps(__root, props)')
+    expect(result).toContain('_applyProps(__root, props, 1)')
   })
 
   test('does NOT emit _tpl for spread on inner elements', () => {
@@ -708,9 +708,9 @@ describe('JSX transform — template emission', () => {
     expect(result).not.toContain('_tpl(')
   })
 
-  test('does NOT emit _tpl for keyed elements', () => {
+  test('a keyed element is templated, its key passed to _tpl as the fourth argument', () => {
     const result = t('<div key={id}><span /></div>')
-    expect(result).not.toContain('_tpl(')
+    expect(result).toContain('_tpl("<div><span></span></div>", () => null, 1, id)')
   })
 
   test('bakes static string attributes into HTML', () => {
@@ -1131,6 +1131,57 @@ describe('JSX transform — template emission', () => {
     const result = t('<div ref={(el) => { myEl = el }}><span /></div>')
     // Arrow function refs are called with the element
     expect(result).toContain('_ref(__root, (el) => { myEl = el })')
+  })
+
+  test('a ref runs after its element\'s children lines, children refs first (#4764)', () => {
+    // The h() path calls a ref once the element's children are mounted
+    // (`mountElement`). Emitted first, a ref that cleared its element removed
+    // the `<!>` placeholder `_setChildAt` then wrote against (a client mount
+    // threw), and a static `_setChild` overwrote what the ref added.
+    const result = t('<p ref={a}><s ref={b} />{v}{() => vn}<i ref={c} /></p>')
+    const at = (s: string) => {
+      const i = result.indexOf(s)
+      expect(i, s).toBeGreaterThan(-1)
+      return i
+    }
+    const slotAt = at('_setChildAt(')
+    const textAt = at('bindPolymorphicText(')
+    const refB = at('_ref(__e0, b)')
+    const refC = at('_ref(__e2, c)')
+    const refA = at('_ref(__root, a)')
+    // One post-order tail after every other line: children's refs, then the
+    // parent's.
+    expect(refB).toBeGreaterThan(Math.max(slotAt, textAt))
+    expect(refC).toBeGreaterThan(refB)
+    expect(refA).toBeGreaterThan(refC)
+  })
+
+  test('refs run after the template\'s attribute effects (#4764)', () => {
+    // h() applies props before the ref, so a ref sees its computed class.
+    const result = t('<div ref={r} class={`a ${cls()}`} title={tip()}>{v}</div>')
+    const ref = result.indexOf('_ref(__root, r)')
+    expect(ref).toBeGreaterThan(-1)
+    for (const s of ['_bind(', 'renderEffect(', '_bindDirect(']) {
+      const i = result.indexOf(s)
+      if (i > -1) expect(ref, s).toBeGreaterThan(i)
+    }
+    expect(ref).toBeGreaterThan(result.indexOf('_setChild('))
+  })
+
+  test('a spread\'s ref is deferred to the ref tail, static and dynamic (#4764)', () => {
+    const stat = t('<p {...p}><s />{v}</p>')
+    expect(stat).toMatch(/const (__d\d+) = _applyProps\(__root, p, 1\)/)
+    const sd = /const (__d\d+) = _applyProps/.exec(stat)![1]
+    expect(stat.indexOf(`${sd}.r()`)).toBeGreaterThan(stat.indexOf('_setChildAt('))
+    const dyn = t('<p {...make()}><s />{v}</p>')
+    expect(dyn).toMatch(/const (__d\d+) = _bindSpread\(__root, \(\) => \(make\(\)\), 1\)/)
+    const dd = /const (__d\d+) = _bindSpread/.exec(dyn)![1]
+    expect(dyn.indexOf(`${dd}.r()`)).toBeGreaterThan(dyn.indexOf('_setChildAt('))
+  })
+
+  test('a ref runs after a deferred <select value> (#4764)', () => {
+    const result = t('<select ref={r} value={sel()}>{opts()}</select>')
+    expect(result.indexOf('_ref(__root, r)')).toBeGreaterThan(result.indexOf('__root.value = v'))
   })
 
   test('block-arrow ref on a child element with adjacent reactive props compiles cleanly', () => {
@@ -2856,7 +2907,8 @@ describe('JSX transform — template combined _bind for complex expressions', ()
     expect(result).toContain('_tpl(')
     // Applied ONCE at mount; disposer captured (was a bare `_applyProps(...)`
     // statement with `return null` — the cleanup discarded).
-    expect(result).toMatch(/const __d\d = _applyProps\(__root, props\)/)
+    // `1`: the spread's ref is deferred to the template's ref tail (#4764).
+    expect(result).toMatch(/const (__d\d) = _applyProps\(__root, props, 1\)[\s\S]*= \1\.r\(\)/)
     expect(result).not.toContain('return null')
   })
 })
@@ -3074,10 +3126,10 @@ describe('JSX transform — template style attribute combined _bind', () => {
 
 describe('JSX transform — template with key attribute on child element', () => {
   test('key attribute on child element is stripped in template', () => {
-    // key on inner child doesn't bail template (only root key bails)
-    // But templateElementCount bails on key attr on any element
+    // A nested key has no reader (its parent is a DOM element), so it is
+    // dropped and the template stays.
     const result = t('<div><span key="a">text</span></div>')
-    expect(result).not.toContain('_tpl(')
+    expect(result).toContain('_tpl("<div><span>text</span></div>", () => null)')
   })
 })
 

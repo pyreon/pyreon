@@ -7,7 +7,7 @@ import routerManifest from '../manifest'
 
 describe('gen-docs — router snapshot', () => {
   it('renders @pyreon/router to its expected llms.txt bullet', () => {
-    expect(renderLlmsTxtLine(routerManifest)).toMatchInlineSnapshot(`"- [@pyreon/router](https://pyreon.dev/docs/reference/router): hash+history+memory+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections."`)
+    expect(renderLlmsTxtLine(routerManifest)).toMatchInlineSnapshot(`"- [@pyreon/router](https://pyreon.dev/docs/reference/router): hash+history+memory+SSR, context-based, prefetching, guards, loaders, useIsActive, View Transitions, middleware, typed search params. Off by default: a transition defers the DOM swap to the next frame and leaves the page un-hit-testable while it animates. Turn on with \`createRouter({ viewTransition: true })\` or per route with \`meta.viewTransition: true\` (\`false\` opts a route out). With it on, \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections."`)
   })
 
   it('renders @pyreon/router to its expected llms-full.txt section — full body snapshot', () => {
@@ -62,7 +62,7 @@ describe('gen-docs — router snapshot', () => {
 
         return (
           <div>
-            <h1>{data.name} (ID: {route().params.id})</h1>
+            <h1>{data().name} (ID: {route().params.id})</h1>
             <Show when={isTransitioning()}>
               <ProgressBar />
             </Show>
@@ -72,7 +72,7 @@ describe('gen-docs — router snapshot', () => {
       }
       \`\`\`
 
-      > **View Transitions — what push() awaits**: \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections.
+      > **View Transitions — opt-in, and what push() awaits**: Off by default: a transition defers the DOM swap to the next frame and leaves the page un-hit-testable while it animates. Turn on with \`createRouter({ viewTransition: true })\` or per route with \`meta.viewTransition: true\` (\`false\` opts a route out). With it on, \`await router.push()\` resolves after \`updateCallbackDone\` (DOM commit), NOT after animation finishes. It does NOT wait for \`.finished\` (~200-300ms). \`.ready\` and \`.finished\` get empty \`.catch()\` handlers so \`AbortError: Transition was skipped\` rejections (from interrupted transitions) do not leak as unhandled promise rejections.
       >
       > **Hash mode uses pushState**: Hash mode uses \`history.pushState\` — NOT \`window.location.hash\` assignment — to avoid double-update from the hashchange event. Reading \`location.hash\` directly will not reflect router state; use \`useRoute()\` instead.
       >

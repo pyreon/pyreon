@@ -217,6 +217,16 @@
       "bun": "./src/web-vitals.ts",
       "import": "./lib/web-vitals.js",
       "types": "./lib/types/web-vitals.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
+    },
+    "./internal-server": {
+      "bun": "./src/internal-server.ts",
+      "import": "./lib/internal-server.js",
+      "types": "./lib/types/internal-server.d.ts"
     }
   },
   "files": [
@@ -270,6 +280,9 @@
     "@vitest/browser-playwright": "^5.1.0",
     "sharp": "^0.35.5",
     "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

@@ -18,8 +18,8 @@ A signal-based UI framework with fine-grained reactivity. No virtual DOM, no com
 - **No dependency arrays.** Signals track their own subscribers automatically.
 - **~6 kB gzip** for core + runtime-dom. Tree-shakeable — only what you use ships to the client.
 - **Full-stack.** SSR streaming, static site generation, island architecture, and client-side SPA — all from one framework.
-- **Fast, measured honestly — including our losses.** On a synthetic row-list benchmark against nine other implementations (Vue 3.6 Vapor RC, Octane, Vue 3, Solid, Solid 2 RC, Svelte 5, React 19, Preact, hand-written Vanilla), Pyreon wins **clear rows** outright (1.11–1.12× over Vue Vapor RC) and is **statistically tied with the fastest** on create, replace, partial update, swap and remove; it is ~2.6× faster than React and ~3.8× than Preact at 10,000 rows. It **loses** deep component-tree mount to Solid (1.15–1.18×), and its bundle for the same app (17.2 KB) is larger than Solid (7.5 KB), Preact (10.1 KB) and Svelte (16.1 KB). The benchmark record withdraws its own claims when a harness bug is found — most recently, a cluster bootstrap over page loads turned two published wins and one loss into ties. Every figure, its confidence interval and every withdrawal are in [BENCHMARKS.md](BENCHMARKS.md) (Apple M3 Max, real Chromium, author-run, synthetic; see also [benchmarks](https://pyreon.dev/docs/benchmarks)).
-- **85 packages.** Forms, routing, state management, charts, drag & drop, i18n, multiplatform (SwiftUI + Compose), and more.
+- **Fast, measured honestly — including our losses.** On a synthetic row-list benchmark against nine other implementations (Vue 3.6 Vapor RC, Octane, Vue 3, Solid 1.9, Solid 2.0, Svelte 5, React 19, Preact, hand-written Vanilla), Pyreon wins **clear rows** outright (1.12× over Octane and Vue Vapor RC) and a batch-timed select (1.58× over Octane), and is **statistically tied with the fastest** on create, replace, remove, create 10,000 and append; partial update and swap split between runs. It is ~2.7× faster than React and ~3.9× than Preact at 10,000 rows, and mounting a 2,047-component tree ties Solid 1.9. It **loses** on memory (Preact's heap is lighter on the row suite, and a mounted component tree retains 1.30× Solid 2.0's heap and about 2.6× Solid 1.9's), on a keyed list with conditional cells (`<For>` clear about 1.5× behind Vue 3 and Solid 2.0), and on bundle size: 18.5 KB for the same app against Solid (7.7 KB), Preact (10.1 KB) and Svelte (16.1 KB). The benchmark record withdraws its own claims when a harness bug is found or a result stops reproducing — most recently, the deep-tree mount loss to Solid, gone since #4199. Every figure, its confidence interval and every withdrawal are in [BENCHMARKS.md](BENCHMARKS.md) (Apple M3 Max, Chromium only, author-written and author-run, synthetic; see also [benchmarks](https://pyreon.dev/docs/benchmarks)).
+- **86 packages.** Forms, routing, state management, charts, drag & drop, i18n, multiplatform (SwiftUI + Compose), and more.
 - **Migration paths.** Compat layers for React, Preact, Vue, Solid, and Svelte, at near-full public-API parity.
 
 ## Quick Start
@@ -227,6 +227,13 @@ signal.set() -> re-run 1 effect -> update 1 DOM node
 
 Full documentation at [pyreon.dev](https://pyreon.dev) (Pyreon-native site in `docs/` — powered by @pyreon/zero + @pyreon/zero-content).
 
+- [Stability, Versioning & Direction](https://pyreon.dev/docs/stability-and-direction): the semver promise, the Stable and Experimental tiers, and the support matrix.
+- [Upgrading to 1.0](https://pyreon.dev/docs/upgrading-to-v1): every breaking change on the way to 1.0, with its `pyreon upgrade` codemod or the step you take by hand.
+
+## Requirements
+
+Node.js 22 or later, or Bun 1.3 or later. Browsers: Baseline 2024. Native targets: iOS 17 and Android minSdk 26 or later. Details are in the [support matrix](https://pyreon.dev/docs/stability-and-direction#support-matrix).
+
 ## Development
 
 ```bash
@@ -237,7 +244,11 @@ bun run format             # format (oxfmt)
 bun run typecheck          # typecheck all packages
 ```
 
-The monorepo uses Bun workspaces. 85 packages across 6 categories are published (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`, `packages/native/`), plus private internals. Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
+The monorepo uses Bun workspaces. 86 packages across 6 categories are published (`packages/core/`, `packages/fundamentals/`, `packages/ui-system/`, `packages/tools/`, `packages/zero/`, `packages/native/`), plus private internals. Each package resolves `src/` directly via the `"bun"` export condition — no build step needed during development.
+
+## Security
+
+Report vulnerabilities privately through [GitHub security advisories](https://github.com/pyreon/pyreon/security/advisories/new), never in a public issue. [SECURITY.md](SECURITY.md) lists the supported versions and what to expect after a report.
 
 ## License
 

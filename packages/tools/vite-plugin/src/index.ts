@@ -35,8 +35,27 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join as pathJoin, relative as pathRelative } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Visitor } from 'oxc-parser'
-import { parseOxc } from './oxc-parse'
+import {
+  _getCompatTarget,
+  _isPyreonWorkspaceFile,
+  _isUnaliasedFrameworkImport,
+  _unaliasedImportWarning,
+  COMPAT_ALIASES,
+  type CompatFramework,
+} from './compat-aliases'
+import { _handleSsrRequest } from './dev-ssr'
+import { _isTruthyEnv } from './env'
+import {
+  _collectImportedNames,
+  _computeLineStarts,
+  _extractBalancedArgs,
+  _maskComments,
+  _maskCommentsAndStrings,
+  _maskStringsAndComments,
+  _offsetToLineCol,
+  _reactiveCalleeStarts,
+  _skipStringLiteral,
+} from './source-scan'
 import { compatAttributeEdits, foldNodeEnvProduction, islandCallOffsets } from './ast-rewrite'
 import {
   detectPlain,
@@ -59,6 +78,9 @@ import {
   recordOutputDir,
 } from './build-output-dirs'
 import { injectIslandNames, islandNameEdits } from './island-auto-name'
+import { buildLpihClientScript, registerLpihMiddleware } from './lpih-bridge'
+import { AS_SPLIT_RE, plainMarkerLocalNames } from './plain-markers'
+import { isPyreonPackageFile } from './pyreon-package-file'
 import { SourceMapChain, type TextEdit } from './source-map-chain'
 import type { CollapseResolver } from './rocketstyle-collapse'
 import { createFilter } from 'vite'
@@ -89,7 +111,7 @@ const HMR_RUNTIME_IMPORT = 'virtual:pyreon/hmr-runtime'
 const ISLANDS_REGISTRY_ID = '\0pyreon/islands-registry'
 const ISLANDS_REGISTRY_IMPORT = 'virtual:pyreon/islands-registry'
 
-export type CompatFramework = 'react' | 'preact' | 'vue' | 'solid' | 'svelte'
+export type { CompatFramework }
 
 /**
  * What the `pyreon` plugin publishes on its Vite `api` field.
@@ -237,6 +259,15 @@ export interface PyreonPluginOptions {
    * pyreon({ devErrorPrinter: false })  // opt out
    */
   devErrorPrinter?: boolean
+  /**
+   * Dev-server project map for AI coding assistants: `<root>/.pyreon/context.json`,
+   * written at start and refreshed on save. Default `true` in dev; `false` to
+   * opt out — for a dev server whose root is not the user's project (a tool
+   * that ships its own app, like `atlas dev`, whose root sits inside an
+   * installed package: the map would describe the tool and land in its
+   * install directory). Never runs in a build.
+   */
+  projectContext?: boolean
 
   /**
    * P0 — opt-in compile-time rocketstyle wrapper collapse. `true` uses
@@ -434,220 +465,6 @@ export interface PyreonLpihOptions {
   cachePath?: string
 }
 
-// ── Compat alias maps ─────────────────────────────────────────────────────────
-
-const COMPAT_ALIASES: Record<CompatFramework, Record<string, string>> = {
-  react: {
-    react: '@pyreon/react-compat',
-    'react/jsx-runtime': '@pyreon/react-compat/jsx-runtime',
-    'react/jsx-dev-runtime': '@pyreon/react-compat/jsx-runtime',
-    'react-dom': '@pyreon/react-compat/dom',
-    'react-dom/client': '@pyreon/react-compat/dom',
-  },
-  preact: {
-    preact: '@pyreon/preact-compat',
-    'preact/hooks': '@pyreon/preact-compat/hooks',
-    // Preact's React-shaped API (core + hooks in one module).
-    'preact/compat': '@pyreon/preact-compat/compat',
-    'preact/jsx-runtime': '@pyreon/preact-compat/jsx-runtime',
-    'preact/jsx-dev-runtime': '@pyreon/preact-compat/jsx-runtime',
-    'preact/compat/jsx-runtime': '@pyreon/preact-compat/jsx-runtime',
-    'preact/compat/jsx-dev-runtime': '@pyreon/preact-compat/jsx-runtime',
-    '@preact/signals': '@pyreon/preact-compat/signals',
-    '@preact/signals-core': '@pyreon/preact-compat/signals',
-  },
-  vue: {
-    vue: '@pyreon/vue-compat',
-    'vue/jsx-runtime': '@pyreon/vue-compat/jsx-runtime',
-    'vue/jsx-dev-runtime': '@pyreon/vue-compat/jsx-runtime',
-    // `vue` is a re-export of these three; libraries import them directly.
-    // Mixing the real ones with the compat layer would split reactivity.
-    '@vue/reactivity': '@pyreon/vue-compat',
-    '@vue/runtime-core': '@pyreon/vue-compat',
-    '@vue/runtime-dom': '@pyreon/vue-compat',
-  },
-  solid: {
-    'solid-js': '@pyreon/solid-compat',
-    // solid-compat's main entry also carries the `solid-js/web` surface
-    // (`render`, `hydrate`, `Portal`, `Dynamic`) and the `solid-js/store`
-    // surface (`createStore`, `produce`, `reconcile`, `unwrap`).
-    'solid-js/web': '@pyreon/solid-compat',
-    'solid-js/store': '@pyreon/solid-compat',
-    'solid-js/jsx-runtime': '@pyreon/solid-compat/jsx-runtime',
-    'solid-js/jsx-dev-runtime': '@pyreon/solid-compat/jsx-runtime',
-  },
-  svelte: {
-    svelte: '@pyreon/svelte-compat',
-    'svelte/store': '@pyreon/svelte-compat/store',
-    'svelte/internal': '@pyreon/svelte-compat',
-    'svelte/jsx-runtime': '@pyreon/svelte-compat/jsx-runtime',
-    'svelte/jsx-dev-runtime': '@pyreon/svelte-compat/jsx-runtime',
-  },
-}
-
-/**
- * The bare specifiers that belong to each compat framework. An import of one
- * of these that is NOT in {@link COMPAT_ALIASES} resolves to the real
- * framework package (if installed) — usually a mistake in compat mode, since
- * the real framework's runtime does not integrate with Pyreon's — so the
- * plugin warns once per specifier. Locked against the compat packages'
- * export maps by `compat-alias-coverage.test.ts`.
- */
-const COMPAT_FRAMEWORK_SPECIFIERS: Record<CompatFramework, readonly RegExp[]> = {
-  react: [/^react(?:\/|$)/, /^react-dom(?:\/|$)/],
-  preact: [/^preact(?:\/|$)/, /^@preact\/signals(?:-core)?(?:\/|$)/],
-  vue: [/^vue(?:\/|$)/, /^@vue\//],
-  solid: [/^solid-js(?:\/|$)/],
-  svelte: [/^svelte(?:\/|$)/],
-}
-
-/**
- * What to use instead, for unaliased framework specifiers whose Pyreon
- * replacement is NOT in the compat package. A server renderer is the case:
- * the framework's own (`react-dom/server`, `vue/server-renderer`,
- * `svelte/server`) cannot render Pyreon vnodes, and the replacement lives in
- * `@pyreon/runtime-server`. Specifiers not listed get the generic advice.
- */
-const SERVER_RENDER_HINT =
-  'Server-render with `renderToString` (or `renderToStream`) from "@pyreon/runtime-server" ' +
-  'instead. Pyreon\'s `renderToString` is async: await the Promise it returns.'
-
-const COMPAT_SPECIFIER_HINTS: Record<CompatFramework, ReadonlyArray<readonly [RegExp, string]>> = {
-  // `react-dom/server` and its `.browser` / `.node` / `.edge` builds, plus
-  // `react-dom/static` (the prerender APIs).
-  react: [[/^react-dom\/(?:server|static)(?:\.[a-z]+)?$/, SERVER_RENDER_HINT]],
-  preact: [],
-  vue: [[/^(?:vue|@vue)\/server-renderer$/, SERVER_RENDER_HINT]],
-  solid: [],
-  svelte: [[/^svelte\/server$/, SERVER_RENDER_HINT]],
-}
-
-/**
- * The warning for an unaliased framework import: what happens, and what to
- * use instead — a specific replacement when one is known, otherwise the
- * compat package.
- *
- * @internal — exported for tests.
- */
-export function _unaliasedImportWarning(compat: CompatFramework, id: string): string {
-  const hint = COMPAT_SPECIFIER_HINTS[compat].find(([re]) => re.test(id))?.[1]
-  return (
-    `[Pyreon] compat "${compat}": "${id}" is not provided by @pyreon/${compat}-compat, so it ` +
-    `resolves to the real package (if installed), whose runtime does not work with Pyreon's. ` +
-    (hint ??
-      `Import the equivalent from "@pyreon/${compat}-compat" instead, or check the compat docs ` +
-        `for what is supported.`)
-  )
-}
-
-/** @internal — exported for tests. */
-export function _compatAliasTable(compat: CompatFramework): Readonly<Record<string, string>> {
-  return COMPAT_ALIASES[compat]
-}
-
-/**
- * True when `id` is a specifier of the compat framework that the plugin does
- * NOT redirect (so it falls through to the real package).
- *
- * @internal — exported for tests.
- */
-export function _isUnaliasedFrameworkImport(compat: CompatFramework, id: string): boolean {
-  if (COMPAT_ALIASES[compat][id]) return false
-  return COMPAT_FRAMEWORK_SPECIFIERS[compat].some((re) => re.test(id))
-}
-
-/**
- * Detect whether a file id resolves to a `@pyreon/*` framework-package source
- * (i.e. a published Pyreon package whose .tsx is being pulled in via the
- * `bun` condition workspace-link, NOT user code, NOT an example app).
- *
- * Why this exists: in compat mode, OXC's per-project `importSource` is set
- * to `@pyreon/core` and the resolveId hook redirects `@pyreon/core/jsx-runtime`
- * to the compat package. That's correct for user code (the whole point of
- * compat mode) but WRONG for framework-internal sources like
- * `@pyreon/zero/src/link.tsx`, which need the real `@pyreon/core` runtime.
- * The fix skips the redirect when the importer is a `@pyreon/*` framework
- * file. Result: published-package consumers (where `@pyreon/zero` resolves
- * to its pre-built `lib/`) and workspace-dev consumers (where it resolves
- * to source) both get correct JSX runtime resolution.
- *
- * Detection heuristic: walk to nearest `package.json`, require BOTH:
- *   1. `name` starts with `@pyreon/` (workspace member of the @pyreon scope)
- *   2. file path contains `/packages/` AND NOT `/examples/`
- *
- * Step 2 excludes the existing `@pyreon/example-{react,vue,solid,preact}-compat`
- * apps under `examples/`. Without it, user code in those apps would skip the
- * compat-mode JSX-runtime redirect and import `@pyreon/core/jsx-runtime`
- * directly — breaking the React/Vue/Solid/Preact compat layer's contract.
- *
- * Result cached per directory. The `/packages/` + `/examples/` check is a
- * structural property of the monorepo (workspace layout), not the package
- * name — so it's robust against renames.
- */
-export function _isPyreonWorkspaceFile(id: string, cache: Map<string, boolean>): boolean {
-  // Strip query strings (e.g. `?vue&type=script`) to get the bare path.
-  const queryIdx = id.indexOf('?')
-  const filePath = queryIdx === -1 ? id : id.slice(0, queryIdx)
-  if (!filePath || filePath[0] === '\0') return false
-
-  // Decided on IDENTITY (the owning package's name), never on the path: a
-  // `/packages/` test held only inside this monorepo, so every npm consumer
-  // of a compat app had framework JSX redirected to the compat runtime.
-
-  let dir = dirname(filePath)
-  // Walk up at most ~12 levels — enough for any realistic monorepo depth.
-  for (let i = 0; i < 12; i++) {
-    const cached = cache.get(dir)
-    if (cached !== undefined) return cached
-
-    const pkgPath = pathJoin(dir, 'package.json')
-    if (existsSync(pkgPath)) {
-      let isPyreon = false
-      try {
-        const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { name?: string }
-        // The `@pyreon/example-*` apps are CONSUMERS (four of them are the
-        // compat apps this guard exists for), not framework files.
-        isPyreon =
-          typeof pkg.name === 'string' &&
-          pkg.name.startsWith('@pyreon/') &&
-          !pkg.name.startsWith('@pyreon/example-')
-      } catch {
-        // Malformed package.json — treat as not-pyreon.
-      }
-      cache.set(dir, isPyreon)
-      return isPyreon
-    }
-
-    const parent = dirname(dir)
-    if (parent === dir) break // reached filesystem root
-    dir = parent
-  }
-  return false
-}
-
-/**
- * Return the Pyreon compat target for an import specifier, or undefined if
- * the import should not be redirected.
- */
-export function _getCompatTarget(
-  compat: CompatFramework | undefined,
-  id: string,
-): string | undefined {
-  if (!compat) return undefined
-  const aliased = COMPAT_ALIASES[compat][id]
-  if (aliased) return aliased
-  // OXC's JSX transform reads jsxImportSource from tsconfig (@pyreon/core),
-  // not from our plugin config. Redirect JSX runtime imports in compat mode.
-  if (id === '@pyreon/core/jsx-runtime' || id === '@pyreon/core/jsx-dev-runtime') {
-    if (compat === 'react') return '@pyreon/react-compat/jsx-runtime'
-    if (compat === 'preact') return '@pyreon/preact-compat/jsx-runtime'
-    if (compat === 'vue') return '@pyreon/vue-compat/jsx-runtime'
-    if (compat === 'solid') return '@pyreon/solid-compat/jsx-runtime'
-    if (compat === 'svelte') return '@pyreon/svelte-compat/jsx-runtime'
-  }
-  return undefined
-}
-
 /**
  * Scan the consumer's package.json for `@pyreon/*` deps. Result is the
  * list of names to exclude from Vite's deps optimizer (avoids
@@ -718,23 +535,6 @@ function scanPyreonDepsTransitive(root: string): string[] {
   return []
 }
 
-/**
- * Truthy env-var parser. Accepts `1` / `true` / `yes` / `on`
- * (case-insensitive). Returns `false` for `undefined`, empty string,
- * `0`, `false`, `no`, `off`, or any unrecognized value.
- *
- * Exported via `_internal` for unit-testability — the previous strict
- * `=== '1'` shape caught a user reporting `PYREON_DISABLE_DEDUPE=true`
- * silently not working. Env-var hatches are usually reached for under
- * stress; rejecting alternatives is exactly the wrong moment to be strict.
- *
- * @internal
- */
-export function _isTruthyEnv(v: string | undefined): boolean {
-  if (v === undefined) return false
-  const lower = v.toLowerCase()
-  return lower === '1' || lower === 'true' || lower === 'yes' || lower === 'on'
-}
 const isTruthyEnv = _isTruthyEnv
 
 // Return type is widened to `Plugin<any>` so the plugin remains
@@ -745,49 +545,6 @@ const isTruthyEnv = _isTruthyEnv
 // mismatch at the seam and need an `as never` cast at the call site.
 // Runtime is identical — the Plugin shape itself hasn't changed across
 // vite 5/6/7/8 for the hooks we implement.
-
-/**
- * Whether a module id belongs to a `@pyreon/*` package — decided by the
- * nearest `package.json`'s name, so it holds for an npm install
- * (`node_modules/@pyreon/x/lib/…`) and a workspace link (`packages/…/src/…`)
- * alike, and never for the user's own sources.
- * @internal exported for tests
- */
-export function isPyreonPackageFile(
-  id: string,
-  /** Directory → verdict. The plugin passes one per instance (one build's lifetime). */
-  pyreonDirCache: Map<string, boolean> = new Map(),
-): boolean {
-  const file = id.split('?')[0]!
-  if (file.startsWith('\0') || !file.startsWith('/')) return false
-  if (file.includes('/node_modules/@pyreon/')) return true
-  let dir = dirname(file)
-  const visited: string[] = []
-  let result = false
-  for (;;) {
-    const cached = pyreonDirCache.get(dir)
-    if (cached !== undefined) {
-      result = cached
-      break
-    }
-    visited.push(dir)
-    const pkgPath = pathJoin(dir, 'package.json')
-    if (existsSync(pkgPath)) {
-      try {
-        const name = (JSON.parse(readFileSync(pkgPath, 'utf-8')) as { name?: unknown }).name
-        result = typeof name === 'string' && name.startsWith('@pyreon/')
-      } catch {
-        result = false
-      }
-      break
-    }
-    const parent = dirname(dir)
-    if (parent === dir) break
-    dir = parent
-  }
-  for (const d of visited) pyreonDirCache.set(d, result)
-  return result
-}
 
 export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any> {
   const ssrConfig = options?.ssr
@@ -805,6 +562,7 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   const lpihUserCfg: PyreonLpihOptions = lpihOpt && lpihOpt !== true ? lpihOpt : {}
   // Dev throw-time fix printer (Theme 6.1b) — on by default in dev.
   const devErrorPrinterEnabled = options?.devErrorPrinter !== false
+  const projectContextEnabled = options?.projectContext !== false
   const lpihIntervalMs = lpihUserCfg.intervalMs ?? 250
 
   // ── Compile-to-string SSR fast path (`ssrTemplate`) config ────────────────
@@ -1774,11 +1532,12 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
         }, 1_000)
       }
 
-      // Generate .pyreon/context.json for AI tools on dev server start
-      void generateProjectContext(serverRoot, () => disposed)
-
-      // Debounced regeneration on file changes
-      server.watcher.on('change', onContextChange)
+      // Generate .pyreon/context.json for AI tools on dev server start, and
+      // regenerate it (debounced) on file changes.
+      if (projectContextEnabled) {
+        void generateProjectContext(serverRoot, () => disposed)
+        server.watcher.on('change', onContextChange)
+      }
 
       // LPIH auto-bridge — accepts POST /__pyreon_lpih__ from the browser
       // client and atomically writes the cache file the LSP auto-discovers.
@@ -1832,77 +1591,6 @@ export default function pyreonPlugin(options?: PyreonPluginOptions): Plugin<any>
   }
 }
 
-/**
- * The request URL for a raw request-target: the ORIGIN from `origin` only,
- * the target only as a path + query. Never `new URL(target, origin)`: that
- * resolves `//other.host/x` (and an absolute-form `http://other.host/x`) to
- * another origin, which handlers read as the request's own. `null` when the
- * Host cannot form a URL. Same contract as `@pyreon/zero`'s
- * `requestUrlFromTarget` (adapters/request-runtime.ts).
- * @internal
- */
-export function _requestUrlFromTarget(target: string | undefined, origin: string): URL | null {
-  let t = target || '/'
-  if (t.charCodeAt(0) !== 47) {
-    if (/^[a-z][a-z\d+.-]*:/i.test(t)) {
-      try {
-        const abs = new URL(t)
-        t = abs.pathname.charCodeAt(0) === 47 ? abs.pathname + abs.search : '/'
-      } catch {
-        t = '/'
-      }
-    } else {
-      t = '/'
-    }
-  }
-  if (/[/?#@\\\s]/.test(origin.slice(origin.indexOf('//') + 2))) return null
-  try {
-    const url = new URL(origin + t)
-    return url.origin === new URL(origin).origin ? url : null
-  } catch {
-    return null
-  }
-}
-
-export async function _handleSsrRequest(
-  server: ViteDevServer,
-  entry: string,
-  url: string,
-  req: import('node:http').IncomingMessage,
-  res: import('node:http').ServerResponse,
-  next: (err?: unknown) => void,
-): Promise<void> {
-  const mod = await server.ssrLoadModule(entry)
-  const handler = mod.handler ?? mod.default
-
-  if (typeof handler !== 'function') {
-    next()
-    return
-  }
-
-  const fullUrl =
-    _requestUrlFromTarget(url, `http://${req.headers.host ?? 'localhost'}`) ??
-    (_requestUrlFromTarget(url, 'http://localhost') as URL)
-  const request = new Request(fullUrl.href, {
-    method: req.method ?? 'GET',
-    headers: Object.entries(req.headers).reduce((h, [k, v]) => {
-      if (v) h.set(k, Array.isArray(v) ? v.join(', ') : v)
-      return h
-    }, new Headers()),
-  })
-
-  const response: Response = await handler(request)
-  let html = await response.text()
-
-  html = await server.transformIndexHtml(url, html)
-
-  res.statusCode = response.status
-  response.headers.forEach((v, k) => {
-    res.setHeader(k, v)
-  })
-  res.end(html)
-}
-
 // ── AI context generation ─────────────────────────────────────────────────────
 
 /**
@@ -1922,211 +1610,6 @@ async function generateProjectContext(root: string, isDisposed: () => boolean): 
   } catch {
     // Silently fail — context generation is best-effort
   }
-}
-
-// ── LPIH auto-bridge helpers ───────────────────────────────────────────────
-
-/**
- * Resolve the LPIH cache-file path for a given project root. Matches the
- * convention `@pyreon/reactivity/lpih`'s `getDefaultLpihCachePath()` uses
- * AND the LSP auto-discovers (R2, #777): `<projectRoot>/.pyreon-lpih.json`.
- *
- * @internal — exported for tests.
- */
-export function resolveLpihCachePath(projectRoot: string): string {
-  return pathJoin(projectRoot, '.pyreon-lpih.json')
-}
-
-/**
- * Register the LPIH dev-server middleware on a Vite server. Extracted from
- * `configureServer` so the `cachePath` option reference lives at module
- * scope (top-level helper) rather than inside the plugin's inline body —
- * keeps `scripts/audit-types.ts` happy regardless of how its comment-
- * stripping handles the long inline `configureServer` block.
- *
- * @internal — exported for tests.
- */
-export function registerLpihMiddleware(
-  server: ViteDevServer,
-  projectRoot: string,
-  userCfg: PyreonLpihOptions,
-): void {
-  const cachePath = userCfg.cachePath ?? resolveLpihCachePath(projectRoot)
-  server.middlewares.use('/__pyreon_lpih__', (req, res) => {
-    if (req.method !== 'POST') {
-      res.statusCode = 405
-      res.end('Method Not Allowed')
-      return
-    }
-    // A plain POST is a CORS-simple request, so ANY site open in the
-    // developer's browser could write this file (hint poisoning / DoS of the
-    // LSP feature; `--host` widens it to the LAN). A browser always sends
-    // `Origin` on a cross-site POST — require it to be the dev server's own.
-    const origin = req.headers?.origin
-    if (typeof origin === 'string') {
-      let sameOrigin = false
-      try {
-        sameOrigin = new URL(origin).host === req.headers?.host
-      } catch {
-        sameOrigin = false
-      }
-      if (!sameOrigin) {
-        res.statusCode = 403
-        res.end('Forbidden')
-        return
-      }
-    }
-    let body = ''
-    req.on('data', (chunk: Buffer | string) => {
-      body += chunk.toString()
-      // Defensive cap — fire payloads are tiny (a few KB at most);
-      // anything larger is malicious or buggy. Drop the request.
-      if (body.length > 1024 * 1024) {
-        res.statusCode = 413
-        res.end('Payload Too Large')
-        req.destroy()
-      }
-    })
-    req.on('end', () => {
-      void writeLpihCacheFile(cachePath, body)
-        .then(() => {
-          res.statusCode = 204
-          res.end()
-        })
-        .catch((err: unknown) => {
-          // Don't crash the dev server — log + return 500 so the
-          // browser-side bridge can back off + retry next interval.
-          // oxlint-disable-next-line no-console
-          console.warn(
-            '[pyreon] LPIH cache write failed:',
-            err instanceof Error ? err.message : err,
-          )
-          res.statusCode = 500
-          res.end('LPIH cache write failed')
-        })
-    })
-  })
-}
-
-let _lpihSeq = 0
-
-/**
- * Atomically write a LPIH cache file (tmp + rename), mirroring the
- * `@pyreon/reactivity/lpih:writeLpihCache` implementation. The payload
- * comes pre-serialized from the browser-side bridge — we validate the
- * outer shape (`{ fires: [...] }`) and reject malformed bodies to stop a
- * buggy client from corrupting the file the LSP reads.
- *
- * @internal — exported for tests.
- */
-export async function writeLpihCacheFile(path: string, body: string): Promise<void> {
-  // Validate shape — must be a JSON object with `fires: array`. We re-
-  // serialize so the on-disk format is stable regardless of how the
-  // browser-side bridge encodes it.
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(body)
-  } catch {
-    throw new Error('[Pyreon] LPIH bridge: payload is not valid JSON')
-  }
-  if (
-    parsed === null ||
-    typeof parsed !== 'object' ||
-    !Array.isArray((parsed as { fires?: unknown }).fires)
-  ) {
-    throw new Error('[Pyreon] LPIH bridge: payload is missing `fires` array')
-  }
-  // Every entry must be a plain object — the wrapper shape alone let a
-  // payload of arbitrary junk through to disk.
-  for (const f of (parsed as { fires: unknown[] }).fires) {
-    if (f === null || typeof f !== 'object' || Array.isArray(f)) {
-      throw new Error('[Pyreon] LPIH bridge: `fires` entries must be objects')
-    }
-  }
-  const fs = await import('node:fs/promises')
-  const pid = typeof process !== 'undefined' && 'pid' in process ? process.pid : 0
-  const tmp = `${path}.tmp.${pid}.${++_lpihSeq}`
-  // Single try/catch covering BOTH writeFile AND rename. The previous
-  // shape only guarded the rename — if `fs.writeFile` itself threw (disk
-  // full, EIO, EACCES, transient FS error), the partial tmp file leaked
-  // on disk with a unique PID+seq name (so no conflict, but it accumulated
-  // forever). Audit caught this in the LPIH followups round.
-  try {
-    await fs.writeFile(tmp, JSON.stringify(parsed), 'utf8')
-    await fs.rename(tmp, path)
-  } catch (err) {
-    // Best-effort cleanup; original error is more useful than unlink's.
-    // Covers BOTH the writeFile-failed (tmp may not exist) and the
-    // rename-failed (tmp exists, rename didn't move it) cases —
-    // `fs.unlink` of a non-existent file throws ENOENT, which we swallow.
-    try {
-      await fs.unlink(tmp)
-    } catch {
-      /* swallow — original error is the user-facing one */
-    }
-    throw err
-  }
-}
-
-/**
- * Build the `<script type="module">` body injected into the HTML head.
- * The script imports devtools activation + `getFireSummaries` from
- * `@pyreon/reactivity`, sets up a `setInterval` that POSTs every
- * `intervalMs` ms, and registers a `beforeunload` cleanup so the timer
- * doesn't outlive the page.
- *
- * Browser bundlers serve `@pyreon/reactivity` from the workspace via
- * Vite's normal module resolution — no virtual module needed.
- *
- * @internal — exported for tests.
- */
-export function buildLpihClientScript(intervalMs: number): string {
-  // Note: the script body is intentionally compact — the goal is zero
-  // visible payload in DevTools "Sources" while still being readable
-  // when someone DOES go looking. `JSON.stringify` for `intervalMs` is
-  // defense against `__proto__` / NaN / non-finite values reaching the
-  // emitted JS as a literal.
-  // CRITICAL — top-level await on the dynamic import. `<script type="module">`
-  // tags execute in document order with `defer` semantics; the head-injected
-  // LPIH script's body MUST fully evaluate (including this await) BEFORE the
-  // body-injected app entry's module body runs. Otherwise activateReactiveDevtools()
-  // would land AFTER the app has already created its module-scope signals,
-  // and `_rdRegister` (gated on `if (!_active) return undefined`) would skip
-  // them entirely — making the most common signal shape (top-of-file `const x = signal(0)`)
-  // invisible to LPIH. With the `await`, the LPIH module doesn't complete
-  // until activation finishes; the app's entry waits its turn.
-  return `<script type="module">
-  // Pyreon LPIH auto-bridge — POSTs fire summaries to /__pyreon_lpih__
-  // so the LSP (pyreon-lint --lsp) sees live fire data. Dev-only.
-  const __px = await import('@pyreon/reactivity').catch(() => null)
-  if (__px) {
-    __px.activateReactiveDevtools()
-    const __pxGet = __px.getFireSummaries
-    const __pxInterval = ${JSON.stringify(intervalMs)}
-    const __pxPost = () => {
-      const summaries = __pxGet()
-      const payload = JSON.stringify({
-        fires: summaries.map((s) => ({
-          file: s.loc.file,
-          line: s.loc.line,
-          count: s.count,
-          kind: s.kind,
-          lastFire: s.lastFire,
-          rate1s: s.rate1s,
-        })),
-      })
-      fetch('/__pyreon_lpih__', { method: 'POST', body: payload, headers: { 'content-type': 'application/json' } }).catch(() => {
-        // Dev-server might be restarting; swallow + retry next interval.
-      })
-    }
-    const __pxId = setInterval(__pxPost, __pxInterval)
-    window.addEventListener('beforeunload', () => clearInterval(__pxId))
-  }
-  // If __px is null, @pyreon/reactivity isn't in the dep graph — stay silent,
-  // LPIH is opt-in via the runtime API too. The dynamic-import catch returns
-  // null instead of letting the rejection bubble so consumers without the
-  // package don't see a console error.
-</script>`
 }
 
 // ── HMR injection ─────────────────────────────────────────────────────────────
@@ -2156,34 +1639,6 @@ const SIGNAL_PREFIX_RE =
  */
 const EXPORT_COMPONENT_RE =
   /export\s+(?:default\s+)?(?:function\s+([A-Z]\w*)|const\s+([A-Z]\w*)\s*[=:])/
-
-export function _skipStringLiteral(code: string, start: number, quote: string): number {
-  let j = start + 1
-  while (j < code.length) {
-    if (code[j] === '\\') {
-      j += 2
-      continue
-    }
-    if (code[j] === quote) break
-    j++
-  }
-  return j
-}
-
-export function _extractBalancedArgs(code: string, start: number): string | null {
-  let depth = 1
-  for (let i = start; i < code.length; i++) {
-    const ch = code[i]
-    if (ch === '(') depth++
-    else if (ch === ')') {
-      depth--
-      if (depth === 0) return code.slice(start, i)
-    } else if (ch === '"' || ch === "'" || ch === '`') {
-      i = _skipStringLiteral(code, i, ch)
-    }
-  }
-  return null
-}
 
 /**
  * Compute brace depth at position `pos` — returns 0 for module scope.
@@ -2403,235 +1858,6 @@ function signalNameEdits(
     edits.push({ start: end, end, text: `, { ${inner} }` })
   }
   return edits
-}
-
-/**
- * Start offsets of every `signal` / `computed` / `effect` CALLEE identifier
- * in `code` — the ground truth `injectSignalNames` confirms its regex hits
- * against. Returns `null` when the module does not parse, so the caller keeps
- * its regex-only behaviour instead of dropping every injection.
- *
- * @internal — exported for tests.
- */
-export function _reactiveCalleeStarts(code: string, moduleId: string): Set<number> | null {
-  let program: ReturnType<typeof parseOxc>['program']
-  try {
-    const lang = /\.tsx?(?:$|\?)/.test(moduleId)
-      ? moduleId.includes('.tsx')
-        ? 'tsx'
-        : 'ts'
-      : 'jsx'
-    const r = parseOxc(moduleId, code, { sourceType: 'module', lang })
-    if (r.errors.length > 0) return null
-    program = r.program
-  } catch {
-    return null
-  }
-  // oxc's own Visitor walks only the fields its generated visitor keys name
-  // (no `Object.keys` per node), and dispatches on the one node type this
-  // needs. It also works on the default JSON-decoded AST, so the Bun / older
-  // Node path (no raw transfer) gets the same result.
-  const out = new Set<number>()
-  new Visitor({
-    CallExpression(node) {
-      const callee = node.callee
-      if (
-        callee.type === 'Identifier' &&
-        (callee.name === 'signal' || callee.name === 'computed' || callee.name === 'effect')
-      ) {
-        out.add(callee.start)
-      }
-    },
-  }).visit(program)
-  return out
-}
-
-/** Characters a masker branch can start on: comment slash, quotes, backtick. */
-const MASK_TRIGGER_RE = /[/"'`]/g
-
-/** Index of the next masker trigger at or after `from`, or `code.length`. */
-function _nextMaskTrigger(code: string, from: number): number {
-  MASK_TRIGGER_RE.lastIndex = from
-  const m = MASK_TRIGGER_RE.exec(code)
-  return m === null ? code.length : m.index
-}
-
-/** `code.indexOf(ch, from)`, with "not found" mapped to `code.length`. */
-function _indexOrEnd(code: string, ch: string, from: number): number {
-  const at = code.indexOf(ch, from)
-  return at < 0 ? code.length : at
-}
-
-/**
- * Mask string-literal / template-literal / comment regions in `code` by
- * replacing their content with spaces. Returns a SAME-LENGTH string so
- * regex match positions in the masked version line up with the original.
- *
- * Used by `injectSignalNames` to skip false-positive matches against
- * reactive-primitive names that appear inside strings or comments. Without
- * masking, a user's `const docs = \`effect(() => x)\`` template literal
- * would get `, { __sourceLocation: ... }` injected INSIDE the string,
- * corrupting runtime values.
- *
- * Handles:
- *   - `"..."` / `'...'` strings (escape-aware)
- *   - `` `...` `` template literals; interpolations `${...}` are KEPT as
- *     code (their content can contain real `signal()` calls worth catching)
- *   - `// ...` line comments
- *   - `/* ... *\/` block comments
- *
- * Regex literals (`/foo/g`) are NOT special-cased — they're rare and the
- * downstream extractBalancedArgs handles unmatched parens by returning null.
- *
- * @internal — exported for tests.
- */
-export function _maskStringsAndComments(code: string): string {
-  // Built from SLICES (see `_maskSource`): the traversal is unchanged, but each
-  // masked run is emitted as one newline-preserving blank instead of one array
-  // entry per character. Every masked character follows the same rule —
-  // newline stays a newline, anything else becomes a space — so the output is
-  // identical; `${...}` interpolation bodies are copied through as code.
-  const parts: string[] = []
-  let last = 0
-  const mask = (from: number, to: number): void => {
-    if (from > last) parts.push(code.slice(last, from))
-    if (to > from) parts.push(code.slice(from, to).replace(/[^\n]/g, ' '))
-    last = to
-  }
-  let i = 0
-  const n = code.length
-  while (i < n) {
-    const c = code[i]
-    const c1 = code[i + 1]
-
-    // Line comment `// ...`
-    if (c === '/' && c1 === '/') {
-      const start = i
-      while (i < n && code[i] !== '\n') i++
-      mask(start, i)
-      continue
-    }
-    // Block comment `/* ... */` — newlines preserved so line numbers don't shift
-    if (c === '/' && c1 === '*') {
-      const start = i
-      i += 2
-      while (i < n) {
-        if (code[i] === '*' && code[i + 1] === '/') {
-          i += 2
-          break
-        }
-        i++
-      }
-      mask(start, i)
-      continue
-    }
-    // String literal "..." or '...'
-    if (c === '"' || c === "'") {
-      const start = i
-      const quote = c
-      i++
-      while (i < n && code[i] !== quote) {
-        // Escape sequence — skip the next char too (handles `\"`, `\\`, and a
-        // line-continuation `\<LF>`, whose newline the mask preserves).
-        if (code[i] === '\\' && i + 1 < n) {
-          i += 2
-          continue
-        }
-        // Unterminated string (legacy parsers stop at newline) — break
-        if (code[i] === '\n') break
-        i++
-      }
-      if (i < n && code[i] === quote) i++
-      mask(start, i)
-      continue
-    }
-    // Template literal `...` — preserve `${...}` interpolations as code
-    if (c === '`') {
-      let start = i
-      i++
-      while (i < n && code[i] !== '`') {
-        if (code[i] === '\\' && i + 1 < n) {
-          i += 2
-          continue
-        }
-        // `${...}` — mask the template text up to and including `${`, keep the
-        // interpolation body as code (nested braces tracked), mask its `}`.
-        if (code[i] === '$' && code[i + 1] === '{') {
-          i += 2
-          mask(start, i)
-          let depth = 1
-          while (i < n && depth > 0) {
-            if (code[i] === '{') {
-              depth++
-              i++
-              continue
-            }
-            if (code[i] === '}') {
-              depth--
-              if (depth === 0) {
-                mask(i, i + 1)
-                i++
-                break
-              }
-              i++
-              continue
-            }
-            // Inside `${}` — pass through as code (might contain `signal(` etc).
-            i++
-          }
-          start = i
-          continue
-        }
-        i++
-      }
-      if (i < n && code[i] === '`') i++
-      mask(start, i)
-      continue
-    }
-    // Every branch above starts on `/`, a quote or a backtick; jump to the
-    // next one rather than stepping through plain code (see `_maskSource`).
-    i = _nextMaskTrigger(code, i + 1)
-  }
-  if (last < n) parts.push(code.slice(last))
-  return parts.join('')
-}
-
-/**
- * Compute the 0-indexed character offset for the start of each line.
- * `lineStarts[i]` is the offset of the FIRST character on line i+1
- * (1-based, so `lineStarts[0]` = offset 0 = line 1).
- *
- * @internal — exported for tests.
- */
-export function _computeLineStarts(code: string): number[] {
-  const starts: number[] = [0]
-  for (let i = 0; i < code.length; i++) {
-    if (code.charCodeAt(i) === 10) starts.push(i + 1) // \n
-  }
-  return starts
-}
-
-/**
- * Convert a 0-indexed offset to `{ line: 1-based, col: 1-based }` using a
- * pre-computed line-starts array. Binary search → O(log N) per lookup.
- *
- * @internal — exported for tests.
- */
-export function _offsetToLineCol(
-  offset: number,
-  lineStarts: number[],
-): { line: number; col: number } {
-  // Binary search for the largest lineStarts[i] <= offset.
-  let lo = 0
-  let hi = lineStarts.length - 1
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >>> 1
-    const v = lineStarts[mid]
-    if (v !== undefined && v <= offset) lo = mid
-    else hi = mid - 1
-  }
-  const lineStart = lineStarts[lo] ?? 0
-  return { line: lo + 1, col: offset - lineStart + 1 }
 }
 
 /**
@@ -2882,200 +2108,6 @@ function autoImportCanonicalPrimitives(
   }
   if (newLines.length > 0) edits.push({ start: 0, end: 0, text: newLines.join('') })
   return edits
-}
-
-/**
- * Replace JS comments with spaces while preserving line/column
- * positions. Used by the auto-import scanner so `<Stack>` text inside
- * JSDoc doesn't false-positive as a JSX usage. Position preservation
- * lets the caller use the masked code for regex SEARCH and the
- * original code for SPLICE.
- *
- * String literals are deliberately LEFT VISIBLE — they often carry
- * the package name we need to match (`from '@pyreon/primitives'`).
- * The trade-off: a literal `'<Stack/>'` inside a string would
- * false-positive, but that's vanishingly rare compared to JSDoc
- * examples + the cost of either making string-aware AST parsing OR
- * masking only the LITERAL TEXT (not the quotes) is not worth it
- * for the marginal correctness gain.
- *
- * Handles:
- *   - line comments  `// ... newline`
- *   - block comments `/* ... *​/`
- */
-function _maskSource(code: string, maskStrings: boolean): string {
-  // Built from SLICES: unmasked runs are copied whole and each masked run is
-  // blanked with one replace. The former shape wrote one single-character
-  // string per source character into an array and joined it — a full-source
-  // allocation storm on every masked file. Same output: a masked run keeps
-  // its newlines and turns every other UTF-16 unit into a space, so positions
-  // still align.
-  const parts: string[] = []
-  let last = 0
-  let i = 0
-  const n = code.length
-
-  /** Blank out [from, to) while preserving newlines so positions still align. */
-  const blank = (from: number, to: number): void => {
-    if (from > last) parts.push(code.slice(last, from))
-    parts.push(code.slice(from, to).replace(/[^\n]/g, ' '))
-    last = to
-  }
-
-  while (i < n) {
-    const c = code[i] ?? ''
-    const c2 = code[i + 1] ?? ''
-
-    // Block comment
-    if (c === '/' && c2 === '*') {
-      const end = code.indexOf('*/', i + 2)
-      const stop = end < 0 ? n : end + 2
-      blank(i, stop)
-      i = stop
-      continue
-    }
-
-    // Line comment
-    if (c === '/' && c2 === '/') {
-      let j = i
-      while (j < n && code[j] !== '\n') j++
-      blank(i, j)
-      i = j
-      continue
-    }
-
-    // Quoted string. A JS string cannot span a raw newline, so an unterminated
-    // one stops at the line end rather than swallowing the rest of the file —
-    // an apostrophe in a comment the masker already removed cannot reach here,
-    // but a stray quote in real code must not blind the scanner to everything
-    // after it.
-    if (maskStrings && (c === '"' || c === "'")) {
-      let j = i + 1
-      while (j < n) {
-        const ch = code[j]
-        if (ch === '\\') {
-          j += 2
-          continue
-        }
-        if (ch === c || ch === '\n') break
-        j++
-      }
-      const stop = Math.min(j + 1, n)
-      blank(i, stop)
-      i = stop
-      continue
-    }
-
-    // Template literal. The whole literal is masked, INTERPOLATIONS INCLUDED.
-    //
-    // Masking `${…}` too means a JSX tag written inside an interpolation stops
-    // triggering the auto-import — a false NEGATIVE, where the author adds an
-    // explicit import. The alternative bias is a false POSITIVE, which injects
-    // an import for a package the file's own package may not depend on and
-    // BREAKS THE BUILD. An injecting transform must bias toward not injecting,
-    // so the cheap failure is the correct one.
-    //
-    // Nested templates inside an interpolation are tracked by depth so the
-    // closing backtick found is the real one.
-    if (maskStrings && c === '`') {
-      let j = i + 1
-      let depth = 0
-      while (j < n) {
-        const ch = code[j]
-        if (ch === '\\') {
-          j += 2
-          continue
-        }
-        if (ch === '$' && code[j + 1] === '{') {
-          depth++
-          j += 2
-          continue
-        }
-        if (ch === '}' && depth > 0) {
-          depth--
-          j++
-          continue
-        }
-        if (ch === '`') {
-          if (depth === 0) break
-          // A nested template inside an interpolation — skip it wholesale.
-          let k = j + 1
-          while (k < n) {
-            if (code[k] === '\\') {
-              k += 2
-              continue
-            }
-            if (code[k] === '`') break
-            k++
-          }
-          j = k + 1
-          continue
-        }
-        j++
-      }
-      const stop = Math.min(j + 1, n)
-      blank(i, stop)
-      i = stop
-      continue
-    }
-
-    // Nothing above starts at this character, and nothing CAN start before the
-    // next `/` (or quote / backtick, when strings are masked): jump there
-    // instead of stepping one character at a time through plain code.
-    i = maskStrings ? _nextMaskTrigger(code, i + 1) : _indexOrEnd(code, '/', i + 1)
-  }
-  if (last < n) parts.push(code.slice(last))
-  return parts.join('')
-}
-
-/**
- * Mask comments AND string / template literals.
- *
- * Used for JSX-USAGE scanning: a primitive name inside a diagnostic message or
- * a doc example is not usage, and treating it as such injects an import for a
- * package the file may not depend on — which breaks the build.
- */
-export function _maskCommentsAndStrings(code: string): string {
-  return _maskSource(code, true)
-}
-
-/**
- * Mask ONLY comments, preserving strings.
- *
- * Used where module SPECIFIERS must stay readable — import detection and the
- * extend-existing-import splice. Masking those blinds both, and the pass emits
- * a duplicate import line instead of extending the existing one.
- */
-export function _maskComments(code: string): string {
-  return _maskSource(code, false)
-}
-
-/** Collect every name imported via `import { ... }` / `import X` / `import * as X`. */
-export function _collectImportedNames(code: string): Set<string> {
-  const out = new Set<string>()
-  // Named imports: `import { A, B as C } from '...'`
-  const namedRe = /import\s*(?:type\s+)?\{([^}]+)\}\s*from\s*['"][^'"]+['"]/g
-  let m: RegExpExecArray | null
-  while ((m = namedRe.exec(code)) !== null) {
-    for (const spec of m[1]!.split(',')) {
-      const trimmed = spec.trim()
-      if (!trimmed) continue
-      // `A` or `A as B` — the LOCAL name is what matters (the part
-      // after `as`, or the original if no rename).
-      const asIdx = trimmed.indexOf(' as ')
-      out.add(asIdx >= 0 ? trimmed.slice(asIdx + 4).trim() : trimmed)
-    }
-  }
-  // Default + namespace imports: `import D from '...'` / `import * as N from '...'`
-  const defaultRe = /import\s+(\w+)(?:\s*,\s*\{[^}]*\})?\s+from\s*['"][^'"]+['"]/g
-  while ((m = defaultRe.exec(code)) !== null) {
-    out.add(m[1]!)
-  }
-  const nsRe = /import\s+\*\s+as\s+(\w+)\s+from\s*['"][^'"]+['"]/g
-  while ((m = nsRe.exec(code)) !== null) {
-    out.add(m[1]!)
-  }
-  return out
 }
 
 /** Escape a string for safe use inside a RegExp. */
@@ -3403,33 +2435,6 @@ async function prescanSignalExports(
  *
  * Uses simple regex — no AST parse needed.
  */
-// Bounded `\s{1,10}` instead of unbounded `\s+` to remove worst-case
-// backtracking; real import specifiers have 1-2 spaces around `as`.
-const AS_SPLIT_RE = /\s{1,10}as\s{1,10}/
-
-/**
- * The local names a module binds to the plain markers, as regex alternations
- * (`state|s`, `derived|d`). The canonical names are always included — the
- * pre-pass accepts them when there is no import (the `'use plain'` form).
- */
-export function plainMarkerLocalNames(code: string): { state: string; derived: string } {
-  const state = new Set(['state'])
-  const derived = new Set(['derived'])
-  const IMPORT_RE = /import\s{0,10}\{([^}]*)\}\s{0,10}from\s{0,10}['"]@pyreon\/core\/plain['"]/g
-  let m: RegExpExecArray | null
-  while ((m = IMPORT_RE.exec(code)) !== null) {
-    for (const spec of m[1]!.split(',')) {
-      const parts = spec.trim().split(AS_SPLIT_RE)
-      const imported = parts[0]?.trim()
-      const local = (parts[1] ?? parts[0])?.trim()
-      if (!imported || !local || !/^\w+$/.test(local)) continue
-      if (imported === 'state') state.add(local)
-      else if (imported === 'derived') derived.add(local)
-    }
-  }
-  return { state: [...state].join('|'), derived: [...derived].join('|') }
-}
-
 function scanSignalExports(
   code: string,
   moduleId: string,

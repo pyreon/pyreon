@@ -2317,6 +2317,15 @@ final class PyreonTasksUITests: XCTestCase {
             "done",
             "useUrlState write did not reach the router query"
         )
+        // The write is a query-only navigation: it must keep the SCREEN. The
+        // stack element used to carry the query, so SwiftUI saw a new
+        // destination, rebuilt the page and dropped the machine's state back
+        // to "off" (native twin of web #4814).
+        XCTAssertEqual(
+            app.staticTexts["toolkit-machine"].firstMatch.label,
+            "on",
+            "useUrlState write rebuilt the screen and dropped its state"
+        )
 
         let toolkitBack = app.buttons["toolkit-back"].firstMatch
         XCTAssertTrue(toolkitBack.exists, "Back button missing on toolkit page")

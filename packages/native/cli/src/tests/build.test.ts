@@ -577,7 +577,7 @@ describe('@pyreon/native-cli build', () => {
       expect(output.code).toContain('import androidx.compose.ui.window.Dialog')
     }
     for (const output of result.outputs.filter((o) => o.code.includes('AsyncImage('))) {
-      expect(output.code).toContain('import coil.compose.AsyncImage')
+      expect(output.code).toContain('import coil3.compose.AsyncImage')
     }
   })
 

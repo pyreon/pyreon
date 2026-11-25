@@ -76,6 +76,9 @@
     "happy-dom": "^21.0.4",
     "typescript": "^6.0.3"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },

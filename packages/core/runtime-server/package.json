@@ -22,6 +22,11 @@
       "bun": "./src/index.ts",
       "import": "./lib/index.js",
       "types": "./lib/types/index.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [
@@ -40,8 +45,8 @@
     "prepublishOnly": "bun run build"
   },
   "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^"
+    "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*"
   },
   "devDependencies": {
     "@pyreon/compiler": "workspace:^",
@@ -50,6 +55,9 @@
     "@pyreon/vitest-config": "workspace:*",
     "esbuild": "^0.28.2",
     "parse5": "^8.1.1"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

@@ -21,12 +21,13 @@ import {
   bindPolymorphicText,
   mountChild,
   _bindProp,
+  _dispose2,
 } from '../index'
 
 const DEPS = {
   _tpl, _bind, _bindText, _bindProp, _bindDirect, _setChild, _setChildAt, bindPolymorphicText,
   _applyProps, _bindSpread, _setStyle, _setStyleOnce, _setClass, _setAttr, _setValue, _setHtml, _rp, _rpd,
-  _cx: cx, h, Fragment, signal, document,
+  _dispose2, _cx: cx, h, Fragment, signal, document,
 } as const
 
 function mountSource(source: string, globals: Record<string, unknown> = {}) {

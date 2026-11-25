@@ -104,6 +104,8 @@ export function A(props: { issuer: string }) {
     ['an insecure issuer', `{ issuer: 'http://idp.example', clientId: 'a', redirectUri: 'x:/cb' }`, /`issuer` must be https/],
     ['a missing clientId', `{ issuer: 'https://idp.example', redirectUri: 'x:/cb' }`, /`clientId` is required/],
     ['a reserved parameter', `{ issuer: 'https://idp.example', clientId: 'a', redirectUri: 'x:/cb', authorizationParams: { state: 'x' } }`, /cannot set "state"/],
+    ['a redirect URI the matcher refuses', `{ issuer: 'https://idp.example', clientId: 'a', redirectUri: 'x:/cb', nativeRedirectUri: 'com.bücher.app:/cb' }`, /cannot be matched safely.*punycode/],
+    ['response_mode (form_post would drop the binding cookie)', `{ issuer: 'https://idp.example', clientId: 'a', redirectUri: 'x:/cb', authorizationParams: { response_mode: 'form_post' } }`, /cannot set "response_mode"/],
     ['a non-literal options object', `makeOptions()`, /must be an object literal/],
     ['an unknown option', `{ issuer: 'https://idp.example', clientId: 'a', redirectUri: 'x:/cb', clientSecret: 's' }`, /`clientSecret` is not a useOidc option/],
   ]
@@ -116,6 +118,29 @@ export function A(props: { issuer: string }) {
       }
     })
   }
+
+  it('warns about two providers on one native redirect URI (OAuth mix-up), and not about one per provider', () => {
+    const two = (a: string, b: string) => `import { useOidc } from '@pyreon/auth'
+import { Text } from '@pyreon/primitives'
+export function A() {
+  const google = useOidc({ issuer: 'https://accounts.google.com', clientId: 'g', redirectUri: 'https://app.example/cb/google', nativeRedirectUri: '${a}' })
+  const evil = useOidc({ issuer: 'https://evil.example', clientId: 'e', redirectUri: 'https://app.example/cb/evil', nativeRedirectUri: '${b}' })
+  return <Text>{google.status() + evil.status()}</Text>
+}
+`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const shared = transform(two('com.example.app:/oauth', 'Com.Example.App:///oauth'), { target })
+      expect(shared.warnings.join('\n'), target).toMatch(/share the native redirect URI Com\.Example\.App:\/\/\/oauth.*own `nativeRedirectUri`/)
+      // Still emitted: whether both providers send `iss` is decided at run time.
+      expect(shared.code, target).toMatch(/PyreonOidcAuth\(issuer: "https:\/\/evil\.example"|rememberPyreonOidcAuth\(issuer = "https:\/\/evil\.example"/)
+      const own = transform(two('com.example.app:/oauth/google', 'com.example.app:/oauth/evil'), { target })
+      expect(own.warnings, target).toEqual([])
+    }
+  })
+
+  it('starts the launch refresh when the view appears on iOS (Compose: rememberPyreonOidcAuth does it)', () => {
+    expect(swift().code).toContain('.onAppear { auth.start() }')
+  })
 
   it('loopback http is accepted (local development provider)', () => {
     const r = transform(screen(`{ issuer: 'http://localhost:8080/realms/dev', clientId: 'a', redirectUri: 'x:/cb' }`), { target: 'swift' })

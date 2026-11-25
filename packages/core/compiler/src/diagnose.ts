@@ -1295,6 +1295,26 @@ const data = useLoaderData<Dashboard>()`,
     }),
   },
   {
+    // #4814: `useLoaderData()` returns a reactive ACCESSOR, not the data. Two
+    // residual footguns: code written for the old value-returning API
+    // (`data.title`, destructuring, `posts.map`) reads properties of a
+    // function, and a body-scope `data()` read is a snapshot that misses
+    // in-place updates (the page is no longer remounted for new data under
+    // the same loader key).
+    pattern:
+      /useLoaderData\b[^\n]{0,80}(?:returns? (?:a |an )?(?:function|accessor)|is (?:now )?a function|\x5BFunction|is not (?:a function|iterable)|does not exist on type '\(\) =>|never updates?|does(?:n't| not) update|stale|snapshot)|loader data[^\n]{0,60}(?:does(?:n't| not) update|never updates?|stale)[^\n]{0,60}(?:revalidat|staleWhileRevalidate|same (?:loader )?key)/i,
+    diagnose: () => ({
+      cause:
+        '`useLoaderData<T>()` returns a reactive accessor `() => T`, not the data (a 0.x breaking change, consistent with `useRoute()` and `useMiddlewareData()`). Code written for the old API reads properties of the function (`data.title` is undefined, `const { post } = useLoaderData()` destructures nothing, `posts.map` is not a function). And because the page is no longer remounted when loader data changes under the same loader key (`router.revalidate()`, `staleWhileRevalidate`, `gcTime: 0`, a server loader re-run on a query-only navigation), reading `data()` ONCE in the component body is a snapshot that never updates.',
+      fix: 'Keep the accessor and call it where the value is used: `{data().title}` in JSX, `<For each={() => data().items} by={…}>`, `<Show when={() => data().post}>`, `useHead(() => ({ title: data().title }))`, or inside an `effect` / `computed`. Do not destructure the result and do not read `data()` into a body-scope const. `useLoaderDataAccessor()` was removed; use `useLoaderData()`.',
+      fixCode: `// before — reads properties of a function, and a body read never updates
+const { post } = useLoaderData<{ post: Post }>()
+// after — read the accessor where the value is used
+const data = useLoaderData<{ post: Post }>()
+return <h1>{data().post.title}</h1>`,
+    }),
+  },
+  {
     // Phase 4 (server islands) surfaced this runtime-dom bug class: data-*/
     // aria-* props on CUSTOM ELEMENTS landed as JS properties, so
     // getAttribute/dataset/CSS attribute selectors silently read null while
@@ -1701,6 +1721,22 @@ import { TransitionGroup } from '@pyreon/runtime-dom'`,
             fixCode: `// every @pyreon/* package on one version newer than 0.53.0
 // npx @pyreon/cli upgrade`,
           },
+  },
+  {
+    // `<Defer>` (core `defer.ts`): its chunk load failed and no <ErrorBoundary>
+    // encloses it, so the slot renders nothing. Listed before the generic
+    // chunk-load entry: the logged line carries the browser's error too.
+    pattern: /<Defer> failed to load and no <ErrorBoundary> encloses it/,
+    diagnose: () => ({
+      cause:
+        "A `<Defer>`'s chunk failed to load (its `chunk` promise rejected: a network error, or a deploy that replaced the hashed chunk files while this page was open), and no `<ErrorBoundary>` encloses the `<Defer>`. The failure was reported to `registerErrorHandler` and the slot renders nothing, so the region stays empty.",
+      fix: "Wrap the `<Defer>` in an `<ErrorBoundary>`. The load error then goes to the boundary like any other render error, and the fallback's `reset()` remounts the `<Defer>`, which loads the chunk again.",
+      fixCode: `<ErrorBoundary fallback={(_err, reset) => <button onClick={reset}>Retry</button>}>
+  <Defer chunk={() => import('./Chart')} when={open}>
+    {(Chart) => <Chart />}
+  </Defer>
+</ErrorBoundary>`,
+    }),
   },
   {
     // Deferred lazy hydration: a server-rendered `lazy()` whose client chunk
@@ -2760,6 +2796,19 @@ export const collections = {
       fix: 'Read the logged error and its stack: it names the accessor or child that threw. A value that exists on the server but not yet on the client (a browser-only API, data loaded after hydration) is the usual cause; guard it, or wrap the subtree in <ErrorBoundary> to show a fallback.',
       fixCode: '<ErrorBoundary fallback={(err) => <p>Could not load: {String(err)}</p>}>\n  <Widget />\n</ErrorBoundary>',
     }),
+  },
+  {
+    // @pyreon/runtime-dom `guardTeardown` (`teardown.ts`): user code that ran
+    // while a component unmounted threw. The teardown went on.
+    pattern: /\[Pyreon\] Error in (?:onUnmount hook of <([\w$.]*)>|ref callback):/,
+    diagnose: (m) => {
+      const where = m[1] === undefined ? 'a ref callback (it was handed `null`), or an object ref\'s `current` setter' : `an \`onUnmount\` hook of \`<${m[1] || 'Anonymous'}>\`, or a cleanup its \`onMount\` callback returned`
+      return {
+        cause: `User code threw while a component was being unmounted: ${where}. The throw was caught and reported (\`registerErrorHandler\`, \`phase: 'unmount'\`), and the teardown continued: the other hooks ran, the row or root was removed. Whatever that code was meant to release (a listener, a timer, a subscription) may still be live.`,
+        fix: 'Read the logged error and its stack: it points at the hook or ref. Make it safe to run once the component is gone (a ref receives `null` on unmount; an element may already be detached), or guard the part that can fail. An `onCleanup` registered inside `onMount` that throws is reported as an effect error instead, without the component name: move it to `onUnmount` (or return it from `onMount`) to get the name.',
+        fixCode: "onMount(() => {\n  const id = setInterval(tick, 1000)\n  return () => clearInterval(id)\n})\n\n// a ref is handed null on unmount\nconst measure = (el: Element | null) => {\n  if (el === null) return\n  observer.observe(el)\n}",
+      }
+    },
   },
 ]
 

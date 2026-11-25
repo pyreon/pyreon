@@ -56,8 +56,8 @@
     "prepublishOnly": "bun run build"
   },
   "peerDependencies": {
-    "@pyreon/core": "workspace:^",
-    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/core": "workspace:*",
+    "@pyreon/reactivity": "workspace:*",
     "@pyreon/runtime-dom": "workspace:^"
   },
   "devDependencies": {
@@ -68,6 +68,9 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.1.0",
     "happy-dom": "^21.0.4"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

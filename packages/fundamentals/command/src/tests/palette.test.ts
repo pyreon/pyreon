@@ -1,4 +1,5 @@
-import { _resetHotkeys, getRegisteredHotkeys } from '@pyreon/hotkeys'
+import { getRegisteredHotkeys } from '@pyreon/hotkeys'
+import { _resetHotkeys } from '@pyreon/hotkeys/internal'
 import { effectScope, signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCommands } from '../commands'

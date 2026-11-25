@@ -267,8 +267,8 @@ symbols/
 # temporary server entries a @pyreon/zero SSG/SSR build writes and removes.
 .pyreon/
 .pyreon-lpih.json
-__pyreon-zero-ssg-entry.js
-__pyreon-zero-ssr-entry.js
+__pyreon-zero-ssg-entry*.js
+__pyreon-zero-ssr-entry*.js
 `,
   )
   add(
@@ -324,10 +324,10 @@ __pyreon-zero-ssr-entry.js
           // The readable setup's other two halves: oxlint (size limits, via
           // `.oxlintrc.json` extending `@pyreon/lint/oxlint/readable.json`)
           // and oxfmt (formatting, via `oxfmt.config.ts`).
-          oxfmt: '^0.74.0',
-          oxlint: '^1.89.0',
-          typescript: '^6.0.0',
-          vite: '^8.0.0',
+          oxfmt: '^0.78.0',
+          oxlint: '^1.93.0',
+          typescript: '^6.0.3',
+          vite: '^8.3.7',
         },
       },
     ),
@@ -908,7 +908,10 @@ dependencies {
     // <Icon> emit references Icons.Filled.* at compile time (core set).
     implementation("androidx.compose.material:material-icons-core")
     // Remote <Image src="http…"> → Coil's AsyncImage.
-    implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+    // Coil 3 has no network fetcher by default: without this an http(s)
+    // model renders nothing. Rides the okhttp artifact this file declares.
+    implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
     // okhttp — PyreonWebSocketOkHttp.kt / PyreonHttpOkHttp.kt (runtime srcDir
     // above) import okhttp3; the srcDir compiles ALL runtime sources, so the
     // artifact is required whether the app uses websockets or not. Absent

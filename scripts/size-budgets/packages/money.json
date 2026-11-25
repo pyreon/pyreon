@@ -1,10 +1,10 @@
 {
   "package": "@pyreon/money",
-  "bundle": 5865,
+  "bundle": 6459,
   "imports": {
-    "add-multiply": 3363,
-    "allocate": 3493,
+    "add-multiply": 3913,
+    "allocate": 4045,
     "decimal": 2247,
-    "everything": 5745
+    "everything": 6337
   }
 }

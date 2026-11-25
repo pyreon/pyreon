@@ -173,9 +173,15 @@ describe('jsx.ts — non-arrow function attribute values are invoked, not passed
 })
 
 describe('jsx.ts — template attribute emitter: reserved names and duplicates', () => {
-  it('`key` on a templatable element bails the whole template', () => {
+  it('`key` on a templatable root is not baked: it rides on the item', () => {
     const out = t('<div key="a" id="b">x</div>')
-    expect(out).not.toContain('_tpl(')
+    expect(out).toContain('_tpl("<div id=\\"b\\">x</div>", () => null, 1, "a")')
+    expect(out).not.toContain('key=')
+  })
+
+  it('a keyed root with a spread anywhere stays h() — the spread may carry its own key', () => {
+    expect(bothAgree('<div key="a" {...p}>x</div>')).not.toContain('_tpl(')
+    expect(bothAgree('<div {...p} key="a">x</div>')).not.toContain('_tpl(')
   })
 
   it('a plain attribute AFTER a spread bails to h() — JSX object semantics make it win', () => {

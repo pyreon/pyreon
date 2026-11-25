@@ -56,7 +56,7 @@ router.push({ name: 'typo' })        // TS error at compile time
 - `useTypedSearchParams({ page: 'number' })` — coerced + typed query params
 - `router.invalidateLoader(key?)` — clear loader cache entries
 
-`await router.push(...)` resolves AFTER the route's view-transition callback commits, so the next line can read the new route immediately.
+`await router.push(...)` resolves AFTER the route's DOM commit (with View Transitions on, after the transition callback commits), so the next line can read the new route immediately.
 
 ## Why
 

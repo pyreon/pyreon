@@ -31,7 +31,7 @@ bun add -d @pyreon/lint
 | Setting | Default | Description |
 |---|---|---|
 | `pyreonLint.enable` | `true` | Enable/disable diagnostics |
-| `pyreonLint.preset` | `"recommended"` | Lint preset (recommended, strict, app, lib, best-practices) |
+| `pyreonLint.preset` | `"recommended"` | Lint preset for files with no `.pyreonlintrc.json` above them: `recommended`, `strict`, `app`, `lib`, `best-practices`, `readable` or `readable-strict`. A project's own config always wins. Read when the server starts. |
 
 ## How it works
 

@@ -274,18 +274,17 @@ describe('parse.ts — component-scope destructuring', () => {
     expect(r.code).toContain('private var id: String { useParams(router: pyreonRouter)["id"] ?? "" }')
   })
 
-  it('separates the useLoaderData identifier / destructure / other-shape diagnostics', () => {
+  it('separates the useLoaderData binding from the destructure diagnostics', () => {
     // The single-binding read lowers and is populated by the route's loader, so it does not warn.
     expect(swift(body('  const d = useLoaderData<{ x: string }>()')).warnings.join('\n')).not.toContain(
       'useLoaderData',
     )
-    // The object destructure lowers too (one accessor per field)…
-    expect(swift(body('  const { x } = useLoaderData<{ x: string }>()')).warnings.join('\n')).not.toContain(
-      'useLoaderData',
+    // A destructure reads fields off the web's accessor, so neither an object nor an array pattern lowers: each names the fix.
+    expect(swift(body('  const { x } = useLoaderData<{ x: string }>()')).warnings.join('\n')).toContain(
+      'then `data().x`',
     )
-    // …and any other binding shape is named.
     expect(swift(body('  const [a] = useLoaderData<{ x: string }>()')).warnings.join('\n')).toContain(
-      'this binding shape is neither, so it was not lowered',
+      '`const […] = useLoaderData<T>()` destructures an accessor and is not lowered on native',
     )
   })
 

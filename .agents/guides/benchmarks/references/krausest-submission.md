@@ -94,7 +94,9 @@ kill %1
 
 Each can be run alone from `webdriver-ts/` with the same `PORT`. Then `bun contrib/krausest/smoke.mjs "$JFB/frameworks/keyed/pyreon"` from this repository drives the same built page through all eight operations and checks that the id cell is one text node holding the bare integer.
 
-Last run: 2026-11-17, upstream `b010a54`, Pyreon 0.53.0, Chrome 157 on macOS arm64. All four passed. Linux, where upstream builds, was not run; the lockfile carries the compiler's Linux binaries as optional dependencies.
+Last run: 2026-11-24, upstream `0f4e789`, Pyreon 0.54.0, Chrome 158 on macOS arm64. `npm ci --ignore-scripts` + `npm run build-prod` (only `dist/main.js`), the keyed check, the CSP check and `smoke.mjs` passed. Upstream's smoke step was not run that day (it runs the benchmark driver; leave it to the maintainer's `rebuild-ci` on a quiet machine); the previous run (2026-11-17, upstream `b010a54`, Pyreon 0.53.0, Chrome 157) recorded all four checks passing. Linux, where upstream builds, was not run; the lockfile carries the compiler's Linux binaries as optional dependencies.
+
+When `sync-krausest-pin.ts` regenerates the lockfile it passes `--prefer-online`: the compiler's platform binaries are published after the JS packages, and from a cache filled in between npm wrote version-less entries for two of them (0.54.0), which the gate rejects.
 
 ## Submission steps (maintainer)
 

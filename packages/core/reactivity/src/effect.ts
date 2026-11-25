@@ -27,6 +27,12 @@ export interface Effect {
 
 export interface EffectOptions {
   /**
+   * Debug name — shows up in devtools (the reactive graph and inspector).
+   * `@pyreon/vite-plugin` injects it for `const x = effect(…)`; dev-only, it is
+   * never read in a production build.
+   */
+  name?: string
+  /**
    * @internal Source location injected by `@pyreon/vite-plugin` at build time.
    * When present the runtime skips the `new Error().stack` capture in
    * `_rdRegister` — saves ~2.2us per effect creation when devtools is active.
@@ -358,6 +364,16 @@ export function effect(
       if (mine !== LAZY_INNER && mine !== null)
         innerEffects = innerEffects === null ? (mine as Effect[]) : innerEffects.concat(mine as Effect[])
       setInnerEffectCollector(outerCollector)
+      // Disposed while this run was on the stack (by its own body, or by the
+      // owning scope stopping): `dispose()` released what the effect held THEN,
+      // but the run went on registering — inner effects, cleanups, the returned
+      // cleanup, subscriptions from later reads. Nothing would dispose them
+      // again, so release them now. Every registration channel of a run is
+      // collected above, so this one check covers them all.
+      if (disposed) {
+        runCleanup()
+        cleanupLocalDeps(deps, run)
+      }
     }
     // Notify scope after each reactive re-run (not the initial synchronous run)
     // so onUpdate hooks fire after the DOM has settled.
@@ -376,7 +392,7 @@ export function effect(
       'effect',
       null,
       run,
-      undefined,
+      options?.name,
       options?.__sourceLocation ?? _captureCallerLocation(1),
     )
 
@@ -717,7 +733,13 @@ function renderEffectImpl(fn: () => void, owned: boolean): () => void {
       if (process.env.NODE_ENV !== 'production') _rdRecordFire(run)
       // Re-run: VERIFY the previous dep list positionally (zero Set ops in
       // the steady state) instead of the old cleanup-all + re-track pair.
-      runVerify(run, deps, trackedFn)
+      try {
+        runVerify(run, deps, trackedFn)
+      } finally {
+        // Disposed during this run (see `effect`): reads after the dispose
+        // re-subscribed it.
+        if (disposed) cleanupLocalDeps(deps, run)
+      }
     }
   }
 

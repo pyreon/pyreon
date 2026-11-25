@@ -47,7 +47,7 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@pyreon/core": "workspace:^",
+    "@pyreon/core": "workspace:*",
     "@pyreon/reactivity": "workspace:^",
     "@pyreon/native-compiler": "workspace:^"
   },
@@ -70,7 +70,7 @@
     "@vitus-labs/tools-rolldown": "^2.8.0"
   },
   "engines": {
-    "node": ">= 22"
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

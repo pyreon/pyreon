@@ -4,7 +4,7 @@
  * Regression coverage for `@pyreon/zero/client` startClient:
  *   1. Loader data embedded by the SSR server in `window.__PYREON_LOADER_DATA__`
  *      is hydrated into the router BEFORE the first render — otherwise
- *      `useLoaderData()` returns undefined on direct URL navigation and the
+ *      `useLoaderData()()` reads undefined on direct URL navigation and the
  *      page shows the fallback indefinitely.
  *   2. On SPA cold start (no SSR loader data), startClient triggers the
  *      router's loader pipeline for the current path so loaders run.

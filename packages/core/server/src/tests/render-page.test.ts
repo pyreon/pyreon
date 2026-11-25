@@ -42,7 +42,7 @@ describe('renderPage — html kind', () => {
   test('serializes loader data into the inline script', async () => {
     const Posts: ComponentFn = () => {
       const data = useLoaderData<{ posts: string[] }>()
-      return h('ul', null, data?.posts.join(','))
+      return h('ul', null, () => data()?.posts.join(','))
     }
     const router = makeRouter([
       { path: '/posts', component: Posts, loader: async () => ({ posts: ['a', 'b'] }) },
@@ -81,7 +81,8 @@ describe('renderPage — onPreloaded', () => {
     const order: string[] = []
     const Posts: ComponentFn = () => {
       order.push('render')
-      return h('p', null, String(useLoaderData<number>()))
+      const data = useLoaderData<number>()
+      return h('p', null, () => String(data()))
     }
     const router = makeRouter([
       {

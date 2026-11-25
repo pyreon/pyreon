@@ -5,11 +5,10 @@
  * itself had none. That is the function whose OUTPUT someone deploys, and the
  * things it decides are not observable from the pieces:
  *
- *   * **`--base` reaches two different consumers.** Vite rewrites the shell's
- *     asset URLs with it, and `emitComponentPages` refuses to fan out
- *     directories for a relative one — because those pages would resolve
- *     `./assets/…` against their own directory and silently fail to load
- *     their own JavaScript.
+ *   * **`--base` reaches every consumer.** Vite rewrites the shell's asset
+ *     URLs with it and zero's router and per-component pages resolve against
+ *     it, so a relative one is refused before any work rather than building a
+ *     site whose component pages silently fail to load their own JavaScript.
  *   * **The catalog the site ships is the SCAN's catalog**, config and all.
  *     A `pages`/`projects` entry that never reaches the plugin produces a site
  *     whose sidebar disagrees with the dev server's for the same project —
@@ -22,10 +21,11 @@
  * generated entry's `@pyreon/*` imports resolve the way they do in an installed
  * project. Nothing here reads or writes the example it borrows from.
  */
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { appDir } from '../../dev/zero-app'
 import { buildStatic } from '../static'
 
 /** An installed project whose `node_modules` the fixtures borrow, read-only. */
@@ -43,9 +43,8 @@ let roots: string[] = []
 /**
  * A throwaway project that can actually be bundled.
  *
- * `node_modules` is a real directory of symlinks rather than a symlink to one:
- * the build writes its generated entry into `<root>/node_modules/.atlas-build`,
- * and a symlinked tree would put that inside the borrowed project.
+ * `node_modules` is a real directory of symlinks rather than a symlink to one,
+ * so the build's dependency cache never lands inside the borrowed project.
  */
 function fixture(options: { config?: string; components?: boolean } = {}): string {
   const root = mkdtempSync(join(tmpdir(), 'atlas-build-'))
@@ -74,6 +73,29 @@ const CONFIG = [
   "export const pages = { Hello: { title: 'Hi There', group: 'Greetings' } }",
   "export const projects = [{ name: 'fx', dir: '.' }]",
   "export const presets = { viewports: [{ id: 'full', label: 'Full', width: null }] }",
+  '',
+].join('\n')
+
+
+/** A project vite config with its OWN plugin and define — no imports, so it loads from a bare temp dir. */
+const PROJECT_VITE_CONFIG = [
+  'export default {',
+  '  define: { __PROJECT_DEFINE__: JSON.stringify("defined-by-project") },',
+  '  plugins: [{',
+  "    name: 'project-mark',",
+  '    transform(code, id) {',
+  "      return id.includes('Marked') ? code.replace('__PROJECT_MARK__', 'transformed-by-project-plugin') : null",
+  '    },',
+  '  }],',
+  '}',
+  '',
+].join('\n')
+
+const MARKED = [
+  'declare const __PROJECT_DEFINE__: string',
+  'export function Marked(props: { label?: string }) {',
+  "  return `${props.label ?? ''} __PROJECT_MARK__ ${__PROJECT_DEFINE__}`",
+  '}',
   '',
 ].join('\n')
 
@@ -111,6 +133,68 @@ describe('the emitted site', () => {
     expect(logs).toEqual([])
   }, 300_000)
 
+  it("applies the PROJECT's own vite plugins and define to the built site", async () => {
+    // Atlas runs its app with `configFile: false`, so a project whose
+    // components need its own plugin (Tailwind v4's `@tailwindcss/vite`, a
+    // custom transform) shipped them untransformed.
+    const root = fixture({ components: false })
+    writeFileSync(join(root, 'vite.config.ts'), PROJECT_VITE_CONFIG, 'utf8')
+    writeFileSync(join(root, 'src', 'widgets', 'Marked.tsx'), MARKED, 'utf8')
+    await buildStatic({ cwd: root, out: 'dist' })
+    const js = readdirSync(join(root, 'dist', 'assets'))
+      .filter((f) => f.endsWith('.js'))
+      .map((f) => readFileSync(join(root, 'dist', 'assets', f), 'utf8'))
+      .join('\n')
+    expect(js).toContain('transformed-by-project-plugin')
+    expect(js).toContain('defined-by-project')
+    expect(js).not.toContain('__PROJECT_MARK__')
+  }, 300_000)
+
+  it('builds with the workbench app directory READ-ONLY — nothing is written into the install', async () => {
+    // zero wrote its temporary SSG entry into the Vite root, which is the app
+    // inside the Atlas install: a read-only install (Yarn PnP, a Nix store)
+    // failed, and a writable one got a file in node_modules. It now goes to
+    // the project's cache dir.
+    const root = fixture()
+    const app = appDir()
+    const before = readdirSync(app).sort()
+    chmodSync(app, 0o555)
+    try {
+      const result = await buildStatic({ cwd: root, out: 'dist' })
+      expect(result.routedPages).toBe(1)
+    } finally {
+      chmodSync(app, 0o755)
+    }
+    expect(readdirSync(app).sort()).toEqual(before)
+  }, 300_000)
+
+  it("copies the PROJECT's public/ into the site", async () => {
+    // The Vite root is the workbench app, so the default publicDir pointed
+    // into the Atlas install and the project's static files never shipped.
+    const root = fixture()
+    mkdirSync(join(root, 'public'), { recursive: true })
+    writeFileSync(join(root, 'public', 'brand.txt'), 'from the project public dir\n', 'utf8')
+    await buildStatic({ cwd: root, out: 'dist' })
+    expect(readFileSync(join(root, 'dist', 'brand.txt'), 'utf8')).toBe('from the project public dir\n')
+  }, 300_000)
+
+  it("applies the project's resolve.alias, as atlas dev does", async () => {
+    // A component importing through an alias the CONFIG declares. Without the
+    // alias in the build's resolve, the bundler cannot resolve `~/…` and the
+    // build fails on a project `atlas dev` serves fine.
+    const root = fixture({ components: false, config: "export const alias = { '~': './src' }\n" })
+    mkdirSync(join(root, 'src', 'shared'), { recursive: true })
+    writeFileSync(join(root, 'src', 'shared', 'greet.ts'), "export const greet = (n?: string) => `hi ${n ?? ''}`\n", 'utf8')
+    writeFileSync(
+      join(root, 'src', 'widgets', 'Hello.tsx'),
+      "import { greet } from '~/shared/greet'\nexport function Hello(props: { name?: string }) {\n  return greet(props.name)\n}\n",
+      'utf8',
+    )
+    const result = await buildStatic({ cwd: root, out: 'dist' })
+    expect(result.components).toBe(1)
+    expect(result.routedPages).toBe(1)
+  }, 300_000)
+
   it('builds for production and restores a caller who had NODE_ENV unset', async () => {
     // `vite build` only sets production when NODE_ENV is unset, so the build
     // forces it — and must hand the caller's environment back unchanged,
@@ -140,19 +224,15 @@ describe('the emitted site', () => {
     expect(result.routedPages).toBe(1)
   }, 300_000)
 
-  it('emits NO component pages for a relative base, and says why', async () => {
-    // Their assets would resolve against their own directory. Emitting pages
-    // that silently fail to load their own JavaScript is worse than not
-    // emitting them.
+  it('refuses a relative base before any work, and says what to pass', async () => {
+    // A relative base resolves `./assets/…` against each page's own
+    // directory, and the workbench router cannot route under it. Refused up
+    // front: nothing is scanned and no output directory is created.
     const root = fixture()
-    const logs: string[] = []
-    const result = await buildStatic({ cwd: root, out: 'dist', base: './', onLog: (m) => logs.push(m) })
-
-    expect(result.routedPages).toBe(0)
-    expect(readdirSync(join(root, 'dist'))).not.toContain('fixture-hello')
-    expect(logs.join('\n')).toContain('per-component pages were NOT emitted')
-    // The site itself still works at its root.
-    expect(readFileSync(join(root, 'dist', 'index.html'), 'utf8')).toMatch(/src="\.\/assets\//)
+    await expect(buildStatic({ cwd: root, out: 'dist', base: './' })).rejects.toThrow(
+      /--base \.\/ is relative\. Pass an absolute path/,
+    )
+    expect(readdirSync(root)).not.toContain('dist')
   }, 300_000)
 })
 
@@ -170,7 +250,10 @@ describe('what the defaults are', () => {
       const here = process.cwd()
       const result = await buildStatic({})
       expect(result.outDir).toBe(join(here, 'atlas-dist'))
-      expect(readFileSync(join(root, 'atlas-dist', 'index.html'), 'utf8')).toContain('atlas-root')
+      // The workbench app's client shell: zero's mount point plus the
+      // marker that lets the next build empty the directory.
+      expect(readFileSync(join(root, 'atlas-dist', 'index.html'), 'utf8')).toContain('<div id="app">')
+      expect(readdirSync(join(root, 'atlas-dist'))).toContain('.atlas-build-output')
       expect(result.components).toBe(1)
     } finally {
       process.chdir(before)

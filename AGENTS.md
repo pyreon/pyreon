@@ -52,10 +52,10 @@ Project configs register it for the common tools: `.mcp.json` (Claude Code; appr
 
 ## Packages
 
-85 published packages across 6 categories under `packages/`, plus private support packages (and `@pyreon/auth`, which is unpublished until after 1.0):
+86 published packages across 6 categories under `packages/`, plus private support packages:
 
 - `packages/core/` (10): reactivity, core, compiler, runtime-dom, runtime-server, router, head, server, primitives, sized-map
-- `packages/fundamentals/` (36): a11y, store, state-tree, form, validation, validate, http, query, table, virtual, i18n, feature, charts, charts-maps, storage, hooks, hotkeys, permissions, machine, flow, code, rich-text, document, rx, toast, url-state, dnd, sync, command, format, time, ambient, money, schedule, upload, calendar
+- `packages/fundamentals/` (37): a11y, auth, store, state-tree, form, validation, validate, http, query, table, virtual, i18n, feature, charts, charts-maps, storage, hooks, hotkeys, permissions, machine, flow, code, rich-text, document, rx, toast, url-state, dnd, sync, command, format, time, ambient, money, schedule, upload, calendar
 - `packages/tools/` (16 published): cli, config, lint, mcp, vite-plugin, typescript, storybook, testing, atlas, loom, lathe, and the compat layers react-/preact-/vue-/solid-/svelte-compat; `devtools` is private
 - `packages/ui-system/` (11): ui-core, styler, unistyle, elements, attrs, rocketstyle, coolgrid, kinetic, kinetic-presets, connector-document, document-primitives
 - `packages/zero/` (6): zero, zero-cli, create-zero, create-multiplatform, meta, zero-content
@@ -63,7 +63,7 @@ Project configs register it for the common tools: `.mcp.json` (Claude Code; appr
 - `packages/internals/` (private): test-utils, manifest, perf-harness, ansi, vitest-config, playwright-config, tsconfig
 - `packages/ui/` (private): ui-theme, ui-components, ui-primitives
 
-Plus `docs/` (the docs site, built on `@pyreon/zero` — 253 doc pages covering all packages) and `examples/`.
+Plus `docs/` (the docs site, built on `@pyreon/zero` — 254 doc pages covering all packages) and `examples/`.
 
 Notable package facts:
 
@@ -77,7 +77,7 @@ Layer order: reactivity → core → {compiler, runtime-dom, runtime-server, rou
 
 Each package's `src/manifest.ts` feeds `llms.txt`, `llms-full.txt`, the MCP API reference (`packages/tools/mcp/src/api-reference.ts`) and the docs-site reference pages. Edit the manifest, never a generated file, then run both generators (`bun run gen-docs && bun docs/scripts/gen-all.ts`).
 
-- Coverage: 66 of 85 published packages have a manifest. The remaining 19 are EXPLICITLY EXEMPT build tooling or scaffolding with no consumable runtime API; the list is `NO_MANIFEST_EXEMPT` in `scripts/check-multiplatform-tier.ts`. Do not give them filler manifests.
+- Coverage: 67 of 86 published packages have a manifest. The remaining 19 are EXPLICITLY EXEMPT build tooling or scaffolding with no consumable runtime API; the list is `NO_MANIFEST_EXEMPT` in `scripts/check-multiplatform-tier.ts`. Do not give them filler manifests.
 - Every manifest declares `multiplatform: { tier: 'shared' | 'service-backend' | 'web-only', rationale }` (rationale required for `web-only`).
 - MCP `validate` runs `detectReactPatterns` plus `detectPyreonPatterns`, which catches "using Pyreon wrong" mistakes — 24 detector codes today.
 
@@ -114,6 +114,7 @@ What is reactive depends on where a signal is read:
 - Error messages start with `[Pyreon]` and say how to fix the problem.
 - `exactOptionalPropertyTypes` is on: optional properties assigned a possibly-undefined value need an explicit `| undefined`.
 - A `node:*` import must never be reachable from a client-safe entry — not even through a lazy `import()`. Put server-only code behind a server-only module or subpath.
+- A `_`-prefixed export, or any export whose JSDoc carries an `@internal` tag (test seam, cross-package internal), goes on the package's `./internal` subpath (`src/internal.ts`), never a public entry; compat-layer plumbing goes on `@pyreon/core/compat`. Only the compiler-emitted helpers (`COMPILER_ABI` in `scripts/check-stability-tier.ts`) stay on the main entries. Enforced by `check-stability-tier`.
 - Pyreon ships ESM only: no published package declares a `require` or `default` export condition (`check-esm-only`; only `@pyreon/storybook` is exempt, because Storybook loads presets through CJS).
 - Browser-running packages need a real-Chromium smoke test (`*.browser.test.tsx`, listed in `.agents/rules/browser-packages.json`).
 

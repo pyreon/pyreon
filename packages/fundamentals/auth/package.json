@@ -1,7 +1,6 @@
 {
   "name": "@pyreon/auth",
   "version": "0.54.0",
-  "private": true,
   "description": "Authentication for Pyreon on web, iOS and Android \u2014 OIDC sign-in (useOidc), ID-token verification, signed sessions, TOTP, passkeys and route guards, secure by default",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/auth#readme",
@@ -42,8 +41,7 @@
     "README.md",
     "LICENSE",
     "native/swift",
-    "native/kotlin",
-    "native/tests"
+    "native/kotlin"
   ],
   "scripts": {
     "build": "vl_rolldown_build",
@@ -67,10 +65,14 @@
     "bun-types": "^1.4.4",
     "oidc-provider": "9.15.0"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "publishConfig": {
     "access": "public"
   },
   "pyreon": {
+    "stability": "experimental",
     "native": {
       "swift": "native/swift",
       "kotlin": "native/kotlin",

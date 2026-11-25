@@ -17,6 +17,10 @@ export async function loader(): Promise<BenchmarksView> {
 
 export default function BenchmarksRoute() {
   const view = useLoaderData<BenchmarksView | undefined>()
-  if (!view) return null
-  return <BenchmarksPage view={view} />
+  // An accessor, so the page follows its loader data (a client-only cold
+  // start fills it in after mount) instead of pinning the first read.
+  return () => {
+    const current = view()
+    return current ? <BenchmarksPage view={current} /> : null
+  }
 }

@@ -58,7 +58,7 @@
     }
   },
   "dependencies": {
-    "@tanstack/table-core": "^9.1.2",
+    "@tanstack/table-core": "^9.3.1",
     "@tanstack/store": "^0.11.2"
   },
   "devDependencies": {
@@ -72,6 +72,9 @@
     "bun-types": "^1.4.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

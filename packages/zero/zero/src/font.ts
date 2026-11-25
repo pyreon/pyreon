@@ -460,6 +460,20 @@ function splitSubsetBlocks(css: string): Array<{ subset: string; text: string }>
 }
 
 /**
+ * Prefix the root-relative self-hosted font URLs (`/assets/fonts/…`) in a CSS
+ * string or a single href with Vite's resolved `base`. Without it a subpath
+ * deploy (`base: '/docs/'`) requested every font from the host root and 404'd.
+ * This is the ASSET base (Vite's resolved base): a path, `./` or a CDN URL.
+ * Pure; a `/` base leaves the text unchanged.
+ */
+export function withFontBase(text: string, base: string): string {
+  if (!base || base === '/') return text
+  // `./` (a SPA's relative base) keeps the URL relative to its one index.html.
+  const prefix = base.endsWith('/') ? base : `${base}/`
+  return text.replaceAll(`/${FONTS_SUB_DIR}/`, `${prefix}${FONTS_SUB_DIR}/`)
+}
+
+/**
  * Choose the local font URLs to `<link rel=preload>`, preferring the
  * primary subset (the first configured `subsets` entry, else `latin`).
  *
@@ -512,6 +526,8 @@ export function fontCacheKey(cssUrl: string, allowedSubsets?: string[]): string 
   return Buffer.from(`v2|${cssUrl}|subsets=${allowedSubsets?.join(',') ?? ''}`).toString('base64url')
 }
 
+/** Where self-hosted Google Fonts files are emitted, relative to the output dir. */
+const FONTS_SUB_DIR = 'assets/fonts'
 const FONT_EXTENSIONS = new Set(['woff2', 'woff', 'ttf', 'otf'])
 
 /**
@@ -654,6 +670,10 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
 
   let isBuild = false
   let root = ''
+  // Vite's resolved base (CLI `--base`, vite.config, or `zero({ base })`).
+  // Self-hosted font URLs stay root-relative in the download cache and get the
+  // base from `withFontBase` when they are written into the HTML.
+  let base = '/'
   let selfHostedCSS = ''
   let selfHostedFontFiles: Array<{ name: string; content: Buffer }> = []
   let autoFallbacks: AutoFallback[] = []
@@ -664,6 +684,7 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
     configResolved(resolvedConfig) {
       isBuild = resolvedConfig.command === 'build'
       root = resolvedConfig.root
+      base = resolvedConfig.base
     },
 
     async buildStart() {
@@ -680,7 +701,7 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
         try {
           const result = await selfHostFonts(
             cssUrl,
-            'assets/fonts',
+            FONTS_SUB_DIR,
             root,
             controller.signal,
             config.subsets,
@@ -738,7 +759,7 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
       for (const file of selfHostedFontFiles) {
         this.emitFile({
           type: 'asset',
-          fileName: `assets/fonts/${file.name}`,
+          fileName: `${FONTS_SUB_DIR}/${file.name}`,
           source: file.content,
         })
       }
@@ -754,22 +775,10 @@ export function fontPlugin(config: FontConfig = {}): Plugin {
         googleFamilies,
         display,
         subsets: config.subsets,
+        base,
       })
       collectLocalFontTags(tags, config, shouldPreload, display)
-
-      // Auto size-adjusted fallback @font-face blocks + the
-      // `--pyreon-font-<slug>` vars that put the fallback INTO the cascade
-      // (the load-bearing half — without the var, the @font-face is inert),
-      // plus the optional `applyTo` binding that wires the var to a
-      // selector so the plain-CSS path is zero-touch.
-      if (autoFallbacks.length > 0) {
-        const applyRule = renderApplyFontFamily(autoFallbacks, applyToSelector)
-        tags.push(
-          `<style>${renderAutoFallbackFaces(autoFallbacks)}\n${renderFontFamilyVars(autoFallbacks)}${
-            applyRule ? `\n${applyRule}` : ''
-          }</style>`,
-        )
-      }
+      collectAutoFallbackTags(tags, autoFallbacks, applyToSelector)
 
       if (tags.length === 0) return html
       return html.replace('</head>', `${tags.join('\n')}\n</head>`)
@@ -786,16 +795,18 @@ function collectGoogleFontTags(
     googleFamilies: ResolvedFont[]
     display: FontDisplay
     subsets?: string[] | undefined
+    base: string
   },
 ) {
   if (opts.isBuild && opts.selfHostedCSS) {
-    tags.push(`<style>${opts.selfHostedCSS}</style>`)
+    tags.push(`<style>${withFontBase(opts.selfHostedCSS, opts.base)}</style>`)
     if (opts.shouldPreload) {
       // Preload the PRIMARY subset's file(s) — `latin` by default, or the
       // first configured subset — never the cyrillic-ext file css2 happens
       // to return first. Budget preserved at one file per family.
       const primary = opts.subsets?.[0] ?? 'latin'
-      for (const href of pickPreloadHrefs(opts.selfHostedCSS, primary, opts.googleFamilies.length)) {
+      for (const rootHref of pickPreloadHrefs(opts.selfHostedCSS, primary, opts.googleFamilies.length)) {
+        const href = withFontBase(rootHref, opts.base)
         const ext = href.split('.').pop()
         const type = ext === 'woff2' ? 'font/woff2' : 'font/woff'
         tags.push(`<link rel="preload" href="${href}" as="font" type="${type}" crossorigin>`)
@@ -807,6 +818,26 @@ function collectGoogleFontTags(
     tags.push(`<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`)
     tags.push(`<link rel="stylesheet" href="${cssUrl}">`)
   }
+}
+
+/**
+ * Auto size-adjusted fallback @font-face blocks + the `--pyreon-font-<slug>`
+ * vars that put the fallback INTO the cascade (the load-bearing half — without
+ * the var, the @font-face is inert), plus the optional `applyTo` binding that
+ * wires the var to a selector so the plain-CSS path is zero-touch.
+ */
+function collectAutoFallbackTags(
+  tags: string[],
+  autoFallbacks: Parameters<typeof renderAutoFallbackFaces>[0],
+  applyToSelector: Parameters<typeof renderApplyFontFamily>[1],
+) {
+  if (autoFallbacks.length === 0) return
+  const applyRule = renderApplyFontFamily(autoFallbacks, applyToSelector)
+  tags.push(
+    `<style>${renderAutoFallbackFaces(autoFallbacks)}\n${renderFontFamilyVars(autoFallbacks)}${
+      applyRule ? `\n${applyRule}` : ''
+    }</style>`,
+  )
 }
 
 function collectLocalFontTags(

@@ -58,6 +58,12 @@ export interface ComputedOptions<T> {
    */
   equals?: (prev: T, next: T) => boolean
   /**
+   * Debug name — shows up in devtools (the reactive graph and inspector).
+   * `@pyreon/vite-plugin` injects it for `const x = computed(…)`, as it does for
+   * signals; dev-only, it is never read in a production build.
+   */
+  name?: string
+  /**
    * @internal Source location injected by `@pyreon/vite-plugin` at build time.
    * When present the runtime skips the `new Error().stack` capture in
    * `_rdRegister` — saves ~2.2us per computed creation when devtools is active.
@@ -363,9 +369,11 @@ function readDisposed<T>(read: ComputedFn<T>, fn: () => T, first: boolean): T {
   return read._value
 }
 
-function evalThrew<T>(read: ComputedFn<T>, err: unknown): T {
+function evalThrew<T>(read: ComputedFn<T>, err: unknown, recompute: () => void): T {
   _errorHandler(err)
+  if (read._disposed) cleanupLocalDeps(read._deps, recompute)
   read._dirty = 0
+
   return read._value
 }
 
@@ -395,7 +403,13 @@ export function computed<T>(fn: () => T, options?: ComputedOptions<T>): Computed
   // rebuilds a fresh object and so could never gate on its own. Honour that by
   // keeping the eager variant, which refreshes on every notification. The DEFAULT
   // gate has no such placement intent, so it stays lazy until a runner appears.
-  return createComputed(fn, options?.equals ?? Object.is, options?.equals !== undefined, loc)
+  return createComputed(
+    fn,
+    options?.equals ?? Object.is,
+    options?.equals !== undefined,
+    loc,
+    process.env.NODE_ENV !== 'production' ? options?.name : undefined,
+  )
 }
 
 /**
@@ -457,6 +471,7 @@ function createComputed<T>(
   equals: (prev: T, next: T) => boolean,
   eager: boolean,
   injectedLoc?: { file: string; line: number; col: number },
+  name?: string,
 ): Computed<T> {
   // `initialized` is touched only by the per-instance `read` / `recompute` /
   // `dispose` closures, so it stays closure-captured. `recompute` is
@@ -498,8 +513,12 @@ function createComputed<T>(
         next = runVerify(recompute, read._deps, fn)
       } catch (err) {
         initialized = true
-        return evalThrew(read, err) // keep the previous value on a throwing eval
+        return evalThrew(read, err, recompute) // keep the previous value on a throwing eval
       }
+      // Disposed DURING this evaluation: reads after the dispose re-linked it.
+      // Unlink; the evaluation still settles as the final value. (Not a
+      // `finally`: it grows this frame, and deep chains pull recursively.)
+      if (read._disposed) cleanupLocalDeps(read._deps, recompute)
       read._dirty = 0
       initialized = true
       // Value gate: keep the OLD value (stable reference — the memo semantic)
@@ -600,7 +619,7 @@ function createComputed<T>(
       'derived',
       read as unknown as SubscriberHost,
       recompute,
-      undefined,
+      name,
       injectedLoc ?? _captureCallerLocation(2),
     )
 

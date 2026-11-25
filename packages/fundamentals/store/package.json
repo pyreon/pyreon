@@ -35,6 +35,11 @@
       "bun": "./src/native-plugin.ts",
       "import": "./lib/native-plugin.js",
       "types": "./lib/types/native-plugin.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [
@@ -55,7 +60,7 @@
     "bench:stores": "NODE_ENV=production bun bench/store-bench.ts"
   },
   "peerDependencies": {
-    "@pyreon/reactivity": "workspace:^",
+    "@pyreon/reactivity": "workspace:*",
     "@pyreon/native-compiler": "workspace:^"
   },
   "dependencies": {
@@ -73,7 +78,7 @@
     "@reduxjs/toolkit": "^2.14.0",
     "arktype": "^2.2.9",
     "bun-types": "^1.4.4",
-    "jotai": "^3.0.1",
+    "jotai": "^3.0.2",
     "mobx": "^7.1.7",
     "nanostores": "1.5.5",
     "pinia": "4.1.0",
@@ -81,7 +86,10 @@
     "valtio": "^2.3.2",
     "vue": "^3.5.45",
     "zod": "^4.6.7",
-    "zustand": "^5.0.16"
+    "zustand": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

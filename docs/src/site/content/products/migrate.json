@@ -364,7 +364,7 @@
   },
   {
    "claim": "pyreon check output quoted",
-   "path": "node packages/tools/cli/lib/index.js check counter.tsx (NO_COLOR=1), exit 1; suggested-code lines omitted, messages verbatim except one line wrap and \"(standard HTML)\" trimmed"
+   "path": "node packages/tools/cli/bin/pyreon.js check counter.tsx (NO_COLOR=1), exit 1; suggested-code lines omitted, messages verbatim except one line wrap and \"(standard HTML)\" trimmed"
   },
   {
    "claim": "migrate_react behaviour on main: declarations and attributes rewritten, setCount(...) and reads left; memo reported removed but kept",

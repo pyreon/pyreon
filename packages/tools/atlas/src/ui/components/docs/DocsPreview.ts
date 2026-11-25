@@ -3,6 +3,9 @@ import { el } from '../../kit'
 export const DocsPreview = el
   .attrs({
     tag: 'div',
+    // The previewed component's own links are not the workbench router's: the
+    // router's plain-<a href> dev warning skips this region (see ../../route).
+    'data-allow-reload': '',
     contentAlignX: 'center',
     contentAlignY: 'center',
   })

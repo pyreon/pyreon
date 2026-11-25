@@ -1,5 +1,6 @@
 import { actionId, transformServerActions } from '../actions-transform'
-import { _resetActions, defineAction } from '../actions'
+import { _resetActions } from '../internal'
+import { defineAction } from '../actions'
 
 const SRC = `import { defineAction as da } from '@pyreon/zero/actions'
 import * as A from '@pyreon/zero/actions'
@@ -38,6 +39,15 @@ describe('transformServerActions', () => {
     expect(out).not.toContain("from './db'")
     // A binding still referenced outside a handler keeps its import.
     expect(out).toContain("import { keep } from './keep'")
+  })
+
+  it('imports the rewrite helpers from the internal subpath, never a public entry', () => {
+    expect(transformServerActions(SRC, 'a.ts', 'src/a.ts', true)!).toMatch(
+      /^import \{ _defineActionWithId as __zeroDefineActionWithId \} from "@pyreon\/zero\/internal";/,
+    )
+    expect(transformServerActions(SRC, 'a.ts', 'src/a.ts', false)!).toMatch(
+      /^import \{ _actionStub as __zeroActionStub \} from "@pyreon\/zero\/internal";/,
+    )
   })
 
   it('client and server derive identical ids', () => {

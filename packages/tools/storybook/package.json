@@ -36,6 +36,11 @@
       "types": "./lib/types/preview.d.ts",
       "default": "./lib/preview.js"
     },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -66,6 +71,9 @@
     "@pyreon/vitest-config": "workspace:*",
     "@storybook/builder-vite": "^10.6.7",
     "storybook": "^10.6.7"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

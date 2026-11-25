@@ -34,6 +34,7 @@
 // origin to resolve `/api/todos` against), a custom `fetcher`, every other generated hook (`useSearch`, `useForm`,
 // `useTable`, `useStore`, …) and every `useList` option but a literal `staleTime`.
 
+import { pathPartEnd, pathPartStart } from '@pyreon/http'
 import {
   MUTATE_ASYNC_TYPE,
   MUTATE_TYPE,
@@ -144,7 +145,7 @@ export function crudFacts(source: { fileState<T>(key: string, init: () => T): T 
 export const featureSchemaStruct = (binding: string): string => `PyreonFeatureSchema_${binding}`
 
 const ABSOLUTE = /^https?:\/\/[^/]/i
-/** A path token the web's `applyPathParams` would try to fill (`:tenant`, `\:`) — it throws for a list URL holding one. */
+/** A path token the web's `applyPathParams` would try to fill (`:tenant`, `\:`) in the PATH part — it throws for a list URL holding one. */
 const PATH_TOKEN = /\\:|:[A-Za-z_]/
 
 /** The `api` / `fetcher` facts of one `defineFeature({ … })` config. */
@@ -185,9 +186,12 @@ function readCrudConfig(binding: string, config: AnyNode): CrudFeature {
       `\`${binding}\`'s \`api\` (\`${literal}\`) is not an absolute \`http(s)://\` URL. The web resolves a relative URL against the page's origin; a native app has no origin. ${fix}`,
     )
   }
-  if (PATH_TOKEN.test(literal.replace(/^https?:\/\//i, ''))) {
+  // Only the PATH part (after `scheme://authority`, before `?` / `#`) is read
+  // for placeholders — `@pyreon/http`'s own cut — so a port, `user:pw@` or a
+  // colon in the query is fine; a `:name` in the path is not.
+  if (PATH_TOKEN.test(literal.slice(pathPartStart(literal), pathPartEnd(literal)))) {
     return refuse(
-      `\`${binding}\`'s \`api\` (\`${literal}\`) holds a \`:param\` path token, which the web's request builder tries to fill and throws for. Write the URL without one.`,
+      `\`${binding}\`'s \`api\` (\`${literal}\`) holds a \`:param\` token in its PATH, which the web's request builder tries to fill and throws for. Write the path without one (a colon in the query string is fine).`,
     )
   }
 
@@ -225,8 +229,16 @@ const encodeSegment = (id: ExprIR): ExprIR => ({
   args: [id],
 })
 
-/** `<api>/<encoded id>` — the web's `${url}/:id` with `params: { id }`. */
-const idUrl = (api: string, id: ExprIR): ExprIR => ({ kind: 'template', quasis: [`${api}/`, ''], exprs: [encodeSegment(id)] })
+/**
+ * `<api path>/<encoded id><api query/fragment>` — the web's `itemUrl(url, ':id')`
+ * with `params: { id }`: the id goes at the end of the PATH part, never into a
+ * query string the `api` URL carries.
+ */
+const idUrl = (api: string, id: ExprIR): ExprIR => {
+  const end = pathPartEnd(api)
+
+  return { kind: 'template', quasis: [`${api.slice(0, end)}/`, api.slice(end)], exprs: [encodeSegment(id)] }
+}
 
 const JSON_HEADERS = { 'content-type': 'application/json' } as const
 
@@ -242,8 +254,13 @@ function errorsMiddleware(method: string, displayUrl: ExprIR): ExprIR {
 }
 
 const literalUrl = (api: string): ExprIR => ({ kind: 'literal', value: api })
-/** `<api>/<id>` as the web's error message spells it: `${url}/${id}`, the id raw. */
-const displayIdUrl = (api: string, id: ExprIR): ExprIR => ({ kind: 'template', quasis: [`${api}/`, ''], exprs: [id] })
+
+/** `<api>/<id>` as the web's error message spells it: `itemUrl(url, String(id))`, the id raw. */
+const displayIdUrl = (api: string, id: ExprIR): ExprIR => {
+  const end = pathPartEnd(api)
+
+  return { kind: 'template', quasis: [`${api.slice(0, end)}/`, api.slice(end)], exprs: [id] }
+}
 
 export const crudErrorsExpr: ExprEmitter = {
   swift: (e, ctx) => {

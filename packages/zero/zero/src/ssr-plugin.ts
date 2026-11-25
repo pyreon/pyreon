@@ -75,11 +75,12 @@ import {
   innerBuildActiveInProcess,
   innerBuildFlagSet,
 } from './build-flags'
+import { adoptRouteBase } from './adopt-route-base'
 import { resolveConfig } from './config'
 import { collectFileRouteModes } from './fs-router'
 import { formatRouteModeTable } from './route-modes'
 import { writeServiceWorker } from './pwa'
-import { buildSsrBundle, materializeEntry, renderSsrEntrySource } from './ssr-build-shared'
+import { buildSsrBundle, materializeEntry, renderSsrEntrySource, syntheticEntryPath } from './ssr-build-shared'
 import { serializeServerConfig } from './server-config'
 import { computeClientStartPreload, type ViteManifest } from './ssg-modulepreload'
 import type { ZeroConfig } from './types'
@@ -124,6 +125,8 @@ const SSR_OUT_SUBDIR = SSR_SERVER_SUBDIR
 export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   const config = resolveConfig(userConfig)
   let root = ''
+  // Vite's resolved cacheDir — where the synthetic entry is written.
+  let cacheDir = ''
   let distDir = ''
   // True when Vite is running a SERVER-target build (`build.ssr` set) rather
   // than the client build. A server build has NO client assets — no
@@ -138,7 +141,11 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
   // See `buildInnerBuildOptions` / `ssg-plugin.ts`.
   let assetsInlineLimit: BuildOptions['assetsInlineLimit']
   let assetsDir: string | undefined
-  let resolvedBase: string = '/'
+  // The ASSET base: Vite's resolved base verbatim (a path, `./` or a CDN
+  // URL). Asset URLs zero writes read it, and the inner SSR sub-build gets it
+  // so it emits assets exactly as the outer build did. Route URLs read
+  // `config.base`, the ROUTE base (see `routeBaseOf` in config.ts).
+  let assetBase = '/'
   // Replaced in configResolved with Vite's logger (honours `logLevel`).
   // oxlint-disable-next-line no-console
   let logInfo: (msg: string) => void = (msg) => console.log(msg)
@@ -201,13 +208,16 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
 
     configResolved(resolved) {
       root = resolved.root
+      cacheDir = resolved.cacheDir
       distDir = resolve(root, resolved.build.outDir)
       isSsrTargetBuild = Boolean(resolved.build.ssr)
       // Informational output honours `logLevel` (see ssg-plugin).
       logInfo = (msg) => resolved.logger.info(msg)
       assetsInlineLimit = resolved.build.assetsInlineLimit
       assetsDir = resolved.build.assetsDir
-      resolvedBase = resolved.base
+      // From here on `config.base` is the ROUTE base (see adoptRouteBase).
+      adoptRouteBase(config, userConfig.base, resolved.base)
+      assetBase = resolved.base
       userPlugins = resolved.plugins as readonly Plugin[]
       manifestOption = resolved.build.manifest
     },
@@ -293,7 +303,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       const userEntryExists = existsSync(userEntryPath)
       const entryPath = userEntryExists
         ? userEntryPath
-        : join(root, SSR_ENTRY_FILENAME)
+        : syntheticEntryPath(cacheDir, SSR_ENTRY_FILENAME)
 
       // Materialize the synthetic entry only when the user hasn't
       // authored one. The synthetic delegates to `createServer({
@@ -334,7 +344,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // per page. Empty when the entry is not lazy.
       const clientPreload =
         clientManifest && builtTemplate
-          ? computeClientStartPreload(clientManifest, builtTemplate, resolvedBase)
+          ? computeClientStartPreload(clientManifest, builtTemplate, assetBase)
           : undefined
       const define =
         clientPreload && (clientPreload.app.length > 0 || clientPreload.islands.length > 0)
@@ -353,7 +363,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
             assetsInlineLimit,
             assetsDir,
             userPlugins,
-            base: resolvedBase,
+            base: assetBase,
             edge: true,
             ...(define ? { define } : {}),
           })
@@ -368,7 +378,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
           assetsInlineLimit,
           assetsDir,
           userPlugins,
-          base: resolvedBase,
+          base: assetBase,
           ...(define ? { define } : {}),
         })
       } catch (buildError) {
@@ -445,7 +455,7 @@ export function ssrPlugin(userConfig: ZeroConfig = {}): Plugin {
       // assets are precached (navigations are network-first at runtime).
       if (config.pwa) {
         await writeServiceWorker(clientOutDir, config.pwa, {
-          base: config.base ?? '/',
+          base: config.base,
           assetsDir: assetsDir ?? 'assets',
           includeHtml: false,
         })

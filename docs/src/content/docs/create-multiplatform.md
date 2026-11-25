@@ -46,12 +46,12 @@ npx @pyreon/create-multiplatform my-app --dir ./apps/my-app
 A successful run, captured with `NO_COLOR=1`:
 
 ```text
-create-multiplatform · 0.53.0
+create-multiplatform · 0.54.0
 
   next    cd my-app && npm install && npm run dev
   native  npm run build:ios (Xcode) · npm run build:android (Android SDK)
 
-✓ scaffolded my-app → my-app/ · 30 files · 6 ms
+✓ scaffolded my-app → my-app/ · 35 files · 6 ms
 ```
 
 A refused name or directory goes to stderr as `✗ error: <message>`, wrapped at 100 columns, and exits 1. Colour honours `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` and `PYREON_CLI_THEME`.
@@ -154,9 +154,9 @@ export function App() {
 
 | Target | Required |
 |---|---|
-| Web | Bun / Node 18+ |
-| iOS | macOS, Xcode 15+, xcodegen (`brew install xcodegen`) |
-| Android | JDK 17, Android SDK, and `gradle` on `PATH` (no Gradle wrapper is generated) |
+| Web | Node.js 22+ or Bun 1.3+ |
+| iOS | macOS, Xcode 15+, xcodegen (`brew install xcodegen`). The app runs on iOS 17 and later (the scaffolded deployment target). |
+| Android | JDK 17, Android SDK, and `gradle` on `PATH` (no Gradle wrapper is generated). The app runs on Android 8.0 (`minSdk 26`) and later. |
 
 The web target requires no platform-specific toolchain. iOS and Android targets are opt-in — you can scaffold the project and only build the web target if you don't need native immediately.
 

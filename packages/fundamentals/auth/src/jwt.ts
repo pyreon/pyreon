@@ -5,6 +5,9 @@ import { decodeBase64url } from './pkce'
 /** A JSON Web Key as published in a provider's JWKS. */
 export type Jwk = JsonWebKey & { kid?: string; use?: string }
 
+/** Smallest RSA modulus a published key may have (RFC 8725 §3.5; NIST SP 800-131A). */
+const MIN_RSA_BITS = 2048
+
 export interface IdTokenClaims {
   iss: string
   sub: string
@@ -20,6 +23,11 @@ export interface VerifyOptions {
   nonce?: string
   /** Allowed clock skew in seconds. Default 60. */
   skew?: number
+  /**
+   * Refuse a token issued (`iat`) longer ago than this many seconds — for a sign-in you expect
+   * to have just happened. Requires `iat`. Default: no age limit (expiry still applies).
+   */
+  maxAge?: number
   now?: number
 }
 
@@ -53,6 +61,7 @@ function importVerifyKey(jwk: Jwk, alg: (typeof ALGS)[keyof typeof ALGS]['import
     p.catch(() => keyCache.delete(jwk))
     keyCache.set(jwk, p)
   }
+
   return p
 }
 
@@ -70,6 +79,7 @@ export async function fetchJwks(meta: OidcMetadata, fetchImpl: FetchLike = (i, o
   }
   const keys = (body as { keys?: unknown } | null)?.keys
   if (!Array.isArray(keys)) throw new AuthError('jwks_failed', 'jwks document has no keys array')
+
   return keys as Jwk[]
 }
 
@@ -90,6 +100,11 @@ export interface JwksCacheOptions {
 export interface JwksCache {
   /** The current key set, re-fetched once when `kid` is not in it (key rotation). */
   keys(kid?: string): Promise<Jwk[]>
+  /**
+   * Re-fetch now, unless a fetch happened within the throttle window (then `null`). Used when a
+   * token verified against the cached keys fails — e.g. a token without `kid` right after rotation.
+   */
+  refresh(): Promise<Jwk[] | null>
 }
 
 /**
@@ -129,6 +144,7 @@ export function createJwksCache(
         if (inflight === p) inflight = null
       },
     )
+
     return p
   }
 
@@ -138,7 +154,12 @@ export function createJwksCache(
       if (kid !== undefined && !cached.some((k) => k.kid === kid) && now() - fetchedAt >= minRefresh) {
         return load()
       }
+
       return cached
+    },
+    async refresh() {
+      if (cached !== null && now() - fetchedAt < minRefresh) return null
+      return load()
     },
   }
 }
@@ -153,11 +174,50 @@ export function tokenKid(token: string): string | undefined {
   }
 }
 
+const isJwksCache = (k: readonly Jwk[] | JwksCache): k is JwksCache => !Array.isArray(k)
+
 /**
  * Verify an ID token: algorithm allowlist, signature against the issuer's key (selected by `kid`
- * and the header alg — never by trusting the token), then iss / aud / exp / nonce.
+ * and the header alg — never by trusting the token), then iss / aud / azp / exp / nbf / iat / sub /
+ * nonce. `keys` is a key set, or a `createJwksCache` cache: with a cache, a token that fails
+ * against the cached keys (rotation, or a token without `kid`) triggers ONE throttled re-fetch
+ * and a retry.
  */
 export async function verifyIdToken(
+  token: string,
+  keys: readonly Jwk[] | JwksCache,
+  meta: OidcMetadata,
+  opts: VerifyOptions,
+): Promise<IdTokenClaims> {
+  if (!isJwksCache(keys)) return verifyWithKeys(token, keys, meta, opts)
+  const cache = keys
+  try {
+    return await verifyWithKeys(token, await cache.keys(tokenKid(token)), meta, opts)
+  } catch (e) {
+    if (!(e instanceof AuthError) || (e.code !== 'no_key' && e.code !== 'bad_signature')) throw e
+    const fresh = await cache.refresh()
+    if (fresh === null) throw e
+
+    return verifyWithKeys(token, fresh, meta, opts)
+  }
+}
+
+/** Modulus size of an RSA JWK in bits, or 0 when it is unreadable. */
+function rsaBits(n: unknown): number {
+  if (typeof n !== 'string') return 0
+  try {
+    const b = decodeBase64url(n)
+    let i = 0
+    while (i < b.length && b[i] === 0) i++
+    if (i === b.length) return 0
+
+    return (b.length - i - 1) * 8 + (32 - Math.clz32(b[i]!))
+  } catch {
+    return 0
+  }
+}
+
+async function verifyWithKeys(
   token: string,
   keys: readonly Jwk[],
   meta: OidcMetadata,
@@ -194,7 +254,10 @@ export async function verifyIdToken(
       (unset(kid) || (typeof kid === 'string' && k.kid === kid)) &&
       (unset(k.alg) || k.alg === alg) &&
       (unset(k.use) || k.use === 'sig') &&
-      k.kty === (alg === 'RS256' ? 'RSA' : 'EC'),
+      // RFC 7517 §4.3: a key whose key_ops does not include "verify" may not verify.
+      (unset(k.key_ops) || (Array.isArray(k.key_ops) && k.key_ops.includes('verify'))) &&
+      k.kty === (alg === 'RS256' ? 'RSA' : 'EC') &&
+      (k.kty !== 'RSA' || rsaBits(k.n) >= MIN_RSA_BITS),
   )
   if (candidates.length === 0) throw bad('no_key', 'no matching signing key')
   const spec = ALGS[alg]
@@ -225,14 +288,24 @@ export async function verifyIdToken(
   const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud]
   if (!aud.includes(opts.clientId)) throw bad('bad_aud', 'aud does not include this client')
   if (aud.length > 1 && claims.azp !== opts.clientId) throw bad('bad_azp', 'multi-audience token needs azp = client')
+  // OIDC Core §2: azp, when present, is the party the token was issued to — it must be us.
+  if (claims.azp !== undefined && claims.azp !== opts.clientId) throw bad('bad_azp', 'token was issued to another client (azp)')
   if (typeof claims.exp !== 'number' || claims.exp + skew < now) throw bad('expired', 'token expired')
   if (claims.nbf !== undefined && (typeof claims.nbf !== 'number' || claims.nbf - skew > now)) {
     throw bad('not_yet_valid', 'token is not valid yet (nbf)')
+  }
+  // A token issued in the future is as invalid as one not yet valid.
+  if (claims.iat !== undefined && (typeof claims.iat !== 'number' || claims.iat - skew > now)) {
+    throw bad('not_yet_valid', 'token is issued in the future (iat)')
+  }
+  if (opts.maxAge !== undefined && (typeof claims.iat !== 'number' || now - claims.iat > opts.maxAge + skew)) {
+    throw bad('too_old', 'token was issued too long ago (iat older than maxAge)')
   }
   if (typeof claims.sub !== 'string' || !claims.sub) throw bad('bad_token', 'missing sub')
   // A nonce must be a string; a provider echoing it as a number is not echoing it.
   if (opts.nonce !== undefined && (typeof claims.nonce !== 'string' || !timingSafeEqual(claims.nonce, opts.nonce))) {
     throw bad('bad_nonce', 'nonce mismatch')
   }
+
   return claims
 }

@@ -1,4 +1,6 @@
-import { _noopDispose } from '@pyreon/reactivity'
+import { _noopDispose } from '@pyreon/reactivity/internal'
+import { _userCodeHook } from './parked-text'
+import { releaseRef } from './teardown'
 
 /**
  * Compiler-emitted `ref` application for a template element: the h() path's
@@ -15,17 +17,23 @@ import { _noopDispose } from '@pyreon/reactivity'
  * has no parent yet). Layout reads, `getComputedStyle` and observers that need
  * a connected element belong in `onMount`. On unmount the ref receives
  * `null`.
+ *
+ * ORDER, shared with the h() path: the compiler emits this call in the
+ * template's post-order ref tail, after every other bind line (#4764), so a ref
+ * sees its element's content and computed attributes, and a child's ref runs
+ * before its parent's. A spread's ref is applied there too (`.r()`).
  */
 export function _ref(el: Element, ref: unknown): () => void {
+  // No ref (a spread without one reaches here through `.r()`): no user code.
+  if (ref == null) return _noopDispose
+  _userCodeHook?.(el)
   if (typeof ref === 'function') {
     ;(ref as (el: Element | null) => void)(el)
-    return () => (ref as (el: Element | null) => void)(null)
+    return () => releaseRef(ref)
   }
-  if (ref != null && typeof ref === 'object') {
+  if (typeof ref === 'object') {
     ;(ref as { current: Element | null }).current = el
-    return () => {
-      ;(ref as { current: Element | null }).current = null
-    }
+    return () => releaseRef(ref)
   }
 
   return _noopDispose

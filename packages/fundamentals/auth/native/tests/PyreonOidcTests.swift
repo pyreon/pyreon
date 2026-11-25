@@ -12,6 +12,11 @@ struct PyreonOidcTests {
         }
     }
 
+    // The shared redirect-matching vectors (native/tests/redirect-vectors.json); vectors.test.ts checks this copy.
+    // <redirect-vectors:begin>
+    static let redirectVectors = #"[["https://app.example/cb","https app.example /cb"],["HTTPS://App.Example:443/cb?x=1#f","https app.example /cb"],["https://app.example:8443/cb","https app.example:8443 /cb"],["http://localhost:80/cb","http localhost /cb"],["https://app.example","https app.example /"],["com.example.app:/oauth","com.example.app  /oauth"],["com.example.app:///oauth","com.example.app  /oauth"],["Com.Example.App:/oauth?code=1&state=s","com.example.app  /oauth"],["com.example.app:/oauth/google","com.example.app  /oauth/google"],["app:cb","app  cb"],["app://cb","app cb "],["app://Host/x","app host /x"],["https://app.example/a%2Fb","https app.example /a%2Fb"],["https://app.example/a/b","https app.example /a/b"],["custom://h:443/x","custom h:443 /x"],["https://app.example/cb/","https app.example /cb/"],["https://app.example/./cb","https app.example /cb"],["https://app.example/a/../cb","https app.example /cb"],["https://app.example/a/b/../../cb/.","https app.example /cb/"],["https://app.example/c%62","https app.example /c%62"],["https://app.example:0443/cb","https app.example /cb"],["https://user:pw@app.example/cb","https app.example /cb"],["http://[::1]:8080/cb","http [::1]:8080 /cb"],["com.example.app:/oauth/","com.example.app  /oauth/"],["com.example.app:oauth?x=1","com.example.app  oauth"],["COM.EXAMPLE.APP:/OAUTH","com.example.app  /OAUTH"],["https://app.example//cb","https app.example //cb"],["https://xn--bcher-kva.example/cb","https xn--bcher-kva.example /cb"],["https://bücher.example/cb",""],["https://b%C3%BCcher.example/cb",""],["https://app.example\\cb",""],["https://app.example/c b",""],["https://app.example/%2e%2e/cb",""],["https://app.example/cb?next=/a b\\c","https app.example /cb"]]"#
+    // <redirect-vectors:end>
+
     static let iss = "https://idp.example"
     static let ep = "https://idp.example/auth"
 
@@ -43,6 +48,18 @@ struct PyreonOidcTests {
         raises("replay", .unknownFlow) { _ = try core.complete(callback: cb(u, "&code=abc"), issuer: iss) }
 
         raises("mix-up", .issuerMismatch) { _ = try core.complete(callback: cb(try begin(core), "&code=a&iss=https://evil.example"), issuer: iss) }
+        raises("flow of another issuer", .issuerMismatch) { _ = try core.complete(callback: cb(try begin(core), "&code=a"), issuer: "https://other.example") }
+        raises("callback at another redirect URI", .redirectMismatch) {
+            let s = URLComponents(url: try begin(core), resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "state" }!.value!
+            _ = try core.complete(callback: URL(string: "https://app.example/other?state=\(s)&code=a")!, issuer: iss)
+        }
+        // One redirect-matching rule on web, iOS and Android.
+        let vectors = try JSONSerialization.jsonObject(with: Data(redirectVectors.utf8)) as! [[String]]
+        for v in vectors { expect((PyreonRedirect.target(v[0]) ?? "") == v[1], // "" = refused
+                                   "redirect target of \(v[0]): got \(PyreonRedirect.target(v[0]) ?? "nil"), want \(v[1])") }
+        raises("response_mode is reserved", PyreonAuthError("reserved_param", "authorizationParams cannot set \"response_mode\" — it is managed by the flow")) {
+            _ = try core.begin(authorizationEndpoint: ep, issuer: iss, clientId: "a", redirectUri: "r", authorizationParams: ["response_mode": "form_post"])
+        }
         raises("iss missing", .issuerMissing) { _ = try core.complete(callback: cb(try begin(core), "&code=a"), issuer: iss, issuerParamSupported: true) }
         raises("expired", .flowExpired) { _ = try core.complete(callback: cb(try begin(core, now: Date(timeIntervalSinceNow: -700)), "&code=a"), issuer: iss) }
         raises("http", .insecureUrl) { _ = try core.begin(authorizationEndpoint: "http://idp.example/auth", issuer: iss, clientId: "a", redirectUri: "r") }

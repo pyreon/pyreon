@@ -24,7 +24,8 @@
  * `createApp.mount` tracks every pushed app-level frame and removes each on
  * unmount.
  */
-import { getContextStackLength, h as pyreonH } from '@pyreon/core'
+import { h as pyreonH } from '@pyreon/core'
+import { getContextStackLength } from '@pyreon/core/internal'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createApp, inject } from '../index'
 

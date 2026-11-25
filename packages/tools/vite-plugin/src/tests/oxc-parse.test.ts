@@ -1,6 +1,6 @@
 import { rawTransferSupported } from 'oxc-parser'
 import { _parseOxcWith, _rawTransferActive, parseOxc } from '../oxc-parse'
-import { _reactiveCalleeStarts } from '../index'
+import { _reactiveCalleeStarts } from '../internal'
 
 // Shapes the plugin's two parse consumers care about: reactive callees (the
 // signal-name confirmation), `process.env.NODE_ENV` member chains (the

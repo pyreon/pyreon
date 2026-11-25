@@ -4,8 +4,22 @@
  * (date-like formatters) and `fallback`, plus a few documented extras.
  */
 
-/** A number-like input. `null` / `undefined` format as the `fallback`. */
-export type NumberInput = number | bigint | null | undefined
+/**
+ * A number-like input: a number, a bigint, or a decimal string (`"9.99"`, `"-12345678901234567.89"`: an optional `-`,
+ * digits, an optional `.` and digits). A decimal string is formatted exactly, at any size and precision, with no
+ * conversion to a binary float, up to the double range (beyond about 1.8e308 it is invalid: engines print infinity).
+ * `null` / `undefined` format as the `fallback`; any other string (`"1e3"`, `" 12 "`, `""`) is invalid.
+ */
+export type NumberInput = number | bigint | string | null | undefined
+
+/** The structural shape of a `@pyreon/money` Money: `{ amount: "9.99", currency: "EUR" }`. No dependency on that package. */
+export interface MoneyLike {
+  readonly amount: string
+  readonly currency: string
+}
+
+/** What {@link formatCurrency} and `currencyFormatter` take: a {@link NumberInput} or a {@link MoneyLike}. */
+export type CurrencyInput = NumberInput | MoneyLike
 
 /**
  * A date-like input.
@@ -164,7 +178,7 @@ export type MeasurementSystem = 'metric' | 'us' | 'uk'
 /**
  * Options of `formatUnit` and `unitFormatter` from `@pyreon/format/units`: everything in {@link UnitOptions}, plus a conversion
  * before formatting. `convertTo` names the unit; `system` picks the locale's own (`'auto'`, which follows the active locale in the
- * reactive entry) or a fixed system. `convertTo` wins when both are given.
+ * reactive entry) or a fixed system. `convertTo` wins when both are given. A conversion is arithmetic on a binary float (`Number(value)` times a factor), so a converted decimal string or bigint is no longer exact: `formatUnit('12345678901234567.89', 'meter', { convertTo: 'kilometer' })` shows about 17 significant digits. Without `convertTo` or `system`, a decimal string is formatted exactly.
  */
 export interface ConvertedUnitOptions extends UnitOptions {
   convertTo?: Unit | undefined
@@ -290,6 +304,7 @@ export interface FormatterBase {
 /** The non-reactive set of one-off functions returned by {@link createFormatter}. */
 export interface BoundFormatters {
   number(value: NumberInput, options?: NumberOptions | NumberPreset): string
+  currency(value: MoneyLike, options?: CurrencyOptions | CurrencyPreset): string
   currency(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset): string
   percent(value: NumberInput, options?: PercentOptions): string
   compact(value: NumberInput, options?: CompactOptions | CompactPreset): string
@@ -338,7 +353,7 @@ export type CoreRelativeFormatterOptions = RelativeFormatterOptions & { base: Da
  */
 export interface KindInfo {
   number: { in: NumberInput; spec: NumberOptions; part: Intl.NumberFormatPart; range: true }
-  currency: { in: NumberInput; spec: CurrencyOptions & { currency: string }; part: Intl.NumberFormatPart; range: true }
+  currency: { in: CurrencyInput; spec: CurrencyOptions & { currency: string }; part: Intl.NumberFormatPart; range: true }
   percent: { in: NumberInput; spec: PercentOptions; part: Intl.NumberFormatPart; range: true }
   compact: { in: NumberInput; spec: CompactOptions; part: Intl.NumberFormatPart; range: true }
   unit: { in: NumberInput; spec: UnitOptions & { unit: Unit }; part: Intl.NumberFormatPart; range: true }

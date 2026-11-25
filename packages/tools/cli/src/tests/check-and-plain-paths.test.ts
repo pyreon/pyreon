@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { check } from '../check'
 import { plain } from '../plain'
+import { stdoutToConsoleLog } from './stdout-to-console'
 
 let cwd: string
 
@@ -51,11 +52,13 @@ async function run(fn: () => Promise<number>): Promise<{ code: number; out: stri
   const log = vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
     chunks.push(a.map(String).join(' '))
   })
+  const stdout = stdoutToConsoleLog()
   const err = vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
     chunks.push(a.map(String).join(' '))
   })
   const code = await fn()
   log.mockRestore()
+  stdout.mockRestore()
   err.mockRestore()
   return { code, out: chunks.join('\n') }
 }

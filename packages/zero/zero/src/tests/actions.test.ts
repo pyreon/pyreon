@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { _resetActions } from '../internal'
 import {
-  _resetActions,
   createActionMiddleware,
   defineAction,
   getRegisteredActions,

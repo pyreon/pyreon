@@ -44,7 +44,7 @@ Ui-core owns the `PyreonTheme` type and a slot (`theme-engine.ts`: `setThemeEngi
 
 ### Handling browser Back/Forward with a bare state sync instead of the navigation pipeline
 
-A popstate/hashchange handler that only sets `currentPath` skips loaders (loader data for the left route is pruned, so `useLoaderData()` returns `undefined`), guards, blockers, middleware, `afterEach` (route announcements), scroll and `meta.title`. `@pyreon/router` runs browser traversals through `navigate()` with replace-commit semantics:
+A popstate/hashchange handler that only sets `currentPath` skips loaders (loader data for the left route is pruned, so the `useLoaderData()` accessor reads `undefined`), guards, blockers, middleware, `afterEach` (route announcements), scroll and `meta.title`. `@pyreon/router` runs browser traversals through `navigate()` with replace-commit semantics:
   - A traversal cancelled by a guard or blocker restores URL and position via `history.go(-delta)` using the per-entry `history.state.__pyreonIdx` stamp (`replaceState` for unstamped entries). A superseded traversal restores nothing.
   - Only the owning router (`_navOwner`, the newest live instance) writes the URL back.
   - Browser traversals run the ScrollManager only when `scrollBehavior` is configured; otherwise native scroll restoration applies.
@@ -493,7 +493,7 @@ When migrating a dev gate, bundle with esbuild (`define: { 'process.env.NODE_ENV
 
 ### Framework APIs that accept only the accessor form of a prop
 
-The compiler auto-calls bare signals (`when={sig}` → `when={sig()}`), so an API typed `() => X` receives a value. Accept `X | (() => X)` and normalize with `typeof === 'function'` (`packages/core/core/src/show.ts:callWhen`). Reactive cases still need the accessor form. Apply to every control-flow component and signal-shaped prop.
+The compiler auto-calls bare signals (`when={sig}` → `when={sig()}`), so an API typed `() => X` receives a value. Accept `X | (() => X)` and normalize with `typeof === 'function'` (`packages/core/core/src/show.ts:callWhen`), reading `props.x` INSIDE the effect or accessor so a compiler getter still tracks. Apply to every control-flow component and signal-shaped prop. `<Defer when>`, `<Transition show>`, `<KeepAlive active>` and `<TransitionGroup items>` had missed it (#4830: `props.when is not a function`, chunk never loaded); locked through both compiler backends by `runtime-dom/src/tests/compiled-value-or-accessor-props.test.tsx`. Related trap: a component declared inside a call-argument callback (`test('…', () => { function Page() {…} })`) used to skip signal tracking, so a test passed where the app failed. A capitalized component now starts its own tracking frame in both backends (`compiler/src/tests/component-in-callback-tracking.test.ts`).
 
 ---
 
@@ -530,7 +530,7 @@ Use the host view's document and window: `view.dom.ownerDocument.createElement(.
 ### `node:*` imports reachable from a client-safe entry
 
 (gate: `check-client-bundle-node-imports`): any `node:*` import in the graph of a client-safe main entry (e.g. `@pyreon/zero`) breaks the browser bundle and hydration. Type-only imports are safe; dead-code elimination does not help, because static imports are evaluated for side effects. Fixes:
-  1. Split the Node code into a server-only module that registers through a setter on the client-safe module (`packages/zero/zero/src/i18n-routing-als.ts` + `_setLocaleStoreReader` in `i18n-routing.ts`).
+  1. Split the Node code into a server-only module that registers through a setter on the client-safe module (`packages/zero/zero/src/i18n-routing-als.ts` + `_setLocaleStoreReader` in `i18n-routing-state.ts`).
   2. Export server helpers from a `/server` subpath.
   3. A lazy `await import('./node-module')` still emits a client chunk (a build warning plus a dead chunk) if the import site is reachable from the client entry. Move the import site itself into a server-only module (`i18n-routing-plugin.ts`, exported from `@pyreon/zero/server`).
 
@@ -580,6 +580,12 @@ In `@pyreon/router`'s default `mode: 'hash'`, the route and its query live in th
 
 ---
 
+### A pending OAuth flow looked up by `state` alone (login CSRF and OAuth mix-up)
+
+The `state` travels in the callback URL, so a store keyed by it cannot tell WHO started the flow or IN WHICH BROWSER. Login CSRF: an attacker starts a sign-in on a server, finishes it at the provider as themselves and sends the callback URL to a victim, whose browser completes it (PKCE does not help; the verifier is on the server). Mix-up (RFC 9700 §4.4): with two providers on one redirect URI, a malicious or compromised provider bounces the user to an honest one that sends no `iss` (GitHub, Facebook and many others), and the honest code plus the verifier reach the attacker's token endpoint, because the flow really is the attacker instance's. "Hand a foreign flow back to the store" is not a fix either: it races with the owner's `take`. The fix in `@pyreon/auth`: the store key is a digest of state + issuer + client id + redirect URI + browser binding (`flowKey` in `packages/fundamentals/auth/src/oidc.ts`), so no other party ever reads the flow. A server binds the browser with a `__Host-` cookie (`createFlowBinding` / `readFlowBinding`). Providers are registered PROCESS-WIDE by normalised redirect target (`claimRedirect` in `redirects.ts`, `PyreonRedirectClaims` natively) — not per store object: two `memoryFlowStore()`s, or a fresh store object per request over one backing store, share callbacks just the same. Sharing is allowed only between providers that send RFC 9207 `iss`, and a callback on a shared target must carry it. Native apps share one scheme, so the same rule holds there (the compiler warns about two issuers on one `nativeRedirectUri` per file; the runtime enforces). The registry cannot see a provider that is not alive at that moment — a page that builds only the chosen provider — so one redirect URI per provider stays the rule. The callback must arrive at the flow's own redirect URI (`redirect_mismatch`, web, Swift and Kotlin). Test the attack shapes, not the honest-second-instance shape: `state.test.ts`, "flows are bound to their client, redirect URI and browser".
+
+---
+
 ### An unsafe dev-only default documented only in a comment
 
 `createSyncServer({ port })` without `authorize` accepts every connection. It warns once per instance, in production too, because this is a live misconfiguration an operator must see. When a strict test assertion (`expect(warnSpy).not.toHaveBeenCalled()`) breaks on an unrelated warning, give the test a production config rather than weakening the assertion. Reference: `packages/fundamentals/sync/src/server.ts`; test `server-open-relay-warning.test.ts`.
@@ -601,5 +607,11 @@ A fractional store/model field was unknown to its computed/view/action body, lea
 ### `String(n)` on a number in a runtime text write
 
 JS-side Number→String (`String(n)`, `n + ''`, a template literal) of more than ~200 distinct integers grows V8's `smi_string_cache`, a GC-root cache, to its full ~64 KB, and the page never gets it back. The DOM's own conversion (`Text.data = n`, `createTextNode(n)`, `append(n)`, `replaceChildren(n)`; WebIDL `DOMString`, the same characters) does not touch it. #4560 routed `_setChild`/`_setChildAt` through `_childText` and the row board's retained heap rose 64 KB. A static text sink hands a number to the DOM as a number; never `textContent = n` (happy-dom writes `''` for `0`). Check a heap delta for a GC-root `smi_string_cache` entry before attributing it to framework objects. Code: `_replaceText` in `packages/core/runtime-dom/src/template.ts`; test `tests/number-text-unconverted.test.tsx`. The reactive text bindings still `String()` a number, because their dedupe and hydration read-back compare strings.
+
+---
+
+### A command that prints and then calls `process.exit()`
+
+(#4799): on a pipe, stdout and stderr are written asynchronously (macOS, Node and Bun), so `process.exit` drops whatever the reader has not taken yet. `pyreon doctor --ci --json | jq` got the first 64 KiB of the report, while the same run redirected to a file was whole; `pyreon check --json`, `pyreon lint` and `pyreon-lint --format json` had the same cut. Exit through `exitAfterFlush(code)` from `@pyreon/ansi` (it sets `process.exitCode` and exits once stdout and stderr have flushed, so a command that holds a worker pool or a server open still ends), or set `process.exitCode` and return when nothing holds the process open. A hand-written `bin/*.js` cannot import the private `@pyreon/ansi`, so the package re-exports `exitAfterFlush` from its own `./internal` entry (`lib/internal.js`; an `@internal` export may not sit on a public entry). Each runtime breaks the other's flush: on Node `stdout.end()` shuts down a socket the process shares with its parent (`zero create`, a test worker, which then get `EPIPE`), so Node waits on an empty `write('', cb)`; Bun calls that callback before the queued data is out, so Bun waits on `end()`. A reader that closed early leaves Bun's stdout `errored` and not writable but not `destroyed`, and `end()` on it never emits: both helpers treat `isClosed(stream)` as flushed (that hung `bun pyreon check | head`), and a 30 s fallback bounds the wait. Locked by `packages/tools/cli/src/tests/no-bare-exit-after-output.test.ts` (every command entry), `piped-output-whole.test.ts` (the shipped bin, a slow reader; importing `@pyreon/cli` runs nothing) and `packages/internals/ansi/src/tests/exit-after-flush.test.ts`. Print the report itself with `writeOut(text)` (same package), not `console.log`: under Bun a `console.log` larger than the pipe buffer loses its tail once `process.stdout` has been touched, with or without an exit, while `process.stdout.write` queues it whole (`writeOut` also waits for `drain`). `piped-output-whole.test.ts` runs `bun bin/pyreon.js` over a &gt;1 MB report.
 
 ---

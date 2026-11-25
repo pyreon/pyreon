@@ -82,7 +82,7 @@ const TabExample = () => (
 | [`hydrateRoot`](#hydrateroot-function) | function | Hydrate server-rendered HTML. |
 | [`Transition`](#transition-component) | component | CSS-based enter/leave animation wrapper. |
 | [`TransitionGroup`](#transitiongroup-component) | component | Animate list item additions and removals with CSS transitions. |
-| [`KeepAlive`](#keepalive-component) | component | Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden… |
+| [`KeepAlive`](#keepalive-component) | component | Mount children ONCE and keep them alive when hidden — when `active` is false the children are CSS-hidden… |
 | [`_tpl`](#_tpl-function) | function | Compiler-internal: instantiate a cached template and run its bindings. |
 | [`_bindText`](#_bindtext-function) | function | Compiler-internal: bind a SIGNAL (anything carrying `._v` + `.direct`) to a text node via `TextNode.data` assignment,… |
 | [`sanitizeHtml`](#sanitizehtml-function) | function | Sanitize an HTML string. |
@@ -148,10 +148,10 @@ hydrateRoot(document.getElementById("app")!, <App />)
 ### `Transition` `component`
 
 ```ts
-<Transition name={name} show={() => boolean} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>
+<Transition name={name} show={boolean | (() => boolean)} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>
 ```
 
-CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show: () => boolean` accessor — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles.
+CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show` prop — a value or an accessor, like `<Show when>` (`show={open}` with a component-local signal, `show={open()}` and `show={() => open()}` are all reactive) — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles.
 
 **Example**
 
@@ -170,7 +170,7 @@ const visible = signal(true)
 
 **Common mistakes**
 
-- Omitting `show` — it is REQUIRED (`() => boolean`); Transition drives visibility itself, so a plain child with no `show` will not animate
+- Omitting `show` — it is REQUIRED; Transition drives visibility itself, so a plain child with no `show` will not animate
 - Wrapping the child in a `<Show>` — `show` already toggles visibility; a nested `<Show>` double-gates it
 - Missing CSS classes — `<Transition name="fade">` does nothing without `.fade-enter-active` / `.fade-leave-active` CSS
 - Passing a `mode` prop — Transition has no `mode`; for sequenced list moves use TransitionGroup
@@ -182,10 +182,10 @@ const visible = signal(true)
 ### `TransitionGroup` `component`
 
 ```ts
-<TransitionGroup items={() => T[]} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />
+<TransitionGroup items={T[] | (() => T[])} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />
 ```
 
-Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (a reactive accessor), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`).
+Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (an accessor or an array — `items={list}` with a component-local signal stays reactive), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`).
 
 **Example**
 
@@ -219,10 +219,10 @@ const items = signal([{ id: 1, name: "a" }, { id: 2, name: "b" }])
 ### `KeepAlive` `component`
 
 ```ts
-<KeepAlive active={() => boolean}>{children}</KeepAlive>
+<KeepAlive active={boolean | (() => boolean)}>{children}</KeepAlive>
 ```
 
-Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab).
+Mount children ONCE and keep them alive when hidden — when `active` is false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab).
 
 **Example**
 
@@ -234,7 +234,6 @@ Mount children ONCE and keep them alive when hidden — when `active()` returns 
 
 **Common mistakes**
 
-- `active` MUST be a thunk — write `active={() => cond()}`, not `active={cond}`; the runtime calls `props.active?.()`, so any non-function value (a boolean, or a bare signal the compiler auto-calls to a value) THROWS `TypeError: props.active is not a function` at mount — there is no `<Show when>`-style value-form normalization; only omitting `active` entirely defaults to visible
 - KeepAlive CSS-HIDES when inactive, it does NOT unmount — the hidden component's effects, timers, subscriptions, and signals keep RUNNING (memory + side-effect cost); use it ONLY for expensive-to-recreate state, not as a default wrapper
 - It is the OPPOSITE of `<Show>`/ternary — those DESTROY + recreate state on toggle; reach for KeepAlive precisely when you need state PRESERVED across hide/show (form drafts, scroll, heavy trees)
 - Each KeepAlive slot keeps its OWN children mounted — wrapping N routes in N KeepAlives keeps ALL N subtrees mounted + their effects live simultaneously, not just the active one
@@ -247,10 +246,10 @@ Mount children ONCE and keep them alive when hidden — when `active()` returns 
 ### `_tpl` `function`
 
 ```ts
-_tpl(html: string, bind: (root: Element) => (() => void) | undefined, flags?: number): NativeItem
+_tpl(html: string, bind: (root: Element) => (() => void) | undefined, flags?: number, key?: string | number | null): NativeItem
 ```
 
-Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The optional third argument is a bit set the compiler computes: `1` when a template is emitted as a component child (that item is built once but may be torn down and mounted again — `<Show>` re-showing — so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting), and `2` when the template is rooted at a bare SVG element such as `<g>` or `<path>` (the string is parsed inside an `<svg>` wrapper so it lands in the SVG namespace; the compiler decides this from the root tag, so the runtime carries no SVG tag list). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically.
+Compiler-internal: instantiate a cached template and run its bindings. The html string is parsed into a `<template>` ONCE per distinct string (module-level cache); every call `cloneNode(true)`s the content and invokes `bind(root)` — which wires reactive bindings and returns the cleanup. Returns a `NativeItem` (`{ __isNative, el, cleanup }`) that `mountChild`/`hydrateRoot` consume directly. Sole-dynamic-text children arrive with a BAKED `" "` placeholder text node in the html (grabbed via `.firstChild` — no createTextNode/appendChild per instantiation). The optional third argument is a bit set the compiler computes: `1` when a template is emitted as a component child (that item is built once but may be torn down and mounted again — `<Show>` re-showing — so its cleanup marks it dead and `mountChild` rebuilds it before re-inserting), and `2` when the template is rooted at a bare SVG element such as `<g>` or `<path>` (the string is parsed inside an `<svg>` wrapper so it lands in the SVG namespace; the compiler decides this from the root tag, so the runtime carries no SVG tag list). The optional fourth argument is the JSX `key` of a keyed root (`<tr key={row.id}>`, flag `1` always set): the item carries it as `key`, the same field a VNode carries its key in, so the keyed `.map()` reconciler and components reading the keys of their children see it unchanged, and the item builds only when it is mounted (a keyed `.map()` re-runs for every row and mounts only the new keys). Not intended for direct use — the JSX compiler emits `_tpl()` calls automatically.
 
 **Example**
 

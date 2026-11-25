@@ -23,7 +23,7 @@ import { DocDocument, DocHeading, DocText } from '@pyreon/document-primitives'
 
 const vnode = (
   <DocDocument title="Q4 Report" author="Acme Inc.">
-    <DocHeading level={1}>Summary</DocHeading>
+    <DocHeading level="h1">Summary</DocHeading>
     <DocText>Revenue was up 12%.</DocText>
   </DocDocument>
 )

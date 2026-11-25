@@ -124,13 +124,11 @@ export async function buildStaticSite(options: BuildOptions): Promise<string> {
         // mis-steer a nested build (`ssr.entry` would replace the synthetic
         // entry). See `@pyreon/zero`'s `inner-pyreon-options.ts` for the split.
         pyreon({ devErrorPrinter: false }),
-        // The base goes to zero too, not only to Vite: zero's own `config`
-        // hook returns `base: config.base` (default `/`), which won over the
-        // inline `base` above, and its router reads the same value for links.
-        // Without it the module script carried the base but the prerendered
-        // modulepreloads and nav links did not, so a site built with
-        // `--base /demos/loom/` 404'd its chunks and rendered blank (#4391).
-        zero({ mode: 'ssg', ...(options.base ? { base: options.base } : {}) }),
+        // No `base` here: zero follows Vite's resolved base (the inline
+        // `base` above) for its preloads, links and server config (#4269).
+        // It used to be passed twice, because zero's `config()` returned its
+        // default `/` over the inline value (#4391).
+        zero({ mode: 'ssg' }),
         {
           name: 'loom:report',
           resolveId(id: string) {

@@ -37,11 +37,10 @@ export type { CSSEngineConnector, CssVariablesConfig, ResolvedCssVariablesConfig
 export { resolveCssVariables } from './config'
 export type { CssVariablesPrePaintOptions } from './cssVariablesPrePaint'
 export { cssVariablesPrePaintScript } from './cssVariablesPrePaint'
-// Theme type + the theme-engine registration seam. `@pyreon/unistyle` registers
-// its engine via `setThemeEngine` so `<PyreonUI>` can use it without ui-core
-// depending on unistyle (breaks the ui-core ↔ unistyle cycle).
-export type { PyreonTheme, ThemeEngine } from './theme-engine'
-export { getThemeEngine, setThemeEngine } from './theme-engine'
+// The theme type. The theme-engine registration seam (`getThemeEngine` /
+// `setThemeEngine`, which `@pyreon/unistyle` registers into) is on
+// `@pyreon/ui-core/internal`.
+export type { PyreonTheme } from './theme-engine'
 
 export type {
   BreakpointKeys,

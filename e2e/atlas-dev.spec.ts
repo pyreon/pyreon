@@ -656,9 +656,9 @@ test.describe('atlas dev — cold dependency cache (#3846)', () => {
     )
     writeFileSync(
       join(counter, 'src/Counter.tsx'),
-      `import { _toasts, toast } from '@pyreon/toast'
+      `import { toast } from '@pyreon/toast'
 export function Counter() {
-  return <button onClick={() => toast('hello')}>{() => _toasts().length}</button>
+  return <button onClick={() => toast('hello')}>{() => toast.list().length}</button>
 }
 `,
     )
@@ -815,5 +815,135 @@ test.describe('atlas dev — provenance, "added" and the Lens fix (#4440)', () =
       .toBe('prop type · added just now')
     await expect(rowOf('subtitle').locator('td[data-v="key"]')).toHaveText('subtitlenew')
     await expect(source('title')).toHaveText('prop type')
+  })
+})
+
+/**
+ * A component edit is an IN-PLACE update: the workbench swaps the re-evaluated
+ * module into the catalog and re-mounts only the preview (`app/src/hot.ts`).
+ * It used to propagate to the app shell and reload the page. Own fixture and
+ * server, like the block above: the edit must not disturb the shared one.
+ */
+test.describe('atlas dev — component edits are in-place HMR', () => {
+  const ROOT = resolve(process.cwd())
+  const BIN = resolve(ROOT, 'packages/tools/atlas/bin/atlas.js')
+  const FX = join(realpathSync(mkdtempSync(join(tmpdir(), 'atlas-hmr-'))), 'ws')
+  const PORT = 5464
+  let server: ChildProcess | undefined
+
+  test.afterAll(() => {
+    server?.kill('SIGKILL')
+    rmSync(join(FX, '..'), { recursive: true, force: true })
+  })
+
+  test('editing a component body updates the canvas without a reload, keeping control edits', async ({ page }) => {
+    test.setTimeout(240_000)
+    mkdirSync(join(FX, 'src'), { recursive: true })
+    mkdirSync(join(FX, 'node_modules/@pyreon'), { recursive: true })
+    writeFileSync(join(FX, 'package.json'), JSON.stringify({ name: 'hmr-fixture', private: true, type: 'module' }))
+    for (const [name, rel] of [
+      ['core', 'packages/core/core'],
+      ['reactivity', 'packages/core/reactivity'],
+      ['runtime-dom', 'packages/core/runtime-dom'],
+    ] as const) {
+      symlinkSync(resolve(ROOT, rel), join(FX, 'node_modules/@pyreon', name), 'dir')
+    }
+    const card = join(FX, 'src/Card.tsx')
+    const source = (v: string) =>
+      `export function Card(props: { title?: string }) {\n  return <h2 data-testid="hmr-card">${v}:{props.title}</h2>\n}\n`
+    writeFileSync(card, source('v1'))
+
+    const logs: string[] = []
+    server = spawn('node', [BIN, 'dev', FX, `--port=${PORT}`], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+    server.stdout?.on('data', (d) => logs.push(String(d)))
+    server.stderr?.on('data', (d) => logs.push(String(d)))
+    await expect
+      .poll(async () => (await fetch(`http://localhost:${PORT}/`).catch(() => null))?.ok ?? false, {
+        timeout: 120_000,
+      })
+      .toBe(true)
+
+    // A control edit, carried in the link.
+    const args = encodeURIComponent(JSON.stringify({ title: 'Edited' }))
+    await page.goto(`http://localhost:${PORT}/card/?args=${args}`)
+    const preview = page.getByTestId('canvas-preview').getByTestId('hmr-card')
+    await expect(preview, logs.join('').slice(-1200)).toHaveText('v1:Edited', { timeout: 30_000 })
+    await page.evaluate(() => {
+      ;(window as { __hmrMarker?: number }).__hmrMarker = 1
+    })
+
+    writeFileSync(card, source('v2'))
+    await expect(preview).toHaveText('v2:Edited', { timeout: 30_000 })
+    // The same document: a reload would have dropped the marker.
+    expect(await page.evaluate(() => (window as { __hmrMarker?: number }).__hmrMarker)).toBe(1)
+  })
+})
+
+/**
+ * zero's router owns the component URL in dev exactly as on the built site:
+ * a stale id or extra segments land on a working component, the trailing
+ * slash is kept, and a previewed component never sees the workbench router.
+ */
+test.describe('atlas dev — the route', () => {
+  test('a STALE component link lands on a component, never on "404 — Not Found"', async ({ page }) => {
+    await page.goto('/old-name/')
+    await expect(page.getByTestId('canvas-name')).toBeVisible()
+    await expect(page).not.toHaveURL(/old-name/)
+    await page.reload()
+    await expect(page.getByTestId('canvas-name')).toBeVisible()
+    await expect(page.getByText('404')).toHaveCount(0)
+  })
+
+  test('extra segments land on a component too', async ({ page }) => {
+    await page.goto('/card/extra/')
+    await expect(page.getByTestId('canvas-name')).toBeVisible()
+    // One segment — the component the router was sent to (waits for it).
+    await expect(page).toHaveURL(/^https?:\/\/[^/]+\/[a-z-]+\/(\?|$)/)
+  })
+
+  test('the trailing slash is kept when the selection changes', async ({ page }) => {
+    await page.goto('/chip/')
+    await expect(page.getByTestId('canvas-name')).toHaveText('Chip')
+    await page.getByText('Button', { exact: true }).first().click()
+    await expect(page).toHaveURL(/\/button\/(\?|$)/)
+  })
+
+  test("a preview is a region whose plain links are not the workbench router's", async ({ page }) => {
+    // The router's dev warning for a plain internal <a href> skips anchors
+    // inside `[data-allow-reload]`; every preview container carries it, so a
+    // component's own links do not warn about the workbench's router.
+    await page.goto('/button/')
+    await expect(page.getByTestId('canvas-preview')).toHaveAttribute('data-allow-reload', '')
+    await page.goto('/button/?view=docs')
+    await expect(page.getByTestId('docs-preview')).toHaveAttribute('data-allow-reload', '')
+    await page.goto('/button/')
+    await expect(page.getByTestId('canvas-preview')).toBeVisible()
+    const warnedFor = (inPreview: boolean) =>
+      page.evaluate((inside) => {
+        const seen: string[] = []
+        const orig = console.warn
+        console.warn = (...args: unknown[]) => {
+          seen.push(String(args[0]))
+        }
+        const a = document.createElement('a')
+        a.setAttribute('href', '/somewhere-internal')
+        const host = inside ? document.querySelector('[data-testid="canvas-preview"]')! : document.body
+        host.appendChild(a)
+        // The router's listener is on `document` (bubble) and skips a click
+        // that is already default-prevented, so the navigation is cancelled
+        // only AFTER it, at `window`.
+        const stop = (e: Event) => e.preventDefault()
+        window.addEventListener('click', stop)
+        a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+        window.removeEventListener('click', stop)
+        a.remove()
+        console.warn = orig
+        return seen.filter((m) => m.includes('full page reload')).length
+      }, inPreview)
+    // The pair: outside the preview the same link DOES warn — so the check
+    // below cannot pass because nothing warns at all.
+    expect(await warnedFor(false)).toBe(1)
+    const warned = await warnedFor(true)
+    expect(warned).toBe(0)
   })
 })

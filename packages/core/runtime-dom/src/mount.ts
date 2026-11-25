@@ -9,31 +9,41 @@ import type {
   VNodeChild,
 } from '@pyreon/core'
 import {
-  _childText,
-  _isStructuralChild,
-  _isVNodeLike,
-  dispatchToErrorBoundary,
   EMPTY_PROPS,
   ForSymbol,
   Fragment,
   makeReactiveProps,
   mergeProps,
   PortalSymbol,
-  propagateError,
   reportError,
-  _devMarkOwnerAlias,
-  _runHooked,
-  _takeHooks,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
 import {
-  _noopDispose,
-  _rdDropBinding,
-  _rdLabelBinding,
+  dispatchToErrorBoundary,
+  propagateError,
+  _childText,
+  _isStructuralChild,
+  _isVNodeLike,
+  _devMarkOwnerAlias,
+  _runHooked,
+  _takeHooks,
+} from '@pyreon/core/internal'
+import {
   batch,
   effectScope,
   getContextOwner,
+  runUntracked,
+  runWithContextOwner,
+  setContextOwner,
+  setCurrentScope,
+  type EffectScope,
+  type RunCapture,
+} from '@pyreon/reactivity'
+import {
+  _noopDispose,
+  _rdDropBinding,
+  _rdLabelBinding,
   _currentScope,
   _devOwner,
   _swapPendingOwner,
@@ -41,17 +51,12 @@ import {
   _closeOwnerFrame,
   _openOwnerFrame,
   _renderBind,
-  runUntracked,
-  runWithContextOwner,
-  setContextOwner,
-  setCurrentScope,
   _captureRun,
   _frameReads,
   _releaseRun,
-  type EffectScope,
-  type RunCapture,
-} from '@pyreon/reactivity'
+} from '@pyreon/reactivity/internal'
 import { setupDelegation } from './delegate'
+import { guardTeardown, releaseRef } from './teardown'
 import { _adoptParkedText, _parkedPending } from './parked-text'
 import { _adoptingCompiledBind, reportFirstText } from './hydration-debug'
 import { _devInspectable, registerComponent, unregisterComponent } from './devtools'
@@ -547,20 +552,14 @@ function mountElement(vnode: VNode, parent: Node, anchor: Node | null): Cleanup 
     const refToClean = ref
 
     return () => {
-      if (refToClean) {
-        if (typeof refToClean === 'function') refToClean(null)
-        else refToClean.current = null
-      }
+      releaseRef(refToClean)
       if (propCleanup) propCleanup()
       childCleanup()
     }
   }
 
   return () => {
-    if (ref) {
-      if (typeof ref === 'function') ref(null)
-      else ref.current = null
-    }
+    releaseRef(ref)
     if (propCleanup) propCleanup()
     childCleanup()
     detachNode(el)
@@ -818,7 +817,11 @@ function mountComponent(
             })
           }
         } catch (err) {
-          const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
+          // Under the component's owner: the boundary is resolved through the
+          // owner chain, and this microtask runs outside it.
+          const handled =
+            propagateError(err, hooks) ||
+            runWithContextOwner(asyncOwner, () => dispatchToErrorBoundary(err))
           if (!handled && process.env.NODE_ENV !== 'production') {
             console.error(`[Pyreon] <${componentName}> threw during async render:`, err)
           }
@@ -826,7 +829,9 @@ function mountComponent(
       })
       .catch((err) => {
         if (cancelled) return
-        const handled = propagateError(err, hooks) || dispatchToErrorBoundary(err)
+        const handled =
+          propagateError(err, hooks) ||
+          runWithContextOwner(asyncOwner, () => dispatchToErrorBoundary(err))
         if (!handled && process.env.NODE_ENV !== 'production') {
           console.error(`[Pyreon] <${componentName}> async render rejected:`, err)
         }
@@ -979,23 +984,22 @@ function mountComponent(
     if (process.env.NODE_ENV !== 'production') unregisterComponent(compId!)
     scope.stop()
     subtreeCleanup()
-    if (hooks.unmount) {
-      for (const fn of hooks.unmount) {
-        try {
-          fn()
-        } catch (err) {
-          console.error(`[Pyreon] Error in onUnmount hook of <${componentName}>:`, err)
-          reportError({
-            component: componentName,
-            phase: 'unmount',
-            error: err,
-            timestamp: Date.now(),
-          })
-        }
-      }
-    }
-    if (mountCleanups) for (const fn of mountCleanups) fn()
+    runUnmountHooks(hooks.unmount, componentName)
+    runUnmountHooks(mountCleanups, componentName)
   }
+}
+
+/**
+ * Run a component's USER teardown callbacks: its `onUnmount` hooks, or the
+ * cleanups its `onMount` callbacks returned. One that throws is logged and
+ * reported (`phase: 'unmount'`) and never stops the others or the teardown
+ * around it. Shared by `mountComponent` and `hydrateComponent`: a hydrated
+ * component ran them bare, so a throwing hook escaped the `<For>` row removal
+ * that unmounted it ("Unhandled effect error") and left the rows on screen.
+ */
+export function runUnmountHooks(fns: (() => unknown)[] | null, componentName: string): void {
+  if (fns === null) return
+  for (const fn of fns) guardTeardown(fn, componentName, undefined)
 }
 
 /**

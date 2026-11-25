@@ -9,7 +9,8 @@ import {
   useContext,
 } from '@pyreon/core'
 import { computed, effect, isClient, signal } from '@pyreon/reactivity'
-import { setStyleExtraction, sheet, ThemeContext } from '@pyreon/styler'
+import { sheet, ThemeContext } from '@pyreon/styler'
+import { setStyleExtraction } from '@pyreon/styler/internal'
 import { resolveCssVariables, resolveStyleExtraction } from './config'
 import { context as coreContext } from './context'
 // The theme engine (enrichTheme/themeToCssVars/cpseRewrite) lives in

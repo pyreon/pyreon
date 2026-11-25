@@ -42,13 +42,13 @@ One data module and one stylesheet are copied byte for byte into every arm. The 
 | `svelte` | SvelteKit in single-page mode | A class with `$state` fields and `$derived` values |
 | `preact` | `preact-iso` | `@preact/signals` shared through context |
 
-Each arm is written the way its framework's documentation writes these things, with no optimisation an ordinary app of this size would not have: no `memo`, no `shallowRef` or `$state.raw`, no virtualised list, no hand-written compiler output, no form library. Each arm's `arm.json` names the documentation pages it follows and states where it differs from the others. Every arm pins exact versions, each published at least two weeks before it was pinned, and commits its own `package-lock.json`.
+Each arm is written the way its framework's documentation writes these things, with no optimisation an ordinary app of this size would not have: no `memo`, no `shallowRef` or `$state.raw`, no virtualised list, no hand-written compiler output, no form library. Each arm's `arm.json` names the documentation pages it follows and states where it differs from the others. Every arm pins exact versions and commits its own `package-lock.json`. The other frameworks' packages were each published at least two weeks before they were pinned; the Pyreon arm pins the latest `@pyreon/*` release, moved by hand after each release.
 
 ### The Pyreon arm has two sources
 
 `bun setup.ts` installs the Pyreon arm from **npm**: the published `@pyreon/*` packages at the version its lockfile pins. That is what an application installs, and it is the only source a published result may use. `bun setup.ts pyreon --pyreon=workspace` builds the arm against the repository's own packages instead, for measuring a change before it is released. Every run records which source it measured.
 
-The pinned release, 0.53.0, does not pass the correctness gate: the two links in the app's header reload the whole page instead of navigating on the client. In that release a compiled template that is a child of a component (here the header's `<nav>`, a child of the router's provider) was built before the provider had run, so the links inside it found no router. The fix (pull request #4174, with a regression test) is in the repository but not yet released. The arm is not changed to work around it, and until the pin moves to a release that passes, no run can be published.
+The pinned release, 0.54.0, passes the correctness gate, and CI gates the published packages on every change to the app. The release before it, 0.53.0, did not: the two links in the app's header reloaded the whole page instead of navigating on the client, because a compiled template that is a child of a component (here the header's `<nav>`, a child of the router's provider) was built before the provider had run, so the links inside it found no router. Pull request #4174 fixed that, with a regression test, and 0.54.0 is the first release with the fix. The arm was not changed to work around it.
 
 ## What is measured, and how
 
@@ -67,7 +67,7 @@ Read any number from this benchmark with these in mind.
 
 - **The authors of one arm wrote all six and judge the outcome.** Nobody from a rival project has reviewed its arm. An arm written by someone who knows a framework less well than its own maintainers can be slower than it should be.
 - **Idiomatic means different.** Each arm holds state the way its docs do. Vue and Svelte make the 5,000 records deeply reactive; Solid keeps favourites per id in a store; Pyreon, React and Preact replace a set. These differences are what the benchmark compares, and each arm states them.
-- **Different router defaults.** Pyreon's router uses View Transitions for navigation where the browser supports them; SvelteKit preloads links on hover; the other routers do neither. SvelteKit also splits its code per route by default, so its first load is several files where the other arms ship one.
+- **Different router defaults.** SvelteKit preloads links on hover; the other routers do not. No arm's router runs View Transitions (Pyreon's are opt-in). SvelteKit also splits its code per route by default, so its first load is several files where the other arms ship one.
 - **A synthetic keystroke.** The input the probe types is dispatched by script, not by the operating system. It is the same for every arm.
 - **The DOM, not the screen.** Time to interactive ends when the page's DOM shows the result, before it is painted.
 - **Emulated throttling.** A CPU slowdown on a desktop and an emulated network are not a phone on a mobile network.

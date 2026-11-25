@@ -7,7 +7,7 @@
  */
 import * as core from '../core'
 import * as reactive from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { clearAllTables } from './helpers'
 
 function mulberry32(seed: number): () => number {
@@ -101,7 +101,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  _resetLocaleState()
+  resetLocaleState()
   clearAllTables()
   vi.restoreAllMocks()
 })

@@ -890,7 +890,7 @@ fun Icon(
 ) {}
 
 // AsyncImage — <Image> emit's remote-image composable (Coil). Real:
-// coil.compose.AsyncImage(model, contentDescription, modifier, …).
+// coil3.compose.AsyncImage(model, contentDescription, modifier, …).
 @Composable
 @Suppress("UNUSED_PARAMETER")
 // contentScale is what <Image fit> lowers to. It was absent, so every fit value

@@ -2,7 +2,7 @@
 
 ## API
 
-- `field()` + `useForm({ fields, onSubmit })` infers `FormState`. Also `useField('name')` (from context), `<Form of={form}>`, `<Submit>` (auto-disables), `useFieldArray()` (stable `.key` — render with `<For by={(i) => i.key}>`), `useWatch`, `useFormState`, `trigger`, `getValues`, `dirtyFields`, `touchedFields`, `getFieldState`.
+- `useForm({ initialValues, validators, onSubmit })` is the one option shape; `initialValues` infers `FormState` (the `field()` + `fields` shape was removed in 0.55). Also `useField('name')` (from context), `<Form of={form}>`, `<Submit>` (auto-disables), `useFieldArray()` (stable `.key` — render with `<For by={(i) => i.key}>`), `useWatch`, `useFormState`, `trigger`, `getValues`, `dirtyFields`, `touchedFields`, `getFieldState`.
 - Type helpers `FormValues`/`FieldNames`/`FieldValue`, and standalone `NestValues<T>` (not threaded through `useForm`).
 - `validateOn` defaults to `'blur'`. Async validators are version-tracked. Server errors go through `setFieldError`/`setErrors` (they do not touch `touched`).
 - `reset(values?, { keepErrors?, keepTouched?, keepDirty?, keepSubmitCount? })` resets to new values (named values become the new baseline; the rest revert). `resetField(field, { keepError?, keepTouched? })`.
@@ -30,4 +30,5 @@
 
 ## Performance
 
-- The keystroke path has no per-field `effect()`: validation runs inline from `setValue`. `values()`/`getValues()` are epoch-cached.
+- The keystroke path has no per-field `effect()`: validation runs inline from `setValue`. Public `values()`/`getValues()` is one lazy memoised computed (`valuesComputed`) over every value signal and `_fieldsVersion`; internal reads (validators, schema input, submit) use the untracked epoch cache.
+- Every PUBLIC read accessor tracks (`values()`, `getValues()`, `getValues(name)`, `errors()`, `dirtyFields()`, `touchedFields()`, `useFieldArray().values()`), including the registered field set via `_fieldsVersion`. Internal callers (validators, schema input, submit payload, `reset({ keepErrors })`) use the untracked `getValues`/`getErrors` so the form never subscribes a caller's effect. Never `.peek()` inside a public accessor (#4824); never make `values()` an O(fields) scan per read — a clean read must stay a cached return. `useFormState`'s atoms delegate to these accessors so the two cannot disagree.

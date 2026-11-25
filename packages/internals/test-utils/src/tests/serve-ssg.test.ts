@@ -5,6 +5,7 @@ import {
   createServeHandler,
   loadRedirects,
   matchRedirect,
+  nearest404,
   parseRedirects,
 } from '../../../../../scripts/serve-ssg'
 
@@ -268,5 +269,30 @@ describe('createServeHandler — file-form (.html) sibling preference', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('404 fallback — the nearest 404.html up the path', () => {
+  it("a subdirectory site answers its own missing URLs with ITS 404.html", async () => {
+    // A GitHub Pages project site (`/<repo>/`) serves `/<repo>/404.html`.
+    // Falling back to the root's only made a subpath deploy's client-side
+    // fallback (a stale or mangled link) unreachable in e2e.
+    const dir = makeRoot()
+    mkdirSync(join(dir, 'sub'), { recursive: true })
+    writeFileSync(join(dir, '404.html'), 'root 404')
+    writeFileSync(join(dir, 'sub', '404.html'), 'sub 404')
+    const handler = createServeHandler(dir, [])
+    const inSub = await handler(new Request('http://x/sub/old-name/'))
+    expect(inSub.status).toBe(404)
+    expect(await inSub.text()).toBe('sub 404')
+    const atRoot = await handler(new Request('http://x/missing/'))
+    expect(await atRoot.text()).toBe('root 404')
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('never looks outside the served root', () => {
+    const dir = makeRoot()
+    expect(nearest404(dir, '/../../x/')).toBeUndefined()
+    rmSync(dir, { recursive: true, force: true })
   })
 })

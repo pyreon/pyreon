@@ -100,7 +100,7 @@ const ALL_FRAMEWORKS = [
   'Vue 3',
   'Vue 3.6 Vapor (RC)',
   'SolidJS',
-  'SolidJS 2.0 (RC)',
+  'SolidJS 2.0',
   'Svelte 5',
   'Octane',
   'Pyreon',

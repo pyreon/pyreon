@@ -267,7 +267,10 @@ describe('session × ISR — a session-touching render is never cached', () => {
   })
 
   it('loader read via getSession({ request }) → BYPASS', async () => {
-    const Page: ComponentFn = () => h('p', null, `u:${useLoaderData<{ u: string }>()?.u}`)
+    const Page: ComponentFn = () => {
+      const data = useLoaderData<{ u: string }>()
+      return h('p', null, () => `u:${data()?.u}`)
+    }
     const isr = await build(Page, {
       loader: ({ request }) => ({ u: String(getSession({ request }).get('userId') ?? 'anon') }),
     })

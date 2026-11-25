@@ -7,6 +7,7 @@
  */
 import { _rp } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
+import { css } from '@pyreon/styler'
 import * as C from '../../components'
 import { callRpc } from '../../lens-client'
 import type { WorkbenchModel } from '../../model'
@@ -112,7 +113,7 @@ export function DocsView(props: { model: WorkbenchModel }) {
             ref={m.overlayHostRef}
             {...({
               // Same room-to-open rule as the canvas surface.
-              css: _rp(() => (m.overlayOpen() ? 'min-height:420px;' : '')),
+              css: _rp(() => (m.overlayOpen() ? css`min-height:420px;` : undefined)),
             } as Record<string, unknown>)}
           >
             {() => m.preview()}

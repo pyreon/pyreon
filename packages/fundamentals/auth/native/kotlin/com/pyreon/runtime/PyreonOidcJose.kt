@@ -68,7 +68,8 @@ public object PyreonJose {
         alg as String
         val kty = if (alg == "RS256") "RSA" else "EC"
         val candidates = keys.filter { k ->
-            selects(header["kid"], k["kid"]) && unsetOr(k["alg"], alg) && unsetOr(k["use"], "sig") && k["kty"] == kty
+            selects(header["kid"], k["kid"]) && unsetOr(k["alg"], alg) && unsetOr(k["use"], "sig") &&
+                allowsVerify(k["key_ops"]) && k["kty"] == kty && (kty != "RSA" || rsaBits(k["n"]) >= 2048)
         }
         if (candidates.isEmpty()) throw bad("no_key", "no matching signing key")
         val signature = decodeBase64url(segs[2]) ?: throw bad("bad_signature", "signature is not base64url")
@@ -80,11 +81,17 @@ public object PyreonJose {
         val aud: List<Any?> = (claims["aud"] as? List<*>) ?: listOf(claims["aud"])
         if (aud.none { it == clientId }) throw bad("bad_aud", "aud does not include this client")
         if (aud.size > 1 && claims["azp"] != clientId) throw bad("bad_azp", "multi-audience token needs azp = client")
+        // OIDC Core §2: azp, when present, is the party the token was issued to — it must be us.
+        if (claims.containsKey("azp") && claims["azp"] != clientId) throw bad("bad_azp", "token was issued to another client (azp)")
         val exp = number(claims["exp"])
         if (exp == null || exp + skew < now) throw bad("expired", "token expired")
         if (claims.containsKey("nbf")) {
             val nbf = number(claims["nbf"])
             if (nbf == null || nbf - skew > now) throw bad("not_yet_valid", "token is not valid yet (nbf)")
+        }
+        if (claims.containsKey("iat")) {
+            val iat = number(claims["iat"])
+            if (iat == null || iat - skew > now) throw bad("not_yet_valid", "token is issued in the future (iat)")
         }
         val sub = claims["sub"]
         if (sub !is String || sub.isEmpty()) throw bad("bad_token", "missing sub")
@@ -96,6 +103,18 @@ public object PyreonJose {
     }
 
     /** One candidate key; a key that cannot be imported verifies nothing (as on the web). */
+    /** RFC 7517 §4.3: a key whose `key_ops` is set must list "verify". */
+    internal fun allowsVerify(ops: Any?): Boolean =
+        if (isUnset(ops)) true else (ops as? List<*>)?.any { it == "verify" } == true
+
+    /** Modulus size of an RSA JWK `n` in bits (0 when unreadable). Keys under 2048 bits are refused. */
+    internal fun rsaBits(n: Any?): Int {
+        val d = (n as? String)?.let { decodeBase64url(it) } ?: return 0
+        val i = d.indexOfFirst { it != 0.toByte() }
+        if (i < 0) return 0
+        return (d.size - i - 1) * 8 + (32 - Integer.numberOfLeadingZeros(d[i].toInt() and 0xff))
+    }
+
     internal fun verify(alg: String, jwk: Map<String, Any?>, signature: ByteArray, input: ByteArray): Boolean = try {
         if (alg == "ES256") {
             val x = (jwk["x"] as? String)?.let(::decodeBase64url)

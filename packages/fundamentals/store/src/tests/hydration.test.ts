@@ -1,7 +1,6 @@
 import { signal } from '@pyreon/reactivity'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  __clearStoreHydrationForTesting,
   defineStore,
   dehydrateStores,
   hydrateStores,
@@ -9,6 +8,7 @@ import {
   resetStore,
   setStoreRegistryProvider,
 } from '../index'
+import { __clearStoreHydrationForTesting } from '../internal'
 
 /**
  * SSR store hydration — the `dehydrate → inline-script → hydrate` handshake that
