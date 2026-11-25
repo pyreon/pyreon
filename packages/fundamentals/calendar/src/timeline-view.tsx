@@ -150,6 +150,19 @@ function drawnRow(id: string | undefined, m: TimelineModel, byId: Map<string, { 
   return m.rows[Math.min(Math.max(index, w.start), w.end - 1)]?.resource.id ?? id
 }
 
+/**
+ * The grid scrolled: record where. When the focused row scrolled out of the drawn window it is removed, so the focus goes
+ * to the tab stop, now on a drawn row (after the window is redrawn, which the new scroll position schedules), not to <body>.
+ */
+function gridScrolled(el: HTMLElement, scroll: { set(value: number): void }): void {
+  const hadFocus = el.contains(document.activeElement)
+  scroll.set(el.scrollTop)
+  if (!hadFocus) return
+  queueMicrotask(() => {
+    if (!el.contains(document.activeElement)) el.querySelector<HTMLElement>('[role=gridcell][tabindex="0"]')?.focus({ preventScroll: true })
+  })
+}
+
 /** The hours written along the top when only one or two days are shown. */
 function hourMarks(from: number, to: number): number[] {
   const marks: number[] = []
@@ -254,18 +267,7 @@ export function TimelineView<Meta = unknown>(props: TimelineViewProps<Meta>): VN
       ref={(el: HTMLElement | null) => {
         root = el
       }}
-      onScroll={(e: Event) => {
-        const el = e.currentTarget as HTMLElement
-        const hadFocus = el.contains(document.activeElement)
-        scroll.set(el.scrollTop)
-        // the focused row scrolled out of the drawn window and was removed: the focus goes to the tab stop, now on a drawn
-        // row (after the window is redrawn, which the scroll position schedules)
-        if (hadFocus) {
-          queueMicrotask(() => {
-            if (!el.contains(document.activeElement)) el.querySelector<HTMLElement>('[role=gridcell][tabindex="0"]')?.focus({ preventScroll: true })
-          })
-        }
-      }}
+      onScroll={(e: Event) => gridScrolled(e.currentTarget as HTMLElement, scroll)}
       onKeyDown={(e: KeyboardEvent) => {
         const target = e.target as HTMLElement
         const hit = target.closest<HTMLElement>('.pcal-event[data-key]')
