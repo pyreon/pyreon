@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { analyzeGraph, readWorkspaceGlobs, scanWorkspace } from '../core'
-import { readJsxImportSources, scanPackageImports } from '../core/imports'
+import { isDevSurfacePath, readJsxImportSources, readTsconfigAliases, scanPackageImports } from '../core/imports'
 import type { WorkspaceModel } from '../core/types'
 
 const roots: string[] = []
@@ -200,5 +200,67 @@ describe('`jsxImportSource` counts as a use', () => {
       'tsconfig.base.json': '{ "compilerOptions": { "jsxImportSource": "@scope/jsx" } }',
     })
     expect(readJsxImportSources(dir).has('@scope/jsx')).toBe(true)
+  })
+})
+
+// Six arms that only the in-process scan of the whole monorepo used to reach.
+// That scan now runs in a child process (it timed out under coverage), so each
+// arm has its own fixture here: the contract is stated, not incidental to
+// whatever shape the repo happens to have.
+describe('scanner bounds the repo scan used to reach on its own', () => {
+  it('a tsconfig without `paths` contributes no aliases', () => {
+    const dir = tree({ 'tsconfig.json': '{ "compilerOptions": { "strict": true } }' })
+    expect([...readTsconfigAliases(dir)]).toEqual([])
+  })
+
+  it('`exports` code entries and `..` paths are not config candidates', () => {
+    const dir = tree({
+      'p/package.json': JSON.stringify({
+        name: 'p',
+        exports: { '.': './index.js', './outside': '../outside.json' },
+      }),
+      'outside.json': '{ "compilerOptions": { "jsxImportSource": "outside-jsx" } }',
+    })
+    expect([...readJsxImportSources(join(dir, 'p'))]).toEqual([])
+  })
+
+  it('a jsxImportSource is followed through ONE relative extends level, not two', () => {
+    const dir = tree({
+      'package.json': JSON.stringify({ name: 'app' }),
+      'tsconfig.json': '{ "extends": "./a.json" }',
+      'a.json': '{ "extends": "./b.json" }',
+      'b.json': '{ "compilerOptions": { "jsxImportSource": "too-deep" } }',
+    })
+    expect(readJsxImportSources(dir).has('too-deep')).toBe(false)
+  })
+
+  it('a `*.test.*` / `*.stories.*` file outside a tests directory is dev surface', () => {
+    expect(isDevSurfacePath('src/button.test.tsx')).toBe(true)
+    expect(isDevSurfacePath('src/Button.stories.tsx')).toBe(true)
+    const dir = tree({ 'src/button.test.ts': `import { t } from 'test-only'\nexport const x = t` })
+    const { prod, dev } = scanPackageImports(dir)
+    expect(prod.has('test-only')).toBe(false)
+    expect(dev.get('test-only')).toEqual(['src/button.test.ts'])
+  })
+
+  it('the walk stops eight levels below the package root', () => {
+    const dir = tree({
+      'a/b/c/d/e/f/g/in.ts': `import 'seven-deep'`,
+      'a/b/c/d/e/f/g/h/out.ts': `import 'eight-deep'`,
+    })
+    const { prod } = scanPackageImports(dir)
+    expect(prod.has('seven-deep')).toBe(true)
+    expect(prod.has('eight-deep')).toBe(false)
+  })
+
+  it('the jsxImportSource evidence respects the five-file cap per specifier', () => {
+    const files: Record<string, string> = {
+      'package.json': JSON.stringify({ name: 'app' }),
+      'tsconfig.json': '{ "compilerOptions": { "jsxImportSource": "jsx-lib" } }',
+    }
+    for (let i = 0; i < 6; i += 1) files[`src/f${i}.ts`] = `import type { X } from 'jsx-lib'\nexport type Y = X`
+    const { type } = scanPackageImports(tree(files))
+    expect(type.get('jsx-lib')).toHaveLength(5)
+    expect(type.get('jsx-lib')).not.toContain('tsconfig.json')
   })
 })

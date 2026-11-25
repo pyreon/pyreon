@@ -2,6 +2,7 @@
  * The core engine over the synthetic fixture — one assertion block per issue
  * class the fixture encodes, plus the graph analysis and the report fold.
  */
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -415,9 +416,30 @@ describe('stale loom.ignore entries', () => {
     }
   })
 
+  // The full import scan of this repo runs in a CHILD process, so V8's coverage
+  // instrumenter never sees it. In process it lexed every source file in the
+  // repo (~9.8k files, ~68 MB) through instrumented `stripWithMask`: 0.6 s
+  // plain, 2.0 s under local coverage, and 62 s in `Coverage (Full)` on a
+  // loaded 4-vCPU runner, three times the 20 s budget. What it measured of
+  // loom's own code (six arms in imports.ts the fixtures did not reach) now has
+  // fixture specs in scanner-correctness.test.ts, so the coverage counts are
+  // the same either way. The repo stays the input: this asserts on DATA (the
+  // root `loom.ignore`), which no fixture can stand in for.
   it('the monorepo has none', () => {
-    const repo = buildReport(new URL('../../../../..', import.meta.url).pathname)
-    expect(repo.issues.filter((i) => i.code === 'stale-ignore').map((i) => i.message)).toEqual([])
+    const repoRoot = new URL('../../../../..', import.meta.url).pathname
+    const core = new URL('../core/index.ts', import.meta.url).pathname
+    const script =
+      `import { buildReport } from ${JSON.stringify(core)}\n` +
+      `const r = buildReport(${JSON.stringify(repoRoot)})\n` +
+      `process.stdout.write(JSON.stringify({ packages: r.model.packages.length, ` +
+      `stale: r.issues.filter((i) => i.code === 'stale-ignore').map((i) => i.message) }))`
+    const out = JSON.parse(execFileSync('bun', ['--eval', script], { encoding: 'utf8' })) as {
+      packages: number
+      stale: string[]
+    }
+    // An empty scan must never read as "no stale entries".
+    expect(out.packages).toBeGreaterThan(100)
+    expect(out.stale).toEqual([])
   })
 })
 
