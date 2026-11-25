@@ -25,6 +25,7 @@
 
 import { parseSync } from 'oxc-parser'
 import { SWIFT_RESERVED_NAMES } from './swift-reserved-names'
+import { swiftCode } from './swift-source'
 
 // The oxc AST is walked loosely, as everywhere else in this package.
 // oxlint-disable-next-line typescript/no-explicit-any
@@ -33,12 +34,19 @@ type Node = any
 /** Names with a meaning the compiler gives them by spelling: a user alias `type Int = number` selects Swift's `Int`. */
 const PRIMITIVE_SPELLINGS: ReadonlySet<string> = new Set(['Double', 'Float', 'Int', 'Bool', 'String'])
 
-/** Whether a user declaration named `name` must be renamed in Swift. */
+/**
+ * Whether a user declaration named `name` must be renamed in Swift: a reserved name, or a reserved name followed by
+ * underscores (`Task_`). The second half keeps the rename injective with no knowledge of other files: `Task` becomes
+ * `Task_`, so a user's own `Task_` must become `Task__`, wherever each is declared.
+ */
 export function isSwiftReservedName(name: string | undefined): boolean {
-  return name !== undefined && SWIFT_RESERVED_NAMES.has(name) && !PRIMITIVE_SPELLINGS.has(name)
+  if (name === undefined) return false
+  const stem = name.replace(/_+$/, '')
+
+  return SWIFT_RESERVED_NAMES.has(stem) && !PRIMITIVE_SPELLINGS.has(stem)
 }
 
-/** The Swift spelling of a reserved user name. */
+/** The Swift spelling of a reserved user name: one more trailing underscore. */
 export const swiftRenamed = (name: string): string => `${name}_`
 
 /** A module the app itself owns: relative, or a path alias (`@/`, `~/`, `#…`). Package imports are never renamed. */
@@ -139,7 +147,7 @@ const MEMBER_NODES: ReadonlySet<string> = new Set([
 
 /** Nodes with nothing to rename inside: labels, ambient modules, `import('x').T`, `export * from`. */
 const OPAQUE_NODES: ReadonlySet<string> = new Set([
-  'BreakStatement', 'ContinueStatement', 'TSModuleDeclaration', 'TSImportType', 'ExportAllDeclaration',
+  'BreakStatement', 'ContinueStatement', 'TSModuleDeclaration', 'ExportAllDeclaration',
 ])
 
 /** One walk over a file, collecting the edits that rename its reserved bindings. */
@@ -189,6 +197,7 @@ class Renamer {
         this.namespaceMember(n.left, n.right)
       },
       Property: (n) => this.property(n),
+      TSImportType: (n) => this.importType(n),
       TSEnumMember: (n) => this.visit(n.initializer),
       JSXAttribute: (n) => this.visit(n.value),
       LabeledStatement: (n) => this.visit(n.body),
@@ -258,6 +267,16 @@ class Renamer {
     this.visit(n.value)
   }
 
+  /** `import('./models').Task`: the sibling's export, renamed by name like an import of it. */
+  private importType(n: Node): void {
+    if (typeof n.source?.value === 'string' && isAppModule(n.source.value)) {
+      let head = n.qualifier
+      while (head?.type === 'TSQualifiedName') head = head.left
+      if (head?.type === 'Identifier' && isSwiftReservedName(head.name)) this.edit(head, head.name)
+    }
+    this.visit(n.typeArguments)
+  }
+
   private importDeclaration(n: Node): void {
     if (!isAppModule(n.source.value)) return
     for (const sp of n.specifiers ?? []) {
@@ -312,7 +331,9 @@ export function renameSwiftReservedNames(source: string, filename = 'input.tsx')
   if (ast.errors.some((e: Node) => e.severity !== 'Warning')) return undefined
   const body = (ast.program as Node).body as Node[]
   const b = collectBindings(body)
-  if (b.types.size === 0 && b.values.size === 0 && b.namespaces.size === 0 && !b.siblingExports) return undefined
+  // An import type (`import('./models').Task`) binds nothing either, so only the walk can find it.
+  const importTypes = /\bimport\s*\(/.test(source)
+  if (b.types.size === 0 && b.values.size === 0 && b.namespaces.size === 0 && !b.siblingExports && !importTypes) return undefined
   const renamer = new Renamer(b)
   renamer.visit(body)
   if (renamer.edits.size === 0) return undefined
@@ -321,15 +342,48 @@ export function renameSwiftReservedNames(source: string, filename = 'input.tsx')
 }
 
 /** The comment an emit carries when it renamed something, so a hand-written Swift caller can find the new spelling. */
-export function swiftRenameNote(renamed: readonly string[]): string {
-  const list = renamed.map((n) => `\`${n}\` → \`${swiftRenamed(n)}\``).join(', ')
-  return `// Pyreon: ${list} — the Swift runtime sources compiled into this app spell ${renamed.length === 1 ? 'that name' : 'those names'} bare, and an app type would shadow ${renamed.length === 1 ? 'it' : 'them'} (swift-reserved-rename.ts).\n`
+export function swiftRenameNote(renames: readonly (readonly [string, string])[]): string {
+  const list = renames.map(([from, to]) => `\`${from}\` → \`${to}\``).join(', ')
+  const one = renames.length === 1
+  return `// Pyreon: ${list} — the Swift runtime sources compiled into this app spell ${one ? 'that name' : 'those names'} bare, and an app type would shadow ${one ? 'it' : 'them'} (swift-reserved-rename.ts).\n`
+}
+
+/** Top-level type declarations of an emit (`struct X`, `final class X`, `enum X`, …), by name. */
+function declaredSwiftTypes(code: string): Set<string> {
+  const names = new Set<string>()
+  const decl = /^(?:(?:public|private|fileprivate|internal|final|indirect)\s+)*(?:struct|enum|class|protocol|typealias|actor)\s+([A-Z]\w*)/gm
+  for (const m of swiftCode(code).matchAll(decl)) names.add(m[1]!)
+
+  return names
+}
+
+/**
+ * The second half of the class: a type the COMPILER names. A struct lifted from an inline object field is named
+ * owner + field (`interface Video { player: { … } }` → `VideoPlayer`, which `PyreonVideoPlayer.swift` calls bare), and
+ * the same holds for every other synthesized name. Rather than guard each synthesis site, this reads what the emit
+ * DECLARES — the one place every such name passes through — and renames each reserved one that is not the user's
+ * (already renamed in the source) or merged in by a plugin (the chart engine's own types). With a module suffix (a
+ * multi-file build) the new name carries it, so two files cannot collide; it never ends in bare underscores, which are
+ * how a user's own names are renamed.
+ */
+export function synthesizedReservedRenames(code: string, keep: ReadonlySet<string>, suffix: string): Map<string, string> {
+  const declared = declaredSwiftTypes(code)
+  const renames = new Map<string, string>()
+  for (const name of declared) {
+    if (!isSwiftReservedName(name) || keep.has(name)) continue
+    let to = suffix === '' ? `${name}_` : `${name}${suffix}`
+    while (declared.has(to) || keep.has(to)) to += '_'
+    renames.set(name, to)
+  }
+
+  return renames
 }
 
 /** `text` (a diagnostic) with each renamed name spelled as the source spells it. */
 export function sourceSpelling(text: string, renamed: readonly string[]): string {
-  let out = text
-  for (const n of renamed) out = out.replace(new RegExp(`\\b${n}_(?!\\w)`, 'g'), n)
+  if (renamed.length === 0) return text
+  // One pass, longest name first, so `Task__` (from a user's `Task_`) is not read as `Task_` + `_`.
+  const names = [...renamed].sort((a, b) => b.length - a.length)
 
-  return out
+  return text.replace(new RegExp(`\\b(${names.join('|')})_(?!\\w)`, 'g'), '$1')
 }

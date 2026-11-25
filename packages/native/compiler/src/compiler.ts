@@ -13,8 +13,11 @@ import {
   renameSwiftReservedNames,
   sourceSpelling,
   type SwiftReservedRename,
+  swiftRenamed,
   swiftRenameNote,
+  synthesizedReservedRenames,
 } from './swift-reserved-rename'
+import { renameSwiftIdentifiers } from './swift-source'
 import {
   SUPPORTED_PLUGIN_API_VERSIONS,
   type CompilerBackend,
@@ -89,29 +92,54 @@ function invoke<T>(owner: string, phase: string, callback: () => T): T {
   }
 }
 
-/**
- * Swift: a user type named like a name the runtime sources spell bare shadows it inside the app target, so it is
- * renamed before anything reads the source (swift-reserved-rename.ts); every later pass, and every plugin, sees the
- * renamed source. Pyreon's own runtime code (the chart engine) declares those names, so it opts out.
- */
-function swiftReservedRename(
-  source: string,
-  target: string,
-  filename: string | undefined,
-  runtimeSource: boolean | undefined,
-): { source: string; reserved: SwiftReservedRename | undefined } {
-  const reserved = target === 'swift' && runtimeSource !== true ? renameSwiftReservedNames(source, filename) : undefined
-
-  return { source: reserved?.code ?? source, reserved }
+/** What the Swift reserved-name passes need across one compile (swift-reserved-rename.ts). */
+interface SwiftNames {
+  /** Swift, and not Pyreon's own runtime code (the chart engine declares the reserved names, so it opts out). */
+  readonly enabled: boolean
+  /** The source every pass reads: the user's reserved bindings already renamed. */
+  readonly source: string
+  readonly reserved: SwiftReservedRename | undefined
 }
 
-/** The result as the author reads it: the emit names each rename, and a warning names the type as they spelled it. */
-function withSwiftRenames(reserved: SwiftReservedRename | undefined, result: TransformResult): TransformResult {
-  if (reserved === undefined) return result
+/**
+ * Swift: a user type named like a name the runtime sources spell bare shadows it inside the app target, so it is
+ * renamed before anything reads the source; every later pass, and every plugin, sees the renamed source.
+ */
+function swiftNames(source: string, target: string, filename: string | undefined, runtimeSource: boolean | undefined): SwiftNames {
+  const enabled = target === 'swift' && runtimeSource !== true
+  const reserved = enabled ? renameSwiftReservedNames(source, filename) : undefined
+
+  return { enabled, source: reserved?.code ?? source, reserved }
+}
+
+/** The type names a module declares. */
+const moduleTypeNames = (module: CompilerModule): Set<string> =>
+  new Set([...module.structs.map((s) => s.name), ...module.enums.map((e) => e.name)])
+
+/** Run `prepare` (the plugins' prepareIR passes) and return the type names they merged into the module. */
+function mergedTypeNames(module: () => CompilerModule, prepare: () => void): Set<string> {
+  const before = moduleTypeNames(module())
+  prepare()
+
+  return new Set([...moduleTypeNames(module())].filter((n) => !before.has(n)))
+}
+
+/**
+ * The result as the author reads it: a compiler-synthesized type with a reserved name renamed too, the emit naming
+ * each rename, and every warning naming the user's types as they spelled them. `merged` are the types plugins merged
+ * in (the chart engine's), which keep their names.
+ */
+function withSwiftRenames(swift: SwiftNames, result: TransformResult, merged: ReadonlySet<string>, suffix: string): TransformResult {
+  if (!swift.enabled) return result
+  const user = swift.reserved?.renamed ?? []
+  const keep = new Set([...user.map(swiftRenamed), ...merged])
+  const synthesized = synthesizedReservedRenames(result.code, keep, suffix)
+  const renames: [string, string][] = [...user.map((n): [string, string] => [n, swiftRenamed(n)]), ...synthesized]
+  if (renames.length === 0) return result
 
   return {
-    code: swiftRenameNote(reserved.renamed) + result.code,
-    warnings: result.warnings.map((w) => sourceSpelling(w, reserved.renamed)),
+    code: swiftRenameNote(renames) + renameSwiftIdentifiers(result.code, synthesized),
+    warnings: result.warnings.map((w) => sourceSpelling(w, user)),
   }
 }
 
@@ -287,12 +315,12 @@ export function createCompiler<Target extends string = never>(
         `[Pyreon] Unknown native compiler target "${resolvedOptions.target}". Available targets: ${targets.join(', ')}. Register a backend plugin or choose an available target.`,
       )
     }
-    const { source, reserved } = swiftReservedRename(original, resolvedOptions.target, resolvedOptions.filename, runtimeSource)
-    let module = parsePyreon(source, resolvedOptions.filename)
+    const swift = swiftNames(original, resolvedOptions.target, resolvedOptions.filename, runtimeSource)
+    let module = parsePyreon(swift.source, resolvedOptions.filename)
     const warnings: string[] = []
     const context = (owner: string): CompilerContext =>
       Object.freeze({
-        source,
+        source: swift.source,
         options: resolvedOptions,
         services,
         inferType(
@@ -347,7 +375,7 @@ export function createCompiler<Target extends string = never>(
     runPasses('transformIR')
     // Runtime-provided external declarations don't alter module identity.
     const suffix = resolvedOptions.filename === undefined ? '' : `_${moduleTag(module)}`
-    runPasses('prepareIR')
+    const merged = mergedTypeNames(() => module, () => runPasses('prepareIR'))
     const emitted = withSynthStructSuffix(suffix, () =>
       invoke(backend.owner, 'emit', () => {
         const result = backend.emit(
@@ -367,14 +395,14 @@ export function createCompiler<Target extends string = never>(
       }),
     )
     const known = [...module.warnings, ...warnings, ...emitted.warnings]
-    return withSwiftRenames(reserved, {
+    return withSwiftRenames(swift, {
       code: emitted.code,
       warnings: [
         ...known,
-        ...verbatimPyreonCallWarnings(module.aliasImports, source, emitted.code, known),
+        ...verbatimPyreonCallWarnings(module.aliasImports, swift.source, emitted.code, known),
         ...verbatimPyreonTypeWarnings(module.typeImports, emitted.code, registries.runtimeTypes, known),
-        ...verbatimPlatformWarnings(source, emitted.code, resolvedOptions.target, known),
+        ...verbatimPlatformWarnings(swift.source, emitted.code, resolvedOptions.target, known),
       ],
-    })
+    }, merged, suffix)
   }
 }

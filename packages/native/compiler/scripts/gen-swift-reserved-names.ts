@@ -18,6 +18,7 @@
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
+import { swiftCode } from '../src/swift-source'
 import { SWIFT_UI_STUBS } from '../src/swift-stubs'
 
 const REPO = resolve(import.meta.dirname, '../../../..')
@@ -25,6 +26,8 @@ const OUT = join(import.meta.dirname, '../src/swift-reserved-names.ts')
 
 /** Roots that hold shipped Swift runtime source: every co-located `native/swift` and the two SwiftPM packages. */
 const ROOTS = ['packages/fundamentals', 'packages/core', 'packages/native/runtime-swift', 'packages/native/router-swift']
+
+export { swiftCode }
 
 /** Every shipped runtime Swift file (no tests, no SwiftPM manifest), sorted. */
 export function shippedRuntimeSwift(repo: string = REPO): string[] {
@@ -47,83 +50,6 @@ export function shippedRuntimeSwift(repo: string = REPO): string[] {
   for (const root of ROOTS) walk(join(repo, root))
 
   return out.sort()
-}
-
-/** An open string literal, and the paren depth of the interpolation open inside it (-1: none, so its text is skipped). */
-interface OpenString {
-  triple: boolean
-  interp: number
-}
-
-/** The index after the comment starting at `i`, or `i` when none starts there. Block comments nest in Swift. */
-function skipComment(src: string, i: number): number {
-  if (src.startsWith('//', i)) {
-    const nl = src.indexOf('\n', i)
-    return nl < 0 ? src.length : nl
-  }
-  if (!src.startsWith('/*', i)) return i
-  let depth = 0
-  let j = i
-  do {
-    const step = src.startsWith('/*', j) ? 1 : src.startsWith('*/', j) ? -1 : 0
-    depth += step
-    j += step === 0 ? 1 : 2
-  } while (depth > 0 && j < src.length)
-
-  return j
-}
-
-/** One step inside a string literal's TEXT: what it emits and where it ends. */
-function stepInText(src: string, i: number, strings: OpenString[]): { out: string; next: number } {
-  const top = strings[strings.length - 1]!
-  if (src.startsWith('\\(', i)) {
-    top.interp = 0
-    return { out: '(', next: i + 2 }
-  }
-  if (src[i] === '\\') return { out: '', next: i + 2 }
-  const close = top.triple ? '"""' : '"'
-  if (!src.startsWith(close, i)) return { out: '', next: i + 1 }
-  strings.pop()
-
-  return { out: '""', next: i + close.length }
-}
-
-/** Track the parens of the interpolation open in the innermost string, so its closing `)` resumes the text. */
-function trackInterpolation(c: string, strings: OpenString[]): void {
-  const top = strings[strings.length - 1]
-  if (top === undefined) return
-  if (c === '(') top.interp += 1
-  else if (c === ')') top.interp -= 1
-}
-
-/** Swift source with comments and string-literal TEXT removed (interpolations are code and stay). */
-export function swiftCode(src: string): string {
-  let out = ''
-  let i = 0
-  const strings: OpenString[] = []
-  while (i < src.length) {
-    if (strings.length > 0 && strings[strings.length - 1]!.interp < 0) {
-      const step = stepInText(src, i, strings)
-      out += step.out
-      i = step.next
-      continue
-    }
-    const after = skipComment(src, i)
-    if (after !== i) {
-      out += ' '
-      i = after
-    } else if (src[i] === '"') {
-      const triple = src.startsWith('"""', i)
-      strings.push({ triple, interp: -1 })
-      i += triple ? 3 : 1
-    } else {
-      trackInterpolation(src[i]!, strings)
-      out += src[i]
-      i += 1
-    }
-  }
-
-  return out
 }
 
 /**

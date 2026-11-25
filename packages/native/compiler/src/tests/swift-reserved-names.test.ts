@@ -155,6 +155,51 @@ export function Board() { return (<Stack><Text>{ITEMS[0]!.title}</Text></Stack>)
 // The class, end to end: app types named like runtime names, compiled in ONE
 // module with every shipped runtime Swift file against the real iOS SDK —
 // exactly how `examples/native-tasks/ios/project.yml` builds.
+describe('the rename has no collisions and no gaps', () => {
+  // `Task` becomes `Task_`, so a user's own `Task_` must move too, or the file declares `struct Task_` twice. Renaming
+  // by one more underscore keeps that true across files with no knowledge of them.
+  it('a user name that is a reserved name plus underscores moves one further', () => {
+    const out = transform(`type Task = { id: number }\ntype Task_ = { other: string }\nconst a: Task = { id: 1 }\nconst b: Task_ = { other: 'x' }\n`, { target: 'swift' })
+    expect(out.code.match(/^struct Task_:/gm)).toHaveLength(1)
+    expect(out.code.match(/^struct Task__:/gm)).toHaveLength(1)
+    expect(out.code).toContain('private let b: Task__ = Task__(other: "x")')
+    expect(out.code.split('\n')[0]).toContain('`Task_` → `Task__`')
+    expect(sourceSpelling('`Task__` and `Task_`', ['Task', 'Task_'])).toBe('`Task_` and `Task`')
+  })
+
+  it('an import type of a sibling (`import(\'./models\').Task`) is renamed like an import of it', () => {
+    expect(renamed("let a: import('./models').Task | null = null\nlet b: import('./m').Data.Sub | null = null\nlet c: import('pkg').Task\n")).toBe(
+      "let a: import('./models').Task_ | null = null\nlet b: import('./m').Data_.Sub | null = null\nlet c: import('pkg').Task\n",
+    )
+  })
+
+  // A type the COMPILER names: `interface Video { player: { … } }` lifts `player` to `VideoPlayer`, which the runtime's
+  // PyreonVideoPlayer.swift calls bare (AVKit's view). The emit's declarations are the choke point.
+  const LIFTED = `import { Stack, Text } from '@pyreon/primitives'
+interface Video { id: number; player: { src: string } }
+interface Chart { spec: { kind: string } }
+const V: Video = { id: 1, player: { src: 'a' } }
+const C: Chart = { spec: { kind: 'bar' } }
+export function Board() { return (<Stack><Text>{V.player.src}</Text><Text>{C.spec.kind}</Text></Stack>) }
+`
+  it('renames a synthesized type with a reserved name, declaration and every use', () => {
+    const single = transform(LIFTED, { target: 'swift' })
+    expect(single.warnings).toEqual([])
+    expect(single.code).toContain('struct VideoPlayer_: Codable')
+    expect(single.code).toContain('var player: VideoPlayer_')
+    expect(single.code).toContain('VideoPlayer_(src: "a")')
+    expect(single.code).toContain('struct ChartSpec_: Codable')
+    // Past the note line, no bare use of the old names is left.
+    expect(single.code.split('\n').slice(1).join('\n')).not.toMatch(/(?<![\w.])(?:VideoPlayer|ChartSpec)(?![\w])/)
+    // In a multi-file build the new name carries the module suffix, so no two files (nor a user `VideoPlayer`, which
+    // becomes `VideoPlayer_`) can collide.
+    const multi = transform(LIFTED, { target: 'swift', filename: 'board.tsx' }).code
+    expect(multi).toMatch(/struct VideoPlayer_[a-z0-9]+: Codable/)
+    // Kotlin has no such class and keeps the name.
+    expect(transform(LIFTED, { target: 'kotlin' }).code).toContain('data class VideoPlayer(')
+  })
+})
+
 describe('a Plain-Mode file is renamed the same way', () => {
   it('renames before the Plain pre-pass, so both dialects agree', () => {
     const src = `'use plain'
@@ -180,6 +225,14 @@ describe('diagnostics name the type as the author spelled it', () => {
     )
   })
 })
+
+const LIFTED_APP = `import { Stack, Text } from '@pyreon/primitives'
+interface Video { id: number; player: { src: string } }
+interface Chart { spec: { kind: string } }
+const V: Video = { id: 1, player: { src: 'a' } }
+const C: Chart = { spec: { kind: 'bar' } }
+export function Board() { return (<Stack><Text>{V.player.src}</Text><Text>{C.spec.kind}</Text></Stack>) }
+`
 
 describe.runIf(isSwiftUIAvailable())('an app whose types are named like runtime names builds against the real runtime', () => {
   const compile = (files: { name: string; code: string }[]): void => {
@@ -207,6 +260,15 @@ ${names.map((_, i) => `      <Heading>{ITEM_${i}.title}</Heading>`).join('\n')}
     const out = transform(app, { target: 'swift', filename: 'app.tsx' })
     expect(out.warnings).toEqual([])
     compile([{ name: 'App.swift', code: out.code }])
+  }, 300_000)
+
+  // Without the synthesized-name pass this fails in PyreonVideoPlayer.swift (`VideoPlayer(player:)` resolves to the
+  // lifted struct) and with two `struct Task_` declarations.
+  it('synthesized types, and a user name one underscore past a reserved one', () => {
+    const app = LIFTED_APP + `type Task = { id: number }\ntype Task_ = { other: string }\nconst T1: Task = { id: 1 }\nconst T2: Task_ = { other: 'x' }\nexport function Tasks() { return (<Stack><Text>{T2.other + String(T1.id)}</Text></Stack>) }\n`
+    const out = transform(app, { target: 'swift', filename: 'lifted.tsx' })
+    expect(out.warnings).toEqual([])
+    compile([{ name: 'Lifted.swift', code: out.code }])
   }, 300_000)
 
   // Names the generated code itself spells (`View`, `Text`, `Date`), a component among them, across two files: the
