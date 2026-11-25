@@ -41,6 +41,7 @@ export function textChanged(next: TextValue, written: TextValue | null | undefin
     // NaN is the one number not equal to itself.
     return next === next || written === written
   }
+
   return typeof written !== 'number' || next !== domNumberText(written)
 }
 

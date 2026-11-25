@@ -138,9 +138,11 @@ function spySetter(proto: object, name: string, api: string): void {
 const hosts: HTMLElement[] = []
 // Every mount subscribes to the shared signal `s`; unmounted after each test.
 const unmounts: (() => void)[] = []
+
 const track = (u: unknown) => {
   unmounts.push(u as () => void)
 }
+
 function host(): HTMLElement {
   const el = document.createElement('div')
   document.body.appendChild(el)
