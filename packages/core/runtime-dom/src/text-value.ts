@@ -45,13 +45,15 @@ export function textChanged(next: TextValue, written: TextValue | null | undefin
 }
 
 /**
- * The text a value renders as, with a NUMBER converted by the DOM (a `Text`
+ * The text a value renders as, with a NUMBER converted by the DOM (a text
  * node's WebIDL `DOMString` conversion): the characters `String(n)` gives,
  * without touching V8's Number→String cache. For the places that must compare
  * a number with text already in the page (an adopted node's server text, a
  * value that changed type, a mismatch report) or measure it (`splitText`).
- * Allocates a detached node, which is fine for those rare paths.
+ * Allocates a detached node, which is fine for those rare paths. Through
+ * `document`, never the global `Text` constructor: not every DOM a renderer
+ * runs in defines it (atlas's server-side DOM does not).
  */
 export function domText(v: TextValue): string {
-  return new Text(v as string).data
+  return document.createTextNode(v as string).data
 }

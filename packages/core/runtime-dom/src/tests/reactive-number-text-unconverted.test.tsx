@@ -211,16 +211,19 @@ describe('a reactive number reaches the DOM unconverted', () => {
         s.set(1)
         track(mount(h(App as never, null), el))
         seen = []
+        // Writes into the page only (`domText` creates a detached node to
+        // compare a number with a string).
+        const writes = () => seen.filter((x) => x.api !== 'createTextNode')
         s.set('1') // number → string, same text
         s.set(1) // and back
-        expect(seen).toEqual([])
+        expect(writes()).toEqual([])
         s.set(Number.NaN)
-        expect(seen.length).toBe(1)
+        expect(writes().length).toBe(1)
         s.set(Number.NaN) // the signal dedupes; nothing re-runs
         s.set(0)
         s.set(-0) // the signal notifies (Object.is), the text is the same
         expect(el.textContent).toBe('0')
-        expect(seen.length).toBe(2)
+        expect(writes().length).toBe(2)
       })
     })
   }
@@ -251,7 +254,7 @@ describe('SSR → hydrate with a number', () => {
           seen = []
           s.set(77)
           expect(el.textContent).toBe('77')
-          expect(seen).toEqual([{ api: 'data', type: 'number' }])
+          expect(seen.filter((x) => x.api !== 'createTextNode')).toEqual([{ api: 'data', type: 'number' }])
         })
       }
 
