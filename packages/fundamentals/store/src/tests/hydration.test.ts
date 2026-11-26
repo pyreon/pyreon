@@ -71,6 +71,15 @@ describe('@pyreon/store — SSR hydration', () => {
     expect(() => hydrateStores(crossOrigin)).not.toThrow()
     expect(useCart().store.count.peek()).toBe(0)
 
+    // A Proxy whose `getPrototypeOf` trap throws is not a literal either.
+    const throwingProto = new Proxy({ cart: { count: 9 } }, {
+      getPrototypeOf() {
+        throw new DOMException('Blocked a frame from accessing a cross-origin frame.', 'SecurityError')
+      },
+    })
+    expect(() => hydrateStores(throwingProto)).not.toThrow()
+    expect(useCart().store.count.peek()).toBe(0)
+
     hydrateStores({ cart: { count: 8 } })
     expect(useCart().store.count.peek()).toBe(8)
   })
