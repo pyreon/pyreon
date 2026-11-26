@@ -4,7 +4,7 @@
 
 import { createHttp } from '@pyreon/http'
 import { standardSchema } from '@pyreon/http/schema'
-import { useQuery } from '@pyreon/query'
+import { useMutation, useQuery } from '@pyreon/query'
 import { s } from '@pyreon/validate'
 
 type Int = number
@@ -79,12 +79,23 @@ export const listBooks = api.endpoint('GET /books', { response: s.array(Book) })
  * Takes `bookId` as a prop and re-fetches when it changes.
  */
 export function GetBookData(props: { bookId: string; children: (data: Book | undefined) => unknown }) {
-  const q = useQuery<Book>(() => getBook.query({ params: { bookId: props.bookId } }))
-  return () => props.children(q.data())
+  const __q = useQuery<Book>(() => getBook.query({ params: { bookId: props.bookId } }))
+  return () => props.children(__q.data())
 }
 
 /** Fetches `GET /books` and renders it through `children`. */
 export function ListBooksData(props: { children: (data: Book[] | undefined) => unknown }) {
-  const q = useQuery<Book[]>(() => listBooks.query())
-  return () => props.children(q.data())
+  const __q = useQuery<Book[]>(() => listBooks.query())
+  return () => props.children(__q.data())
+}
+
+/**
+ * Sends `POST /books` when `children` calls `mutate`, with `json` as the body.
+ *
+ * `children` receives the trigger, the latest response (`undefined` until one arrives), whether a request is in flight, and the latest error.
+ * `json` is read when `mutate` is called.
+ */
+export function CreateBookMutation(props: { json: NewBook; children: (mutate: () => void, data: Book | undefined, isPending: boolean, error: Error | null) => unknown }) {
+  const __m = useMutation<Book, Error, { json: NewBook }>(createBook.mutation({ invalidates: [getBook, listBooks] }))
+  return () => props.children(() => __m.mutate({ json: props.json }), __m.data(), __m.isPending(), __m.error())
 }

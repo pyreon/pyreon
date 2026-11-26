@@ -3816,10 +3816,7 @@ lathe generate · 1 project
     contract       1 breaking · 1 additive
       − breaking  field-removed  Book.pages  was integer (optional)
       + additive  field-added    Book.dueAt  date-time (optional)
-    native reach   3 of 4 operations · 1 web-only
-      ! web-only  1 operation: createBook
-        `POST` lowers through mutations, which PMTC does not yet recognise; GET operations on this
-        client DO reach native.
+    native reach   4 of 4 operations
     native verify  4 of 4 files lower
       ✓ lowers    authors.native.tsx    swift   compiled
       ✓ lowers    authors.native.tsx    kotlin  compiled
@@ -3827,7 +3824,7 @@ lathe generate · 1 project
       ✓ lowers    books.native.tsx      kotlin  compiled
       ✓ compiled  all modules together  swift
       ✓ compiled  all modules together  kotlin
-      markers  PyreonQuery< PyreonZodSchema_ PyreonSchemaError
+      markers  PyreonQuery< PyreonMutation< PyreonHttpRequest( PyreonZodSchema_ PyreonSchemaError
 
 ! wrote 6 of 29 files · 1 breaking change · 69 ms
 ```

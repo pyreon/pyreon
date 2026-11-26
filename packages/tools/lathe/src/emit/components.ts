@@ -384,12 +384,12 @@ function emitPreview(f: SourceFile, op: IrOperation, doc: IrDocument): void {
   f.doc(op.summary, "", `Preview of \`${op.method} ${op.path}\`.`);
   f.line(`export function ${name}(props: ${name}Props) {`);
   // A supplied `data` DISABLES the request: returning `undefined` from the
-  // args accessor is the hook's "not yet", and `enabled: false` is the same
-  // for a hook that takes no arguments.
+  // args accessor is the hook's "not yet" — every read hook takes one, a
+  // parameterless operation's included.
   f.line(
     hasInput(op)
       ? `  const q = ${hook}(() => (props.data === undefined ? (props.args ?? ${op.id}$args) : undefined))`
-      : `  const q = ${hook}(() => ({ enabled: props.data === undefined }))`,
+      : `  const q = ${hook}(() => (props.data === undefined ? {} : undefined))`,
   );
   // `force` and `data` are read inside accessors, so flipping a control
   // re-renders without remounting the component.

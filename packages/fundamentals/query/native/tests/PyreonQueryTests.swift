@@ -284,6 +284,24 @@ struct PyreonQueryTests {
             check(calls.count == 2 && list.data == 2, "a successful mutation refetches the live `todo` query")
         }
 
+        // A URL root covers the paths below it and its query strings, segment-safe,
+        // so invalidating `GET:<list url>` refreshes the list AND its detail queries.
+        do {
+            let root = "GET:https://h/books"
+            check(PyreonQueryCache.under(root, root), "a root covers itself")
+            check(PyreonQueryCache.under(root, root + "/1"), "a URL root covers a path below it")
+            check(PyreonQueryCache.under(root, root + "?q=a"), "a URL root covers its query strings")
+            check(!PyreonQueryCache.under(root, "GET:https://h/bookshelf"), "segment-safe")
+            check(PyreonQueryCache.under("todo", "todo:8") && !PyreonQueryCache.under("todo", "todos"), "`:` scoping unchanged")
+            let cache = PyreonQueryCache()
+            let calls = Calls()
+            let detail = PyreonQuery<Int>(queryKey: root + "/7", staleSeconds: 60, cache: cache)
+            await detail.run { calls.next(calls.count + 1) }
+            _ = try? await cache.settleMutation(invalidating: root) { 1 }
+            await waitFor { calls.count == 2 && !detail.isFetching }
+            check(calls.count == 2, "a mutation invalidating the list root refetches a live detail query")
+        }
+
         // setQueryData: the optimistic write reaches the cache and every live
         // query on the key, drops their in-flight fetch, and rolls back.
         do {

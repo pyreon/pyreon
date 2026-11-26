@@ -55,7 +55,7 @@ const settle = async (): Promise<void> => {
 describe('generated <Op>Data components on the web', () => {
   it('re-render when the query settles, and again when the prop changes', async () => {
     const e = emitToDisk('native-data-web', SPEC, { target: 'multiplatform', plugins: ['schemas', 'client', 'queries'] })
-    expect(e.file('pets.native.tsx')).toContain('return () => props.children(q.data())')
+    expect(e.file('pets.native.tsx')).toContain('return () => props.children(__q.data())')
     const mod = await e.load<{ GetPetData: DataComponent }>('pets.native.tsx')
 
     const pending: Array<{ url: string; release: () => void }> = []

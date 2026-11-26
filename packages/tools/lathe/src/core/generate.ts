@@ -19,8 +19,11 @@ import {
   byTag,
   emitClient,
   emitNativeModules,
-  hasNativeDataComponent,
+  nativeDataBlocker,
+  hasNativeMutationComponent,
   hasNativeStreamComponent,
+  isMutation,
+  nativeMutationBlocker,
   nativeStreamBlocker,
   emitWebEndpoints,
   emitWebQueries,
@@ -187,7 +190,7 @@ function* pipeline(
         responseValidation: config.responseValidation,
       }),
     );
-    for (const f of emitWebEndpoints(doc, config.validator, config.client))
+    for (const f of emitWebEndpoints(doc, config.validator, config.client, config.responseValidation))
       push(f);
   }
   if (has("queries")) {
@@ -563,8 +566,9 @@ function reachOf(
 ): Map<string, { reach: Reach; reason?: string }> {
   const out = new Map<string, { reach: Reach; reason?: string }>();
   const baseUrl = config.baseUrl ?? doc.baseUrl;
+  const models = new Map(doc.models.map((m) => [m.name, m.type]));
   for (const op of doc.operations) {
-    out.set(op.id, decide(op, op.baseUrl ?? baseUrl));
+    out.set(op.id, decide(op, op.baseUrl ?? baseUrl, models));
   }
   return out;
 }
@@ -572,6 +576,7 @@ function reachOf(
 function decide(
   op: IrOperation,
   baseUrl: string,
+  models: ReadonlyMap<string, IrType>,
 ): { reach: Reach; reason?: string } {
   if (baseUrl === "") {
     return {
@@ -605,28 +610,26 @@ function decide(
       reason: nativeStreamBlocker(op) ?? "no native stream component is generated for it.",
     };
   }
+  if (isMutation(op)) {
+    // A write lowers through `useMutation` to the native `PyreonMutation`
+    // runtime (#4835). Asked of the emitter, so the report and the native
+    // layout agree about which writes get a component.
+    if (hasNativeMutationComponent(op)) return { reach: "web+native" };
+    return {
+      reach: "web-only",
+      reason: nativeMutationBlocker(op) ?? "no native mutation component is generated for it.",
+    };
+  }
   if (op.method !== "GET") {
     return {
       reach: "web-only",
-      reason: `\`${op.method}\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.`,
-    };
-  }
-  if (op.hook === false) {
-    return {
-      reach: "web-only",
-      reason:
-        "its hook is turned off (`operations.<id>.hook: false`, `naming.hook` or a plugin), so no native data component is generated.",
+      reason: `\`${op.method}\` has no native component: a native read is a \`GET\` (\`useQuery\`) and a native write a \`POST\`, \`PUT\`, \`PATCH\` or \`DELETE\` (\`useMutation\`).`,
     };
   }
   // Asked of the emitter rather than re-derived: the reach report and the
   // native layout must agree about which reads get a data component.
-  if (!hasNativeDataComponent(op)) {
-    return {
-      reach: "web-only",
-      reason:
-        "no typed JSON response (no content, or a media type Lathe cannot type) -- a native query decodes into a declared type, so there is nothing to lower it to.",
-    };
-  }
+  const blocker = nativeDataBlocker(op, models);
+  if (blocker !== undefined) return { reach: "web-only", reason: blocker };
   return { reach: "web+native" };
 }
 

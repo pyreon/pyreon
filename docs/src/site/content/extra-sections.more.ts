@@ -109,39 +109,35 @@ $ echo $?
       text: "The repo's `examples/lathe-bookshelf`, with `lost` removed from `Book.status` and the client not regenerated. Every line below is what the command printed.",
       command: '$ lathe check',
       output: `$ lathe check
-lathe / Bookshelf 1.2.0
-  4 models  4 operations  target=multiplatform
-  plugins: schemas, client, queries, mocks, faker, atlas, docs (+components - required by them)
+lathe check · 1 project
 
-  (25 unchanged files, one "·" line each, omitted)
-  ~ src/gen/schemas/Book.ts
-  ~ src/gen/faker.ts
-  ~ src/gen/docs/models.md
-  ~ src/gen/api-surface.json
+  ✗ Bookshelf  1.2.0 · openapi.yaml · 4 models · 4 operations · multiplatform · stale
+    plugins        schemas, client, queries, mocks, faker, atlas, docs (+components, required by
+                   them)
+    files          4 of 29 files differ from the spec
+      ~ stale  src/gen/schemas/Book.ts
+      ~ stale  src/gen/faker.ts
+      ~ stale  src/gen/docs/models.md
+      ~ stale  src/gen/api-surface.json
+    contract       1 breaking · 0 additive
+      ~ breaking  field-type-changed  Book.status  enum("available"|"borrowed"|"lost") →
+        enum("available"|"borrowed")
+    native reach   4 of 4 operations
+    native verify  4 of 4 files lower
+      ✓ lowers    authors.native.tsx    swift   compiled
+          PyreonQuery< PyreonZodSchema_ PyreonSchemaError
+      ✓ lowers    authors.native.tsx    kotlin  compiled
+          PyreonQuery< PyreonZodSchema_ PyreonSchemaError
+      ✓ lowers    books.native.tsx      swift   compiled
+          PyreonQuery< PyreonMutation< PyreonHttpRequest( PyreonZodSchema_ PyreonSchemaError
+      ✓ lowers    books.native.tsx      kotlin  compiled
+          PyreonQuery< PyreonMutation< PyreonHttpRequest( PyreonZodSchema_ PyreonSchemaError
+      ✓ compiled  all modules together  swift
+      ✓ compiled  all modules together  kotlin
 
-  0 of 29 file(s) written
+  fix: run lathe generate and commit the result
 
-  contract  1 breaking  0 additive
-    ! [field-type-changed] Book.status enum("available"|"borrowed"|"lost") → enum("available"|"borrowed")
-
-  native reach  3/4 operations
-    web-only 1 op(s): createBook
-      \`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.
-
-  lowers authors.native.tsx swift  [PyreonQuery< PyreonZodSchema_ PyreonSchemaError]  compiled
-  lowers authors.native.tsx kotlin  [PyreonQuery< PyreonZodSchema_ PyreonSchemaError]  compiled
-  lowers books.native.tsx swift  [PyreonQuery< PyreonZodSchema_ PyreonSchemaError]  compiled
-  lowers books.native.tsx kotlin  [PyreonQuery< PyreonZodSchema_ PyreonSchemaError]  compiled
-  all modules together swift  compiled
-  all modules together kotlin  compiled
-
-  STALE: 4 generated file(s) differ from the spec:
-    schemas/Book.ts
-    faker.ts
-    docs/models.md
-    api-surface.json
-
-  Fix: run \`lathe generate\` and commit the result.
+✗ 1 project stale · 1 breaking change · 87 ms
 $ echo $?
 1`,
     },

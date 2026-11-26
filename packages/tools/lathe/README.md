@@ -472,6 +472,30 @@ A typo in an option is a compile error. Return `undefined` from the args
 accessor while the arguments are not ready — the query is disabled rather than
 fired with a placeholder.
 
+Every read hook takes the args accessor first, including one for an operation
+with no parameters, where it is optional. It is how per-call request options
+reach the request — `meta` for a middleware, `headers`, `timeout`:
+
+```ts
+const things = useListThings(() => ({ meta: { tenant: tenant() }, headers: { 'x-tenant': tenant() } }))
+const all = useListThings() // no request options
+```
+
+When headers or the caller change the result (a tenant, a locale), extend the
+cache key with `key`, which receives the endpoint's key. Start from `base`, so
+invalidating the endpoint still matches:
+
+```ts
+useListThings(() => ({ headers: { 'x-tenant': tenant() } }), () => ({ key: (base) => [...base, { tenant: tenant() }] }))
+// A loader prefetch with the same `key` lands where that hook reads:
+queryClient.prefetchQuery(listThings.query({ headers: { 'x-tenant': t } }, { key: (base) => [...base, { tenant: t }] }))
+```
+
+`<op>InfiniteOptions(args, { key })` takes it too. Query options passed as the
+first argument (the order before this release) are ignored there and named once in a
+`console.warn`; `meta` is valid in both places, and in the first it is the
+REQUEST's meta (what a middleware reads), not TanStack's.
+
 ### Mutations invalidate what they change
 
 ```ts
@@ -521,9 +545,15 @@ key present with `undefined` resets that slot to its generated default.
 cookie form applies on the server — browsers forbid setting `Cookie`). A
 credential may be an accessor, re-read on every request.
 
-`validate` also has a config default — `lathe: { validate: 'warn' }` — for a
-backend that drifts: `'warn'` logs a mismatch and passes the body through,
-`'off'` skips validation (safe only for non-transforming schemas).
+`validate` also has a config default — `lathe: { responseValidation: 'warn' }` — for a
+backend that drifts: `'warn'` logs a mismatch and passes the body through.
+`responseValidation: 'off'` at generate time (or `operations.<id>.responseValidation`)
+declares those endpoints **types only**: response, error and stream-event bodies
+are typed from the model interfaces, and neither the schema modules nor the
+validator are reachable from them (one nested `GET` measured 21.9 KB → 6.8 KB
+gzipped). `err.matched` still comes from the status key. With no schema
+generated, `configureApi({ validate: 'strict' })` has nothing to check those
+endpoints against; generate with `'strict'` or `'warn'` to keep that switch.
 
 The `fetch` / `axios` / `ky` clients export the SAME `configureApi` and `auth`.
 `use` takes each library's own extension shape — a fetch middleware
@@ -655,11 +685,12 @@ Real, current, and reported per-operation rather than papered over:
 | Construct | Native |
 | --- | --- |
 | Schemas: string/number/boolean, nested objects, arrays, optional/nullable, min/max/email/url/uuid/regex | lowers |
-| `GET` with a typed JSON response, with or without path parameters | lowers — a path parameter becomes a prop of the data component |
+| `GET` with a typed JSON response, with or without path parameters | lowers — a path parameter, and every REQUIRED query parameter, becomes a prop of the data component (an optional query parameter is left to the web hook; a required header/cookie or non-scalar query parameter stays **web-only**, named) |
 | `GET` with no content, or a non-JSON response | **web-only** — the web hook resolves to `unknown`, and there is no declared type for a native query to decode into, so no data component is emitted |
 | the generated data components (`<Op>Data`, a render prop returning an accessor, so it re-renders on the web) | lowers **only with a `@pyreon/native-compiler` that supports render props**. Against an older compiler, with `swiftc`/`kotlinc` installed, the verifier reports the module `BROKEN`, which is the honest answer |
 | an array / scalar / union MODEL | lowers — inlined at its use sites; PMTC synthesizes structs from object literals only |
-| `POST`/`PUT`/`PATCH`/`DELETE` | **web-only** — mutations are not recognised yet |
+| `POST`/`PUT`/`PATCH`/`DELETE` with a JSON body (or none) and a typed JSON response (or no content) | lowers — the tag module gets a `<Op>Mutation` component: `useMutation<T, E, Vars>(op.mutation())`, which PMTC lowers to the native `PyreonMutation` runtime. `children(mutate, data, isPending, error)` receives the trigger (`data` only when the response is typed); path parameters and the body (`json`, required even where the spec makes it optional) are props, read when `mutate` is called. A success refreshes what the web hook refreshes — natively each target is a URL root (`GET:<url up to its first path param>`) that also covers the paths below it; only targets in the same tag can be named, since the module is one file |
+| a write with a form / multipart / text / binary body, a non-JSON response, a required query / header / cookie parameter, a path parameter named `json` / `children`, or its hook turned off | **web-only** — a native mutation sends path parameters and a JSON body only; the reach report names which |
 | a stream-only `GET` (SSE / NDJSON) with a typed event, or SSE read as `data: 'text'` | lowers — the tag module gets a `<Op>Stream` component (`useStream` over `@pyreon/http/stream`), which PMTC lowers to the native `PyreonStream` runtime: the same wire parser, reconnect with backoff and `Last-Event-ID`, reopened when a path parameter changes |
 | a stream-only `POST`/`PUT`/`PATCH`/`DELETE` with a typed event and a JSON body (or none) | lowers — a TRIGGERED `<Op>Stream` component: `enabled: boolean` opens the stream while true (false stops it and keeps the events), and the body is the `json` prop, serialized with the web's exact `JSON.stringify` bytes. The same `useStream(src, { enabled })` + runtime `json` shape PMTC lowers hand-written |
 | a stream with no declared event type, a non-`GET` stream whose body is not JSON (form, multipart, text, binary), or a path parameter named `enabled` / `json` / `children` | **web-only** — a native stream decodes each event into a declared type and sends a JSON body only; a path parameter cannot shadow a prop the component owns. The reach report names which |

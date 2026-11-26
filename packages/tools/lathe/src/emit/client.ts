@@ -33,6 +33,7 @@ import {
   typeIdent,
 } from "../core/naming";
 import { byCodeUnit } from "../core/order";
+import { responseKindOf } from "../core/media";
 import {
   CLIENT_PACKAGE,
   runtimeEndpoint,
@@ -50,6 +51,9 @@ import {
   hasInput,
   inputType,
   type ModelTypes,
+  HELD_KEY,
+  QUERY_HOOK_KEY_OPTION,
+  resolve as resolveType,
   responseTypeOf,
 } from "./operation-types";
 import { modelDoc, operationDoc } from "./jsdoc";
@@ -90,6 +94,52 @@ export interface ClientOptions {
 }
 
 export const CLIENT_FILE = "client.ts";
+
+/**
+ * Is response validation OFF for this operation at generate time — its own
+ * `operations.<id>.responseValidation`, else the project's `responseValidation`?
+ *
+ * Such an operation is declared TYPES ONLY: its response, error and event
+ * bodies are typed from the model interfaces, and no schema is referenced, so
+ * neither the schema modules nor the validator library are reachable from it
+ * (#4815). `off` skipped the check at runtime already; it used to still ship
+ * everything the check would have needed.
+ */
+export function isUnchecked(
+  op: IrOperation,
+  responseValidation: ResponseValidation | undefined,
+): boolean {
+  return (op.validate ?? responseValidation ?? "strict") === "off";
+}
+
+/** Does any unchecked operation declare typed error bodies — the one use of `unchecked`? */
+function needsUnchecked(
+  doc: IrDocument,
+  responseValidation: ResponseValidation | undefined,
+): boolean {
+  return doc.operations.some(
+    (o) => isUnchecked(o, responseValidation) && (o.errors?.length ?? 0) > 0,
+  );
+}
+
+/**
+ * `unchecked`, appended to `client.ts` when an unchecked operation declares
+ * error bodies. An error body is matched to its declared status key at
+ * runtime (`err.matched`), which needs an entry per key; this identity stands
+ * in for the schema there, so `matched` keeps working with no schema shipped.
+ */
+function uncheckedHelper(): string[] {
+  return [
+    "/**",
+    " * The stand-in for an error schema on an endpoint generated with",
+    " * `responseValidation: 'off'`: the body is passed through as declared, never",
+    " * checked, and `err.matched` still names the status key it came in under.",
+    " */",
+    "export function unchecked<T>(raw: unknown): T {",
+    "  return raw as T",
+    "}",
+  ];
+}
 
 /**
  * `client.ts` — the shared client instance. Web layout only.
@@ -231,6 +281,10 @@ export function emitClient(doc: IrDocument, opts: ClientOptions): SourceFile {
   if (hasStreams(doc)) {
     f.line();
     f.lines(...streamEventHelper("pyreon"));
+  }
+  if (needsUnchecked(doc, opts.responseValidation)) {
+    f.line();
+    f.lines(...uncheckedHelper());
   }
   // Re-exported only when an operation declares typed error bodies: the
   // hooks import `EndpointError` from here, whichever client was generated.
@@ -509,6 +563,10 @@ function emitAdapterClient(
     f.line();
     f.lines(...streamEventHelper(client));
   }
+  if (needsUnchecked(doc, opts.responseValidation)) {
+    f.line();
+    f.lines(...uncheckedHelper());
+  }
   return f;
 }
 
@@ -640,12 +698,54 @@ export { bodyArg } from "./operation-types";
  * reach analysis in `core/generate.ts` reports the operation as web-only by
  * asking this same predicate.
  */
-export function hasNativeDataComponent(op: IrOperation): boolean {
+export function hasNativeDataComponent(op: IrOperation, models: ReadonlyMap<string, IrType>): boolean {
+  return op.method === "GET" && nativeDataBlocker(op, models) === undefined;
+}
+
+/**
+ * Why a read gets NO native data component — or `undefined` when it gets one.
+ * The one place that decides it; the reach report quotes the string verbatim.
+ *
+ * A REQUIRED query parameter becomes a prop and travels as `query`, the way a
+ * path parameter travels as `params`. It used to be left out, so the module
+ * lowered cleanly and every native request was missing it (a 400 on any API
+ * that enforces it) while the reach report said `web+native`.
+ */
+export function nativeDataBlocker(op: IrOperation, models: ReadonlyMap<string, IrType>): string | undefined {
   // `hook: false` turns off query generation for the operation on EVERY
   // target — the native data component is that target's query hook.
-  return (
-    !isMutation(op) && op.hook !== false && typedResponse(op) !== undefined
-  );
+  if (op.hook === false) {
+    return "its hook is turned off (`operations.<id>.hook: false`, `naming.hook` or a plugin), so no native data component is generated.";
+  }
+  const unsent = [
+    ...op.headerParams.map((p) => ["header", p] as const),
+    ...op.cookieParams.map((p) => ["cookie", p] as const),
+  ].find(([, p]) => p.required);
+  if (unsent !== undefined) {
+    return `its required ${unsent[0]} parameter \`${unsent[1].name}\` is not sent by the native data component, which passes path and query parameters only.`;
+  }
+  const owned = new Set(["children", ...op.pathParams.map((p) => p.name)]);
+  for (const p of requiredQuery(op)) {
+    const t = resolveType(p.type, models);
+    const scalar = t.kind === "string" || t.kind === "number" || t.kind === "boolean" || t.kind === "enum";
+    if (!scalar) {
+      return `its required query parameter \`${p.name}\` is ${t.kind === "array" ? "an array" : `a ${t.kind}`}, and the native data component sends scalar query values only.`;
+    }
+    if (ident(p.name) !== p.name || owned.has(p.name)) {
+      return `its required query parameter \`${p.name}\` cannot be a prop of the native data component (${owned.has(p.name) ? "the name is taken" : "not a plain identifier"}).`;
+    }
+    owned.add(p.name);
+  }
+  if (typedResponse(op) === undefined) {
+    return "no typed JSON response (no content, or a media type Lathe cannot type) -- a native query decodes into a declared type, so there is nothing to lower it to.";
+  }
+
+  return undefined;
+}
+
+/** The query parameters a native data component must send — the required ones. */
+function requiredQuery(op: IrOperation): IrOperation["queryParams"] {
+  return op.queryParams.filter((p) => p.required);
 }
 
 /**
@@ -702,6 +802,56 @@ export function nativeStreamBlocker(op: IrOperation): string | undefined {
   return undefined;
 }
 
+/** Props a generated mutation component owns, which a path param must not shadow. */
+const MUTATION_COMPONENT_PROPS = ["children", "json"] as const;
+
+/**
+ * Does this operation get a native MUTATION COMPONENT?
+ *
+ * A write (`POST` / `PUT` / `PATCH` / `DELETE`) that is not a stream, with a
+ * JSON body or none, and a typed JSON response or no content. `@pyreon/query`'s
+ * native plugin lowers `useMutation<T, E, Vars>(ep.mutation())` to the native
+ * `PyreonMutation` runtime, building the request at the `mutate(…)` call site,
+ * so the component calls `mutate` itself and hands the trigger to `children`
+ * (#4835). The reach analysis in `core/generate.ts` asks this same predicate
+ * (through `nativeMutationBlocker`), so the two cannot disagree.
+ */
+export function hasNativeMutationComponent(op: IrOperation): boolean {
+  return isMutation(op) && !isStreamOnly(op) && nativeMutationBlocker(op) === undefined;
+}
+
+/**
+ * Why a write gets NO native mutation component — or `undefined` when it gets
+ * one. The one place that decides it; the reach report quotes the string verbatim.
+ */
+export function nativeMutationBlocker(op: IrOperation): string | undefined {
+  if (!isMutation(op)) return "not a write operation.";
+  if (op.hook === false) {
+    return "its hook is turned off (`operations.<id>.hook: false`, `naming.hook` or a plugin), so no native mutation component is generated.";
+  }
+  if (op.body !== undefined && op.body.encoding !== "json") {
+    return `its request body is \`${op.body.mediaType}\` (${op.body.encoding}), and a native mutation sends a JSON body only.`;
+  }
+  const kind = responseKindOf(op);
+  if (kind !== "json") {
+    return `its response is \`${op.responseMedia ?? kind}\` (${kind}) -- a native mutation decodes a JSON body into a declared type, or reads nothing.`;
+  }
+  const required = [
+    ...op.queryParams.map((p) => ["query", p] as const),
+    ...op.headerParams.map((p) => ["header", p] as const),
+    ...op.cookieParams.map((p) => ["cookie", p] as const),
+  ].find(([, p]) => p.required);
+  if (required !== undefined) {
+    return `its required ${required[0]} parameter \`${required[1].name}\` is not sent by the native mutation component, which passes path parameters and a JSON body only.`;
+  }
+  const clash = op.pathParams.find((p) => (MUTATION_COMPONENT_PROPS as readonly string[]).includes(p.name));
+  if (clash !== undefined) {
+    return `its path parameter \`${clash.name}\` has the name of a prop the generated mutation component owns (${MUTATION_COMPONENT_PROPS.map((n) => `\`${n}\``).join(", ")}).`;
+  }
+
+  return undefined;
+}
+
 /** Does this operation mutate? Decides query vs mutation binding. */
 export function isMutation(op: IrOperation): boolean {
   return op.method !== "GET" && op.method !== "HEAD" && op.method !== "OPTIONS";
@@ -716,23 +866,30 @@ export function emitWebEndpoints(
   doc: IrDocument,
   validator: ValidatorName = "pyreon",
   client: ClientName = "pyreon",
+  responseValidation: ResponseValidation = "strict",
 ): SourceFile[] {
   const dialect = dialectOf(validator);
   const models: ModelTypes = new Map(doc.models.map((m) => [m.name, m.type]));
   const files: SourceFile[] = [];
+  const unchecked = (op: IrOperation): boolean => isUnchecked(op, responseValidation);
   for (const [tag, ops] of byTag(doc)) {
     const path = `endpoints/${tagFile(tag)}.ts`;
     const f = new SourceFile(path);
     f.import(relativeSpecifier(path, CLIENT_FILE), "api");
+    if (ops.some((op) => unchecked(op) && (op.errors?.length ?? 0) > 0)) {
+      f.import(relativeSpecifier(path, CLIENT_FILE), "unchecked");
+    }
     // VALUES for response schemas (a composite clause names several models);
     // TYPES for everything an input names — a parameter or a body can be a
-    // `$ref` too (GitHub's spec does this heavily).
+    // `$ref` too (GitHub's spec does this heavily). An operation whose
+    // validation is off names its response and error models as TYPES only.
     const schemaImports = new Set<string>();
     const typeImports = new Set<string>();
     for (const op of ops) {
+      const bodies = unchecked(op) ? typeImports : schemaImports;
       if (op.response && op.response.kind !== "unknown")
-        schemaRefs(op.response, schemaImports);
-      for (const e of op.errors ?? []) schemaRefs(e.type, schemaImports);
+        schemaRefs(op.response, bodies);
+      for (const e of op.errors ?? []) schemaRefs(e.type, bodies);
       // A PARAMETER's schema can be a `$ref` too - GitHub's spec does this
       // heavily (`AlertNumber`, `CodeScanningRef`) - and so can a body.
       for (const p of [
@@ -756,7 +913,7 @@ export function emitWebEndpoints(
     }
 
     const lossless = usesBigInt(doc);
-    const decls = ops.map((op) => endpointDecl(op, validator, models, false, lossless));
+    const decls = ops.map((op) => endpointDecl(op, validator, models, { lossless, unchecked: unchecked(op) }));
     // An encoded body is typed through the encoder's own value type.
     if (decls.some((d) => d.generics.includes("FormValue"))) {
       f.importType(
@@ -798,14 +955,25 @@ export function emitWebEndpoints(
       path,
       doc,
       validator,
+      unchecked,
       streamDecl: (op) => ({
         spec: endpointSpec(op),
-        ...endpointDecl(op, validator, models, true, lossless),
+        ...endpointDecl(op, validator, models, { asStream: true, lossless, unchecked: unchecked(op) }),
       }),
     });
     files.push(f);
   }
   return files;
+}
+
+/** How one endpoint declaration is emitted — see {@link endpointDecl}. */
+interface EndpointDeclFlags {
+  /** The raw-body twin of a JSON endpoint, which `<op>Stream` parses. */
+  asStream?: boolean;
+  /** `int64: 'bigint'`: schemas decode losslessly. */
+  lossless?: boolean;
+  /** Response validation is off: declared types only (#4815). */
+  unchecked?: boolean;
 }
 
 interface EndpointDecl {
@@ -837,16 +1005,30 @@ function endpointDecl(
   op: IrOperation,
   validator: ValidatorName,
   models: ModelTypes,
-  asStream = false,
-  lossless = false,
+  { asStream = false, lossless = false, unchecked = false }: EndpointDeclFlags = {},
 ): EndpointDecl {
   const entries: string[] = [];
   // `asStream`: the raw-body twin of a JSON endpoint, which `<op>Stream`
   // parses as SSE / NDJSON. It validates per EVENT, so it has no `response`.
   const kind = asStream ? "stream" : responseTypeOf(op);
+  // Validation off at generate time: every body is typed through a parse
+  // function TYPE over its interface (`(raw: unknown) => Items`), which both
+  // `@pyreon/http` and the generated adapters infer a response type from.
+  // No `response` entry and no schema: nothing would ever check it (#4815).
+  const consts: string[] = [];
+  const bodyType = (type: IrType, binding: string): string => {
+    if (type.kind === "ref") return type.name;
+    consts.push(`type ${binding} = ${tsType(type)}`);
+
+    return binding;
+  };
   let responseConst: string | undefined;
   let v = "undefined";
-  if (!asStream && op.response && op.response.kind !== "unknown") {
+  if (unchecked) {
+    if (!asStream && op.response && op.response.kind !== "unknown") {
+      v = `(raw: unknown) => ${bodyType(op.response, `${op.id}$response`)}`;
+    }
+  } else if (!asStream && op.response && op.response.kind !== "unknown") {
     const expr = schemaExpr(op.response, { native: false, validator, lossless });
     if (op.response.kind === "ref") {
       entries.push(`response: ${op.response.name}`);
@@ -877,6 +1059,14 @@ function endpointDecl(
   const errorEntries: string[] = []
   for (const e of op.errors ?? []) {
     const key = /^\d+$/.test(e.status) ? e.status : e.status === 'default' ? 'default' : q(e.status)
+    if (unchecked) {
+      // The key stays a runtime entry — it is what `err.matched` is decided
+      // from — with the identity `unchecked` standing in for the schema.
+      const type = bodyType(e.type, `${op.id}$error${e.status === 'default' ? 'Default' : e.status}`)
+      errorEntries.push(`${key}: unchecked`)
+      errorTypes.push(`${key}: (raw: unknown) => ${type}`)
+      continue
+    }
     let binding: string
     if (e.type.kind === 'ref') {
       binding = e.type.name
@@ -918,7 +1108,7 @@ function endpointDecl(
   const errorsGeneric = errorTypes.length > 0 ? [q(kind ?? 'json'), `{ ${errorTypes.join('; ')} }`] : kind ? [q(kind)] : []
   const generics = `<${[q(endpointSpec(op)), v, inputType(op, models, lossless), ...errorsGeneric].join(', ')}>`
   const config = entries.length > 0 ? `, { ${entries.join(', ')} }` : ''
-  const consts = [...(responseConst ? [responseConst] : []), ...errorConsts]
+  consts.push(...(responseConst ? [responseConst] : []), ...errorConsts)
   const constText = consts.join('\n')
   return {
     generics,
@@ -1037,6 +1227,7 @@ function resolvedKind(
 /** WEB layout: `queries.ts` — reactive hooks, one per operation. */
 export function emitWebQueries(doc: IrDocument): SourceFile[] {
   const files: SourceFile[] = [];
+  const warned = new Set<SourceFile>();
   // A stream is never cached, so it is never an invalidation target.
   const queryOps = doc.operations.filter(
     (o) => !isMutation(o) && !isStreamOnly(o),
@@ -1159,42 +1350,53 @@ export function emitWebQueries(doc: IrDocument): SourceFile[] {
             // not an object: `@pyreon/query` re-reads it, so a signal in `args`
             // makes the query key move and the request refetch. Returning
             // `undefined` is how a caller says "not yet" for a detail query.
+            // Every read hook takes the SAME accessor (#4841), including one
+            // for an operation with no parameters: it is how per-call request
+            // options (`meta` for a middleware, `headers`, `timeout`) reach the
+            // request. It used to take the query options first instead, so
+            // `useListThings(() => ({ meta }))` compiled and `meta` became
+            // TanStack's query meta.
             args
               ? "`args` is an accessor: signals read in it refetch when they change. Return `undefined` to hold the request until the arguments are ready."
-              : undefined,
-            "`options` takes `enabled`, `staleTime`, `select` (which changes the result type) and the rest of the query options.",
+              : "`args` is an optional accessor for the request options (`meta`, `headers`, `timeout`): signals read in it refetch when they change. Return `undefined` to hold the request.",
+            "`options` takes `enabled`, `staleTime`, `select` (which changes the result type) and the rest of the query options, plus `key`: `(base) => [...base, discriminator]` extends the cache key when headers or the caller change the result (a tenant, a locale). Start from `base`, so invalidating the endpoint still matches.",
           ],
           hook,
         ),
       );
-      const extra = `options?: () => Omit<UseQueryOptions<${data}, ${err}, TData>, 'queryKey' | 'queryFn'>`;
-      if (args) {
-        f.line(`export function ${hook}<TData = ${data}>(`);
-        f.line(`  args: () => ${input} | undefined,`);
-        f.line(`  ${extra},`);
-        f.line(") {");
-        f.line(`  return useQuery<${data}, ${err}, TData>(() => {`);
-        f.line("    const a = args()");
-        f.line("    const extra = options?.() ?? {}");
-        // The disabled branch keys on the endpoint's own PREFIX — the same key
-        // `keys` exposes — so an invalidation of the endpoint still matches it.
-        // `enabled` sits AFTER the spread: a caller's `enabled: true` must not
-        // fire a request whose path parameter is missing.
-        f.line("    if (a === undefined) {");
+      if (!args && !warned.has(f)) {
+        warned.add(f);
+        f.line();
+        f.lines(...QUERY_OPTIONS_IN_ARGS);
+        f.line();
+      }
+      const extra = `options?: () => ${QUERY_HOOK_OPTIONS(data, err)}`;
+      f.line(`export function ${hook}<TData = ${data}>(`);
+      f.line(`  args${args ? "" : "?"}: () => ${input} | undefined,`);
+      f.line(`  ${extra},`);
+      f.line(") {");
+      f.line(`  return useQuery<${data}, ${err}, TData>(() => {`);
+      f.line(args ? "    const a = args()" : "    const a = args ? args() : {}");
+      // A parameterless hook used to take its QUERY options first (#4841), so
+      // `useListThings(() => ({ staleTime }))` from before still compiles when
+      // the object is not a literal — and the option silently does nothing.
+      if (!args) {
         f.line(
-          `      return { queryKey: ${op.id}.key.prefix, queryFn: ${DISABLED_FN}, ...extra, enabled: false }`,
-        );
-        f.line("    }");
-        f.line(
-          `    return { ...${op.id}.query(a), ...extra, enabled: extra.enabled !== false }`,
-        );
-        f.line("  })");
-      } else {
-        f.line(`export function ${hook}<TData = ${data}>(${extra}) {`);
-        f.line(
-          `  return useQuery<${data}, ${err}, TData>(() => ({ ...${op.id}.query(), ...options?.() }))`,
+          `    if (a !== undefined) lathe$queryOptionsInArgs(${q(hook)}, a)`,
         );
       }
+      f.line("    const { key, ...extra } = options?.() ?? {}");
+      // The disabled branch keys on the endpoint's own PREFIX — the same key
+      // `keys` exposes — so an invalidation of the endpoint still matches it.
+      // `enabled` sits AFTER the spread: a caller's `enabled: true` must not
+      // fire a request whose path parameter is missing.
+      f.line("    if (a === undefined) {");
+      f.line(
+        `      return { queryKey: [...${op.id}.key.prefix, ${HELD_KEY}], queryFn: ${DISABLED_FN}, ...extra, enabled: false }`,
+      );
+      f.line("    }");
+      f.line(`    return { ...${op.id}.query(a, { key }), ...extra, enabled: extra.enabled !== false }`);
+      f.line("  })");
       f.line("}");
       emitInfinite(f, op, DISABLED_FN);
     }
@@ -1310,7 +1512,10 @@ export function emitNativeModules(
       if (dialect.nativeWrap && emitsModelBinding)
         f.import(dialect.nativeWrap.module, dialect.nativeWrap.fn);
     }
-    if (ops.some(hasNativeDataComponent)) f.import("@pyreon/query", "useQuery");
+    const dataOps = ops.filter((op) => hasNativeDataComponent(op, modelTypes));
+    if (dataOps.length > 0) f.import("@pyreon/query", "useQuery");
+    const mutationOps = ops.filter(hasNativeMutationComponent);
+    if (mutationOps.length > 0) f.import("@pyreon/query", "useMutation");
     const streamOps = ops.filter(hasNativeStreamComponent);
     if (streamOps.length > 0) {
       f.import("@pyreon/query", "useStream");
@@ -1407,7 +1612,7 @@ export function emitNativeModules(
     // a standalone hook function is read as a View and emitted verbatim, which
     // produces Swift that does not compile, with no warning at all.
     for (const op of ops) {
-      if (!hasNativeDataComponent(op)) continue;
+      if (!dataOps.includes(op)) continue;
       const response = typedResponse(op);
       const ret = response ? nativeTs(response, modelTypes) : "unknown";
       const name = `${typeIdent(op.id)}Data`;
@@ -1425,36 +1630,46 @@ export function emitNativeModules(
       // — which is what lets it be a bare `props.x` member access rather than
       // the quoted-key form the other emitters need. If that normalization
       // ever moves, this breaks loudly at typecheck rather than silently.
+      // A REQUIRED query parameter is a prop too, sent as `query`; an
+      // optional one is left to the web hook.
+      const query = requiredQuery(op);
       const propsType = [
         ...params.map((p) => `${p.name}: ${tsType(bigintAsNumber(p.type))}`),
+        ...query.map((p) => `${p.name}: ${tsType(bigintAsNumber(p.type))}`),
         `children: (data: ${ret} | undefined) => unknown`,
       ].join("; ");
       // `props.x`, never a destructure: destructuring reads the getter once
       // and freezes the value, which is the single most common way to lose
       // reactivity in Pyreon — and here it would also stop the query
       // re-fetching when the parent passes a new id.
-      const args = params.length
-        ? `({ params: { ${params.map((p) => `${p.name}: props.${p.name}`).join(", ")} } })`
-        : "()";
+      const parts = [
+        ...(params.length ? [`params: { ${params.map((p) => `${p.name}: props.${p.name}`).join(", ")} }`] : []),
+        ...(query.length ? [`query: { ${query.map((p) => `${p.name}: props.${p.name}`).join(", ")} }`] : []),
+      ];
+      const args = parts.length ? `({ ${parts.join(", ")} })` : "()";
+      const propNames = [...params, ...query].map((p) => `\`${p.name}\``);
       f.line();
       f.doc(
         `Fetches \`${endpointSpec(op)}\` and renders it through \`children\`.`,
-        ...(params.length
+        ...(propNames.length
           ? [
               "",
-              `Takes ${params.map((p) => `\`${p.name}\``).join(", ")} as ${params.length === 1 ? "a prop" : "props"} and re-fetches when ${params.length === 1 ? "it changes" : "they change"}.`,
+              `Takes ${propNames.join(", ")} as ${propNames.length === 1 ? "a prop" : "props"} and re-fetches when ${propNames.length === 1 ? "it changes" : "they change"}.`,
             ]
           : []),
       );
       f.line(`export function ${name}(props: { ${propsType} }) {`);
-      f.line(`  const q = useQuery<${ret}>(() => ${op.id}.query${args})`);
+      // `__q`, not `q`: a component's locals and its props share one scope
+      // on Swift (stored properties), and `q` is a common parameter name.
+      // Lathe's identifiers never start with `_`.
+      f.line(`  const __q = useQuery<${ret}>(() => ${op.id}.query${args})`);
       // Returned as an ACCESSOR. A Pyreon component body runs ONCE, so
       // `return props.children(q.data())` read the data at mount — `undefined`
       // — and the rendered output never moved again: on the web the component
       // stayed at its loading state forever. The accessor re-reads `q.data()`
       // in a tracked scope, and PMTC lowers it to the same render-prop view.
       // (`q.data` is a SIGNAL; it is still CALLED inside the accessor.)
-      f.line("  return () => props.children(q.data())");
+      f.line("  return () => props.children(__q.data())");
       f.line("}");
     }
 
@@ -1539,7 +1754,7 @@ export function emitNativeModules(
           : []),
       );
       f.line(`export function ${name}(props: { ${propsType} }) {`);
-      f.line(`  const s = useStream<${item}>(`);
+      f.line(`  const __s = useStream<${item}>(`);
       f.line(`    (ctx) => ${open}((c) => ${op.id}({ ${epArgs} }), { ${streamOpts} }),`);
       // An ACCESSOR, so `enabled` is read in the hook's tracked scope and a
       // flip starts or stops the stream (PMTC joins it to the harness key).
@@ -1547,7 +1762,95 @@ export function emitNativeModules(
       f.line("  )");
       // An ACCESSOR, for the same reason the data component returns one: the
       // body runs once, and `events()` must be re-read as events arrive.
-      f.line("  return () => props.children(s.events())");
+      f.line("  return () => props.children(__s.events())");
+      f.line("}");
+    }
+
+    // Mutation components — `useMutation<T, E, Vars>(ep.mutation())`, the
+    // shape PMTC lowers to the native `PyreonMutation` runtime. The request is
+    // built where `mutate(…)` is CALLED, so the component calls it and hands
+    // the trigger to `children`; path params and the JSON body are props, read
+    // when the trigger fires (the same props a triggered stream takes).
+    // The queries a write refreshes: the web hook's set (`invalidationTargets`),
+    // limited to this module's endpoints — PMTC reads one file, so the
+    // component can name only its own tag's. Natively each target becomes a
+    // URL root (`GET:<url up to its first path param>`), which also covers the
+    // paths below it.
+    const queryOps = doc.operations.filter((o) => !isMutation(o) && !isStreamOnly(o));
+    for (const op of mutationOps) {
+      const targets = invalidationTargets(op, queryOps).filter((t) => ops.includes(t));
+      const response = typedResponse(op);
+      let data: string | undefined;
+      if (response !== undefined) {
+        data = nativeTs(response, modelTypes);
+        // An inline object is named ONCE (the hook's type argument and the
+        // render prop's parameter), for the reason a stream event is.
+        if (response.kind === "object") {
+          const alias = `${typeIdent(op.id)}Result`;
+          f.line();
+          f.line(`export type ${alias} = ${data}`);
+          data = alias;
+        }
+      }
+      let bodyType: string | undefined;
+      if (op.body !== undefined) {
+        bodyType = nativeTs(op.body.type, modelTypes);
+        if (op.body.type.kind === "object") {
+          const alias = `${typeIdent(op.id)}Body`;
+          f.line();
+          f.line(`export type ${alias} = ${bodyType}`);
+          bodyType = alias;
+        }
+      }
+      const params = op.pathParams;
+      const vars = [
+        ...(params.length
+          ? [`params: { ${params.map((p) => `${p.name}: ${tsType(bigintAsNumber(p.type))}`).join("; ")} }`]
+          : []),
+        ...(bodyType !== undefined ? [`json: ${bodyType}`] : []),
+      ];
+      const args = [
+        ...(params.length
+          ? [`params: { ${params.map((p) => `${p.name}: props.${p.name}`).join(", ")} }`]
+          : []),
+        ...(bodyType !== undefined ? ["json: props.json"] : []),
+      ];
+      const slots = [
+        "mutate: () => void",
+        ...(data !== undefined ? [`data: ${data} | undefined`] : []),
+        "isPending: boolean",
+        "error: Error | null",
+      ];
+      const propsType = [
+        ...params.map((p) => `${p.name}: ${tsType(bigintAsNumber(p.type))}`),
+        // Required even where the spec marks the body optional: a native
+        // request carries the value it is given, and `undefined` would be sent
+        // as `null` there while the web sends no body at all.
+        ...(bodyType !== undefined ? [`json: ${bodyType}`] : []),
+        `children: (${slots.join(", ")}) => unknown`,
+      ].join("; ");
+      const name = `${typeIdent(op.id)}Mutation`;
+      f.line();
+      f.doc(
+        `Sends \`${endpointSpec(op)}\` when \`children\` calls \`mutate\`${bodyType !== undefined ? ", with `json` as the body" : ""}.`,
+        "",
+        `\`children\` receives the trigger${data !== undefined ? ", the latest response (`undefined` until one arrives)" : ""}, whether a request is in flight, and the latest error.`,
+        ...(params.length || bodyType !== undefined
+          ? [
+              `${[...params.map((p) => `\`${p.name}\``), ...(bodyType !== undefined ? ["`json`"] : [])].join(", ")} ${params.length + (bodyType !== undefined ? 1 : 0) === 1 ? "is" : "are"} read when \`mutate\` is called.`,
+            ]
+          : []),
+      );
+      f.line(`export function ${name}(props: { ${propsType} }) {`);
+      // `unknown` for a write with no typed response: PMTC reads it as "decode
+      // nothing", and it is what the endpoint resolves to.
+      f.line(
+        `  const __m = useMutation<${data ?? "unknown"}, Error, ${vars.length > 0 ? `{ ${vars.join("; ")} }` : "{}"}>(${op.id}.mutation(${targets.length > 0 ? `{ invalidates: [${targets.map((t) => t.id).join(", ")}] }` : ""}))`,
+      );
+      // An ACCESSOR, for the reason the data component returns one.
+      f.line(
+        `  return () => props.children(() => __m.mutate(${args.length > 0 ? `{ ${args.join(", ")} }` : "{}"}), ${data !== undefined ? "__m.data(), " : ""}__m.isPending(), __m.error())`,
+      );
       f.line("}");
     }
     files.push(f);
@@ -1563,6 +1866,35 @@ export function emitNativeModules(
  * that rejects with a real sentence beats `undefined!` if some future code
  * path ever reaches it.
  */
+/**
+ * Name a QUERY option passed where the request options go, once per hook. Not
+ * dev-gated: generated code cannot assume `process` (or Vite's `import.meta.env`)
+ * is typed in the consumer, and the check is a few `in` tests on misuse-only
+ * input. `$` in the names, so no operation or model can collide with them.
+ */
+const QUERY_OPTIONS_IN_ARGS = [
+  "const lathe$QUERY_ONLY = ['enabled', 'staleTime', 'gcTime', 'select', 'refetchInterval', 'refetchOnWindowFocus', 'refetchOnMount', 'refetchOnReconnect', 'retry', 'retryDelay', 'placeholderData', 'initialData', 'queryKey', 'queryFn', 'key']",
+  "const lathe$warned = new Set<string>()",
+  "function lathe$queryOptionsInArgs(hook: string, args: object): void {",
+  "  if (lathe$warned.has(hook)) return",
+  "  const misplaced = lathe$QUERY_ONLY.filter((k) => k in args)",
+  "  if (misplaced.length === 0) return",
+  "  lathe$warned.add(hook)",
+  "  console.warn(",
+  "    `[Pyreon] lathe: ${hook}(args) got ${misplaced.map((k) => `\\`${k}\\``).join(', ')}, which ${misplaced.length === 1 ? 'is a query option' : 'are query options'} and ${misplaced.length === 1 ? 'is' : 'are'} ignored there. ` +",
+  "      `The first argument is the request options (meta, headers, timeout); pass query options second: ${hook}(undefined, () => ({ ${misplaced[0]}: … })).`,",
+  "  )",
+  "}",
+];
+
+/**
+ * The options a generated query hook takes: TanStack's, minus what the
+ * endpoint owns (`queryKey`, `queryFn`), plus `key` (#4841).
+ */
+const QUERY_HOOK_OPTIONS = (data: string, err: string): string =>
+  `Omit<UseQueryOptions<${data}, ${err}, TData>, 'queryKey' | 'queryFn'> & ${QUERY_HOOK_KEY_OPTION}`;
+
+
 const DISABLED_FN =
   "() => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready'))";
 

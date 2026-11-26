@@ -38,6 +38,6 @@ export const listAuthors = api.endpoint('GET /authors', { response: s.array(Auth
 
 /** Fetches `GET /authors` and renders it through `children`. */
 export function ListAuthorsData(props: { children: (data: Author[] | undefined) => unknown }) {
-  const q = useQuery<Author[]>(() => listAuthors.query())
-  return () => props.children(q.data())
+  const __q = useQuery<Author[]>(() => listAuthors.query())
+  return () => props.children(__q.data())
 }

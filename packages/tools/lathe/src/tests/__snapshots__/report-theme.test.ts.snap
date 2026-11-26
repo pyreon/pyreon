@@ -15,10 +15,7 @@ exports[`lathe check, themed > 16 colours 1`] = `
       ␛[31m− breaking␛[39m  ␛[90moperation-removed␛[39m  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
       ␛[32m+ additive␛[39m  ␛[90mfield-added␛[39m        Invoice.dueAt  string (optional)
       ␛[33m~ additive␛[39m  ␛[90mresponse-changed␛[39m   getInvoice     response gained field dueAt
-    ␛[1mnative reach␛[22m   1 of 3 operations␛[90m · 2 web-only␛[39m
-      ␛[33m! web-only␛[39m  1 operation: createBook
-        ␛[90m\`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this␛[39m
-        ␛[90mclient DO reach native.␛[39m
+    ␛[1mnative reach␛[22m   2 of 3 operations␛[90m · 1 web-only␛[39m
       ␛[33m! web-only␛[39m  1 operation: getLegacy
         ␛[90mno typed JSON response (no content, or a media type Lathe cannot type) -- a native query␛[39m
         ␛[90mdecodes into a declared type, so there is nothing to lower it to.␛[39m
@@ -54,10 +51,7 @@ exports[`lathe check, themed > 256 dark 1`] = `
       ␛[38;5;203m− breaking␛[39m  ␛[38;5;103moperation-removed␛[39m  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
       ␛[38;5;78m+ additive␛[39m  ␛[38;5;103mfield-added␛[39m        Invoice.dueAt  string (optional)
       ␛[38;5;220m~ additive␛[39m  ␛[38;5;103mresponse-changed␛[39m   getInvoice     response gained field dueAt
-    ␛[1mnative reach␛[22m   1 of 3 operations␛[38;5;103m · 2 web-only␛[39m
-      ␛[38;5;220m! web-only␛[39m  1 operation: createBook
-        ␛[38;5;103m\`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this␛[39m
-        ␛[38;5;103mclient DO reach native.␛[39m
+    ␛[1mnative reach␛[22m   2 of 3 operations␛[38;5;103m · 1 web-only␛[39m
       ␛[38;5;220m! web-only␛[39m  1 operation: getLegacy
         ␛[38;5;103mno typed JSON response (no content, or a media type Lathe cannot type) -- a native query␛[39m
         ␛[38;5;103mdecodes into a declared type, so there is nothing to lower it to.␛[39m
@@ -93,10 +87,7 @@ exports[`lathe check, themed > 256 light 1`] = `
       ␛[38;5;124m− breaking␛[39m  ␛[38;5;59moperation-removed␛[39m  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
       ␛[38;5;22m+ additive␛[39m  ␛[38;5;59mfield-added␛[39m        Invoice.dueAt  string (optional)
       ␛[38;5;94m~ additive␛[39m  ␛[38;5;59mresponse-changed␛[39m   getInvoice     response gained field dueAt
-    ␛[1mnative reach␛[22m   1 of 3 operations␛[38;5;59m · 2 web-only␛[39m
-      ␛[38;5;94m! web-only␛[39m  1 operation: createBook
-        ␛[38;5;59m\`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this␛[39m
-        ␛[38;5;59mclient DO reach native.␛[39m
+    ␛[1mnative reach␛[22m   2 of 3 operations␛[38;5;59m · 1 web-only␛[39m
       ␛[38;5;94m! web-only␛[39m  1 operation: getLegacy
         ␛[38;5;59mno typed JSON response (no content, or a media type Lathe cannot type) -- a native query␛[39m
         ␛[38;5;59mdecodes into a declared type, so there is nothing to lower it to.␛[39m
@@ -132,10 +123,7 @@ exports[`lathe check, themed > ascii 1`] = `
       - breaking  operation-removed  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
       + additive  field-added        Invoice.dueAt  string (optional)
       ~ additive  response-changed   getInvoice     response gained field dueAt
-    native reach   1 of 3 operations - 2 web-only
-      ! web-only  1 operation: createBook
-        \`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this
-        client DO reach native.
+    native reach   2 of 3 operations - 1 web-only
       ! web-only  1 operation: getLegacy
         no typed JSON response (no content, or a media type Lathe cannot type) -- a native query
         decodes into a declared type, so there is nothing to lower it to.
@@ -171,10 +159,7 @@ exports[`lathe check, themed > plain 1`] = `
       − breaking  operation-removed  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
       + additive  field-added        Invoice.dueAt  string (optional)
       ~ additive  response-changed   getInvoice     response gained field dueAt
-    native reach   1 of 3 operations · 2 web-only
-      ! web-only  1 operation: createBook
-        \`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this
-        client DO reach native.
+    native reach   2 of 3 operations · 1 web-only
       ! web-only  1 operation: getLegacy
         no typed JSON response (no content, or a media type Lathe cannot type) -- a native query
         decodes into a declared type, so there is nothing to lower it to.
@@ -210,10 +195,7 @@ exports[`lathe check, themed > truecolor dark 1`] = `
       ␛[38;2;248;113;113m− breaking␛[39m  ␛[38;2;138;134;150moperation-removed␛[39m  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
       ␛[38;2;74;222;128m+ additive␛[39m  ␛[38;2;138;134;150mfield-added␛[39m        Invoice.dueAt  string (optional)
       ␛[38;2;250;204;21m~ additive␛[39m  ␛[38;2;138;134;150mresponse-changed␛[39m   getInvoice     response gained field dueAt
-    ␛[1mnative reach␛[22m   1 of 3 operations␛[38;2;138;134;150m · 2 web-only␛[39m
-      ␛[38;2;250;204;21m! web-only␛[39m  1 operation: createBook
-        ␛[38;2;138;134;150m\`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this␛[39m
-        ␛[38;2;138;134;150mclient DO reach native.␛[39m
+    ␛[1mnative reach␛[22m   2 of 3 operations␛[38;2;138;134;150m · 1 web-only␛[39m
       ␛[38;2;250;204;21m! web-only␛[39m  1 operation: getLegacy
         ␛[38;2;138;134;150mno typed JSON response (no content, or a media type Lathe cannot type) -- a native query␛[39m
         ␛[38;2;138;134;150mdecodes into a declared type, so there is nothing to lower it to.␛[39m
@@ -249,10 +231,7 @@ exports[`lathe check, themed > truecolor light 1`] = `
       ␛[38;2;185;28;28m− breaking␛[39m  ␛[38;2;94;90;105moperation-removed␛[39m  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
       ␛[38;2;21;112;58m+ additive␛[39m  ␛[38;2;94;90;105mfield-added␛[39m        Invoice.dueAt  string (optional)
       ␛[38;2;138;90;0m~ additive␛[39m  ␛[38;2;94;90;105mresponse-changed␛[39m   getInvoice     response gained field dueAt
-    ␛[1mnative reach␛[22m   1 of 3 operations␛[38;2;94;90;105m · 2 web-only␛[39m
-      ␛[38;2;138;90;0m! web-only␛[39m  1 operation: createBook
-        ␛[38;2;94;90;105m\`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this␛[39m
-        ␛[38;2;94;90;105mclient DO reach native.␛[39m
+    ␛[1mnative reach␛[22m   2 of 3 operations␛[38;2;94;90;105m · 1 web-only␛[39m
       ␛[38;2;138;90;0m! web-only␛[39m  1 operation: getLegacy
         ␛[38;2;94;90;105mno typed JSON response (no content, or a media type Lathe cannot type) -- a native query␛[39m
         ␛[38;2;94;90;105mdecodes into a declared type, so there is nothing to lower it to.␛[39m
@@ -373,10 +352,7 @@ exports[`lathe generate, themed > dry run, plain 1`] = `
       − breaking  operation-removed  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
       + additive  field-added        Invoice.dueAt  string (optional)
       ~ additive  response-changed   getInvoice     response gained field dueAt
-    native reach   1 of 3 operations · 2 web-only
-      ! web-only  1 operation: createBook
-        \`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this
-        client DO reach native.
+    native reach   2 of 3 operations · 1 web-only
       ! web-only  1 operation: getLegacy
         no typed JSON response (no content, or a media type Lathe cannot type) -- a native query
         decodes into a declared type, so there is nothing to lower it to.
@@ -411,10 +387,7 @@ exports[`lathe generate, themed > plain 1`] = `
       − breaking  operation-removed  deleteInvoice  \`DELETE /invoices/:id\` no longer exists
       + additive  field-added        Invoice.dueAt  string (optional)
       ~ additive  response-changed   getInvoice     response gained field dueAt
-    native reach   1 of 3 operations · 2 web-only
-      ! web-only  1 operation: createBook
-        \`POST\` lowers through mutations, which PMTC does not yet recognise; GET operations on this
-        client DO reach native.
+    native reach   2 of 3 operations · 1 web-only
       ! web-only  1 operation: getLegacy
         no typed JSON response (no content, or a media type Lathe cannot type) -- a native query
         decodes into a declared type, so there is nothing to lower it to.

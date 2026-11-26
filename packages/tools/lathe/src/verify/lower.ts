@@ -11,7 +11,7 @@
  * emits Swift that references `useQuery`, a symbol that does not exist on the
  * target, so the native build fails later with `cannot find 'useQuery' in
  * scope`. Absence of a complaint is not presence of a lowering. So the verifier
- * asserts the MARKER — `PyreonQuery<` / `PyreonFetch<` / a generated schema
+ * asserts the MARKER — `PyreonQuery<` / `PyreonMutation<` / `PyreonFetch<` / a generated schema
  * struct — and separately asserts that no un-lowered framework symbol survived
  * into the output.
  *
@@ -80,6 +80,7 @@ export interface VerifyReport {
 const MARKERS: readonly string[] = [
   'PyreonQuery<',
   'PyreonStream<',
+  'PyreonMutation<',
   'PyreonFetch<',
   'PyreonHttpRequest(',
   'PyreonZodSchema_',
@@ -313,6 +314,7 @@ function decide(markers: string[], leaked: string[], warnings: string[], source:
   if (wantsSchema && !markers.some((m) => m.startsWith('PyreonZodSchema_'))) return 'web-only'
   if (wantsQuery && !markers.some((m) => m === 'PyreonQuery<')) return 'web-only'
   if (wantsStream && !markers.some((m) => m === 'PyreonStream<')) return 'web-only'
+  if (source.includes('useMutation') && !markers.some((m) => m === 'PyreonMutation<')) return 'web-only'
   if (markers.length === 0) return warnings.length > 0 ? 'web-only' : 'broken'
   return 'lowers'
 }

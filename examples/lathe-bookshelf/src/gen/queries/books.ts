@@ -42,7 +42,7 @@ export function useCreateBook(
  * - `bookId` (path)
  *
  * `args` is an accessor: signals read in it refetch when they change. Return `undefined` to hold the request until the arguments are ready.
- * `options` takes `enabled`, `staleTime`, `select` (which changes the result type) and the rest of the query options.
+ * `options` takes `enabled`, `staleTime`, `select` (which changes the result type) and the rest of the query options, plus `key`: `(base) => [...base, discriminator]` extends the cache key when headers or the caller change the result (a tenant, a locale). Start from `base`, so invalidating the endpoint still matches.
  *
  * @example
  * ```ts
@@ -54,15 +54,15 @@ export function useCreateBook(
  */
 export function useGetBook<TData = Awaited<ReturnType<typeof getBook>>>(
   args: () => Parameters<typeof getBook>[0] | undefined,
-  options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof getBook>>, Error, TData>, 'queryKey' | 'queryFn'>,
+  options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof getBook>>, Error, TData>, 'queryKey' | 'queryFn'> & { key?: ((base: readonly unknown[]) => readonly unknown[]) | undefined },
 ) {
   return useQuery<Awaited<ReturnType<typeof getBook>>, Error, TData>(() => {
     const a = args()
-    const extra = options?.() ?? {}
+    const { key, ...extra } = options?.() ?? {}
     if (a === undefined) {
-      return { queryKey: getBook.key.prefix, queryFn: () => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready')), ...extra, enabled: false }
+      return { queryKey: [...getBook.key.prefix, { held: true }], queryFn: () => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready')), ...extra, enabled: false }
     }
-    return { ...getBook.query(a), ...extra, enabled: extra.enabled !== false }
+    return { ...getBook.query(a, { key }), ...extra, enabled: extra.enabled !== false }
   })
 }
 
@@ -71,7 +71,8 @@ export function useGetBook<TData = Awaited<ReturnType<typeof getBook>>>(
  *
  * `GET /books`
  *
- * `options` takes `enabled`, `staleTime`, `select` (which changes the result type) and the rest of the query options.
+ * `args` is an optional accessor for the request options (`meta`, `headers`, `timeout`): signals read in it refetch when they change. Return `undefined` to hold the request.
+ * `options` takes `enabled`, `staleTime`, `select` (which changes the result type) and the rest of the query options, plus `key`: `(base) => [...base, discriminator]` extends the cache key when headers or the caller change the result (a tenant, a locale). Start from `base`, so invalidating the endpoint still matches.
  *
  * @example
  * ```ts
@@ -79,6 +80,31 @@ export function useGetBook<TData = Awaited<ReturnType<typeof getBook>>>(
  * q.data() // undefined until the request settles
  * ```
  */
-export function useListBooks<TData = Awaited<ReturnType<typeof listBooks>>>(options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof listBooks>>, Error, TData>, 'queryKey' | 'queryFn'>) {
-  return useQuery<Awaited<ReturnType<typeof listBooks>>, Error, TData>(() => ({ ...listBooks.query(), ...options?.() }))
+
+const lathe$QUERY_ONLY = ['enabled', 'staleTime', 'gcTime', 'select', 'refetchInterval', 'refetchOnWindowFocus', 'refetchOnMount', 'refetchOnReconnect', 'retry', 'retryDelay', 'placeholderData', 'initialData', 'queryKey', 'queryFn', 'key']
+const lathe$warned = new Set<string>()
+function lathe$queryOptionsInArgs(hook: string, args: object): void {
+  if (lathe$warned.has(hook)) return
+  const misplaced = lathe$QUERY_ONLY.filter((k) => k in args)
+  if (misplaced.length === 0) return
+  lathe$warned.add(hook)
+  console.warn(
+    `[Pyreon] lathe: ${hook}(args) got ${misplaced.map((k) => `\`${k}\``).join(', ')}, which ${misplaced.length === 1 ? 'is a query option' : 'are query options'} and ${misplaced.length === 1 ? 'is' : 'are'} ignored there. ` +
+      `The first argument is the request options (meta, headers, timeout); pass query options second: ${hook}(undefined, () => ({ ${misplaced[0]}: … })).`,
+  )
+}
+
+export function useListBooks<TData = Awaited<ReturnType<typeof listBooks>>>(
+  args?: () => Parameters<typeof listBooks>[0] | undefined,
+  options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof listBooks>>, Error, TData>, 'queryKey' | 'queryFn'> & { key?: ((base: readonly unknown[]) => readonly unknown[]) | undefined },
+) {
+  return useQuery<Awaited<ReturnType<typeof listBooks>>, Error, TData>(() => {
+    const a = args ? args() : {}
+    if (a !== undefined) lathe$queryOptionsInArgs('useListBooks', a)
+    const { key, ...extra } = options?.() ?? {}
+    if (a === undefined) {
+      return { queryKey: [...listBooks.key.prefix, { held: true }], queryFn: () => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready')), ...extra, enabled: false }
+    }
+    return { ...listBooks.query(a, { key }), ...extra, enabled: extra.enabled !== false }
+  })
 }

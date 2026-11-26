@@ -687,11 +687,21 @@ lathe: { input: './openapi.yaml', responseValidation: 'warn' }
 ```
 
 `'strict'` (default) rejects a response that does not match its schema,
-`'warn'` logs and passes the raw body through, `'off'` skips validation — and
-its cost on large lists. The same meaning on every client: passed to
-`createHttp({ validate })` for `pyreon`, baked into the generated validation step
-for `fetch` / `axios` / `ky`. Native modules decode into typed structs and are
+`'warn'` logs and passes the raw body through. The same meaning on every client:
+passed to `createHttp({ validate })` for `pyreon`, baked into the generated
+validation step for `fetch` / `axios` / `ky`, and switchable at runtime with
+`configureApi({ validate })`. Native modules decode into typed structs and are
 not affected.
+
+`'off'` — for the project, or one operation through
+`operations.<id>.responseValidation` — declares those endpoints **types only**:
+the response, error and stream-event bodies are typed from the model
+interfaces, and no schema is referenced, so neither the schema modules nor
+`@pyreon/validate` (or zod) are reachable from them. One `GET` over a nested
+response measured 21.9 KB → 6.8 KB gzipped. An error body still sets
+`err.matched` from its status key. With nothing generated to check against,
+`configureApi({ validate: 'strict' })` cannot validate those endpoints; generate
+with `'strict'` or `'warn'` to keep the runtime switch.
 
 ## 64-bit integers
 
@@ -1092,6 +1102,30 @@ A typo in an option is a compile error. Return `undefined` from the args
 accessor while the arguments are not ready — the query is disabled rather than
 fired with a placeholder.
 
+Every read hook takes the args accessor first, including one for an operation
+with no parameters, where it is optional. It is how per-call request options
+reach the request — `meta` for a middleware, `headers`, `timeout`:
+
+```ts
+const things = useListThings(() => ({ meta: { tenant: tenant() }, headers: { 'x-tenant': tenant() } }))
+const all = useListThings() // no request options
+```
+
+When headers or the caller change the result (a tenant, a locale), extend the
+cache key with `key`, which receives the endpoint's key. Start from `base`, so
+invalidating the endpoint still matches:
+
+```ts
+useListThings(() => ({ headers: { 'x-tenant': tenant() } }), () => ({ key: (base) => [...base, { tenant: tenant() }] }))
+// A loader prefetch with the same `key` lands where that hook reads:
+queryClient.prefetchQuery(listThings.query({ headers: { 'x-tenant': t } }, { key: (base) => [...base, { tenant: t }] }))
+```
+
+`<op>InfiniteOptions(args, { key })` takes it too. Query options passed as the
+first argument (the order before this release) are ignored there and named once in a
+`console.warn`; `meta` is valid in both places, and in the first it is the
+REQUEST's meta (what a middleware reads), not TanStack's.
+
 ### Mutations invalidate what they change
 
 ```ts
@@ -1142,8 +1176,9 @@ cookie form applies on the server — browsers forbid setting `Cookie`). A
 credential may be an accessor, re-read on every request.
 
 `validate` also has a config default — `lathe: { responseValidation: 'warn' }` — for a
-backend that drifts: `'warn'` logs a mismatch and passes the body through,
-`'off'` skips validation (safe only for non-transforming schemas).
+backend that drifts: `'warn'` logs a mismatch and passes the body through.
+`responseValidation: 'off'` at generate time declares the endpoints types only,
+so no schema ships (see [Response validation](#response-validation-is-configurable)).
 
 The `fetch` / `axios` / `ky` clients export the SAME `configureApi` and `auth`.
 `use` takes each library's own extension shape — a fetch middleware
@@ -1386,7 +1421,7 @@ Paths passed on the command line are relative to the working directory.
 | `client` | `"pyreon" \| "fetch" \| "axios" \| "ky"` | `'pyreon'` | Which HTTP runtime the generated client is built on. |
 | `validator` | `"pyreon" \| "zod"` | `'pyreon'` | Which library the generated schemas are written in. |
 | `baseUrl` | `string` | the spec's `servers[0].url` | Overrides the spec's `servers[0].url` — must be an absolute literal to reach native. `configureApi({ baseUrl })` switches it at runtime. |
-| `responseValidation` | `"strict" \| "warn" \| "off"` | `'strict'` | What the generated client does with a response that does not match its schema. `strict` (the default) rejects; `warn` logs and passes the raw body through, which is the usual choice in production when a backend may drift; `off` skips validation, which also skips its cost on large list responses. `configureApi({ validate })` switches it at runtime. |
+| `responseValidation` | `"strict" \| "warn" \| "off"` | `'strict'` | What the generated client does with a response that does not match its schema. `strict` (the default) rejects; `warn` logs and passes the raw body through, which is the usual choice in production when a backend may drift. `configureApi({ validate })` switches between them at runtime. |
 | `int64` | `"number" \| "bigint"` | `'number'` | How an OpenAPI `format: int64` integer is generated. |
 | `remoteRefs` | `"fetch" \| "off"` | — | What `generate` does with a `$ref` into a REMOTE document (an http(s) URL) in a spec on disk. `off` (the default) keeps generation offline and deterministic: the ref is reported and typed `unknown` -- `lathe pull` a remote spec to bundle it instead. `fetch` downloads every remote part with the same rules as `lathe pull`: a per-document ETag cache under `node_modules/.cache/lathe`, credentials from `remoteHeaders` for their own origin only, and a failed fetch fails the run rather than silently typing that part `unknown`. |
 | `remoteHeaders` | `Record<string, Readonly<Record<string, string>>>` | — | Headers for `remoteRefs: 'fetch'`, keyed by ORIGIN: each set is sent only to documents on that origin, so a spec that references another host never receives your credential. |
@@ -1705,12 +1740,13 @@ never touched. Commit the manifest with the rest of the output.
   key (HTTP digest, mutual TLS) gets no `auth` helper and is reported as a loss.
 - **A read with no typed JSON response** gets a web hook typed `unknown` and no
   native data component.
-- **Mutations are web-only on the native target.** PMTC recognises queries, not
-  mutations, so a `POST` operation is reported `web-only` with that reason.
+- **A native write sends path parameters and a JSON body only.** A form,
+  multipart or raw body, a non-JSON response, or a required query, header or
+  cookie parameter leaves that write `web-only`, with the reason in the report.
 - **A relative `baseUrl` makes every operation web-only** — PMTC bakes the
   request URL at compile time.
 - **The generated data components need PMTC render-prop support.** Each one
-  returns an accessor, `() => props.children(q.data())`, so it re-renders on
+  returns an accessor, `() => props.children(__q.data())`, so it re-renders on
   the web when the query settles. A body that ran once would stay at its
   loading state. Only a `@pyreon/native-compiler` with render-prop support
   lowers that shape. The verifier compiles each module when `swiftc` /

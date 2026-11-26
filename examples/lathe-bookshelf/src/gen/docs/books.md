@@ -14,8 +14,7 @@ description: "3 operations on books."
 
 Add a book.
 
-- **Reach** — web only
-  - `POST` lowers through mutations, which PMTC does not yet recognise; GET operations on this client DO reach native.
+- **Reach** — web · iOS · Android
 - **Response** — `Book`
 - **Request body** — `NewBook` as `application/json`
 

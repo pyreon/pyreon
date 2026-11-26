@@ -148,7 +148,8 @@ describe('emit', () => {
     })
     gen({ plugins: ['schemas', 'client', reader] })
     expect(seen).toContain('client.ts')
-    expect(reach).toBe('web-only')
+    // A `DELETE` reaches native as a mutation component (#4835).
+    expect(reach).toBe('web+native')
   })
 })
 

@@ -256,13 +256,37 @@ export function C() {
     const { swift } = both(`
 const ep = api.endpoint('POST /a')
 export function C() {
-  const m = useMutation({ ...ep.mutation({ invalidates: [] }), retry: 3, onMutate: () => {} })
+  const m = useMutation({ ...ep.mutation({ invalidates: [ep] }), retry: 3, onMutate: () => {} })
   return <Button onPress={() => m.mutate({})}>x</Button>
 }`)
     for (const key of ['invalidates', 'retry', 'onMutate']) {
       expect(swift.warnings.some((w) => w.includes(key)), key).toBe(true)
     }
   })
+
+  // `ep.mutation({ invalidates })` lowers: each target becomes a native key ROOT (`GET:` + its URL up to its
+  // first path parameter), and a successful mutation settles through `PyreonQueryCache` for each root.
+  const INVALIDATES = `
+const list = api.endpoint('GET /orgs/:org/books')
+const one = api.endpoint('GET /orgs/:org/books/:id')
+const all = api.endpoint('GET /stats')
+const create = api.endpoint('POST /orgs/:org/books')
+export function C(props: { org: string }) {
+  const m = useMutation(create.mutation({ invalidates: [list, one, all] }))
+  return <Button onPress={() => m.mutate({ params: { org: props.org }, json: { title: 'x' } })}>x</Button>
+}`
+  it('ep.mutation({ invalidates }) settles through the query cache, one URL root per target', () => {
+    const { swift, kotlin } = both(INVALIDATES)
+    expect(swift.warnings).toEqual([])
+    expect(kotlin.warnings).toEqual([])
+    // `list` and `one` share the root before `:org`; `all` has no parameter, so its root is its URL.
+    expect(swift.code).toContain(
+      'try await PyreonQueryCache.shared.settleMutation(invalidating: "GET:https://x.test/api/orgs") { try await PyreonQueryCache.shared.settleMutation(invalidating: "GET:https://x.test/api/stats") {',
+    )
+    expect(kotlin.code).toContain('PyreonQueryCache.settleMutation("GET:https://x.test/api/orgs") { PyreonQueryCache.settleMutation("GET:https://x.test/api/stats") {')
+  })
+
+  it('compiles with invalidation roots', () => compiles(INVALIDATES), 120_000)
 
   it('a mutationFn that does not call a same-file endpoint stays web, by name', () => {
     const { swift } = both(`

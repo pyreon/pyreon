@@ -15,7 +15,7 @@ import { useQuery } from '@pyreon/query'
  * - `limit` (query, optional)
  *
  * `args` is an accessor: signals read in it refetch when they change. Return `undefined` to hold the request until the arguments are ready.
- * `options` takes `enabled`, `staleTime`, `select` (which changes the result type) and the rest of the query options.
+ * `options` takes `enabled`, `staleTime`, `select` (which changes the result type) and the rest of the query options, plus `key`: `(base) => [...base, discriminator]` extends the cache key when headers or the caller change the result (a tenant, a locale). Start from `base`, so invalidating the endpoint still matches.
  *
  * @example
  * ```ts
@@ -25,14 +25,14 @@ import { useQuery } from '@pyreon/query'
  */
 export function useListAuthors<TData = Awaited<ReturnType<typeof listAuthors>>>(
   args: () => Parameters<typeof listAuthors>[0] | undefined,
-  options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof listAuthors>>, Error, TData>, 'queryKey' | 'queryFn'>,
+  options?: () => Omit<UseQueryOptions<Awaited<ReturnType<typeof listAuthors>>, Error, TData>, 'queryKey' | 'queryFn'> & { key?: ((base: readonly unknown[]) => readonly unknown[]) | undefined },
 ) {
   return useQuery<Awaited<ReturnType<typeof listAuthors>>, Error, TData>(() => {
     const a = args()
-    const extra = options?.() ?? {}
+    const { key, ...extra } = options?.() ?? {}
     if (a === undefined) {
-      return { queryKey: listAuthors.key.prefix, queryFn: () => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready')), ...extra, enabled: false }
+      return { queryKey: [...listAuthors.key.prefix, { held: true }], queryFn: () => Promise.reject(new Error('[Pyreon] lathe: query is disabled — its arguments are not ready')), ...extra, enabled: false }
     }
-    return { ...listAuthors.query(a), ...extra, enabled: extra.enabled !== false }
+    return { ...listAuthors.query(a, { key }), ...extra, enabled: extra.enabled !== false }
   })
 }

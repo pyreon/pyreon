@@ -15,7 +15,7 @@
 import type { IrOperation, IrPagination, IrType } from '../core/ir'
 import { hookOf, propKey } from '../core/naming'
 import type { ModelTypes } from './operation-types'
-import { errorTypeOf, resolve as resolveRef } from './operation-types'
+import { errorTypeOf, HELD_KEY, QUERY_HOOK_KEY_OPTION, resolve as resolveRef } from './operation-types'
 import { tsType } from './schema'
 import type { SourceFile } from './writer'
 
@@ -185,11 +185,13 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   f.doc(
     `Infinite-query options for \`${op.id}\` — ${describe}${p.hasMore ? `, until \`${p.hasMore}\` is false` : ''}.`,
     '',
-    'Pure: hand it to `queryClient.prefetchInfiniteQuery` in a loader.',
+    'Pure: hand it to `queryClient.prefetchInfiniteQuery` in a loader. Pass the',
+    "hook's `key` too, so the prefetch lands where the hook reads.",
   )
-  f.line(`export function ${name}(args: ${input}): ${opts} {`)
+  f.line(`export function ${name}(args: ${input}, options?: ${QUERY_HOOK_KEY_OPTION}): ${opts} {`)
+  f.line(`  const base: readonly unknown[] = [...${op.id}.key(args), 'infinite']`)
   f.line('  return {')
-  f.line(`    queryKey: [...${op.id}.key(args), 'infinite'],`)
+  f.line('    queryKey: options?.key ? options.key(base) : base,')
   f.line(
     `    queryFn: ({ pageParam, signal }) => ${op.id}({ ...args, query: { ...args?.query, ${propKey(p.param)}: pageParam }, signal }),`,
   )
@@ -205,19 +207,22 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
     '',
     'Return `undefined` from `args` to hold the request until the arguments are ready.',
     `\`${p.param}\` is set per page; a value passed in \`args\` is overridden.`,
+    '`options.key`: `(base) => [...base, discriminator]` extends the cache key, as on the plain hook.',
     op.deprecated ? '' : undefined,
     op.deprecated ? '@deprecated The spec marks this operation deprecated.' : undefined,
   )
   f.line(`export function ${hook}(`)
   f.line(`  args: () => ${input} | undefined,`)
-  f.line(`  options?: () => Omit<${opts}, 'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'>,`)
+  f.line(
+    `  options?: () => Omit<${opts}, 'queryKey' | 'queryFn' | 'initialPageParam' | 'getNextPageParam'> & ${QUERY_HOOK_KEY_OPTION},`,
+  )
   f.line(') {')
   f.line(`  return useInfiniteQuery<${data}, ${err}, readonly unknown[], ${pp}>(() => {`)
   f.line('    const a = args()')
-  f.line('    const extra = options?.() ?? {}')
+  f.line('    const { key, ...extra } = options?.() ?? {}')
   f.line('    if (a === undefined) {')
   f.line('      return {')
-  f.line(`        queryKey: [...${op.id}.key.prefix, 'infinite'],`)
+  f.line(`        queryKey: [...${op.id}.key.prefix, ${HELD_KEY}, 'infinite'],`)
   f.line(`        queryFn: ${disabledFn},`)
   f.line(`        initialPageParam: ${initial(p)},`)
   f.line('        getNextPageParam: () => undefined,')
@@ -225,7 +230,7 @@ export function emitInfinite(f: SourceFile, op: IrOperation, disabledFn: string)
   f.line('        enabled: false,')
   f.line('      }')
   f.line('    }')
-  f.line(`    return { ...${name}(a), ...extra, enabled: extra.enabled !== false }`)
+  f.line(`    return { ...${name}(a, { key }), ...extra, enabled: extra.enabled !== false }`)
   f.line('  })')
   f.line('}')
 }

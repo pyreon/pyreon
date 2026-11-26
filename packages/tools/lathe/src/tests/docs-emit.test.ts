@@ -162,17 +162,18 @@ describe('the generated reference pages', () => {
       input: 'x',
       baseUrl: 'https://api.test/v1',
       plugins: ['schemas', 'client', 'queries', 'docs'],
+      operations: { createBook: { hook: false } },
     })
     const result = generate(SPEC, cfg)
     const books = result.files.find((f) => f.path === 'docs/books.md')?.contents ?? ''
-    // `getBook` is a GET and reaches native; `createBook` is a POST and does
+    // `getBook` reaches native; `createBook`, with its hook turned off, does
     // not. Both come from the same analysis the terminal prints.
     expect(result.reach.get('getBook')?.reach).toBe('web+native')
     expect(result.reach.get('createBook')?.reach).toBe('web-only')
     expect(books).toContain('web · iOS · Android')
     expect(books).toContain('web only')
     // And the REASON travels with it, so the page answers "why not" too.
-    expect(books).toContain('PMTC does not yet recognise')
+    expect(books).toContain('hook is turned off')
   })
 
   it('names the base the CLIENT calls, not the spec default', () => {

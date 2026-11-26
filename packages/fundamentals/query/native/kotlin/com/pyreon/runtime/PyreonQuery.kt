@@ -130,7 +130,11 @@ public object PyreonQueryCache {
 
     internal fun unregister(query: PyreonQuery<*>): Unit = synchronized(lock) { live.remove(query) }
 
-    private fun under(root: String, key: String): Boolean = key == root || key.startsWith("$root:")
+    // The root itself, or the root followed by `:` (a scoped key), `/` (a path
+    // below a URL root: `GET:https://h/books` covers `…/books/1`) or `?` (its
+    // query strings). Segment-safe: `/books` never covers `/bookshelf`.
+    internal fun under(root: String, key: String): Boolean =
+        key.startsWith(root) && (key.length == root.length || key[root.length].let { it == ':' || it == '/' || it == '?' })
 
     /**
      * `queryClient.invalidateQueries({ queryKey: [root] })`: every cached entry
