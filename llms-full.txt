@@ -3057,6 +3057,8 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 >
 > **Accessibility**: The content area is a `role="textbox"` `aria-multiline` region; supply `ariaLabel` (defaults to "Rich text editor") so screen readers announce a name.
 >
+> **Content Security Policy**: On mount the editor injects two `<style>` elements — TipTap's base CSS (`data-tiptap-style`) and the placeholder rule (`data-pyreon-rich-text-placeholder`). A policy without `'unsafe-inline'` in `style-src` refuses both. Pass `nonce` (set on both elements), or `injectStyles: false` and `import '@pyreon/rich-text/styles.css'`, which carries the same rules as a file.
+>
 > **Toolbars**: Build a toolbar with `editor.chain()?.toggleBold().run()` for commands + `editor.isActive("bold")` for active state. `isActive` is reactive — call it inside a reactive scope (`class={() => editor.isActive("bold") ? "active" : ""}`), not at component-body top level, or the highlight won't update. Gate undo/redo buttons on `editor.canUndo()` / `editor.canRedo()`.
 >
 > **Counts**: `characterCount`/`wordCount`/`isEmpty` are derived from the document JSON (not the mounted engine): they report before mount (a stored-JSON draft list needs no editor instance), count VISIBLE characters (excluding `getText()`'s `\n\n` block separators), and are selection-immune. Schema-less by design (StarterKit-accurate); a custom node whose rendered text differs from its text descendants may count differently than its live `getText()`. String (HTML) content parses on mount, so its counts populate once mounted — stored ProseMirror JSON is the pre-mount case.
@@ -3396,6 +3398,8 @@ toast.remove()          // hard-remove all
 > **No provider needed**: Unlike most Pyreon packages, toast uses a module-level signal store — `toast()` works from event handlers, effects, or any non-component code. The `<Toaster />` component reads from this shared store.
 >
 > **Peer dep**: `@pyreon/runtime-dom` is required because `<Toaster />` JSX emits `_tpl()` calls — declare it in consumer app dependencies.
+>
+> **Content Security Policy**: `<Toaster />` injects its stylesheet once as `<style data-pyreon-toast>`, which a policy without `'unsafe-inline'` in `style-src` refuses (a console error on every page, and no base layout). Pass `nonce` to have the element carry the request's nonce, or set `injectStyles={false}` and `import '@pyreon/toast/styles.css'` — the same rules as a file, which `style-src 'self'` allows. Inline `style` props are applied through CSSOM and are not affected.
 >
 > **When the countdown is suspended**: The auto-dismiss timer suspends while the pointer is over the stack, while keyboard focus is inside it, and while the tab is hidden — a four-second toast is four seconds of ATTENTION, not of wall clock, so one raised just before the user switches tabs is still there when they come back. The three are INDEPENDENT holds: releasing one (a `mouseleave`) does not restart the clock while another (focus still inside) is outstanding. Built into `<Toaster />` with no configuration needed.
 
@@ -4591,7 +4595,7 @@ const vnode = (
 const docTree = extractDocumentTree(vnode)
 const pdf = await render(docTree, 'pdf')      // Buffer
 const docx = await render(docTree, 'docx')    // Buffer
-const md = await render(docTree, 'markdown')  // string
+const md = await render(docTree, 'md')        // string
 
 // Extraction is a SNAPSHOT — reactive accessors are resolved at extraction
 // time, not subscribed. Re-extract after a signal change for a fresh tree:

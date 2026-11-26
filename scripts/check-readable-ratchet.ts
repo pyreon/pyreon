@@ -125,7 +125,7 @@ export const baselineTotal = (files: PerFileCounts): number =>
 const DESCRIPTION =
   'Readable ratchet — `readable` style findings per (file, rule) may only DECREASE, and a file not listed ' +
   'here must have none. Checked by `bun scripts/check-pyreon-lint-ratchet.ts` (validate-fast + CI). ' +
-  'Fix new findings with `bunx pyreon-lint --fix <file>` (the spacing rules are autofixable). An ordinary PR ' +
+  'Fix new findings with `bun packages/tools/lint/bin/pyreon-lint.js --fix <file>` (the spacing rules are autofixable). An ordinary PR ' +
   'does not edit this file; `bun scripts/check-readable-ratchet.ts --update` only tightens. Raising needs ' +
   '`--allow-raise` and is for a file that predates the ratchet. The file is generated: never edit or merge it by hand.'
 
@@ -229,7 +229,7 @@ const PYREON_RATCHET: PerFileRatchet = {
   description: DESCRIPTION,
   updateCommand: 'bun scripts/check-readable-ratchet.ts --update',
   fixHint: [
-    'Fix them: `bunx pyreon-lint --fix <file>` clears the spacing findings; JSX depth and ternary',
+    'Fix them: `bun packages/tools/lint/bin/pyreon-lint.js --fix <file>` clears the spacing findings; JSX depth and ternary',
     'findings need a small refactor. A deliberate exception takes a reasoned opt-out:',
     '  // pyreon-lint-disable-next-line <rule> -- <why>',
   ],

@@ -3,6 +3,24 @@
 // `<iframe>` on web. The canonical way to render web-only-rich viz
 // (`@pyreon/charts` / `@pyreon/flow` / heavy tables) inside a native shell.
 
+/**
+ * A download the hosted page started (see `WebViewProps.onDownload`). The
+ * same three fields on every native target: Swift `PyreonWebViewDownload`,
+ * Kotlin `PyreonWebViewDownload`.
+ */
+export interface WebViewDownload {
+  /** The URL being downloaded: `http(s)`, or a `blob:` / `data:` URL the page created. */
+  readonly url: string
+  /**
+   * The file name: the link's `download` attribute, the
+   * `Content-Disposition` name, or the URL's last path segment, with path
+   * separators and control characters removed; `download` when none is usable.
+   */
+  readonly filename: string
+  /** The MIME type, or `''` when it is not known. */
+  readonly mimeType: string
+}
+
 export interface WebViewProps {
   /**
    * Inline HTML to render (e.g. an ECharts page). Takes precedence over
@@ -101,6 +119,46 @@ export interface WebViewProps {
    * compile time); a dynamic value warns and is ignored there.
    */
   grow?: boolean
+  /**
+   * Called when the hosted page starts a DOWNLOAD (native): an
+   * `<a download>` link (including `blob:` and `data:` URLs the page built
+   * itself, e.g. a CSV export), a response sent with
+   * `Content-Disposition: attachment`, or a response whose MIME type the
+   * engine cannot display. It receives the URL, a safe file name (one path
+   * component, at most 255 UTF-8 bytes, no bidi controls) and the MIME type
+   * (`''` when unknown).
+   *
+   * WHICH downloads (native, the same rule on iOS and Android): only one
+   * the MAIN frame starts while it shows the page the app loaded, after a tap
+   * or key press in that frame (each gesture allows ONE download), and one at
+   * a time. A download from an iframe (an ad), without a gesture, or while
+   * another is in flight is refused with a `[Pyreon] <WebView>` log and
+   * `onDownload` is not called.
+   *
+   * With `saveDownloads={false}` it is called as the download starts and the
+   * app handles it. Otherwise the host saves the file where the user can find
+   * it, and calls `onDownload` once the file is ready to hand over (a download
+   * that cannot be fetched or read is not reported):
+   *
+   * | target  | `http(s)`                                   | `blob:` / `data:`                          |
+   * | ------- | ------------------------------------------- | ------------------------------------------ |
+   * | iOS     | fetched by WebKit, then the share sheet (Save to Files, AirDrop, …) | same                |
+   * | Android | `DownloadManager` → Downloads, with the system notification | streamed from the page, then the system "save as" picker |
+   *
+   * WEB: the browser handles downloads in the `<iframe>` itself (its own
+   * download UI); `onDownload` and `saveDownloads` are native-only and are
+   * ignored there.
+   */
+  onDownload?: (download: WebViewDownload) => void
+  /**
+   * Whether the native host saves a download for the user (default `true`;
+   * see `onDownload`). `false` leaves every download to `onDownload` — the
+   * app intercepts it (opens an `http(s)` URL itself, ignores it, or asks
+   * the page for the content over `onMessage`). Native-only and read ONCE at
+   * creation: must be a literal `true`/`false` (a dynamic value warns and
+   * keeps the default).
+   */
+  saveDownloads?: boolean
   /** Pass-through `data-*` / `aria-*` / `id` / `class` attrs (web). */
   [key: `data-${string}`]: unknown
   [key: `aria-${string}`]: unknown

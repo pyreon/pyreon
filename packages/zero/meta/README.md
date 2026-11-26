@@ -4,7 +4,7 @@
 
 Single-import barrel — the full Pyreon fundamentals + UI-system ecosystem from one package.
 
-Re-exports 33 `@pyreon/*` packages so apps can write `import { signal, useQuery, useForm, styled, PyreonUI } from '@pyreon/meta'` instead of remembering subpackages. Tree-shake-safe by construction: meta itself and every re-exported package declare `"sideEffects": false`, so modern bundlers (Vite/Rolldown, Webpack/Next.js, esbuild, Rollup, Parcel, Bun) only pull the subgraphs you actually import. Heavy renderers stay lazy at the source — `@pyreon/document` lazy-loads PDF/DOCX/XLSX/PPTX chunks inside `render()`, and `@pyreon/charts` / `@pyreon/code` / `@pyreon/flow` lazy-load ECharts / CodeMirror grammars / elkjs inside their consumer hooks.
+Re-exports 33 `@pyreon/*` packages so apps can write `import { signal, useQuery, useForm, styled, PyreonUI } from '@pyreon/meta'` instead of remembering subpackages. Tree-shake-safe by construction: meta itself and every re-exported package declare `"sideEffects": false`, so modern bundlers (Vite/Rolldown, Webpack/Next.js, esbuild, Rollup, Parcel, Bun) only pull the subgraphs you actually import. Heavy renderers stay lazy at the source — `@pyreon/document` lazy-loads PDF/DOCX/XLSX/PPTX chunks inside `render()`, and `@pyreon/charts` and `@pyreon/code` lazy-load ECharts and CodeMirror grammars inside their consumer hooks, and `@pyreon/flow` lazy-loads its built-in layout engine.
 
 ## Install
 
@@ -102,7 +102,7 @@ Heavy upstream deps stay lazy at the source-package level:
 - **`@pyreon/document`** — PDF (~3MB pdfmake), DOCX (~700KB), XLSX (~1.1MB), PPTX (~400KB) renderers `import()` inside `render(doc, '<format>')`. `createDocument()` alone bundles nothing format-specific.
 - **`@pyreon/charts`** — every mark and chart family is its own import, so a chart carries only what it draws.
 - **`@pyreon/code`** — CodeMirror language grammars lazy-load via `loadLanguage()`.
-- **`@pyreon/flow`** — elkjs (auto-layout) lazy-loads inside `flow.layout()`.
+- **`@pyreon/flow`** — the built-in layout engine (no elkjs) lazy-loads inside `flow.layout()`.
 
 ## Gotchas
 

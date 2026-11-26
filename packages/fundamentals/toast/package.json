@@ -13,7 +13,9 @@
     "directory": "packages/fundamentals/toast"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -32,12 +34,14 @@
       "bun": "./src/internal.ts",
       "import": "./lib/internal.js",
       "types": "./lib/types/internal.d.ts"
-    }
+    },
+    "./styles.css": "./styles.css"
   },
   "files": [
     "lib",
     "!lib/analysis",
     "src",
+    "styles.css",
     "README.md",
     "LICENSE",
     "native/swift",

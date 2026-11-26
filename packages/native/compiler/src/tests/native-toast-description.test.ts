@@ -49,6 +49,7 @@ describe('toast() description on native', () => {
   it('every option that does not lower is warned by name, and the toast still lowers', () => {
     const cases: Array<[string, string]> = [
       ['icon: "x"', '`icon` has no native lowering'],
+      ['dismissLabel: "Zavřít"', '`dismissLabel` has no native lowering'],
       ['onDismiss: (t) => {}', '`onDismiss` must be an inline function with no parameters'],
       ['description: <b>x</b>', '`description` given as JSX'],
       ['duration: name().length', '`duration` must be a literal'],
