@@ -1193,9 +1193,17 @@ public struct PyreonWebViewDownload: Sendable, Equatable {
   public init(url: String, filename: String, mimeType: String) { self.url = url; self.filename = filename; self.mimeType = mimeType }
 }
 public struct PyreonWebView: View {
-  public init(html: String? = nil, src: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true, grow: PyreonWebViewGrow? = nil, onDownload: ((PyreonWebViewDownload) -> Void)? = nil, saveDownloads: Bool = true) {}
+  public init(html: String? = nil, src: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true, grow: PyreonWebViewGrow? = nil, onDownload: ((PyreonWebViewDownload) -> Void)? = nil, saveDownloads: Bool = true, onLoad: (() -> Void)? = nil, onError: ((PyreonWebViewError) -> Void)? = nil, reloadKey: String? = nil, backNavigation: Bool = false) {}
   public typealias Body = Never
 }
+public struct PyreonWebViewError: Equatable, Sendable {
+  public let kind: String
+  public let code: Int
+  public let description: String
+  public let url: String
+  public init(kind: String, code: Int, description: String, url: String) { self.kind = kind; self.code = code; self.description = description; self.url = url }
+}
+public typealias WebViewError = PyreonWebViewError
 
 // ---- PyreonRouter (the router-swift module surface the emit imports) ----
 // router-hooks emit: @Environment(\\.pyreonRouter) var pyreonRouter: PyreonRouter?

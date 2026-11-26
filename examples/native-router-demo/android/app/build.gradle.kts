@@ -131,6 +131,9 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    // UiAutomator: the web-tab test taps a link INSIDE a WebView, which Compose
+    // semantics cannot see (same artifact as native-tasks).
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.1")
     // One process per test + `pm clear` before each (clearPackageData above).
     androidTestUtil("androidx.test:orchestrator:1.6.1")
     androidTestUtil("androidx.test.services:test-services:1.6.0")

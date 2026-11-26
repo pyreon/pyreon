@@ -187,6 +187,36 @@ describe('native source resolution — the shapes a real install produces', () =
     expect(res.kotlin.map((k) => k.package)).toEqual(['@pyreon/leaf'])
   })
 
+  it('follows only the edges a consumer install installs: never a dependency’s devDependencies (#4849)', () => {
+    // A consumer install of `@pyreon/lib` installs its dependencies,
+    // optionalDependencies and required peers, never its devDependencies (a
+    // test-only `@pyreon/dev-only` there must not be wired: the published app
+    // cannot resolve it). An optional peer is the app's choice. The APP's own
+    // devDependencies are installed (it is the root of the install), so those
+    // are followed.
+    const app = join(root, 'app')
+    pkg(app, { name: 'app', dependencies: { '@pyreon/lib': '*' }, devDependencies: { '@pyreon/app-dev': '*' } })
+    const nm = join(app, 'node_modules')
+    pkg(join(nm, '@pyreon/lib'), {
+      name: '@pyreon/lib',
+      dependencies: { '@pyreon/dep': '*' },
+      optionalDependencies: { '@pyreon/optional': '*' },
+      peerDependencies: { '@pyreon/peer': '*', '@pyreon/optional-peer': '*' },
+      peerDependenciesMeta: { '@pyreon/optional-peer': { optional: true } },
+      devDependencies: { '@pyreon/dev-only': '*' },
+    })
+    for (const name of ['app-dev', 'dep', 'optional', 'peer', 'optional-peer', 'dev-only']) {
+      pkg(join(nm, '@pyreon', name), { name: `@pyreon/${name}` }, [`native/kotlin/${name}.kt`])
+    }
+    const res = resolveNativeSources(app, { transitiveScope: 'first-party' })
+    expect(res.kotlin.map((k) => k.package).sort()).toEqual([
+      '@pyreon/app-dev',
+      '@pyreon/dep',
+      '@pyreon/optional',
+      '@pyreon/peer',
+    ])
+  })
+
   it('skips a dependency whose package has no manifest', () => {
     const app = join(root, 'app')
     pkg(app, { name: 'app', dependencies: { '@pyreon/broken': '*' } })

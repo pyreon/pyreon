@@ -28,6 +28,7 @@ import { signal } from '@pyreon/reactivity'
 import { createRouter, useLoaderData, useNavigate, useRouter, RouterProvider, RouterView, routerTabs } from '@pyreon/router'
 import { type EchoReply, usePostEcho } from './hooks'
 import { ReorderPage } from './ReorderPage'
+import { TabWebHome } from './TabWebHome'
 import { defineTheme, styled } from '@pyreon/styler'
 import { s } from '@pyreon/validate'
 
@@ -1201,10 +1202,12 @@ export function TabsApp() {
       { path: '/feed/post', component: TabFeedPost },
       { path: '/me', component: TabMeHome },
       { path: '/me/settings', component: TabMeSettings },
+      { path: '/web', component: TabWebHome },
     ],
     tabs: routerTabs([
       { name: 'feed', root: '/feed' },
       { name: 'me', root: '/me' },
+      { name: 'web', root: '/web' },
     ]),
   })
   return (
@@ -1214,6 +1217,9 @@ export function TabsApp() {
           <RouterView />
         </Tab>
         <Tab value="me" label="Me" icon="person" data-testid="tabs-tab-me">
+          <RouterView />
+        </Tab>
+        <Tab value="web" label="Web" icon="info" data-testid="tabs-tab-web">
           <RouterView />
         </Tab>
       </Tabs>

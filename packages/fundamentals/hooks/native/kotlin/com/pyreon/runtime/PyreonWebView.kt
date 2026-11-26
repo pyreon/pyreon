@@ -57,6 +57,27 @@
 // `alert` / `confirm` / `prompt`, `window.open` / `target="_blank"` (handed to
 // the system) and fullscreen video. Mirror of the iOS host's WKUIDelegate.
 //
+// ## Load outcome (`onLoad` / `onError` / `reloadKey`)
+//
+// `onLoad` runs each time the MAIN frame finishes loading a document (the
+// first page and every page the user follows inside the view). `onError` gets a
+// `PyreonWebViewError` when a main-frame load fails: `"load"` (offline, DNS,
+// refused, TLS: `onReceivedError`), `"http"` (a status of 400 or more:
+// `onReceivedHttpError`) or `"crash"` (the renderer kept dying and the host
+// stopped reloading, see `rendererGone`). A failed image or XHR is the page's
+// business, and a cancellation (`net::ERR_ABORTED`) is not an error. Android
+// still shows its own error page underneath; the app puts its screen over it.
+// A changed `reloadKey` loads `html` / `src` again (the way to retry: setting
+// the same `src` again is not a change). Mirror of the iOS host.
+//
+// ## Back navigation (`backNavigation`)
+//
+// With `backNavigation` (PMTC passes it for a `grow` view unless the app says
+// otherwise) system Back goes back in the page's history while there is one
+// (`BackHandler`, enabled only while `canGoBack()`), so at the first page Back
+// still pops the route or finishes the activity, and predictive back stays
+// correct on Android 14+. iOS turns on the edge swipe for the same prop.
+//
 // ## Sizing
 //
 // Unsized, the host is full width and EXACTLY 150dp high — the `<iframe>`
@@ -155,10 +176,12 @@ import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
@@ -206,7 +229,10 @@ object PyreonWebViewRendering {
  * `sessionStorage` work in the hosted page; `false` opts out. [onDownload] is
  * called for each download the page starts, which the host then saves for the
  * user unless [saveDownloads] is `false` (read once at creation; see
- * "Downloads" in the file header).
+ * "Downloads" in the file header). [onLoad] / [onError] report the main
+ * frame's load outcome, a changed [reloadKey] loads the page again, and
+ * [backNavigation] sends system Back into the page's history (see the file
+ * header).
  */
 @Composable
 fun PyreonWebView(
@@ -218,11 +244,24 @@ fun PyreonWebView(
     domStorage: Boolean = true,
     onDownload: ((PyreonWebViewDownload) -> Unit)? = null,
     saveDownloads: Boolean = true,
+    onLoad: (() -> Unit)? = null,
+    onError: ((PyreonWebViewError) -> Unit)? = null,
+    reloadKey: String? = null,
+    backNavigation: Boolean = false,
 ) {
     // Per-view bridge state survives recomposition; the WebViewClient +
     // JS bridge (set once in `factory`) close over it, reading the latest
-    // `data` / `onMessage` that `update` writes.
+    // `data` / `onMessage` / `onLoad` / `onError` that `update` writes.
     val state = remember { PyreonWebViewState() }
+    // Back walks the page's history while it has one; at the first page the
+    // callback is disabled, so Back reaches the router / activity as before.
+    // Not composed at all without `backNavigation`: a disabled handler is still
+    // registered with the dispatcher.
+    if (backNavigation) {
+        BackHandler(enabled = pyreonWebViewHandlesBack(true, state.canGoBack.value)) {
+            state.webView?.get()?.goBack()
+        }
+    }
     // File chooser / permission launchers must be registered at composition.
     val chrome = rememberPyreonWebChrome()
     // A delayed reload after a renderer loss must not outlive the host.
@@ -300,7 +339,9 @@ fun PyreonWebView(
                 state.latestData = data
                 state.onMessage = onMessage
                 state.onDownload = onDownload
-                val key = (html ?: "") + "" + (src ?: "")
+                state.onLoad = onLoad
+                state.onError = onError
+                val key = pyreonWebViewLoadKey(html, src, reloadKey)
                 if (state.loadedKey != key) {
                     // html/src changed → (re)load; onPageFinished pushes data. The
                     // new load decides the origin; until it starts nothing is allowed.
@@ -311,7 +352,13 @@ fun PyreonWebView(
                     // Pending BEFORE the load starts: its first request can reach
                     // shouldInterceptRequest (another thread) before load returns.
                     state.initialLoadPending = true
-                    if (!loadPyreonWebView(webView, html, src)) state.initialLoadPending = false
+                    // The app's new page starts a new history: Back must not return
+                    // to the page the app replaced (see doUpdateVisitedHistory).
+                    state.clearHistoryOnCommit = true
+                    if (!loadPyreonWebView(webView, html, src)) {
+                        state.initialLoadPending = false
+                        state.clearHistoryOnCommit = false
+                    }
                 } else if (state.loaded && pyreonWebViewMayDeliver(webView.url, state.allowedOrigin)) {
                     // data-only change → push without reloading.
                     pushPyreonData(webView, data)
@@ -378,6 +425,8 @@ private fun pyreonHostClient(state: PyreonWebViewState, chrome: PyreonWebChrome)
             url: String?,
             favicon: android.graphics.Bitmap?,
         ) {
+            // A new document (a same-document navigation never starts a page).
+            state.documentStarted = true
             // The host's own load (after its redirects) pins the origin.
             if (state.initialLoadPending) {
                 state.initialLoadPending = false
@@ -393,10 +442,56 @@ private fun pyreonHostClient(state: PyreonWebViewState, chrome: PyreonWebChrome)
 
         override fun onPageFinished(view: WebView, url: String?) {
             state.loaded = true
+            state.canGoBack.value = view.canGoBack()
+            // A failed page finishes too (on the system error page), and so does a
+            // same-document navigation (a hash route): neither is a load.
+            val isLoad = pyreonWebViewFinishedIsLoad(url, state.failedUrl, state.documentStarted)
+            state.failedUrl = null
+            state.documentStarted = false
+            if (isLoad) state.onLoad?.invoke()
             if (!pyreonWebViewMayDeliver(view.url, state.allowedOrigin)) return
             view.evaluateJavascript(state.bridgeShim(), null)
             view.evaluateJavascript(pyreonWebViewDownloadShim(state.bridgeToken), null)
             pushPyreonData(view, state.latestData)
+        }
+
+        // `onError` — the main frame could not be loaded (see the file header).
+        override fun onReceivedError(
+            view: WebView,
+            request: android.webkit.WebResourceRequest,
+            error: android.webkit.WebResourceError,
+        ) {
+            val description = error.description?.toString()
+            if (!pyreonWebViewReportsLoadError(request.isForMainFrame, description)) return
+            val url = request.url?.toString() ?: ""
+            state.failedUrl = url
+            state.onError?.invoke(PyreonWebViewError(PYREON_WEBVIEW_ERROR_LOAD, error.errorCode, description ?: "", url))
+        }
+
+        // The server answered the main frame with a status of 400 or more.
+        override fun onReceivedHttpError(
+            view: WebView,
+            request: android.webkit.WebResourceRequest,
+            errorResponse: android.webkit.WebResourceResponse,
+        ) {
+            if (!request.isForMainFrame || !pyreonWebViewIsHttpError(errorResponse.statusCode)) return
+            val url = request.url?.toString() ?: ""
+            state.failedUrl = url
+            state.onError?.invoke(
+                PyreonWebViewError(PYREON_WEBVIEW_ERROR_HTTP, errorResponse.statusCode, errorResponse.reasonPhrase ?: "", url),
+            )
+        }
+
+        // Every history change (a followed link, `history.pushState`, a goBack)
+        // re-decides whether Back goes back in the page.
+        override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+            // The first history entry after the HOST loaded a page is that page's
+            // commit (the page's own scripts run after it): drop what came before.
+            if (state.clearHistoryOnCommit && !isReload) {
+                state.clearHistoryOnCommit = false
+                view.clearHistory()
+            }
+            state.canGoBack.value = view.canGoBack()
         }
 
         // Unhandled, a renderer that crashed or that the system killed to
@@ -426,6 +521,21 @@ private fun pyreonHostClient(state: PyreonWebViewState, chrome: PyreonWebChrome)
             state.loaded = false
             state.allowedOrigin = null
             state.initialLoadPending = false
+            // The new view starts with no history.
+            state.canGoBack.value = false
+            state.failedUrl = null
+            state.documentStarted = false
+            // The host gave up: tell the app (its retry is a new `reloadKey`).
+            if (delay == null) {
+                state.onError?.invoke(
+                    PyreonWebViewError(
+                        PYREON_WEBVIEW_ERROR_CRASH,
+                        0,
+                        "The web content process ended ${state.lossHistory.crashes} times in a row; the view stays empty until html, src or reloadKey changes.",
+                        view.url ?: "",
+                    ),
+                )
+            }
             // null → the new view's `update` loads now; unchanged → it does not.
             if (delay == 0L) state.loadedKey = null
             if (delay != null && delay > 0L) {
@@ -492,6 +602,16 @@ private class PyreonWebViewState {
     /** The html/src this host shows or is about to reload; never cleared (see `rendererGone`). */
     var pageKey: String? = null
     var onMessage: ((String) -> Unit)? = null
+    var onLoad: (() -> Unit)? = null
+    var onError: ((PyreonWebViewError) -> Unit)? = null
+    /** The main-frame URL the last load error was for: its `onPageFinished` is not a load. */
+    var failedUrl: String? = null
+    /** A new document started since the last finish (`onPageStarted`); a same-document navigation finishes without one. */
+    var documentStarted: Boolean = false
+    /** The host started a load: the next history commit clears what came before it. */
+    var clearHistoryOnCommit: Boolean = false
+    /** Whether the page has history to go back to (drives the `BackHandler`). */
+    val canGoBack = mutableStateOf(false)
     var onDownload: ((PyreonWebViewDownload) -> Unit)? = null
     /** `blob:` / `data:` downloads streaming in from the page, by id. Written on
      *  the JavaBridge thread, hence concurrent. At most one exists at a time (the

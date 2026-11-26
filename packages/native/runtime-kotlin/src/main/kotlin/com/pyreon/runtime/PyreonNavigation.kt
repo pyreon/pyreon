@@ -17,7 +17,10 @@ package com.pyreon.runtime
 // uses (`LocalConfiguration.current.screenWidthDp`), so the hook and the
 // layout always agree about which class a window is in.
 
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.OnBackPressedDispatcherOwner
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +38,7 @@ import androidx.compose.material.NavigationRail
 import androidx.compose.material.NavigationRailItem
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -44,6 +48,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.NavigationEventDispatcherOwner
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 
 /** The window width at and above which tabs become a rail and a split shows two panes. */
 private const val PYREON_WIDE_DP = 600
@@ -121,7 +128,7 @@ fun <T> PyreonTabs(
                                     Modifier.size(0.dp).clipToBounds().clearAndSetSemantics {}
                                 },
                             ) {
-                                content(item.value)
+                                PyreonBackScope(shown) { content(item.value) }
                             }
                         }
                     }
@@ -180,7 +187,7 @@ fun PyreonSplit(
                 else -> Modifier.size(0.dp).clipToBounds().clearAndSetSemantics {}
             },
         ) {
-            sidebar()
+            PyreonBackScope(sidebarShown) { sidebar() }
         }
         if (wide) {
             Box(
@@ -198,7 +205,51 @@ fun PyreonSplit(
                 Modifier.size(0.dp).clipToBounds().clearAndSetSemantics {}
             },
         ) {
-            detail()
+            PyreonBackScope(detailShown) { detail() }
         }
     }
+}
+
+/**
+ * Content that stays COMPOSED while hidden (a visited tab, a phone's hidden
+ * split pane) keeps every `BackHandler` inside it registered, and the most
+ * recently registered enabled handler wins: a hidden tab's web view would take
+ * Back from the visible tab's route stack. Hidden content therefore gets a
+ * dispatcher of its own that nothing ever presses; when it is shown again its
+ * handlers move back to the activity's dispatcher (BackHandler re-registers on
+ * a new dispatcher). The tree shape does not change, so no state is lost.
+ *
+ * Since activity-compose 1.12 `BackHandler` registers with the
+ * `NavigationEventDispatcher` from `LocalNavigationEventDispatcherOwner` when
+ * there is one, not with the `OnBackPressedDispatcher`, so the hidden content
+ * also gets a CHILD navigation-event dispatcher that is disabled while hidden
+ * (a disabled dispatcher's handlers never receive Back). Both are provided: a
+ * handler built on either API is detached.
+ */
+@Composable
+internal fun PyreonBackScope(shown: Boolean, content: @Composable () -> Unit) {
+    val parent = LocalOnBackPressedDispatcherOwner.current
+    val detached = remember { PyreonDetachedBackOwner() }
+    detached.parent = parent
+    val backOwner = LocalOnBackPressedDispatcherOwner provides (if (shown && parent != null) parent else detached)
+    // No navigation-event owner above (a host without one): BackHandler uses the
+    // OnBackPressedDispatcher alone, and a root dispatcher here would swallow Back.
+    val navParent: NavigationEventDispatcherOwner? = LocalNavigationEventDispatcherOwner.current
+    if (navParent == null) {
+        CompositionLocalProvider(backOwner) { content() }
+        return
+    }
+    val navOwner = rememberNavigationEventDispatcherOwner(enabled = shown, parent = navParent)
+    CompositionLocalProvider(backOwner, LocalNavigationEventDispatcherOwner provides navOwner) {
+        content()
+    }
+}
+
+/** A Back dispatcher no system Back reaches (see [PyreonBackScope]). */
+internal class PyreonDetachedBackOwner : OnBackPressedDispatcherOwner {
+    var parent: OnBackPressedDispatcherOwner? = null
+    private val ownLifecycle = androidx.lifecycle.LifecycleRegistry(this)
+    override val onBackPressedDispatcher: OnBackPressedDispatcher = OnBackPressedDispatcher()
+    override val lifecycle: androidx.lifecycle.Lifecycle
+        get() = parent?.lifecycle ?: ownLifecycle
 }

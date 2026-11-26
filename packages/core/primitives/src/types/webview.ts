@@ -4,6 +4,28 @@
 // (`@pyreon/charts` / `@pyreon/flow` / heavy tables) inside a native shell.
 
 /**
+ * What `<WebView onError>` receives. Branch on `kind`, the cross-platform part:
+ *
+ * - `'load'`: the page could not be loaded (offline, DNS failure, connection
+ *   refused, TLS). `code` is the platform's error code (an `NSURLError` code on
+ *   iOS, a `WebViewClient.ERROR_*` code on Android).
+ * - `'http'`: the server answered with a status of 400 or more; `code` is the
+ *   status.
+ * - `'crash'`: the web content process kept dying and the native host stopped
+ *   reloading the page (it reloads by itself after the first losses); `code` is
+ *   0. A new `reloadKey` tries again.
+ *
+ * `description` is the platform's message (for logs, not for users), `url` the
+ * address that failed.
+ */
+export interface WebViewError {
+  kind: 'load' | 'http' | 'crash'
+  code: number
+  description: string
+  url: string
+}
+
+/**
  * A download the hosted page started (see `WebViewProps.onDownload`). The
  * same three fields on every native target: Swift `PyreonWebViewDownload`,
  * Kotlin `PyreonWebViewDownload`.
@@ -119,6 +141,46 @@ export interface WebViewProps {
    * compile time); a dynamic value warns and is ignored there.
    */
   grow?: boolean
+  /**
+   * Called each time the MAIN frame finishes loading a document: the first page
+   * and every page the user follows inside the view. Not called for a load that
+   * failed (`onError` is). Native: `didFinish` (iOS) / `onPageFinished`
+   * (Android). Web: the `<iframe>`'s `load` event.
+   */
+  onLoad?: () => void
+  /**
+   * Called when the MAIN frame's load fails (see {@link WebViewError}), so the
+   * app can put its own "can't be reached" screen over the view and retry with
+   * `reloadKey`. A failed image or XHR inside the page is the page's business
+   * and is not reported, and neither is a cancelled navigation (a newer load,
+   * or a link handed to the system browser). On Android the system error page
+   * stays visible under the app's own screen; on iOS the view is blank.
+   *
+   * Web: never called. A browser does not tell the parent document that an
+   * `<iframe>` failed to load (a cross-origin frame fires `load` on the error
+   * page too).
+   */
+  onError?: (error: WebViewError) => void
+  /**
+   * Load `html` / `src` again whenever this value CHANGES (any string or
+   * number: a retry counter is typical). Setting the same `src` again is not a
+   * change, so this is how a failed page is retried:
+   * `reloadKey={attempt()}` with a "Try again" button that bumps `attempt`.
+   * Every target, the web included (the `<iframe>` navigates again).
+   */
+  reloadKey?: string | number
+  /**
+   * Native: let the user go back (and forward) in the PAGE's history. Android
+   * system Back goes back while the page has history (at the first page Back
+   * leaves the screen as before: the route pops or the activity finishes); iOS
+   * turns on the edge swipe (`allowsBackForwardNavigationGestures`).
+   *
+   * Defaults to `true` for a `grow` view (a full-screen hosted flow the user
+   * navigates inside) and `false` otherwise, so a small embedded chart never
+   * swallows Back. A literal or a reactive boolean. Web: ignored (the browser's
+   * own Back already walks an `<iframe>`'s history).
+   */
+  backNavigation?: boolean
   /**
    * Called when the hosted page starts a DOWNLOAD (native): an
    * `<a download>` link (including `blob:` and `data:` URLs the page built

@@ -133,15 +133,16 @@ export function App() {
   )
 }`
   // Through the first-party plugins: `signal` is lowered by the reactivity plugin.
+  // A `grow` view also gets the `backNavigation` default, last in both calls.
   const HANDLER = 'onDownload={(d) => last.set(d.filename + ":" + d.mimeType)}'
 
   it('lowers the handler with the runtime download type, after grow (Swift init order)', () => {
     const out = transformWithPlugins(SRC(HANDLER), { target: 'swift' }).code
-    expect(out).toMatch(/PyreonWebView\(src: "page\.html", grow: \.vertical, onDownload: \{ d in .*d\.filename.*d\.mimeType.* \}\)/)
+    expect(out).toMatch(/PyreonWebView\(src: "page\.html", grow: \.vertical, onDownload: \{ d in .*d\.filename.*d\.mimeType.* \}, backNavigation: true\)/)
   })
   it('kotlin: the handler rides after modifier', () => {
     const out = transformWithPlugins(SRC(HANDLER), { target: 'kotlin' }).code
-    expect(out).toMatch(/PyreonWebView\(src = "page\.html", modifier = .*, onDownload = \{ d -> .*d\.filename.*d\.mimeType.* \}\)/)
+    expect(out).toMatch(/PyreonWebView\(src = "page\.html", modifier = .*, onDownload = \{ d -> .*d\.filename.*d\.mimeType.* \}, backNavigation = true\)/)
   })
   it('a string method on a download field gets the string lowering', () => {
     const src = SRC('onDownload={(d) => last.set(d.filename.toUpperCase())}')
@@ -150,10 +151,10 @@ export function App() {
   })
   it('saveDownloads={false} is emitted; true or absent is the default and emits nothing', () => {
     expect(transformWithPlugins(SRC('saveDownloads={false}'), { target: 'swift' }).code).toContain(
-      'PyreonWebView(src: "page.html", grow: .vertical, saveDownloads: false)',
+      'PyreonWebView(src: "page.html", grow: .vertical, saveDownloads: false, backNavigation: true)',
     )
     expect(transformWithPlugins(SRC('saveDownloads={false}'), { target: 'kotlin' }).code).toMatch(
-      /PyreonWebView\(src = "page\.html", modifier = [^\n]*, saveDownloads = false\)/,
+      /PyreonWebView\(src = "page\.html", modifier = [^\n]*, saveDownloads = false, backNavigation = true\)/,
     )
     for (const t of ['swift', 'kotlin'] as const) {
       expect(transformWithPlugins(SRC('saveDownloads={true}'), { target: t }).code).toBe(transformWithPlugins(SRC(''), { target: t }).code)

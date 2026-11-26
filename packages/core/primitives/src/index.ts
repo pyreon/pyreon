@@ -139,7 +139,7 @@ export { WebView } from './web/WebView'
 
 // ===== Canvas shapes — children of <Canvas>, each with its own emitter =====
 export { CanvasRect, CanvasCircle, CanvasLine, CanvasPath, CanvasText } from './web/Canvas'
-export type { WebViewDownload, WebViewProps } from './types/webview'
+export type { WebViewDownload, WebViewError, WebViewProps } from './types/webview'
 // Guest-side glue for the WebView bridge — the reusable other half of the
 // WebView-host pattern. A web-only-rich component built as a self-contained
 // bundle runs `connectWebHost()` INSIDE the hosted page to read host-pushed

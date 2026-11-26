@@ -15,7 +15,7 @@
 
 import { h } from '@pyreon/core'
 import type { VNode } from '@pyreon/core'
-import { effect } from '@pyreon/reactivity'
+import { effect, runUntracked } from '@pyreon/reactivity'
 import { collectPassthroughAttrs } from './passthrough'
 import { parseWebHostGroupMessage, WEB_HOST_GROUP_RELAY_FN } from '../web-host-bridge'
 import type { WebViewProps } from '../types/webview'
@@ -203,6 +203,32 @@ export function WebView(props: WebViewProps): VNode {
       // this also stops the web from being the odd one out.
       injectReverseBridge()
       if (hasData) push()
+      // Every document the frame finishes loading, as on the native hosts. A
+      // browser does not report an iframe's FAILED load to the parent (a
+      // cross-origin frame fires `load` on the error page too), so `onError`
+      // has no web source; see `WebViewProps.onError`.
+      props.onLoad?.()
+    }
+    // `reloadKey`: a CHANGE loads html / src again. Setting the attribute,
+    // even to the value it already has, makes the frame navigate again (HTML's
+    // "process the iframe attributes"); `html` / `src` are read untracked so
+    // only `reloadKey` drives this effect (their own changes reload through the
+    // attribute bindings above).
+    if ('reloadKey' in props) {
+      let first = true
+      effect(() => {
+        void props.reloadKey
+        if (first) {
+          first = false
+          return
+        }
+        runUntracked(() => {
+          if (frame === null) return
+          loaded = false
+          if (props.html !== undefined) frame.setAttribute('srcdoc', props.html)
+          else if (props.src !== undefined) frame.setAttribute('src', props.src)
+        })
+      })
     }
     // Re-push whenever `data` changes (the read tracks it). On the first
     // run the iframe usually isn't loaded yet → push no-ops, and `onLoad`

@@ -296,6 +296,61 @@ internal fun pyreonWebViewRendererGone(history: PyreonRendererLossHistory, key: 
 internal fun pyreonWebViewReloadStillDue(history: PyreonRendererLossHistory, generation: Int): Boolean =
     history.generation == generation
 
+// MARK: Load outcome — `onLoad` / `onError` (#4827). Mirror of the iOS host.
+
+/**
+ * What `<WebView onError>` receives. [kind] is the cross-platform part:
+ * `"load"` (the main-frame document could not be loaded: offline, DNS, refused,
+ * TLS), `"http"` (the server answered with a status of 400 or more; [code] is
+ * the status) or `"crash"` (the renderer kept dying and the host stopped
+ * reloading). [code] is otherwise the platform's own (`WebViewClient.ERROR_*`
+ * here, an `NSURLError` code on iOS).
+ */
+data class PyreonWebViewError(val kind: String, val code: Int, val description: String, val url: String)
+
+/** The name app code uses (`(e: WebViewError) => …` in a named handler lowers to this type). */
+typealias WebViewError = PyreonWebViewError
+
+internal const val PYREON_WEBVIEW_ERROR_LOAD = "load"
+internal const val PYREON_WEBVIEW_ERROR_HTTP = "http"
+internal const val PYREON_WEBVIEW_ERROR_CRASH = "crash"
+
+/**
+ * Whether a resource error is the app's business: the MAIN frame only (a failed
+ * image or XHR is the page's), and never a cancellation. A navigation the host
+ * cancels (`shouldOverrideUrlLoading` → true, a link handed to the system) or a
+ * load superseded by another one reports `net::ERR_ABORTED`.
+ */
+fun pyreonWebViewReportsLoadError(isMainFrame: Boolean, description: String?): Boolean =
+    isMainFrame && description != "net::ERR_ABORTED"
+
+/** Whether a main-frame response status is a failed load. */
+fun pyreonWebViewIsHttpError(status: Int): Boolean = status >= 400
+
+/**
+ * Whether a finished main-frame page is a LOAD for `onLoad`. Android finishes
+ * a failed page too (showing its error page), so the host remembers the URL
+ * the last error was for; the order of `onPageStarted` and `onReceivedError`
+ * is not guaranteed, so a URL is kept rather than a flag reset on start.
+ * A same-document navigation (a hash or `pushState` route) also finishes
+ * without starting a page ([documentStarted] false): not a load, as on iOS,
+ * where `didFinish` comes only for a new document.
+ */
+fun pyreonWebViewFinishedIsLoad(finishedUrl: String?, failedUrl: String?, documentStarted: Boolean): Boolean =
+    documentStarted && (failedUrl == null || finishedUrl != failedUrl)
+
+/**
+ * Whether system Back goes back in the page's history: only when the host
+ * opted in (`backNavigation`, on by default for a `grow` view) and the page
+ * has somewhere to go back to, so at the first page Back still leaves the
+ * screen (the router pops, or the activity finishes).
+ */
+fun pyreonWebViewHandlesBack(backNavigation: Boolean, canGoBack: Boolean): Boolean = backNavigation && canGoBack
+
+/** The load key: a change of html, src or reloadKey loads the page again. */
+fun pyreonWebViewLoadKey(html: String?, src: String?, reloadKey: String?): String =
+    (html ?: "") + "\u0001" + (src ?: "") + "\u0001" + (reloadKey ?: "")
+
 /** A `src` that names a remote page: `http(s)` with a host. */
 fun pyreonWebViewIsRemoteSrc(src: String): Boolean {
     val uri = try { java.net.URI(src) } catch (_: Exception) { return false }

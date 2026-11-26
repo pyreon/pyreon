@@ -66,14 +66,14 @@ describe('declaredPyreonDeps', () => {
     return p
   }
 
-  it('counts only @pyreon/* dependencies', () => {
+  it('counts the @pyreon/* dependencies and devDependencies wire starts from', () => {
     const p = write(
       JSON.stringify({
         dependencies: { '@pyreon/form': '*', '@pyreon/toast': '*', zod: '^3' },
-        devDependencies: { '@pyreon/tsconfig': '*' },
+        devDependencies: { '@pyreon/tsconfig': '*', vitest: '*' },
       }),
     )
-    expect(declaredPyreonDeps(p)).toBe(2)
+    expect(declaredPyreonDeps(p)).toBe(3)
   })
 
   it('returns 0 rather than throwing on unreadable or malformed input', () => {

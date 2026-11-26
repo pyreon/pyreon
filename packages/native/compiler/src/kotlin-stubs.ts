@@ -843,6 +843,7 @@ object Icons {
     val Search: ImageVector = ImageVector()
     val Settings: ImageVector = ImageVector()
     val List: ImageVector = ImageVector()
+    val Info: ImageVector = ImageVector()
   }
 }
 
@@ -1116,9 +1117,11 @@ fun PyreonGesture(
 // produces.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier, domStorage: Boolean = true, onDownload: ((PyreonWebViewDownload) -> Unit)? = null, saveDownloads: Boolean = true) {}
+fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier, domStorage: Boolean = true, onDownload: ((PyreonWebViewDownload) -> Unit)? = null, saveDownloads: Boolean = true, onLoad: (() -> Unit)? = null, onError: ((PyreonWebViewError) -> Unit)? = null, reloadKey: String? = null, backNavigation: Boolean = false) {}
 
 data class PyreonWebViewDownload(val url: String, val filename: String, val mimeType: String)
+data class PyreonWebViewError(val kind: String, val code: Int, val description: String, val url: String)
+typealias WebViewError = PyreonWebViewError
 
 // PyreonJson — mirror of @pyreon/native-runtime-kotlin's PyreonJson.kt.
 // Stub so the kotlinc validate gate resolves \`PyreonJson.encode(signal)\`

@@ -58,6 +58,27 @@
 // `.frame(maxHeight: .infinity)` cannot enlarge a fixed inner frame, so the
 // sizing has to be an argument rather than a modifier the caller adds.
 //
+// ## Load outcome (`onLoad:` / `onError:` / `reloadKey:`)
+//
+// `onLoad` runs each time the MAIN frame finishes loading a document (the
+// first page and every page the user follows inside the view). `onError` gets a
+// `PyreonWebViewError` when a main-frame load fails: `"load"` (offline, DNS,
+// refused, TLS: `didFailProvisionalNavigation` / `didFail`), `"http"` (a status
+// of 400 or more, read in `decidePolicyFor navigationResponse`) or `"crash"`
+// (the content process kept dying and the host stopped reloading). A failed
+// image or XHR is the page's business, and a cancellation (`NSURLErrorCancelled`,
+// WebKit's 102 "frame load interrupted" when a link is handed to the system)
+// is not an error. A changed `reloadKey` loads `html` / `src` again (the way
+// to retry: setting the same `src` again is not a change). Mirror of the
+// Android host.
+//
+// ## Back navigation (`backNavigation:`)
+//
+// `backNavigation: true` (PMTC passes it for a `grow` view unless the app says
+// otherwise) turns on `allowsBackForwardNavigationGestures`, the edge swipe that
+// goes back and forward in the page's history as in Safari. Android sends
+// system Back into the page's history for the same prop.
+//
 // ## Browser chrome (`WKUIDelegate`)
 //
 // A `WKWebView` with no `uiDelegate` drops `alert()`, answers `confirm()` with
@@ -155,6 +176,51 @@
 // PyreonClipboard.
 
 import SwiftUI
+
+/// What `<WebView onError>` receives. `kind` is the cross-platform part:
+/// `"load"` (the main-frame document could not be loaded: offline, DNS,
+/// refused, TLS), `"http"` (the server answered with a status of 400 or more;
+/// `code` is the status) or `"crash"` (the content process kept dying and the
+/// host stopped reloading). `code` is otherwise the platform's own (an
+/// `NSURLError` code here, `WebViewClient.ERROR_*` on Android).
+public struct PyreonWebViewError: Equatable, Sendable {
+    public let kind: String
+    public let code: Int
+    public let description: String
+    public let url: String
+
+    public init(kind: String, code: Int, description: String, url: String) {
+        self.kind = kind
+        self.code = code
+        self.description = description
+        self.url = url
+    }
+}
+
+/// The name app code uses (`(e: WebViewError) => …` in a named handler lowers to this type).
+public typealias WebViewError = PyreonWebViewError
+
+let pyreonWebViewErrorLoad = "load"
+let pyreonWebViewErrorHttp = "http"
+let pyreonWebViewErrorCrash = "crash"
+
+/// Whether a failed navigation is a cancellation rather than an error: one the
+/// host cancelled itself (WebKit 102, "frame load interrupted", when the policy
+/// hands a link to the system), one a newer load superseded (`NSURLErrorCancelled`),
+/// or one WebKit handed to its media player (204, "plug-in handled load": a video
+/// or audio URL plays, it did not fail). Android reports none of these as errors.
+func pyreonWebViewIsCancellation(domain: String, code: Int) -> Bool {
+    (domain == NSURLErrorDomain && code == NSURLErrorCancelled)
+        || (domain == "WebKitErrorDomain" && (code == 102 || code == 204))
+}
+
+/// Whether a main-frame response status is a failed load.
+func pyreonWebViewIsHttpError(_ status: Int) -> Bool { status >= 400 }
+
+/// The load key: a change of html, src or reloadKey loads the page again.
+func pyreonWebViewLoadKey(html: String?, src: String?, reloadKey: String?) -> String {
+    (html ?? "") + "\u{0001}" + (src ?? "") + "\u{0001}" + (reloadKey ?? "")
+}
 
 /// A download the hosted page started (see "Downloads" in the file header).
 /// Mirrors `WebViewDownload` in `@pyreon/primitives` and the Kotlin
@@ -328,6 +394,10 @@ public struct PyreonWebView: View {
     private let grow: PyreonWebViewGrow?
     private let onDownload: ((PyreonWebViewDownload) -> Void)?
     private let saveDownloads: Bool
+    private let onLoad: (() -> Void)?
+    private let onError: ((PyreonWebViewError) -> Void)?
+    private let reloadKey: String?
+    private let backNavigation: Bool
 
     /// `html` — inline HTML to render (e.g. an ECharts page). `src` — a
     /// LOCAL bundled asset name (preferred, policy-safe) or a remote URL.
@@ -342,7 +412,9 @@ public struct PyreonWebView: View {
     /// stack's free space along it (see the file header). `onDownload` — called
     /// for each download the page starts; `saveDownloads` — `true` (default)
     /// then saves it through the share sheet, `false` leaves it to the app (see
-    /// "Downloads" in the file header).
+    /// "Downloads" in the file header). `onLoad` / `onError` report the main
+    /// frame's load outcome, a changed `reloadKey` loads the page again, and
+    /// `backNavigation` turns on the back / forward swipe (see the file header).
     public init(
         html: String? = nil,
         src: String? = nil,
@@ -351,10 +423,18 @@ public struct PyreonWebView: View {
         domStorage: Bool = true,
         grow: PyreonWebViewGrow? = nil,
         onDownload: ((PyreonWebViewDownload) -> Void)? = nil,
-        saveDownloads: Bool = true
+        saveDownloads: Bool = true,
+        onLoad: (() -> Void)? = nil,
+        onError: ((PyreonWebViewError) -> Void)? = nil,
+        reloadKey: String? = nil,
+        backNavigation: Bool = false
     ) {
         self.onDownload = onDownload
         self.saveDownloads = saveDownloads
+        self.onLoad = onLoad
+        self.onError = onError
+        self.reloadKey = reloadKey
+        self.backNavigation = backNavigation
         self.domStorage = domStorage
         self.grow = grow
         self.html = html
@@ -369,10 +449,14 @@ public struct PyreonWebView: View {
         // high on Android and the web. The unsized default is therefore an
         // exact frame, and filling is the explicit `grow` the caller opts into.
         _PyreonWebViewFrame(
+            // A new html / src / reloadKey is a new WKWebView: the app's new page
+            // starts a new history, so Back and the swipe never return to the page
+            // the app replaced (WKWebView has no way to clear its back list).
             content: _PyreonWebViewBridge(
                 html: html, src: src, data: data, onMessage: onMessage, domStorage: domStorage,
-                onDownload: onDownload, saveDownloads: saveDownloads
-            ),
+                onDownload: onDownload, saveDownloads: saveDownloads,
+                onLoad: onLoad, onError: onError, reloadKey: reloadKey, backNavigation: backNavigation
+            ).id(pyreonWebViewLoadKey(html: html, src: src, reloadKey: reloadKey)),
             grow: grow
         )
     }
@@ -627,6 +711,11 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     var src: String?
     /// Content-process losses in a row (see `pyreonWebViewRendererGone`).
     var lossHistory = PyreonRendererLossHistory()
+    var onLoad: (() -> Void)?
+    var onError: ((PyreonWebViewError) -> Void)?
+    /// The main-frame document being loaded already failed (an HTTP error
+    /// status): its `didFinish` is not a load.
+    var currentLoadFailed = false
     /// Download callback and whether the host saves downloads (see "Downloads").
     var onDownload: ((PyreonWebViewDownload) -> Void)?
     var saveDownloads = true
@@ -713,17 +802,33 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
         }
     }
 
-    /// An attachment, or a type WebKit cannot display, becomes a download
-    /// instead of a failed navigation.
+    /// One decision per navigation response:
+    ///
+    /// - The server answered the MAIN frame with a status of 400 or more: the
+    ///   load failed (`onError` kind "http"). Its error page still shows when
+    ///   WebKit can display it; the body is never downloaded.
+    /// - An attachment, or a type WebKit cannot display, becomes a download
+    ///   (under the download rule) instead of a failed navigation.
     func webView(
         _ webView: WKWebView,
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void
     ) {
-        let disposition = (navigationResponse.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Disposition")
+        let http = navigationResponse.response as? HTTPURLResponse
+        if navigationResponse.isForMainFrame, let http, pyreonWebViewIsHttpError(http.statusCode) {
+            currentLoadFailed = true
+            onError?(PyreonWebViewError(
+                kind: pyreonWebViewErrorHttp,
+                code: http.statusCode,
+                description: HTTPURLResponse.localizedString(forStatusCode: http.statusCode),
+                url: http.url?.absoluteString ?? ""
+            ))
+            decisionHandler(navigationResponse.canShowMIMEType ? .allow : .cancel)
+            return
+        }
         let download = pyreonWebViewResponseIsDownload(
             canShowMIMEType: navigationResponse.canShowMIMEType,
-            contentDisposition: disposition
+            contentDisposition: http?.value(forHTTPHeaderField: "Content-Disposition")
         )
         guard download else {
             decisionHandler(.allow)
@@ -799,10 +904,32 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
         }
     }
 
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        currentLoadFailed = false
+    }
+
     /// The host's load failed before committing: whatever document is still
     /// shown is not the one the host asked for, so nothing is allowed.
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         initialLoadPending = false
+        reportLoadFailure(error, in: webView)
+    }
+
+    /// A committed main-frame load failed before it finished.
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        reportLoadFailure(error, in: webView)
+    }
+
+    /// `onError` for a failed main-frame navigation (the navigation delegate
+    /// only hears about the main frame), unless it was a cancellation.
+    func reportLoadFailure(_ error: Error, in webView: WKWebView) {
+        let ns = error as NSError
+        guard !pyreonWebViewIsCancellation(domain: ns.domain, code: ns.code) else { return }
+        currentLoadFailed = true
+        let url = (ns.userInfo[NSURLErrorFailingURLErrorKey] as? URL)?.absoluteString
+            ?? webView.url?.absoluteString
+            ?? ""
+        onError?(PyreonWebViewError(kind: pyreonWebViewErrorLoad, code: ns.code, description: ns.localizedDescription, url: url))
     }
 
     /// The web content process is gone (WebKit reclaimed it, or the page
@@ -818,6 +945,13 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
         let generation = lossHistory.generation
         guard let delay else {
             print("[Pyreon] <WebView>: the web content process ended \(lossHistory.crashes) times in a row, so this view stays empty until its html / src changes. The process may serve other WebViews in the app, so the page that ended it may be another one.")
+            // The host gave up: tell the app (its retry is a new `reloadKey`).
+            onError?(PyreonWebViewError(
+                kind: pyreonWebViewErrorCrash,
+                code: 0,
+                description: "The web content process ended \(lossHistory.crashes) times in a row; the view stays empty until html, src or reloadKey changes.",
+                url: webView.url?.absoluteString ?? src ?? ""
+            ))
             return
         }
         print("[Pyreon] <WebView>: the web content process ended; loading the page again\(delay > 0 ? " in \(Int(delay)) ms (losses in a row back off)" : "").")
@@ -832,6 +966,8 @@ final class _PyreonWebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDeleg
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loaded = true
         pushData(into: webView)
+        // A page the server answered with an error status finishes too: not a load.
+        if !currentLoadFailed { onLoad?() }
     }
 
     /// Reverse bridge — the page called `window.pyreonPostMessage(s)`.
@@ -1041,12 +1177,13 @@ private func _syncPyreonWebView(
     coordinator: _PyreonWebViewCoordinator,
     html: String?,
     src: String?,
-    data: String?
+    data: String?,
+    reloadKey: String?
 ) {
     coordinator.latestData = data
     coordinator.html = html
     coordinator.src = src
-    let key = (html ?? "") + "\u{0001}" + (src ?? "")
+    let key = pyreonWebViewLoadKey(html: html, src: src, reloadKey: reloadKey)
     if coordinator.loadedKey != key {
         coordinator.loadedKey = key
         coordinator.loaded = false
@@ -1266,6 +1403,10 @@ private struct _PyreonWebViewBridge: UIViewRepresentable {
     let domStorage: Bool
     let onDownload: ((PyreonWebViewDownload) -> Void)?
     let saveDownloads: Bool
+    let onLoad: (() -> Void)?
+    let onError: ((PyreonWebViewError) -> Void)?
+    let reloadKey: String?
+    let backNavigation: Bool
     func makeCoordinator() -> _PyreonWebViewCoordinator { _PyreonWebViewCoordinator() }
     func makeUIView(context: Context) -> WKWebView {
         // Read once at creation, like `domStorage`.
@@ -1275,7 +1416,10 @@ private struct _PyreonWebViewBridge: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.onMessage = onMessage
         context.coordinator.onDownload = onDownload
-        _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data)
+        context.coordinator.onLoad = onLoad
+        context.coordinator.onError = onError
+        webView.allowsBackForwardNavigationGestures = backNavigation
+        _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data, reloadKey: reloadKey)
     }
     static func dismantleUIView(_ webView: WKWebView, coordinator: _PyreonWebViewCoordinator) {
         _PyreonWebViewGroups.shared.leave(coordinator)
@@ -1290,6 +1434,10 @@ private struct _PyreonWebViewBridge: NSViewRepresentable {
     let domStorage: Bool
     let onDownload: ((PyreonWebViewDownload) -> Void)?
     let saveDownloads: Bool
+    let onLoad: (() -> Void)?
+    let onError: ((PyreonWebViewError) -> Void)?
+    let reloadKey: String?
+    let backNavigation: Bool
     func makeCoordinator() -> _PyreonWebViewCoordinator { _PyreonWebViewCoordinator() }
     func makeNSView(context: Context) -> WKWebView {
         // Read once at creation, like `domStorage`.
@@ -1299,7 +1447,10 @@ private struct _PyreonWebViewBridge: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.onMessage = onMessage
         context.coordinator.onDownload = onDownload
-        _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data)
+        context.coordinator.onLoad = onLoad
+        context.coordinator.onError = onError
+        webView.allowsBackForwardNavigationGestures = backNavigation
+        _syncPyreonWebView(webView, coordinator: context.coordinator, html: html, src: src, data: data, reloadKey: reloadKey)
     }
     static func dismantleNSView(_ webView: WKWebView, coordinator: _PyreonWebViewCoordinator) {
         _PyreonWebViewGroups.shared.leave(coordinator)
@@ -1349,7 +1500,11 @@ public struct PyreonWebView: View {
         domStorage: Bool = true,
         grow: PyreonWebViewGrow? = nil,
         onDownload: ((PyreonWebViewDownload) -> Void)? = nil,
-        saveDownloads: Bool = true
+        saveDownloads: Bool = true,
+        onLoad: (() -> Void)? = nil,
+        onError: ((PyreonWebViewError) -> Void)? = nil,
+        reloadKey: String? = nil,
+        backNavigation: Bool = false
     ) {}
     public var body: some View { EmptyView() }
 }
