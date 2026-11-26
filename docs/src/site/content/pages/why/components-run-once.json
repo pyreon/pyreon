@@ -18,8 +18,8 @@
       "stats": [
         {
           "stat": "2.7×",
-          "label": "faster than React 19 at creating 10,000 rows (73.1 ms vs 195.9 ms)",
-          "condition": "final pass, two runs · Apple M3 Max · real Chromium · synthetic, author-run",
+          "label": "faster than React 19 at creating 10,000 rows (74.3 ms vs 198.6 ms)",
+          "condition": "2026-11-26 re-measurement, two runs · Apple M3 Max · real Chromium · synthetic, author-run",
           "source": "BENCHMARKS.md §1"
         },
         {
@@ -199,7 +199,7 @@
     },
     {
       "kind": "note",
-      "text": "We publish where we lose, so you can trust where we win: in the same record a mounted 2,047-component tree holds about 2.6× the memory it takes in Solid 1.9, creating a signal is about 5× slower than in Preact Signals, and the same keyed-table app is 18.5 KB gzip against Solid's 7.7 KB.",
+      "text": "We publish where we lose, so you can trust where we win: in the same record a mounted 2,047-component tree holds 1.72× the memory it takes in Solid 1.9, creating a signal is about 5× slower than in Preact Signals, and the same keyed-table app is 18.5 KB gzip against Solid's 7.7 KB.",
       "href": "/benchmarks"
     },
     {
@@ -269,8 +269,8 @@
   },
   "sources": [
     {
-      "claim": "Create 10,000 rows: Pyreon 73.09 ms vs React 19 195.91 ms (2.68×; 2.70× in run 2), two runs",
-      "path": "BENCHMARKS.md §1 (refreshed 2026-11-24)"
+      "claim": "Create 10,000 rows: Pyreon 74.33 ms vs React 19 198.63 ms (2.67×; 2.70× in run 2), two runs",
+      "path": "BENCHMARKS.md §1 (re-measured 2026-11-26)"
     },
     {
       "claim": "TodoMVC toggle-1000 4.60 vs 11.41 ms (2.48×), clear-1000 3–4×, one run",
@@ -281,8 +281,8 @@
       "path": "BENCHMARKS.md §8"
     },
     {
-      "claim": "Deep-tree retained heap 531.7 vs Solid 1.9 202–207 KB; bundle 18.5 vs Solid 7.7 KB",
-      "path": "BENCHMARKS.md §2b, §7, §13 (refreshed 2026-11-24)"
+      "claim": "Deep-tree retained heap 355.7 vs Solid 1.9 207.2 / 206.8 KB (1.72×); bundle 18.5 vs Solid 7.7 KB",
+      "path": "BENCHMARKS.md §2b, §13 (re-measured 2026-11-26), §7 (2026-11-24)"
     },
     {
       "claim": "Counter compiles to _tpl + _bindText(count, __t2)",

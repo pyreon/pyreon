@@ -17,9 +17,9 @@
     },
     {
       "stat": "2.7×",
-      "label": "faster to create 10,000 rows: 73.1 ms against 195.9 ms",
-      "condition": "real Chromium, run 1 table of a two-run refresh (2026-11-24); synthetic, author-run",
-      "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
+      "label": "faster to create 10,000 rows: 74.3 ms against 198.6 ms",
+      "condition": "real Chromium, run 1 table of a two-run re-measurement (2026-11-26); synthetic, author-run",
+      "source": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
     },
     {
       "stat": "6.5×",
@@ -41,31 +41,31 @@
       },
       {
         "topic": "Create 10,000 rows",
-        "pyreon": "73.1 ms",
-        "rival": "195.9 ms (2.7× slower)",
+        "pyreon": "74.3 ms",
+        "rival": "198.6 ms (2.7× slower)",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
+        "source": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
       },
       {
         "topic": "Swap two rows in 1,000",
-        "pyreon": "745 µs",
-        "rival": "5.92 ms",
+        "pyreon": "480 µs",
+        "rival": "5.89 ms",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
+        "source": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
       },
       {
         "topic": "Remove a row",
-        "pyreon": "5.70 ms",
-        "rival": "6.01 ms (1.05× slower in both runs)",
+        "pyreon": "5.78 ms",
+        "rival": "6.08 ms (1.05–1.06× slower in both runs)",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-24 §1"
+        "source": "BENCHMARKS.md 2026-11-26 §1"
       },
       {
         "topic": "Mount a deep tree (2,047 components)",
-        "pyreon": "3.09 / 3.03 ms",
-        "rival": "3.46 / 3.47 ms (1.12–1.15× slower in both runs)",
+        "pyreon": "3.51 / 3.50 ms",
+        "rival": "3.97 / 3.98 ms (1.13–1.14× slower in both runs)",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-24 §2a"
+        "source": "BENCHMARKS.md 2026-11-26 §2a"
       },
       {
         "topic": "TodoMVC shape: toggle 1,000 / clear 1,000",
@@ -90,10 +90,10 @@
       },
       {
         "topic": "Retained heap after the row suite",
-        "pyreon": "3.21 MB",
-        "rival": "3.55 MB (one value per pass, the same in all ten passes)",
+        "pyreon": "3.16 MB (the same in all ten passes)",
+        "rival": "3.56 MB (one value per pass, the same in all ten passes)",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-24 §1"
+        "source": "BENCHMARKS.md 2026-11-26 §1"
       },
       {
         "topic": "Update model",
@@ -197,16 +197,16 @@
       "path": "BENCHMARKS.md 2026-11-24 §7"
     },
     {
-      "claim": "Create 10,000 rows 73.09 vs 195.91 ms; swap 745 µs vs 5.92 ms; remove 5.70 vs 6.01 ms (run 1 table)",
-      "path": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
+      "claim": "Create 10,000 rows 74.33 vs 198.63 ms; swap 480 µs vs 5.89 ms; remove 5.78 vs 6.08 ms (run 1 table)",
+      "path": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
     },
     {
-      "claim": "Remove row: React 1.05× slower, CIs disjoint in both runs",
-      "path": "BENCHMARKS.md 2026-11-24 §1 (verdicts) and the pooled run JSON"
+      "claim": "Remove row: React 1.05–1.06× slower (6.08 / 6.12 vs 5.78 / 5.77 ms), CIs disjoint in both runs",
+      "path": "BENCHMARKS.md 2026-11-26 §1 and the pooled run JSON"
     },
     {
-      "claim": "Deep-tree mount: React 1.12–1.15× slower than Pyreon in both runs",
-      "path": "BENCHMARKS.md 2026-11-24 §2a"
+      "claim": "Deep-tree mount: React 1.13–1.14× slower than Pyreon in both runs",
+      "path": "BENCHMARKS.md 2026-11-26 §2a"
     },
     {
       "claim": "TodoMVC toggle 2.48×, clear 3.14×, add-100 quoted as 1.14–1.99×",
@@ -221,8 +221,8 @@
       "path": "00-brief/BENCHMARKS-2026-11-05.md §4, lines 224–231"
     },
     {
-      "claim": "Retained heap Pyreon 3.21 MB vs React 3.55 MB, the same in all ten passes",
-      "path": "BENCHMARKS.md 2026-11-24 §1"
+      "claim": "Retained heap Pyreon 3.16 MB vs React 3.56 MB (both the same in all ten passes)",
+      "path": "BENCHMARKS.md 2026-11-26 §1"
     },
     {
       "claim": "useMemo→computed, useCallback→delete, no dependency arrays",

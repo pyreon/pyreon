@@ -2,7 +2,7 @@
   "id": "vue",
   "route": "/compare/vue",
   "rival": "Vue",
-  "rivalMeasured": "vue 3.5.45 and Vue 3.6 Vapor 3.6.0-rc.11 on the row board, memo wall and bundle (2026-11-24); vue 3.5.44 for SSR, hydration and forms (2026-11-05)",
+  "rivalMeasured": "vue 3.5.45 and Vue 3.6 Vapor 3.6.0-rc.11 on the row board and memo wall (2026-11-26) and the bundle (2026-11-24); vue 3.5.44 for SSR, hydration and forms (2026-11-05)",
   "hook": {
     "eyebrow": "Pyreon vs Vue",
     "title": "Vue's reactivity without `.value`. In 1.5× less JavaScript.",
@@ -22,10 +22,10 @@
       "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–245"
     },
     {
-      "stat": "1.25×",
-      "label": "faster when a memoised value blocks an update (memo wall): 12.6 µs against 15.8 µs",
-      "condition": "real Chromium, both runs (2026-11-24); Solid 2.0 ties Pyreon here",
-      "source": "BENCHMARKS.md 2026-11-24 §2a"
+      "stat": "1.26×",
+      "label": "faster when a memoised value blocks an update (memo wall): 12.5 µs against 15.9 µs",
+      "condition": "real Chromium, both runs (2026-11-26; 1.26–1.27×); Solid 2.0 splits with Pyreon here",
+      "source": "BENCHMARKS.md 2026-11-26 §2a"
     }
   ],
   "table": {
@@ -48,10 +48,10 @@
       },
       {
         "topic": "Memo wall: blocked update",
-        "pyreon": "12.6 / 12.8 µs",
-        "rival": "15.8 / 15.9 µs (Pyreon 1.25×; Solid 2.0, now the fastest rival, ties Pyreon)",
+        "pyreon": "12.5 / 12.5 µs",
+        "rival": "15.9 / 15.8 µs (Pyreon 1.26–1.27×; against Solid 2.0, the fastest rival, the runs split)",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-24 §2a"
+        "source": "BENCHMARKS.md 2026-11-26 §2a"
       },
       {
         "topic": "Hydration, 320-component page",
@@ -62,10 +62,10 @@
       },
       {
         "topic": "Row board vs Vue 3: partial update / clear rows",
-        "pyreon": "680 µs / 125 µs",
-        "rival": "1.04 ms / 225 µs",
+        "pyreon": "505 µs / 95 µs",
+        "rival": "840 µs / 190 µs",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
+        "source": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
       },
       {
         "topic": "12-field form, keystroke with validation",
@@ -76,10 +76,10 @@
       },
       {
         "topic": "Row board vs Vue 3.6 Vapor (RC)",
-        "pyreon": "Clear rows 1.12× faster in both runs.",
-        "rival": "Create 1,000, replace, remove, create 10,000 and append: ties in both runs. Partial update and swap split; Vapor was 1.11× ahead on swap in run 2.",
+        "pyreon": "Append 4.8× faster (13.11 vs 63.19 ms, run 1). In the 2026-11-26 session Pyreon was also ahead of Vapor in both runs on partial update (1.06–1.07×), clear rows (1.21×) and create 10,000 (1.02–1.03×); every framework ran that session's small operations faster than the day before, so the record holds those back.",
+        "rival": "Create 1,000, replace and remove: ties in both runs. Swap tied in both runs on 2026-11-26 but stays a split (Vapor was 1.07× ahead in one run on 2026-11-25).",
         "verdict": "tie",
-        "source": "BENCHMARKS.md 2026-11-24 §1 (verdicts)"
+        "source": "BENCHMARKS.md 2026-11-26 §0, §1 (verdicts) and the pooled run JSON"
       },
       {
         "topic": "Hydration, 1,000-row keyed table",
@@ -172,8 +172,8 @@
       "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–245"
     },
     {
-      "claim": "Memo wall blocked 12.6 / 12.8 vs Vue 15.8 / 15.9 µs, 1.25× both runs; Solid 2.0 ties",
-      "path": "BENCHMARKS.md 2026-11-24 §2a"
+      "claim": "Memo wall blocked 12.5 / 12.5 vs Vue 15.9 / 15.8 µs, 1.26–1.27× both runs; Solid 2.0 splits",
+      "path": "BENCHMARKS.md 2026-11-26 §2a"
     },
     {
       "claim": "App page hydration 4.02 vs Vue 4.47 ms, one run",
@@ -184,12 +184,12 @@
       "path": "00-brief/BENCHMARKS-2026-11-05.md §4, lines 224–229"
     },
     {
-      "claim": "Vue 3 partial update 1.04 ms, clear 225 µs vs Pyreon 680 / 125 µs (run 1); CIs disjoint in both runs",
-      "path": "BENCHMARKS.md 2026-11-24 §1 (run 1 table)"
+      "claim": "Vue 3 partial update 840 µs, clear 190 µs vs Pyreon 505 / 95 µs (run 1); CIs disjoint in both runs",
+      "path": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
     },
     {
-      "claim": "Vapor RC ties create 1,000 / replace / remove / create 10,000 / append; partial and swap split; Pyreon clear 1.12×",
-      "path": "BENCHMARKS.md 2026-11-24 §1 (verdicts)"
+      "claim": "Vapor RC ties create 1,000 / replace / remove; append 63.19 vs 13.11 ms; partial update, clear rows and create 10,000 ahead in both runs on 2026-11-26 but held back (shifted baseline); swap stays a split",
+      "path": "BENCHMARKS.md 2026-11-26 §0, §1 (verdicts) and the pooled run JSON"
     },
     {
       "claim": "vee-validate keystroke (change mode) 2,260 vs 460 µs, one run",
