@@ -97,6 +97,7 @@ export {
   resolveProjects,
   type LatheProject,
   type LatheSection,
+  type NativeModelsConfig,
   type PaginationConfig,
   type PluginName,
   type ResolvedConfig,

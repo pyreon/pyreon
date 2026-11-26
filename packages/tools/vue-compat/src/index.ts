@@ -34,10 +34,12 @@ import {
   pushContext,
   h as pyreonH,
   Suspense as PyreonSuspense,
-  removeContextFrame,
   SuspenseBoundaryContext,
   useContext,
 } from '@pyreon/core'
+import {
+  removeContextFrame,
+} from '@pyreon/core/internal'
 import {
   batch,
   createStore,

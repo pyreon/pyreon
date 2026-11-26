@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { _resetDBCache, _resetRegistry, useIndexedDB } from '../index'
+import { useIndexedDB } from '../index'
+import { _resetDBCache, _resetRegistry } from '../internal'
 
 describe('useIndexedDB — debounced writes', () => {
   beforeEach(() => {

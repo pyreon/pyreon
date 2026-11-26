@@ -4,6 +4,11 @@
 
   Only the leaf calls `getContext`; interior nodes exist so the benchmark can
   see whether a context change walks them or reaches subscribers directly.
+
+  The two children are written with no whitespace between them: Svelte keeps
+  whitespace between sibling components as a " " text node, which gave this arm
+  1,023 text nodes (and 1,023 characters of text) no other arm renders. The
+  DOM-shape gate in bench-scenarios.ts fails on that.
 -->
 <script lang="ts">
   import { getContext } from 'svelte'
@@ -18,7 +23,6 @@
   <span class="leaf">{ctx!.value}</span>
 {:else}
   <div class="branch">
-    <DeepNode depth={depth - 1} />
-    <DeepNode depth={depth - 1} />
+    <DeepNode depth={depth - 1} /><DeepNode depth={depth - 1} />
   </div>
 {/if}

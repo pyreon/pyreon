@@ -2,11 +2,14 @@
  * The `atlas dev` Vite plugin — serves the workbench, the derived catalog, and
  * the node-only RPC channel.
  *
- * Three virtual modules, so a consuming project needs no files of its own:
+ * The workbench itself is a `@pyreon/zero` app shipped in this package
+ * (`app/`, see ./zero-app). This plugin supplies what that app cannot know
+ * statically, so a consuming project needs no files of its own:
  *
  *   `virtual:atlas/catalog` — the derived catalog (see ./catalog-module)
- *   `virtual:atlas/entry`   — mounts `<Workbench>` with it
- *   the served `index.html` — points at the entry
+ *   `virtual:atlas/shell`   — the site title
+ *   `transformIndexHtml`    — the title, theme boot, fonts and, in a build, the
+ *                             baked RPC answers
  *
  * ── The RPC channel, designed before its first payload ────────────────────
  *
@@ -31,9 +34,10 @@ import { generateCatalogModule, type CatalogEntrySource } from './catalog-module
 import { createControlHistory } from './control-history'
 import { lensMethod } from './lens'
 import { chromeThemeCss, themeBootScript } from '../ui/theme'
+import { bakedRpcScript, bakedRpcUrlScript } from '../build/bake'
 
 export const CATALOG_ID = 'virtual:atlas/catalog'
-export const ENTRY_ID = 'virtual:atlas/entry'
+export const SHELL_ID = 'virtual:atlas/shell'
 export const RPC_PATH = '/__atlas/rpc'
 
 /** Vite requires resolved virtual ids to be prefixed with a NUL byte. */
@@ -155,6 +159,12 @@ export interface AtlasDevPluginOptions {
    * rescanned anywhere.
    */
   watch?: WatchTargets
+  /**
+   * `atlas build` only: the node-answered panel data baked into the page (see
+   * `../build/bake`). Its presence is what marks a static build: the `<head>`
+   * carries the inline answers and the URL of the per-component files.
+   */
+  baked?: { inline: import('../build/bake').BakedRpc; base: string }
 }
 
 /** Directories whose source files, and exact files, trigger a rescan. */
@@ -205,7 +215,7 @@ export interface VitePluginLike {
     }
     ws?: { send: (payload: { type: 'full-reload'; path?: string }) => void }
   }): void
-  transformIndexHtml?: (html: string) => string
+  transformIndexHtml: { order: 'pre'; handler: (html: string) => string }
 }
 
 export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
@@ -230,55 +240,38 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
     ...options.methods,
   })
   let methods = buildMethods()
+  // The generated catalog, as last SERVED. A rescan whose catalog is
+  // byte-identical (a save that changed a component's body, not its props,
+  // variants or config) sends no reload of its own: the catalog did not
+  // change, so invalidating it would only add a second reload to whatever
+  // Vite does with the edited module. (Today that update still propagates to
+  // the app shell and reloads the page — a known gap, not an HMR update.)
+  const catalogCode = (): string => {
+    const o = catalogOptions
+    return generateCatalogModule(entries, {
+      root: options.scanRoot,
+      ...(o.configPath ? { configPath: o.configPath } : {}),
+      ...(o.presets ? { presets: o.presets } : {}),
+      ...(o.pages ? { pages: o.pages } : {}),
+      ...(o.parts ? { parts: o.parts } : {}),
+      ...(o.projects ? { projects: o.projects } : {}),
+      addedAt: history.addedAt,
+    })
+  }
+  const title = options.title ?? 'Atlas'
 
   return {
     name: 'atlas:dev',
 
     resolveId(id) {
-      if (id === CATALOG_ID || id === ENTRY_ID) return resolved(id)
+      if (id === CATALOG_ID || id === SHELL_ID) return resolved(id)
       return undefined
     },
 
     load(id) {
-      if (id === resolved(CATALOG_ID)) {
-        const o = catalogOptions
-        return generateCatalogModule(entries, {
-          root: options.scanRoot,
-          ...(o.configPath ? { configPath: o.configPath } : {}),
-          ...(o.presets ? { presets: o.presets } : {}),
-          ...(o.pages ? { pages: o.pages } : {}),
-          ...(o.parts ? { parts: o.parts } : {}),
-          ...(o.projects ? { projects: o.projects } : {}),
-          addedAt: history.addedAt,
-        })
-      }
-      if (id === resolved(ENTRY_ID)) {
-        return [
-          `import { mount } from '@pyreon/runtime-dom'`,
-          `import { h } from '@pyreon/core'`,
-          // ONLY the PURE half of the coverage kit crosses this import: the
-          // node array it scores comes from the page's own
-          // `__PYREON_DEVTOOLS__.reactive` bridge (installed by mount — the
-          // same reactivity instance the components run on). Importing the
-          // STATEFUL half (start/take) here would read THIS import's registry,
-          // which Vite's dep graph can resolve to a second instance that never
-          // saw a single node — the leak check hit the same split.
-          `import { computeReactiveCoverage } from '@pyreon/reactivity/coverage'`,
-          `import { Workbench, runAxe } from '@pyreon/atlas/ui'`,
-          `import { catalog } from ${JSON.stringify(CATALOG_ID)}`,
-          '',
-          // The browser-verify bridge: the runner drives scenarios and reads
-          // reactive coverage THROUGH THE PAGE's own module graph — the same
-          // instances the components run on. A dev server is a dev tool;
-          // exposing its own instrumentation is the point, not a leak.
-          `globalThis.__ATLAS_VERIFY__ = { computeReactiveCoverage, runAxe: (surface, rules) => runAxe(surface, undefined, rules) }`,
-          '',
-          `const root = document.getElementById('atlas-root')`,
-          `if (root) {`,
-          `  mount(h(Workbench, { catalog, title: ${JSON.stringify(options.title ?? 'atlas')} }), root)`,
-          `}`,
-          '',
-        ].join('\n')
+      if (id === resolved(CATALOG_ID)) return catalogCode()
+      if (id === resolved(SHELL_ID)) {
+        return `export const title = ${JSON.stringify(title)}\n`
       }
       return undefined
     },
@@ -308,6 +301,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
           }
           running = true
           try {
+            const before = catalogCode()
             const next = await rescan()
             if (Array.isArray(next)) {
               entries = next
@@ -331,6 +325,7 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
               Date.now(),
             )
             methods = buildMethods()
+            if (catalogCode() === before) return
             const mod = server.moduleGraph?.getModuleById(resolved(CATALOG_ID))
             if (mod) server.moduleGraph?.invalidateModule(mod as never)
             server.ws?.send({ type: 'full-reload', path: '*' })
@@ -407,10 +402,30 @@ export function atlasDevPlugin(options: AtlasDevPluginOptions): VitePluginLike {
         })
       })
     },
+
+    // `pre`, so the lines land before zero's own head handling and Vite's
+    // script injection see the document.
+    transformIndexHtml: {
+      order: 'pre',
+      handler: (html) => {
+        const head = [
+          ...themeHeadLines(),
+          ...fontLinks(),
+          ...(options.baked
+            ? [`    ${bakedRpcScript(options.baked.inline)}`, `    ${bakedRpcUrlScript(options.baked.base)}`]
+            : []),
+        ].join('\n')
+        // FUNCTION replacers: a string replacement expands `$&`, `$'` and
+        // friends, and both the title and the baked answers (component source)
+        // are user-shaped text that may contain them.
+        return html
+          .replace(/<title>[^<]*<\/title>/, () => `<title>${escapeHtml(title)}</title>`)
+          .replace('</head>', () => `${head}\n  </head>`)
+      },
+    },
   }
 }
 
-/** The HTML shell. Kept here so a consuming project needs no `index.html`. */
 /** The five characters that matter in an HTML text/attribute context. */
 function escapeHtml(text: string): string {
   return text
@@ -421,17 +436,6 @@ function escapeHtml(text: string): string {
     .replaceAll("'", '&#39;')
 }
 
-/**
- * Tell the page that a directory exists for every component.
- *
- * The workbench writes `/atlas/button/` instead of `/atlas/?c=button` only
- * when this is set, because writing a path is safe only where a page answers
- * at it. `atlas build` fans those directories out and sets this; `atlas dev`
- * sets it because its middleware already serves the shell for any extensionless
- * GET. A workbench embedded in someone else's app sets nothing and keeps the
- * query string — its host router has never heard of `/button/`, so a reload
- * there would 404.
- */
 /**
  * The web-font `<head>` lines, shared by `atlas dev` and `atlas build`.
  *
@@ -471,33 +475,3 @@ export function themeHeadLines(): string[] {
   ]
 }
 
-export function routesFlagScript(): string {
-  return '<script>globalThis.__ATLAS_ROUTES__ = true</script>'
-}
-
-export function devHtml(title = 'atlas'): string {
-  return [
-    '<!doctype html>',
-    '<html lang="en">',
-    '  <head>',
-    '    <meta charset="utf-8" />',
-    '    <meta name="viewport" content="width=device-width, initial-scale=1" />',
-    // Escaped even though the only caller today passes a programmatic option:
-    // an interpolation into HTML is an injection seam the moment a `--title`
-    // flag (or any other user-controlled source) reaches it.
-    `    <title>${escapeHtml(title)}</title>`,
-    // The workbench's typography depends on these three families; without
-    // them every `font: inherit` fell back to the BROWSER default (Times) —
-    // the single biggest "unstyled" impression the workbench could give.
-    ...themeHeadLines(),
-    ...fontLinks(),
-    `    ${routesFlagScript()}`,
-    '  </head>',
-    '  <body>',
-    '    <div id="atlas-root"></div>',
-    `    <script type="module" src="/@id/${resolved(ENTRY_ID).replace('\0', '__x00__')}"></script>`,
-    '  </body>',
-    '</html>',
-    '',
-  ].join('\n')
-}

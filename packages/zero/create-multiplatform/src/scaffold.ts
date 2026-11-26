@@ -267,8 +267,8 @@ symbols/
 # temporary server entries a @pyreon/zero SSG/SSR build writes and removes.
 .pyreon/
 .pyreon-lpih.json
-__pyreon-zero-ssg-entry.js
-__pyreon-zero-ssr-entry.js
+__pyreon-zero-ssg-entry*.js
+__pyreon-zero-ssr-entry*.js
 `,
   )
   add(

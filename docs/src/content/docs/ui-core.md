@@ -342,16 +342,18 @@ The `config` singleton is exported too (`import { config } from '@pyreon/ui-core
 import { Provider, context } from '@pyreon/ui-core'
 ```
 
-- `context` — the internal `CoreContextValue` reactive context (`{ theme, mode, isDark, isLight }`). Because it's a reactive context, `useContext(context)` returns a getter — call it to read.
-- `Provider` (`CoreProvider`) — the low-level theme provider. `@internal` / `@deprecated`; it warns in dev. Prefer `PyreonUI`.
+- `context` — the core `CoreContextValue` reactive context (`{ theme, mode, isDark, isLight }`). Because it's a reactive context, `useContext(context)` returns a getter — call it to read.
+- `Provider` (`CoreProvider`) — the low-level theme provider that `@pyreon/rocketstyle`'s `Provider` delegates to. It is supported and does not warn, but app code should still mount `PyreonUI`, which sets up every context layer.
 
 ## The theme-engine registration seam (`getThemeEngine` / `setThemeEngine`)
 
 `@pyreon/ui-core` is the FOUNDATION of the UI system and must not depend on `@pyreon/unistyle` — but `<PyreonUI>` needs unistyle's `enrichTheme` / `themeToCssVars` / `cpseRewrite` to do anything useful. The two packages avoid a dependency cycle (`unistyle` already depends on `ui-core`) through a registration seam:
 
 ```tsx
-import { getThemeEngine, setThemeEngine } from '@pyreon/ui-core'
+import { getThemeEngine, setThemeEngine } from '@pyreon/ui-core/internal'
 ```
+
+Both live on the internal `@pyreon/ui-core/internal` subpath: they are plumbing between the `@pyreon` UI packages, which ship in lockstep, and carry no semver promise (see [What counts as public API](/docs/stability-and-direction#what-counts-as-public-api)).
 
 `@pyreon/unistyle` calls `setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })` at **module load** — its own `package.json` marks this a side effect so bundlers cannot tree-shake it away. `<PyreonUI>` reads the registered engine **lazily**, at each use-site, via `getThemeEngine()` — never eagerly at setup, since the root provider mounts before any child that pulls in unistyle.
 
@@ -361,7 +363,7 @@ If `@pyreon/unistyle` is never imported anywhere in your app — a bare `@pyreon
 Seeing an un-enriched theme (missing default breakpoints/spacing, no `--px-*` CSS variables)? The most common cause is that `@pyreon/unistyle` was never imported anywhere reachable from your app's module graph — `import '@pyreon/unistyle'` (or anything that transitively pulls it, which is every styled `@pyreon` UI package except bare rocketstyle) fixes it.
 :::
 
-You will not normally call either function yourself — `setThemeEngine` exists for a theme-ENGINE package to register itself, not for app code.
+App code never calls either function: `setThemeEngine` exists for `@pyreon/unistyle` to register itself.
 
 ## Utilities
 
@@ -477,9 +479,8 @@ The matching types are `HTMLTags`, `HTMLTextTags`, `HTMLElementAttrs`, and `HTML
 | `config`                   | Object    | The configuration singleton (current engine wiring + flags)                 |
 | `resolveCssVariables`      | Function  | Returns the defaulted `{ enabled, prefix, attribute }` config               |
 | `cssVariablesPrePaintScript` | Function | Builds the blocking `<head>` FOUC script for CSS-variables mode             |
-| `Provider`                 | Component | `@internal`/`@deprecated` low-level theme provider — prefer `PyreonUI`       |
-| `getThemeEngine` / `setThemeEngine` | Function | `@internal` theme-engine registration seam — see above                      |
-| `context`                  | Context   | Internal `CoreContextValue` reactive context                                |
+| `Provider`                 | Component | Low-level theme provider (default export) — prefer `PyreonUI`               |
+| `context`                  | Context   | The core `CoreContextValue` reactive context                                |
 | `compose`                  | Function  | HOC composition (right-to-left)                                             |
 | `render`                   | Function  | Flexible element/slot renderer                                              |
 | `resolveSlot`              | Function  | Resolve a slot value inside a reactive accessor                             |

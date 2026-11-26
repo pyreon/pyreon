@@ -45,6 +45,27 @@ describe('zero() config validation', () => {
     expect(() => validateZeroConfig({ adapter: 42 })).toThrow(/`adapter` must be an adapter name or an Adapter object/)
     expect(() => validateZeroConfig({ adapter: { name: 'custom' } })).not.toThrow()
     expect(() => validateZeroConfig({ base: 1 })).toThrow(/`base` must be a string/)
+    // #4269: zero({ base }) is the ROUTE base — a path on this origin. A CDN
+    // URL or a relative base belongs in vite.config.base.
+    for (const bad of [
+      'https://cdn.example.com/x/',
+      'docs/',
+      './',
+      '',
+      '//cdn.example.com/x/',
+      '/docs?x',
+      '/docs#h',
+      '/\\evil.com', // browsers read `/\` as `//`: links would leave the origin
+      '/docs /',
+      '/a/../b',
+    ]) {
+      expect(() => validateZeroConfig({ base: bad }), bad).toThrow(/`base` must be a root-relative path[\s\S]*vite\.config\.ts/)
+    }
+    expect(() => validateZeroConfig({ base: '/docs' })).not.toThrow()
+    expect(() => validateZeroConfig({ base: '/a..b/' })).not.toThrow()
+    // `undefined` is "unset" (a `process.env.BASE` passed as is); `''` is not.
+    expect(() => validateZeroConfig({ base: undefined })).not.toThrow()
+    expect(() => validateZeroConfig({ base: '' })).toThrow(/An unset base is `undefined`/)
   })
 
   it('didYouMean does not guess wildly', () => {

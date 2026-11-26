@@ -79,7 +79,7 @@ export default function PostDetailPage() {
   // two posts (e.g. via a "next post" link) updates the title and
   // open-graph tags without a full reload.
   useHead(() => {
-    const post = data.post
+    const post = data().post
     if (!post) {
       return {
         title: 'Post not found — Pyreon Blog',
@@ -102,41 +102,45 @@ export default function PostDetailPage() {
     }
   })
 
-  if (!data.post) {
+  // Returned as an accessor so the page follows its loader data when it
+  // changes in place (a revalidation) instead of pinning the first branch.
+  return () => {
+    const { post, slug } = data()
+    if (!post) {
+      return (
+        <PostArticle>
+          <BackLink to="/blog">← Back to blog</BackLink>
+          <NotFoundCard>
+            <NotFoundTitle>Post not found</NotFoundTitle>
+            <NotFoundText>
+              No post matches the slug "{slug}". It may have been renamed or removed.
+            </NotFoundText>
+          </NotFoundCard>
+        </PostArticle>
+      )
+    }
+
     return (
       <PostArticle>
         <BackLink to="/blog">← Back to blog</BackLink>
-        <NotFoundCard>
-          <NotFoundTitle>Post not found</NotFoundTitle>
-          <NotFoundText>
-            No post matches the slug "{data.slug}". It may have been renamed or removed.
-          </NotFoundText>
-        </NotFoundCard>
+        <PostHeader>
+          <PostTitle>{post.title}</PostTitle>
+          <PostMeta>
+            <span>{formatDate(post.date)}</span>
+            <PostMetaSeparator>·</PostMetaSeparator>
+            <span>{post.readMinutes} min read</span>
+            <PostMetaSeparator>·</PostMetaSeparator>
+            <span>{post.author}</span>
+          </PostMeta>
+          <TagsRow>
+            {post.tags.map((tag) => (
+              <TagChip>{tag}</TagChip>
+            ))}
+          </TagsRow>
+        </PostHeader>
+
+        <BlockRenderer blocks={post.body} />
       </PostArticle>
     )
   }
-
-  const post = data.post
-  return (
-    <PostArticle>
-      <BackLink to="/blog">← Back to blog</BackLink>
-      <PostHeader>
-        <PostTitle>{post.title}</PostTitle>
-        <PostMeta>
-          <span>{formatDate(post.date)}</span>
-          <PostMetaSeparator>·</PostMetaSeparator>
-          <span>{post.readMinutes} min read</span>
-          <PostMetaSeparator>·</PostMetaSeparator>
-          <span>{post.author}</span>
-        </PostMeta>
-        <TagsRow>
-          {post.tags.map((tag) => (
-            <TagChip>{tag}</TagChip>
-          ))}
-        </TagsRow>
-      </PostHeader>
-
-      <BlockRenderer blocks={post.body} />
-    </PostArticle>
-  )
 }

@@ -29,7 +29,7 @@ beforeAll(() => {
       '}',
       '',
       'export default function Account() {',
-      '  return <h1>{useLoaderData().name}</h1>',
+      '  return <h1>{useLoaderData()().name}</h1>',
       '}',
     ].join('\n'),
   )
@@ -147,7 +147,7 @@ describe('renderErrorOverlay', () => {
     expect(html).not.toContain('<img src=x')
     expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;')
     // line 9 is `  return <h1>…</h1>` in the fixture file
-    expect(html).toContain('&lt;h1&gt;{useLoaderData().name}&lt;/h1&gt;')
+    expect(html).toContain('&lt;h1&gt;{useLoaderData()().name}&lt;/h1&gt;')
   })
 
   it('carries the copy text, HTML-escaped, in the page', () => {

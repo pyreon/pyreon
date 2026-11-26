@@ -106,6 +106,14 @@ describe('emitValidator — eval\'d verdicts', () => {
     expect(v('a@').some((i) => i.message === 'Invalid email')).toBe(true)
   })
 
+  it('email accepts an internationalised domain, like the runtime (#4821)', () => {
+    const v = compile(ir('s.string().email()'))
+    const ok = (e: string) => v(e).length === 0
+    expect(['jan@müller.de', 'a@пример.рф', 'jan@xn--mller-kva.de'].map(ok)).toEqual([true, true, true])
+    // Invalid shapes stay rejected with Unicode labels; the local part stays ASCII.
+    expect(['jän@müller.de', 'jan@-müller.de', 'jan@müller.d', 'jan@😀.de'].map(ok)).toEqual([false, false, false, false])
+  })
+
   it('number int + bounds', () => {
     const v = compile(ir('s.number().int().min(0).max(10)'))
     expect(v(5)).toHaveLength(0)

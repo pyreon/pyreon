@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      pull-requests: read
+      contents: read
     outputs:
       run: ${{ steps.diff.outputs.run }}
       # `graph` gates `validate` and `validate-swift-typecheck`, never the
@@ -121,10 +121,11 @@ jobs:
       # explicit 'false' from both; an empty output runs the job.
       macos: ${{ steps.diff.outputs.macos }}
       graph-macos: ${{ steps.diff.outputs.graph-macos }}
+      lathe: ${{ steps.lathe.outputs.run }}
     steps:
-      # The classifier reads changed package.json manifests at the PR head, so
-      # it needs the merge-ref checkout and both parents to inspect removed
-      # native plugin declarations without treating web-only manifests as native.
+      # The changed set (scripts/diff-base.ts) and the classifier's base-side
+      # manifest reads both use the merge commit's first parent, so the
+      # merge-ref checkout needs its parents: depth 2.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,26 +137,11 @@ jobs:
       - name: Check changed paths against the native dependency surface
         id: diff
         env:
-          GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           MG_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
           set -euo pipefail
-          FILES=$(mktemp)
-          if [ "$EVENT" = "merge_group" ]; then
-            # The group's own diff against the commit it was built on. Any
-            # failure here (fetch, diff, empty list) runs both rules
-            # fail-closed: an empty list makes the classifier say run.
-            if git fetch --no-tags --quiet --depth=1 origin "$MG_BASE" \
-              && git diff --name-only "$MG_BASE" HEAD > "$FILES"; then
-              # The classifier proves a changed manifest was web-only by
-              # reading it at merge-base(origin/main, HEAD); point that at the
-              # group's base. A shallow history it cannot walk fails closed.
-              git update-ref refs/remotes/origin/main "$MG_BASE"
-            else
-              : > "$FILES"
-            fi
-          elif [ "$EVENT" != "pull_request" ]; then
+          if [ "$EVENT" != "pull_request" ] && [ "$EVENT" != "merge_group" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "graph=true" >> "$GITHUB_OUTPUT"
             echo "macos=true" >> "$GITHUB_OUTPUT"
@@ -163,41 +149,31 @@ jobs:
             echo "non-PR event — always validate"
             exit 0
           fi
+          if [ "$EVENT" = "merge_group" ]; then
+            # The group's base may sit deeper than this depth-2 checkout.
+            git fetch --no-tags --quiet --depth=1 origin "$MG_BASE"
+          fi
+          # The changed set every workflow uses (scripts/diff-base.ts): on a PR
+          # the merge commit's first parent → the merge commit; in a merge
+          # group merge_group.base_sha → the group head. It replaced a read of
+          # the PR files API, which GitHub answered with HTTP 500 under load
+          # (PR #4533). A base this checkout cannot supply fails this job with
+          # a [Pyreon] message, and a failed decide runs every lane (fail-closed).
+          FILES=$(mktemp)
+          bun scripts/diff-base.ts --files > "$FILES"
+          BASE=$(bun scripts/diff-base.ts)
           # ONE classifier for both native workflows (scripts/native-surface-touched.ts,
           # fail-closed: every uncertainty RUNS the lanes). The inline regex it
           # replaced counted the JSX compiler's napi crate (packages/core/compiler/native/)
           # and EVERY package.json as native surface — measured 2026-09-07 at ~2h of
           # runner time (50 min macOS swiftc + 50 min iOS + 30 min Android) per
-          # affected PR, on 6 of the last 40 PRs.
-          if [ "$EVENT" = "pull_request" ]; then
-            # GitHub answers this endpoint with HTTP 500 under load ("this diff is
-            # temporarily unavailable"). A bare call exits the step non-zero and
-            # turns a required check red for a reason no code change caused
-            # (PR #4533, 2026-11-17). Retry, then fail CLOSED like every other
-            # uncertainty here: a diff nobody could read runs all lanes.
-            LISTED=''
-            for attempt in 1 2 3 4; do
-              if gh api "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --paginate --jq '.[].filename' > "$FILES"; then
-                LISTED=1
-                break
-              fi
-              echo "::warning::could not list the pull request's files (attempt $attempt of 4)"
-              sleep $((attempt * 10))
-            done
-            if [ -z "$LISTED" ]; then
-              echo "run=true" >> "$GITHUB_OUTPUT"
-              echo "graph=true" >> "$GITHUB_OUTPUT"
-              echo "macos=true" >> "$GITHUB_OUTPUT"
-              echo "graph-macos=true" >> "$GITHUB_OUTPUT"
-              echo "::warning::the pull request's file list stayed unavailable — running every native lane"
-              exit 0
-            fi
-          fi
+          # affected PR, on 6 of the last 40 PRs. It reads changed manifests at
+          # the same base (`--base`).
           # `--macos-jobs` also emits `macos`: the same question for the macOS job
           # alone (see scripts/native-surface-touched.ts, classifyMacosLane).
           FILES_MAC=$(mktemp)
           cp "$FILES" "$FILES_MAC"
-          bun scripts/native-surface-touched.ts --self=.github/workflows/native-validate.yml --macos-jobs=validate-swift-typecheck --macos-graph-files="$FILES_MAC" < "$FILES"
+          bun scripts/native-surface-touched.ts --base="$BASE" --self=.github/workflows/native-validate.yml --macos-jobs=validate-swift-typecheck --macos-graph-files="$FILES_MAC" < "$FILES"
           # `graph` — the DEPENDENCY-GRAPH half. `@pyreon/native-compiler` has
           # RUNTIME deps on `@pyreon/charts` and `@pyreon/compiler` (the chart
           # engine sources are PMTC input), so a PR that touches neither
@@ -239,6 +215,32 @@ jobs:
             echo "graph-macos=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # `@pyreon/lathe`'s swift / kotlin model emitter is not in the native
+      # compiler's dependency graph (lathe depends on the compiler, not the
+      # reverse), so neither check above selects it -- yet its real-toolchain
+      # test runs only in the validate job below. Its own inputs select the job.
+      # Kept out of `native-surface-touched.ts` on purpose: that classifier also
+      # drives the device lanes, which these files cannot affect.
+      - name: Lathe native-model sources touched?
+        id: lathe
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ] && [ "$EVENT" != "merge_group" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(bun scripts/diff-base.ts --files)
+          # A here-string, not `printf | grep -q`: under pipefail an early grep
+          # exit can SIGPIPE the producer and read as "no match".
+          if grep -Eq '^packages/tools/lathe/src/(emit/native-models\.ts|core/(ir|naming)\.ts|input/openapi\.ts|tests/(native-models|helpers/native-toolchain|fixtures/native-models))' <<< "$CHANGED"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "lathe native-model sources changed — the validate job runs their toolchain test"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   validate:
     name: Validate emitted Swift + Kotlin
     needs: decide
@@ -249,13 +251,15 @@ jobs:
     # cache could never converge — see ci.yml's test-cell comment), so it
     # must fire on every PR the dependency graph says can change the emit, not
     # just on native-surface paths. The macOS job below uses the same rule.
+    # `|| lathe`: lathe's swift / kotlin model test runs only here (see the
+    # decide step that sets it).
     #
     # Light PR CI (`vars.PR_CI_MODE == 'light'`, see .agents/guides/ci/README.md):
     # on a PULL REQUEST this Linux lane is skipped; the merge queue and push to
     # main still run it (same `decide` rules on the group's diff). The macOS
     # typecheck and the device lanes are NOT skipped: they do not run in the
     # queue, so the PR is their only coverage.
-    if: (github.event_name != 'pull_request' || vars.PR_CI_MODE != 'light') && ((success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success'))
+    if: (github.event_name != 'pull_request' || vars.PR_CI_MODE != 'light') && ((success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true' || needs.decide.outputs.lathe == 'true')) || (failure() && needs.decide.result != 'success'))
     # PINNED, not `ubuntu-latest`: GitHub moved `ubuntu-latest` to Ubuntu 26.04, and
     # the Swift tarball below is the ubuntu24.04 build (swift.org has no 26.04 build
     # we pin), so the job fails on a new-image runner, whatever the PR changes.
@@ -659,6 +663,36 @@ jobs:
         # the other cells provide (no npm install, no adapter, no deploy).
         # Seconds, not minutes; the real device build stays in native-device.
         run: bun scripts/scaffold-native-smoke.ts
+
+      - name: Lathe swift / kotlin model files compile and decode (real swiftc + kotlinc + kotlinx.serialization)
+        # `@pyreon/lathe`'s `swift` / `kotlin` plugins emit plain Codable /
+        # @Serializable models. Their test compiles AND runs a decode/round-trip
+        # program with the real toolchains, and self-skips without them -- which
+        # is every other runner, so without this step it ran nowhere.
+        # PYREON_REQUIRE_NATIVE_VALIDATE=1 turns each skip into a failure.
+        # kotlinx.serialization's compiler plugin ships inside the kotlinc zip
+        # (kotlinc/lib); its runtime jars are pinned here by sha256.
+        env:
+          PYREON_REQUIRE_NATIVE_VALIDATE: '1'
+          KOTLINX_SERIALIZATION_VERSION: '1.13.0'
+          KOTLINX_CORE_SHA256: 'db2eb98f585a408970ce726af9dfbaccbdfe5df498ccd9dba9918d208974302d'
+          KOTLINX_JSON_SHA256: '389b0dd9b4b952db889c160a2478b1cbe54680804f5315756108389dbe9df251'
+        run: |
+          set -euo pipefail
+          DIR="$HOME/.cache/pyreon-dl/kotlinx-serialization-${KOTLINX_SERIALIZATION_VERSION}"
+          mkdir -p "$DIR"
+          CP=""
+          for pair in "core:${KOTLINX_CORE_SHA256}" "json:${KOTLINX_JSON_SHA256}"; do
+            NAME="kotlinx-serialization-${pair%%:*}-jvm"
+            JAR="$DIR/${NAME}-${KOTLINX_SERIALIZATION_VERSION}.jar"
+            [ -f "$JAR" ] || curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 -o "$JAR" \
+              "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/${NAME}/${KOTLINX_SERIALIZATION_VERSION}/${NAME}-${KOTLINX_SERIALIZATION_VERSION}.jar"
+            echo "${pair#*:}  ${JAR}" | sha256sum -c -
+            CP="${CP:+$CP:}$JAR"
+          done
+          export PYREON_KOTLINX_SERIALIZATION_CLASSPATH="$CP"
+          cd packages/tools/lathe
+          bun x vitest run src/tests/native-models-toolchain.test.ts
 
       - name: iOS counter end-to-end smoke
         # End-to-end gate for the CLI build pipeline: walk src/, emit

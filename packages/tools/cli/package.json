@@ -18,7 +18,7 @@
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
   "bin": {
-    "pyreon": "./lib/index.js"
+    "pyreon": "./bin/pyreon.js"
   },
   "exports": {
     ".": {
@@ -28,6 +28,7 @@
     }
   },
   "files": [
+    "bin",
     "lib",
     "!lib/analysis",
     "src",
@@ -58,8 +59,12 @@
   "devDependencies": {
     "@pyreon/ansi": "workspace:*",
     "@pyreon/native-compiler": "workspace:*",
+    "@pyreon/test-utils": "workspace:*",
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

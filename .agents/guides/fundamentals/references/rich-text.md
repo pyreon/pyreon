@@ -8,6 +8,7 @@
 - `onError` receives mount failures. Dispose during the async mount is leak-safe (`mountToken` guard). Re-mounting the same instance keeps the current document, not the config's initial content.
 - `characterCount`, `wordCount` and `isEmpty` are computed from the document JSON (`baseJson`), not the mounted engine. They work before mount and after dispose, and count visible characters (not `getText()`'s block separators).
 - Two transaction counters: `docVersion` (on `onUpdate`) and `selectionVersion` (on `onSelectionUpdate`). Content computeds read `docVersion` only, so a cursor move does not re-run them; `isActive` reads both.
+- CSP: two injected `<style>` elements — TipTap's base CSS (`injectCSS` / `injectNonce`, passed through) and the placeholder rule (`src/styles.ts`). `nonce` covers both; `injectStyles: false` turns both off, and `styles.css` (exported as `@pyreon/rich-text/styles.css`) carries both rule sets. The TipTap half of the file is a copy, locked against the live injected element by `csp.browser.test.tsx` — regenerate it when a TipTap upgrade changes the base CSS.
 - Bench: `bun scripts/bench/rich-text.ts`.
 - Collaboration composes with `@pyreon/sync` through optional peers (`@tiptap/extension-collaboration`, `y-prosemirror`). Use MIT TipTap packages only (no TipTap Pro). Lifecycle is user-owned.
 - Browser behaviour is locked by `src/tests/rich-text.browser.test.tsx`.

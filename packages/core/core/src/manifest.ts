@@ -410,7 +410,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
       kind: 'component',
       signature: '<ErrorBoundary fallback={(err, reset) => VNodeChild}>{children}</ErrorBoundary>',
       summary:
-        'Catches render errors thrown by descendant components. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`.',
+        'Catches render errors thrown by descendant components — the boundary that ENCLOSES the component in the tree (resolved through the context owner chain), never a sibling. Also receives a `<Defer>` chunk that fails to load and an async component that rejects, whenever that happens. An error thrown while the boundary already shows its fallback (the fallback threw) goes to the next boundary out. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`.',
       example: `<ErrorBoundary
   fallback={(err, reset) => (
     <div>
@@ -672,48 +672,25 @@ function Card() {
       kind: 'function',
       signature: '<T>(fn: T) => T',
       summary:
-        'Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip their wrapping and route the component through Pyreon\'s mount path. Use on every `@pyreon/*` JSX component whose setup body uses `provide()` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer\'s render context instead of Pyreon\'s. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (`Symbol.for("pyreon:native-compat")`), so framework and compat sides share it without an import dependency between them.',
+        'Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip their wrapping and route the component through Pyreon\'s mount path. Use on every `@pyreon/*` JSX component whose setup body uses `provide()` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer\'s render context instead of Pyreon\'s. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (`Symbol.for("pyreon:native-compat")`), so framework and compat sides share it without an import dependency between them. The compat layers read it through `isNativeCompat()` from `@pyreon/core/compat`, an internal subpath with no semver promise.',
       example: `// In a framework package:
 export const RouterView = nativeCompat(function RouterView(props) {
   provide(RouterContext, ...)
   return <div>{children}</div>
 })`,
-      seeAlso: ['isNativeCompat', 'NATIVE_COMPAT_MARKER'],
+      seeAlso: ['createContext', 'provide'],
       mistakes: [
         'Forgetting to mark a new framework JSX export — under compat mode, the component\'s `provide()` / `onMount()` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.',
         "Marking user-app components — only `@pyreon/*` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).",
       ],
     },
     {
-      name: 'isNativeCompat',
-      kind: 'function',
-      signature: '(fn: unknown) => boolean',
-      summary:
-        'Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. Compat `jsx()` calls this to decide whether to skip the React/Vue/Solid/Preact-style wrapping. Always returns `false` for non-function inputs.',
-      example: `// In a compat layer's jsx-runtime:
-if (isNativeCompat(type)) return h(type, props)
-return wrapCompatComponent(type)(props)`,
-      seeAlso: ['nativeCompat', 'NATIVE_COMPAT_MARKER'],
-    },
-    {
-      name: 'NATIVE_COMPAT_MARKER',
-      kind: 'constant',
-      signature: 'symbol',
-      summary:
-        'The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framework component. Most callers should use `nativeCompat()` / `isNativeCompat()` instead of touching the symbol directly; exported for advanced cases (e.g., a compat layer that wants to inspect the property without going through the helper).',
-      example: `import { NATIVE_COMPAT_MARKER } from '@pyreon/core'
-
-// Equivalent to nativeCompat(MyComponent):
-;(MyComponent as Record<symbol, boolean>)[NATIVE_COMPAT_MARKER] = true`,
-      seeAlso: ['nativeCompat', 'isNativeCompat'],
-    },
-    {
       name: 'Defer',
       kind: 'component',
       signature:
-        "<Defer chunk={() => import('./X')} when={() => boolean} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>",
+        "<Defer chunk={() => import('./X')} when={boolean | (() => boolean)} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>",
       summary:
-        'Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the accessor becomes truthy (the modal-open pattern); `on="visible"` loads when the wrapper scrolls into the viewport (`IntersectionObserver`, `rootMargin` default `\'200px\'` so it\'s typically ready before the user scrolls to it); `on="idle"` loads during browser idle time (`requestIdleCallback`, falling back to `setTimeout(1)`). The chunk fetch fires EXACTLY ONCE per `Defer` instance — a `when` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (`<Defer when={x}><Modal/></Defer>`) that `@pyreon/compiler`\'s `transformDeferInline` rewrites into the explicit form at BUILD time — the inline form requires `@pyreon/vite-plugin`; without it, `Defer` throws a clear dev-mode error naming the fix. `fallback` renders while the chunk loads (default `null`); a chunk-load failure is caught, dev-warned, and re-thrown into the nearest `ErrorBoundary` on render.',
+        'Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when` loads once the condition becomes truthy (the modal-open pattern) and, like `<Show when>`, takes a value or an accessor — `when={open}` with a component-local signal/computed, `when={open()}` and `when={() => open()}` are all reactive; `on="visible"` loads when the wrapper scrolls into the viewport (`IntersectionObserver`, `rootMargin` default `\'200px\'` so it\'s typically ready before the user scrolls to it); `on="idle"` loads during browser idle time (`requestIdleCallback`, falling back to `setTimeout(1)`). The chunk fetch fires EXACTLY ONCE per `Defer` instance — a `when` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (`<Defer when={x}><Modal/></Defer>`) that `@pyreon/compiler`\'s `transformDeferInline` rewrites into the explicit form at BUILD time — the inline form requires `@pyreon/vite-plugin`; without it, `Defer` throws a clear dev-mode error naming the fix. `fallback` renders while the chunk loads (default `null`). A chunk-load failure (offline, a deploy replaced the hashed file) goes to the enclosing `<ErrorBoundary>` like any other render error — on mount or on a later load — so its fallback and `reset()` (which remounts the `Defer` and retries) handle it; with no boundary it is reported to `registerErrorHandler`, dev-logged, and the slot renders nothing.',
       example: `// Signal-driven (modal) — explicit form:
 <Defer chunk={() => import('./ConfirmDeleteModal')} when={open} fallback={<Spinner/>}>
   {Modal => <Modal onClose={() => setOpen(false)} />}

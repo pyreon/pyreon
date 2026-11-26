@@ -168,6 +168,7 @@ function addToast(message: string | VNodeChild, options: ToastOptions = {}): str
     description: options.description,
     icon: options.icon,
     dismissible: options.dismissible ?? true,
+    dismissLabel: options.dismissLabel,
     action: options.action,
     onDismiss: options.onDismiss,
     state: 'entering',
@@ -424,6 +425,18 @@ toast.dismiss = dismiss
  * (e.g. replacing it, or tearing down on unmount).
  */
 toast.remove = remove
+
+/**
+ * The live toast queue, oldest first (dismissed toasts stay in it until their
+ * leave transition ends). A reactive read: call it inside JSX, an `effect` or a
+ * `computed` and it re-runs when a toast is added, updated or removed. The
+ * array is the queue's own snapshot; treat it as read-only and change the
+ * queue through `toast()` / `toast.update` / `toast.dismiss` / `toast.remove`.
+ *
+ * @example
+ * <span>{() => toast.list().length} notifications</span>
+ */
+toast.list = (): readonly Readonly<Toast>[] => _toasts()
 
 /**
  * Show a loading toast that updates on promise resolution or rejection.

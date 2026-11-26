@@ -1,3 +1,4 @@
+import { setLoaderData } from './loader-data-store'
 import { markLoaderError } from './loader-error'
 import { isNotFoundError } from './not-found'
 import { getRedirectInfo } from './redirect'
@@ -68,7 +69,7 @@ export async function preloadRoute(router: Router, path: string, request?: Reque
           notFoundThrown = true
           return
         }
-        r._loaderData.set(rec, data)
+        setLoaderData(r, rec, resolved, data)
       }),
   )
   // The not-found chain needs no extra component loading: its layouts are a

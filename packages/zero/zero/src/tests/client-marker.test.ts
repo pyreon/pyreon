@@ -8,8 +8,8 @@
 import type { ResolvedRoute } from '@pyreon/router'
 import { ISLANDS_ONLY_MARKER } from '@pyreon/server'
 import { afterEach, describe, expect, it } from 'vitest'
-import { islandsOnlyNavigation } from '../client'
 import { ISLANDS_ONLY_SELECTOR, isIslandsOnlyPage } from '../client-marker'
+import { islandsOnlyNavigation } from '../internal'
 
 afterEach(() => {
   document.head.innerHTML = ''

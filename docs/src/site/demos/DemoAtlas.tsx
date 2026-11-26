@@ -22,7 +22,9 @@ import { KitScope } from '../kit/scope'
  * follows a mode switch through the workbench model (`__ATLAS_MODEL__`, the
  * surface Atlas exposes to embedding hosts) without reloading.
  */
-const SRC = '/demos/atlas/index.html'
+// The directory, as a static host serves it: the workbench's router resolves
+// the page against its base, and `index.html` is not a route.
+const SRC = '/demos/atlas/'
 
 type AtlasWindow = Window & { __ATLAS_MODEL__?: { dark: { set: (v: boolean) => void } } }
 

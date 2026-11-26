@@ -1,6 +1,6 @@
 import * as core from '../core'
 import * as reactive from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { clearAllTables } from './helpers'
 
 const ZONES = ['UTC', 'America/Los_Angeles', 'Pacific/Kiritimati', 'Pacific/Pago_Pago', 'Asia/Kolkata', 'Pacific/Chatham', 'Europe/Prague']
@@ -14,7 +14,7 @@ const T = Date.UTC
 const DT = { dateStyle: 'medium', timeStyle: 'short' } as const
 
 describe.each([['core', core], ['reactive', reactive]] as const)('calendar values never shift (%s)', (_n, f) => {
-  afterEach(() => _resetLocaleState())
+  afterEach(() => resetLocaleState())
 
   it.each(ZONES)('formatDate("2026-11-18") is the 18th under timeZone %s', (timeZone) => {
     expect(f.formatDate('2026-11-18', { locale: en, timeZone })).toBe('Nov 18, 2026')

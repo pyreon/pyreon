@@ -184,6 +184,42 @@ export const NATIVE_BINARY_REQUIREMENTS: Readonly<
 }
 
 /**
+ * Packages whose suites hand generated Swift/Kotlin to the REAL `swiftc` /
+ * `kotlinc` (through `@pyreon/native-compiler`'s validators) only to get a
+ * compile VERDICT — code that is not the package's own, run in child
+ * processes V8 cannot instrument. Their coverage run sets
+ * `PYREON_SKIP_NATIVE_VALIDATE=1`, which makes the validators answer
+ * `skipped` without spawning anything; the verdicts themselves still gate in
+ * the ordinary Test cells, which run these suites with the toolchain on PATH.
+ *
+ * Membership needs a MEASURED proof, recorded in the entry: the same tree's
+ * coverage with and without the flag, equal down to the covered/total counts.
+ * A package whose own source reacts to a compile outcome does not qualify, and
+ * `@pyreon/native-compiler` (whose source IS the validators) never does.
+ *
+ * Why it exists: `@pyreon/lathe`'s coverage spawned a cold Kotlin compiler JVM
+ * per native test file on a four-core runner already running three other
+ * instrumented suites. Single kotlinc checks took 60-95 s there, the package
+ * measured 388-575 s on green main and crossed the 600 s deadline on
+ * 9cd77ca2f, a commit that did not touch it — leaving its thresholds unenforced.
+ */
+export const TOOLCHAIN_VERDICT_ONLY: Readonly<Record<string, string>> = {
+  '@pyreon/lathe':
+    'identical with and without the toolchain: 8476/8715 statements, 6545/7062 branches, ' +
+    '1257/1290 functions, 7141/7268 lines (2026-11-25)',
+  '@pyreon/create-multiplatform':
+    'identical with and without the toolchain: 101/103 statements, 36/37 branches, ' +
+    '11/11 functions, 95/96 lines (2026-11-25)',
+  // NOT `@pyreon/native-cli`: one of its specs fails without a real compile
+  // (measured 2026-11-25), so its suite reacts to the outcome.
+}
+
+/** The env a package's coverage run gets for its toolchain verdicts. */
+export function toolchainVerdictEnv(pkgName: string): Readonly<Record<string, string>> {
+  return pkgName in TOOLCHAIN_VERDICT_ONLY ? { PYREON_SKIP_NATIVE_VALIDATE: '1' } : {}
+}
+
+/**
  * The selected packages whose required native binary is missing, as one
  * message per package naming the fix. Pure over `exists` so it is testable
  * without touching the real tree.
@@ -978,6 +1014,9 @@ export async function runCoverage(
           // A required binary that exists but fails to LOAD must fail the
           // suite, not quietly shrink it (see NATIVE_BINARY_REQUIREMENTS).
           ...NATIVE_BINARY_REQUIREMENTS[pkgName]?.env,
+          // Real swiftc/kotlinc verdicts that measure none of the package's
+          // own source (see TOOLCHAIN_VERDICT_ONLY).
+          ...toolchainVerdictEnv(pkgName),
         },
       },
     )

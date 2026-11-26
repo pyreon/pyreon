@@ -145,6 +145,7 @@ toast('Item deleted', {
 | `description` | `string \| VNodeChild`                        | —                  | Secondary line rendered under the message.                        |
 | `icon`        | `VNodeChild`                                  | —                  | Leading icon (any VNode — an SVG, `<Icon>`, etc.).                |
 | `dismissible` | `boolean`                                     | `true`             | Whether the toast shows a `×` dismiss button.                     |
+| `dismissLabel` | `string`                                     | Toaster's `dismissLabel` | Accessible name of this toast's dismiss button.             |
 | `action`      | `{ label: string; onClick: (ctx: { id: string; dismiss: () => void }) => void }` | —                  | Action button rendered beside the message (undo/retry patterns).  |
 | `onDismiss`   | `() => void`                                  | —                  | Called when the toast is dismissed — manually, by the action, by timeout, or when evicted by the queue cap. |
 
@@ -274,6 +275,10 @@ function App() {
 | `gap`      | `number`        | `8`           | Gap between stacked toasts, in pixels.                                       |
 | `offset`   | `number`        | `16`          | Distance from the viewport edge, in pixels.                                 |
 | `duration` | `number`        | `4000`        | Default auto-dismiss duration (ms) for toasts that don't set their own. `0` makes toasts persistent by default. |
+| `label`    | `string \| () => string` | `'Notifications'` | Accessible name of the toast region. An accessor follows a locale signal. |
+| `dismissLabel` | `string \| () => string` | `'Dismiss'` | Accessible name of every dismiss button (a toast's own `dismissLabel` wins). |
+| `nonce`    | `string`        | —             | CSP nonce set on the injected `<style data-pyreon-toast>`.                   |
+| `injectStyles` | `boolean`   | `true`        | Inject the stylesheet as a `<style>` element. `false` = import `@pyreon/toast/styles.css` instead. |
 
 The `duration` prop sets the app-wide default that any toast without an explicit `duration` uses. Because the store is module-level, the Toaster writes this default on setup and `toast()` reads it for new toasts.
 
@@ -352,9 +357,32 @@ Toast accessibility is **type-aware**, matching the urgency of the message:
 - **Error and warning** toasts use `role="alert"` — an assertive live region that interrupts the screen reader to announce immediately.
 - **Info and success** toasts use `role="status"` — a polite live region that announces at the next pause.
 
-Each toast also sets `aria-atomic="true"` so the whole toast is announced as one unit. The role implies its own `aria-live`, so the **container does not** add `aria-live` — doing so would double-announce every toast. The container is a labeled landmark: `<section aria-label="Notifications">`. The dismiss button has `aria-label="Dismiss"`, and a decorative `icon` is hidden from assistive tech (`aria-hidden`).
+Each toast also sets `aria-atomic="true"` so the whole toast is announced as one unit. The role implies its own `aria-live`, so the **container does not** add `aria-live` — doing so would double-announce every toast. The container is a labeled landmark: `<section aria-label="Notifications">` (the `label` prop). The dismiss button has `aria-label="Dismiss"` (the `dismissLabel` prop, or a toast's own `dismissLabel`), and a decorative `icon` is hidden from assistive tech (`aria-hidden`).
 
 An `info → error` update also upgrades the live-region urgency, because `role` is reactive to the toast's current type.
+
+### Translating the labels
+
+```tsx
+<Toaster label={() => t('toast.region')} dismissLabel={() => t('toast.dismiss')} />
+```
+
+The accessors are read reactively, so switching the locale relabels the region and every open toast in place.
+
+## Content Security Policy
+
+`<Toaster />` injects its stylesheet once, as `<style data-pyreon-toast>`. Under a policy without `'unsafe-inline'` in `style-src`, the browser refuses that element: a console error on every page, and the stack loses its base layout (it is no longer `position: fixed`, nothing animates). Two ways through:
+
+```tsx
+// 1. Keep the injection and allow it by nonce (style-src 'self' 'nonce-…'):
+<Toaster nonce={cspNonce} />
+
+// 2. Load the same rules as a file (style-src 'self' is enough):
+import '@pyreon/toast/styles.css'
+<Toaster injectStyles={false} />
+```
+
+Inline `style` props are applied through CSSOM, which CSP does not restrict, so nothing else needs a nonce.
 
 ## Animation
 

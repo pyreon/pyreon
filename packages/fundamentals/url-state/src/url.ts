@@ -19,13 +19,29 @@ export function getParamAll(key: string): string[] {
  * Minimal router-like interface: `replace` is required, `push` optional.
  * This avoids a hard dependency on `@pyreon/router`.
  */
+/** Per-navigation options url-state hands a router (`@pyreon/router`'s `NavigateOptions`). */
+export interface UrlNavigateOptions {
+  scroll?: boolean
+  viewTransition?: boolean
+}
+
+/**
+ * A url-state write edits the page it is on: the router must neither scroll to
+ * the top nor run a view transition, for a push as much as a replace (#4814).
+ */
+const PARAM_WRITE: UrlNavigateOptions = { scroll: false, viewTransition: false }
+
 export interface UrlRouter {
   // Return type is intentionally `unknown`-wide: url-state calls these purely
   // for their side effect and ignores the result, so ANY router whose
   // `replace(path)` returns nothing OR a promise of anything satisfies the
   // bridge. `@pyreon/router`'s `replace` returns `Promise<NavigationResult>`
   // (since #2171) — narrowing this to `Promise<void>` broke `setUrlRouter(useRouter())`.
-  replace(path: string): void | Promise<unknown>
+  //
+  // The second argument is `@pyreon/router`'s `NavigateOptions`: url-state
+  // passes `{ scroll: false, viewTransition: false }`, because a param write
+  // edits the current page (#4814). A router that takes one argument ignores it.
+  replace(path: string, options?: UrlNavigateOptions): void | Promise<unknown>
   /**
    * Optional, and the difference between `replace: false` meaning something and
    * meaning nothing.
@@ -39,7 +55,7 @@ export interface UrlRouter {
    * A router without `push` still works: the update falls back to `replace` and
    * dev-warns once, rather than pretending.
    */
-  push?(path: string): void | Promise<unknown>
+  push?(path: string, options?: UrlNavigateOptions): void | Promise<unknown>
   /**
    * Which part of the URL the router treats as the route.
    *
@@ -231,11 +247,11 @@ function commit(params: URLSearchParams, replace: boolean): void {
 
   if (_router) {
     if (!replace && typeof _router.push === 'function') {
-      _router.push(url)
+      _router.push(url, PARAM_WRITE)
       return
     }
     if (!replace) warnRouterCannotPush()
-    _router.replace(url)
+    _router.replace(url, PARAM_WRITE)
     return
   }
 

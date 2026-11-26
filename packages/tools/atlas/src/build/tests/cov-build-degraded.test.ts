@@ -57,6 +57,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.doUnmock('@pyreon/vite-plugin')
   vi.doUnmock('vite')
+  vi.doUnmock('@pyreon/zero/server')
   vi.doUnmock('@pyreon/compiler/analyze')
   rmSync(root, { recursive: true, force: true })
 })
@@ -74,8 +75,8 @@ describe('a scan pipeline that throws', () => {
     // A site, not an excuse: the static walk found the component and the
     // build emitted its page.
     expect(result.components).toBe(1)
-    expect(readFileSync(join(root, 'dist', 'index.html'), 'utf8')).toContain('atlas-root')
-    expect(readdirSync(join(root, 'dist'))).toContain('hello')
+    expect(readFileSync(join(root, 'dist', 'index.html'), 'utf8')).toContain('<div id="app">')
+    expect(readFileSync(join(root, 'dist', 'hello', 'index.html'), 'utf8')).toContain('<div id="app">')
   }, 300_000)
 })
 
@@ -108,17 +109,15 @@ describe('a panel that could not be baked', () => {
     expect(logs.join('\n')).toContain('lens(Hello)')
     // And the site is still emitted — one dark panel is not a reason to have
     // no documentation.
-    expect(readFileSync(join(root, 'dist', 'index.html'), 'utf8')).toContain('atlas-root')
+    expect(readFileSync(join(root, 'dist', 'index.html'), 'utf8')).toContain('<div id="app">')
   }, 300_000)
 })
 
 describe('the plugin factory', () => {
   it('REFUSES a package that exports no factory, naming the package', async () => {
     // `default: undefined` is spelled out because vitest's mock namespace
-    // THROWS on a missing export rather than returning undefined, so BOTH names
-    // the product reads (`mod.default ?? mod.pyreon`) have to be spelled out for
-    // the absent case to be expressible at all.
-    vi.doMock('@pyreon/vite-plugin', () => ({ default: undefined, pyreon: undefined, somethingElse: 1 }))
+    // THROWS on a missing export rather than returning undefined.
+    vi.doMock('@pyreon/vite-plugin', () => ({ default: undefined, somethingElse: 1 }))
     await expect(buildStatic({ cwd: root, out: 'dist' })).rejects.toThrow(
       /@pyreon\/vite-plugin did not export a plugin factory/,
     )
@@ -131,7 +130,7 @@ describe('when the tools are not installed', () => {
       throw new Error('Cannot find package')
     })
     await expect(buildStatic({ cwd: root, out: 'dist' })).rejects.toThrow(
-      /atlas build needs Vite[\s\S]*bun add -d vite @pyreon\/vite-plugin/,
+      /atlas build needs Vite[\s\S]*bun add -d vite @pyreon\/vite-plugin @pyreon\/zero/,
     )
   }, 300_000)
 
@@ -140,7 +139,16 @@ describe('when the tools are not installed', () => {
       throw new Error('Cannot find package')
     })
     await expect(buildStatic({ cwd: root, out: 'dist' })).rejects.toThrow(
-      /@pyreon\/vite-plugin is not installed/,
+      /atlas build needs @pyreon\/vite-plugin, which is not installed/,
+    )
+  }, 300_000)
+
+  it('names zero when THAT is what is missing', async () => {
+    vi.doMock('@pyreon/zero/server', () => {
+      throw new Error('Cannot find package')
+    })
+    await expect(buildStatic({ cwd: root, out: 'dist' })).rejects.toThrow(
+      /atlas build needs @pyreon\/zero, which is not installed/,
     )
   }, 300_000)
 })

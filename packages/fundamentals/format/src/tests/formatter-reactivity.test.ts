@@ -1,12 +1,12 @@
 import { effect, signal } from '@pyreon/reactivity'
 import * as format from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 import { clearAllTables } from './helpers'
 
 const { setLocale, setTimeZone } = format
 
 afterEach(() => {
-  _resetLocaleState()
+  resetLocaleState()
   clearAllTables()
 })
 

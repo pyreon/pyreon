@@ -32,8 +32,16 @@ const TOAST_DISMISS_EXPR = 'toast-dismiss'
 export const TOAST_PLUGIN_NAME = '@pyreon/toast'
 
 const NAMES_KEY = '@pyreon/toast:names'
+
+/** toast() options with no native lowering yet, each warned by name. */
+const UNLOWERED_OPTIONS: Readonly<Record<string, string>> = {
+  icon: 'toast() `icon` has no native lowering yet — it is DROPPED on iOS/Android (the toast itself still shows).',
+  dismissLabel:
+    'toast() `dismissLabel` has no native lowering yet — the native dismiss button keeps its built-in label on iOS/Android.',
+}
+
 const PRESETS: ReadonlySet<string> = new Set(['success', 'error', 'warning', 'info', 'loading'])
-const REAL_UNLOWERED: ReadonlySet<string> = new Set(['update', 'remove', 'promise'])
+const REAL_UNLOWERED: ReadonlySet<string> = new Set(['update', 'remove', 'promise', 'list'])
 
 interface ToastPayload {
   readonly toastType: string
@@ -152,11 +160,12 @@ const recognizeToast: CallExprRecognizer = (site, ctx) => {
         action = readAction(val, ctx, c?.type === 'Identifier' ? (c.name as string) : (c.object.name as string))
       } else if (key === 'onDismiss') {
         onDismiss = readOnDismiss(prop, ctx)
-      } else if (key === 'icon') {
-        ctx.report(`toast() \`icon\` has no native lowering yet — it is DROPPED on iOS/Android (the toast itself still shows).`)
+      } else if (key !== undefined && Object.hasOwn(UNLOWERED_OPTIONS, key)) {
+        ctx.report(UNLOWERED_OPTIONS[key]!)
       }
     }
   }
+
   return {
     type: TOAST_EXPR,
     payload: {
@@ -216,6 +225,7 @@ function readAction(
   if ((params?.length ?? 0) === 0) return { label: ctx.expr(label), handler: ctx.expr(fn), context: false }
   const withContext = contextHandler(fn, toastName)
   if (typeof withContext === 'string') return drop(withContext)
+
   return { label: ctx.expr(label), handler: ctx.expr(withContext), context: true }
 }
 
@@ -270,12 +280,14 @@ function contextHandler(fn: AnyNode, toastName: string): AnyNode | string {
       if (node.type === 'Identifier' && names.has(node.name as string)) leaked = node.name as string
       const out: AnyNode = {}
       for (const [k, v] of Object.entries(node)) out[k] = k === 'parent' ? v : walk(v)
+
       return out
     }
     const rewritten = walk(body)
     if (leaked !== undefined) {
       return `\`onClick\` uses its context's \`${leaked}\` other than as a no-argument \`dismiss()\` call or an \`id\` read — only those lower natively`
     }
+
     return rewritten
   }
   const arrow = (idName: string, body: AnyNode): AnyNode => ({
@@ -306,6 +318,7 @@ function contextHandler(fn: AnyNode, toastName: string): AnyNode | string {
       () => false,
       new Set(dismissName !== undefined ? [dismissName] : []),
     )
+
     return typeof body === 'string' ? body : arrow(resolvedId, body)
   }
   if (param?.type === 'Identifier') {
@@ -323,8 +336,10 @@ function contextHandler(fn: AnyNode, toastName: string): AnyNode | string {
       (node) => member(node, 'id'),
       new Set([name]),
     )
+
     return typeof body === 'string' ? body : arrow(CONTEXT_ID, body)
   }
+
   return '`onClick`\'s parameter must be the `{ id, dismiss }` context, destructured or as one name'
 }
 
@@ -341,8 +356,10 @@ function readOnDismiss(prop: AnyNode, ctx: Parameters<CallExprRecognizer>[1]): R
     ctx.report(
       `toast() \`onDismiss\` must be an inline function with no parameters (\`onDismiss: () => …\`) to lower natively — the callback is DROPPED on iOS/Android (the toast itself still shows).`,
     )
+
     return undefined
   }
+
   return ctx.expr(fn)
 }
 
@@ -359,6 +376,7 @@ const toastExpr: ExprEmitter = {
         ? `, actionLabel: ${ctx.expr(e.args[at]!)}, ${actionContext === true ? `onActionContext: ${swiftContextClosure(e.args[at + 1]!, ctx)}` : `onAction: ${ctx.action(e.args[at + 1]!, 0)}`}`
         : ''
     const gone = hasOnDismiss === true ? `, onDismiss: ${ctx.action(e.args[e.args.length - 1]!, 0)}` : ''
+
     return `PyreonToast.shared.add(${ctx.expr(e.args[0]!)}, type: ${ctx.stringLiteral(toastType)}${duration}${closeButton}${detail}${act}${gone})`
   },
   // → `PyreonToast.add("x", "…")`; a literal duration is a `Long` of milliseconds.
@@ -373,6 +391,7 @@ const toastExpr: ExprEmitter = {
         ? `, actionLabel = ${ctx.expr(e.args[at]!)}, ${actionContext === true ? 'onActionContext' : 'onAction'} = ${ctx.action(e.args[at + 1]!, 0)}`
         : ''
     const gone = hasOnDismiss === true ? `, onDismiss = ${ctx.action(e.args[e.args.length - 1]!, 0)}` : ''
+
     return `PyreonToast.add(${ctx.expr(e.args[0]!)}, ${ctx.stringLiteral(toastType)}${duration}${closeButton}${detail}${act}${gone})`
   },
   // The node was a closed `toast-call` compiler kind before it moved here; the struct names the compiler derives
@@ -466,10 +485,26 @@ function toasterArgs(el: JsxElementIR, ctx: StaticReader): ToasterArgs {
     }
     out[name] = v
   }
+  warnUnloweredLabels(present, ctx)
   for (const a of el.attrs) {
     if (a.kind !== 'attr') ctx.warn('[pyreon-native] a spread on <Toaster> is not lowered — only literal position / max / gap / offset / duration props configure the native toaster.')
   }
+
   return out
+}
+
+/**
+ * The accessible names have no native lowering yet: name them instead of
+ * dropping them silently. (`nonce` / `injectStyles` are web stylesheet
+ * concerns with no native meaning, so they are ignored without a word.)
+ */
+function warnUnloweredLabels(present: ReadonlySet<string>, ctx: StaticReader): void {
+  if (present.has('label')) {
+    ctx.warn('[pyreon-native] <Toaster label> has no native lowering yet — the native toaster keeps its built-in region label.')
+  }
+  if (present.has('dismissLabel')) {
+    ctx.warn('[pyreon-native] <Toaster dismissLabel> has no native lowering yet — the native toaster keeps its built-in dismiss label.')
+  }
 }
 
 /** A Kotlin `Double` literal (`8` would be an `Int` and fail to typecheck). */
@@ -498,6 +533,7 @@ const toasterElements: readonly ElementLowering[] = [
         if (a.gap !== undefined) args.push(`gap: ${a.gap}`)
         if (a.offset !== undefined) args.push(`offset: ${a.offset}`)
         if (a.duration !== undefined) args.push(`duration: ${a.duration}`)
+
         return `PyreonToaster(${args.join(', ')})`
       },
       kotlin(el, ctx) {
@@ -508,6 +544,7 @@ const toasterElements: readonly ElementLowering[] = [
         if (a.gap !== undefined) args.push(`gap = ${kotlinDouble(a.gap)}`)
         if (a.offset !== undefined) args.push(`offset = ${kotlinDouble(a.offset)}`)
         if (a.duration !== undefined) args.push(`duration = ${a.duration}L`)
+
         return `PyreonToaster(${args.join(', ')})`
       },
     },

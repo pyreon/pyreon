@@ -1,5 +1,6 @@
 import { reportFailure } from './report'
 import { resolve } from 'node:path'
+import { exitAfterFlush } from '@pyreon/ansi'
 
 export interface DoctorOptions {
   fix?: boolean
@@ -24,10 +25,12 @@ export async function doctor(root: string | undefined, options: DoctorOptions) {
       cwd,
     })
     if (options.ci && errorCount > 0) {
-      process.exit(1)
+      // Not `process.exit`: it cut a piped `zero doctor --ci --json` off at
+      // 64 KiB (#4799).
+      await exitAfterFlush(1)
     }
   } catch (error) {
     reportFailure('zero doctor', 'Doctor failed', error)
-    process.exit(1)
+    await exitAfterFlush(1)
   }
 }

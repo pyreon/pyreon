@@ -4,7 +4,7 @@
 
 Signal-based form management — fields, validation, arrays, and context.
 
-Every field on a Pyreon form is its own `Signal<T>` (one each for `value`, `error`, `touched`, `dirty`), so templates only re-run for the slice they read. Two complementary APIs: the classic `useForm({ initialValues, validators, onSubmit })`, and the composable `field('name', default, validator) → useForm({ fields }) + useField('name')` that infers `FormState` from a field array and skips prop drilling via `<Form of={form}>` / `FormProvider`. Pairs with `@pyreon/validation` for Zod/Valibot/ArkType schema integration.
+Every field on a Pyreon form is its own `Signal<T>` (one each for `value`, `error`, `touched`, `dirty`), so templates only re-run for the slice they read. One option shape, `useForm({ initialValues, validators, onSubmit })`, which infers `FormState` from `initialValues`; `useField('name')` reads a field from context and skips prop drilling via `<Form of={form}>` / `FormProvider`. Pairs with `@pyreon/validation` for Zod/Valibot/ArkType schema integration.
 
 ## Native compiler plugin
 
@@ -18,9 +18,9 @@ const compiler = createCompiler({ plugins: [formPlugin] })
 const result = compiler.transform(source, { target: 'swift' })
 ```
 
-The current native subset accepts classic `useForm({ initialValues, validators, schema, onSubmit })` with literal string defaults, single-parameter expression validators, and schema declarations in the same file. It preserves `<Field>` bindings, map/accessor reads, submit callback field reads, and `useForm` result destructuring. `useFieldArray` accepts a literal string array or no initial argument; `<For>` scopes its row accessors and restores the enclosing row when nested.
+The current native subset accepts `useForm({ initialValues, validators, schema, onSubmit })` with literal string defaults, single-parameter expression validators, and schema declarations in the same file. It preserves `<Field>` bindings, map/accessor reads, submit callback field reads, and `useForm` result destructuring. `useFieldArray` accepts a literal string array or no initial argument; `<For>` scopes its row accessors and restores the enclosing row when nested.
 
-Composable `field()`/`useField()` forms and the rest of the web form API still need native lowerings. This plugin move preserves the existing native capability and emitted output.
+Context-based `useField()` reads and the rest of the web form API still need native lowerings. This plugin move preserves the existing native capability and emitted output.
 
 ## Install
 
@@ -57,21 +57,20 @@ function LoginForm() {
 }
 ```
 
-## Composable fields + `<Form>` (recommended)
+## `<Form>` + `useField` (no prop drilling)
 
-Define fields once, infer the form shape automatically, and read from context instead of prop drilling:
+Declare the form once and read each field from context instead of passing it down:
 
 ```tsx
-import { field, useForm, useField, Form, Submit } from '@pyreon/form'
-
-const email = field('email', '', (v) => (!v.includes('@') ? 'Invalid' : undefined))
-const password = field('password', '', (v) => (v.length < 8 ? 'Too short' : undefined))
-const confirm = field('confirmPassword', '', (v, all) =>
-  v !== all.password ? 'Mismatch' : undefined,
-)
+import { useForm, useField, Form, Submit } from '@pyreon/form'
 
 const form = useForm({
-  fields: [email, password, confirm],
+  initialValues: { email: '', password: '', confirmPassword: '' },
+  validators: {
+    email: (v) => (!v.includes('@') ? 'Invalid' : undefined),
+    password: (v) => (v.length < 8 ? 'Too short' : undefined),
+    confirmPassword: (v, all) => (v !== all.password ? 'Mismatch' : undefined),
+  },
   onSubmit: (values) => {
     /* { email: string; password: string; confirmPassword: string } */
   },
@@ -100,8 +99,7 @@ function EmailInput() {
 
 | Option          | Type                                                   | Description                                                                                                                                                                            |
 | --------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initialValues` | `TValues`                                              | Required when using the value-form. Drives field keys + types.                                                                                                                         |
-| `fields`        | `FieldDefinition[]`                                    | Required when using the composable form. Drives `TValues` via inference.                                                                                                               |
+| `initialValues` | `TValues`                                              | Required. Drives field keys + types (or an accessor returning them).                                                                                                                   |
 | `onSubmit`      | `(values: TValues) => void \| Promise<void>`           | Submit handler — receives validated values                                                                                                                                             |
 | `validators`    | `Partial<Record<keyof TValues, ValidateFn>>`           | Per-field validators; signature `(value, allValues) => string \| undefined`                                                                                                            |
 | `schema`        | `SchemaValidateFn` \| Standard Schema \| typed adapter | Whole-form schema validator — a raw Standard Schema (zod / valibot / arktype / `@pyreon/validate`'s `s`) directly, a plain `SchemaValidateFn`, or a `@pyreon/validation` typed adapter |
@@ -114,7 +112,7 @@ Returns `FormState<TValues>` with per-field `Signal`s (`value`, `error`, `touche
 react-hook-form-parity accessors (all strictly typed against `TValues`):
 
 - `trigger(name?)` — validate one field, a subset (array), or — no argument — the whole form, on demand. Runs validators immediately (bypassing `debounceMs`); returns whether the validated set is valid.
-- `getValues(name?)` — one field's value (`getValues('email')`) or all (`getValues()`).
+- `getValues(name?)` — one field's value (`getValues('email')`) or all (`getValues()`). Reactive, like `values()` and `errors()`: a `computed` / effect / JSX accessor over any of them re-runs when a field it read changes (and on `registerField` / `unregisterField`). `values()` returns a cached object that stays the same reference until a value changes.
 - `dirtyFields()` / `touchedFields()` — the changed / visited fields as a record (`{ email: true }`). Reactive.
 - `getFieldState(name)` — a field's live `FieldState` (same object as `form.fields[name]`).
 - `isSubmitted` — `Accessor<boolean>`, true once `submitCount > 0`.
@@ -177,10 +175,12 @@ tags.swap(0, 1)
 tags.update(0, 'updated')
 tags.remove(0)
 tags.replace(['a', 'b', 'c'])
-tags.values() // string[]
+tags.values() // string[] — reactive: tracks the list and every item's value
 tags.length() // number
 tags.items() // FieldArrayItem<string>[] — { key: number, value: Signal<T> }
 ```
+
+`values()` reads `items()` and each `item.value()`, so `computed(() => tags.values().length > 0 && …)` re-derives on any add, remove, reorder or item edit. Inside an effect that also writes the array, read it with `untrack(() => tags.values())`.
 
 Each item carries a `key: number` — monotonically increasing, assigned at insert time. Render with `<For each={tags.items()} by={(i) => i.key}>` so reordering / insertion preserves component identity (and input focus). **Index-based keys defeat the stable-key design.**
 

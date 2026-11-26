@@ -31,7 +31,7 @@ import {
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
-import { lowerWebViewDomStorage } from './webview-options'
+import { lowerWebViewDomStorage, lowerWebViewSaveDownloads, WEBVIEW_DOWNLOAD_PARAM_TYPE } from './webview-options'
 import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import {
   asyncValueReturnWarning,
@@ -155,6 +155,7 @@ import {
   widenFloatLocals,
   rootedAtExtDecl,
   widenFloatSignals,
+  isValueAccessorForFunction,
 } from './infer-type'
 import type { InferenceCtx } from './infer-type'
 import { kotlinEnumEntry, kotlinIdent, kotlinMember, safeIdent } from './identifier-safety'
@@ -8145,12 +8146,26 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   }
   const domStorage = lowerWebViewDomStorage(e, readStaticAttrKotlin, 'kotlin')
   if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
+  // Downloads — `onDownload={(d) => …}` receives the runtime's
+  // `PyreonWebViewDownload`; `saveDownloads={false}` turns the built-in save off.
+  const onDl = e.attrs.find((a) => a.kind === 'event' && a.name === 'download')
+  const onDlArg =
+    onDl?.kind === 'event'
+      ? `onDownload = ${emitKotlinMessageHandler(onDl.handler, WEBVIEW_DOWNLOAD_PARAM_TYPE)}`
+      : undefined
+  const saveDownloads = lowerWebViewSaveDownloads(e, readStaticAttrKotlin, 'kotlin')
+  if (saveDownloads.warning !== undefined) _emitWarnings.push(saveDownloads.warning)
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
-  // `domStorage` rides after `modifier` (its position in the runtime signature).
-  return `PyreonWebView(${args}${kotlinWebViewModifierArg(e)}${domStorage.arg === undefined ? '' : `, ${domStorage.arg}`})`
+  // `domStorage` and the download options ride after `modifier` (their
+  // position in the runtime signature).
+  const tail = [domStorage.arg, onDlArg, saveDownloads.arg]
+    .filter((a) => a !== undefined)
+    .map((a) => `, ${a}`)
+    .join('')
+  return `PyreonWebView(${args}${kotlinWebViewModifierArg(e)}${tail})`
 }
 
-function emitKotlinMessageHandler(handler: ExprIR): string {
+function emitKotlinMessageHandler(handler: ExprIR, defaultParamType: TypeIR = { kind: 'string' }): string {
   // The page-posted payload is ALWAYS a string (the runtime bridge hands over `String(m)`), so
   // an unannotated parameter is a `String`. Without that the receiver of `m.slice(2)` /
   // `m.startsWith(…)` is unknown and the string lowerings never fire: Kotlin happened to
@@ -8159,7 +8174,7 @@ function emitKotlinMessageHandler(handler: ExprIR): string {
   // block-body path emits through the generic action emitter, which seeds handler-local consts
   // but not the closure's own parameter.
   const messageParam = handler.kind === 'arrow' ? handler.params[0] : undefined
-  const paramType: TypeIR = (handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? { kind: 'string' }
+  const paramType: TypeIR = (handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? defaultParamType
   return withKotlinLocals(messageParam !== undefined ? [[messageParam, paramType]] : [], () => {
     if (handler.kind === 'arrow') {
       // A BLOCK body parses to an empty `body` with its statements in `stmts`;
@@ -10250,7 +10265,14 @@ function emitKotlinGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: 
       // `safeIdent` converts kebab-case HTML attrs (`data-test`,
       // `aria-label`) to camelCase. Kotlin rejects `-` in named
       // arguments the same way Swift does.
-      argParts.push(`${kotlinIdent(safeIdent(a.name))} = ${emitKotlinExpr(a.value, indent)}`)
+      // An accessor passed uncalled to a `() => T` prop is a VALUE natively (`data`, a signal): pass it as a lambda.
+      const expected = isUserComponent
+        ? _componentPropsMapKotlin.get(e.tag)?.find((p) => p.name === a.name)?.type
+        : undefined
+      const value = emitKotlinExpr(a.value, indent)
+      argParts.push(
+        `${kotlinIdent(safeIdent(a.name))} = ${isValueAccessorForFunction(a.value, expected, _kotlinExprInferCtx) ? `{ ${value} }` : value}`,
+      )
     } else if (a.kind === 'event' && isUserComponent) {
       const propName = `on${a.name[0]!.toUpperCase()}${a.name.slice(1)}`
       argParts.push(`${kotlinIdent(propName)} = ${emitKotlinAction(a.handler, indent)}`)

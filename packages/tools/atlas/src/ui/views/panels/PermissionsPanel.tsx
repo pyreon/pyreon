@@ -107,7 +107,7 @@ function RoleCard(props: { model: WorkbenchModel; role: PermissionSet; overlay: 
           </C.RoleVerdictLine>
         }
       >
-        <C.RoleMini data-testid={`role-mini-${role.id}`} ref={miniRef}>
+        <C.RoleMini data-testid={`role-mini-${role.id}`} data-allow-reload="" ref={miniRef}>
           <PreviewTheme model={m}>
             {() => {
               const out = m.previewAs(role.id)

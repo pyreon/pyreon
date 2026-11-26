@@ -54,16 +54,23 @@
  * of this suite. Ratios are the portable signal; absolute ms are machine- and
  * load-dependent. Stamp `uptime` and discard anything measured above load ~8.
  *
- * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|table|virtual|charts|charts-libs|maplist|router] [--wait-quiet [maxLoad]]
+ * Run: bun bench-scenarios.ts [--repeat N] [--scenario dbmon|tree|effects|memo|flow|table|virtual|charts|charts-libs|maplist|router] [--wait-quiet [maxLoad]] [--gate-only]
  */
 import { execSync, spawn } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { chromium } from 'playwright'
 import { clusterBootstrapCI95, medianOf as median } from './cluster-bootstrap'
 import { LoadRecorder, parseWaitQuiet, waitForQuietMachine } from './machine-load'
+import {
+  compareDomShapes,
+  formatDomShapeMismatches,
+  type DomShape,
+  type DomShapeObservation,
+} from './dom-shape'
 
 const argv = process.argv
 const REPEAT = (() => {
+  if (argv.includes('--gate-only')) return 1
   const i = argv.indexOf('--repeat')
   return i >= 0 ? Math.max(1, Number(argv[i + 1]) || 1) : 3
 })()
@@ -92,6 +99,15 @@ const argVal = (flag: string): string | undefined => {
   return i >= 0 ? argv[i + 1] : undefined
 }
 const PASS_OFFSET = Number(argVal('--pass-offset') ?? 0) || 0
+/**
+ * `--gate-only`: correctness only, NO timing. Every arm runs every op exactly
+ * once (reset → op → commit → the op's verify, or one batch cycle with its
+ * probes) on one page load, the DOM each op leaves is captured, and the run
+ * fails if any arm's verify throws or two arms built different DOMs. Prints
+ * the per-arm DOM census instead of a timing report. Cheap enough to run on
+ * every fixture change; it never produces a number to quote.
+ */
+const GATE_ONLY = argv.includes('--gate-only')
 const RAW_OUT = argVal('--raw-out')
 const POOL_FILES = argVal('--pool')?.split(',').filter((f) => f.length > 0)
 
@@ -126,9 +142,19 @@ const SCENARIOS: {
   kind?: 'regression'
   /** Extra Chromium flags; the scenario then gets its OWN browser instance. */
   chromiumArgs?: string[]
+  /**
+   * Cross-arm DOM-shape gate (`dom-shape.ts`): every arm must end each op with
+   * the same elements, text nodes and text. On for every scenario whose arms
+   * render one shared DOM contract; off for the library scenarios (flow,
+   * virtual, table, charts), whose rival libraries render different markup by
+   * design and are held to equal VISIBLE work by their own per-op verifiers,
+   * and for the Pyreon-only router instrument.
+   */
+  domGate?: boolean
 }[] = [
   {
     id: 'dbmon',
+    domGate: true,
     label: 'dbmon — sustained wide update (100 rows × 6 cells, all changing)',
     frameworks: [
       'Vanilla JS',
@@ -145,6 +171,7 @@ const SCENARIOS: {
   },
   {
     id: 'tree',
+    domGate: true,
     label: 'deep tree — 2,047-component mount + context → 1,024 consumers',
     frameworks: [
       'Vanilla JS',
@@ -162,6 +189,7 @@ const SCENARIOS: {
   },
   {
     id: 'effects',
+    domGate: true,
     label: 'effect-heavy list — 500 subscriptions: dispatch, targeting, teardown',
     frameworks: [
       'Vanilla JS',
@@ -176,6 +204,7 @@ const SCENARIOS: {
   },
   {
     id: 'memo',
+    domGate: true,
     label: 'memoization wall — blocked vs passthrough derived update (300 consumers)',
     frameworks: [
       'Vanilla JS',
@@ -253,6 +282,7 @@ const SCENARIOS: {
   {
     // See src/impl/scenario-maplist.ts for the arms, ops and fairness notes.
     id: 'maplist',
+    domGate: true,
     label: 'keyed .map() list + conditional JSX in slots (1,000 rows)',
     frameworks: [
       'Pyreon (.map)',
@@ -326,6 +356,8 @@ interface SuiteResult {
   results: { name: string; median: number; samples: number[] }[]
   /** Ops the arm failed in the scenario's pre-timing correctness gate (not timed). */
   gateFailures?: { name: string; error: string }[]
+  /** The DOM each op left after its first iteration (`domShapes=1` pages). */
+  domShapes?: { name: string; shape: DomShape }[]
 }
 
 /** Ranked arms that are Pyreon itself — never each other's competitor. */
@@ -388,6 +420,21 @@ function collectSuite(
 
 function fmt(ms: number): string {
   return ms < 1 ? `${(ms * 1000).toFixed(0)}µs` : `${ms.toFixed(2)}ms`
+}
+
+/** Per-arm DOM census table (printed under `--gate-only`). */
+function printDomCensus(scenarioId: string, obs: readonly DomShapeObservation[]): void {
+  const ops = [...new Set(obs.map((o) => o.op))]
+  for (const op of ops) {
+    console.log(`\n  DOM census · ${scenarioId} · ${op}`)
+    console.log(`  ${'arm'.padEnd(30)} ${'elements'.padStart(8)} ${'texts'.padStart(6)} ${'empty'.padStart(6)} ${'anchors'.padStart(7)} ${'comments'.padStart(8)} ${'tags'.padStart(9)} ${'text len'.padStart(8)} ${'text'.padStart(9)}`)
+    for (const o of obs.filter((x) => x.op === op)) {
+      const sh = o.shape
+      console.log(
+        `  ${`${o.arm} (pass ${o.pass})`.padEnd(30)} ${String(sh.elements).padStart(8)} ${String(sh.texts).padStart(6)} ${String(sh.emptyTexts).padStart(6)} ${String(sh.anchorTexts).padStart(7)} ${String(sh.comments).padStart(8)} ${sh.tagHash.padStart(9)} ${String(sh.textLength).padStart(8)} ${sh.textHash.padStart(9)}`,
+      )
+    }
+  }
 }
 
 /**
@@ -498,6 +545,8 @@ try {
   const pooled = new Map<string, number[][]>()
   // Same key → the arm's gate error for an op it was NOT timed on.
   const gateFailures = new Map<string, string>()
+  // [scenarioId, observation] — the DOM every arm left after each op.
+  const domShapes: [string, DomShapeObservation][] = []
 
   if (POOL_FILES) {
     for (const f of POOL_FILES) {
@@ -508,8 +557,10 @@ try {
         /** Legacy flat pool — one page-load per key per file (`--repeat 1` passes). */
         pooled?: [string, number[]][]
         gateFailures?: [string, string][]
+        domShapes?: [string, DomShapeObservation][]
       }
       for (const [k, v] of raw.gateFailures ?? []) gateFailures.set(k, v)
+      for (const d of raw.domShapes ?? []) domShapes.push(d)
       const loads = raw.stamps.map((st) => `${st.label}=${st.load1.toFixed(2)}`).join(' · ')
       console.log(`[bench-scenarios] pooling ${f}\n    load stamps: ${loads}`)
       if (raw.clusters) {
@@ -541,7 +592,11 @@ try {
         const errors: string[] = []
         page.on('pageerror', (e) => errors.push(String(e)))
         await page
-          .goto(`http://localhost:${PORT}/?mode=scenarios&scenario=${scenario.id}&framework=${encodeURIComponent(fw)}`)
+          .goto(
+            `http://localhost:${PORT}/?mode=scenarios&scenario=${scenario.id}&framework=${encodeURIComponent(fw)}` +
+              (scenario.domGate ? '&domShapes=1' : '') +
+              (GATE_ONLY ? '&gateOnly=1' : ''),
+          )
           .catch((err: unknown) => {
             throw new Error(`${String(err)}\n[bench-scenarios] preview state: ${previewGone ?? 'still running'}\n${previewStderr}`)
           })
@@ -564,7 +619,12 @@ try {
         const suites = (await page.evaluate(
           () => (globalThis as { __benchResults?: unknown }).__benchResults,
         )) as SuiteResult[]
-        for (const s of suites) collectSuite(scenario.id, s, pooled, gateFailures)
+        for (const s of suites) {
+          collectSuite(scenario.id, s, pooled, gateFailures)
+          for (const d of s.domShapes ?? []) {
+            domShapes.push([scenario.id, { arm: s.framework, op: d.name, pass: pass + PASS_OFFSET, shape: d.shape }])
+          }
+        }
         console.log('ok')
         await page.close()
       }
@@ -574,12 +634,41 @@ try {
 
   if (!POOL_FILES) stamp('load after measuring')
   if (RAW_OUT) {
-    writeFileSync(RAW_OUT, JSON.stringify({ stamps: load.report().stamps, machine: load.report().machine, clusters: [...pooled], gateFailures: [...gateFailures] }))
+    writeFileSync(RAW_OUT, JSON.stringify({ stamps: load.report().stamps, machine: load.report().machine, clusters: [...pooled], gateFailures: [...gateFailures], domShapes }))
     console.log(`[bench-scenarios] raw samples + load stamps → ${RAW_OUT}`)
   }
 
-  // ── Report ────────────────────────────────────────────────────────────────
+  // ── Cross-arm DOM-shape gate ──────────────────────────────────────────────
+  // Runs before the report: a timing table over arms that built different
+  // DOMs compares different work, so the run FAILS (exit 1) when they differ.
+  const domGateFailures: string[] = []
   for (const scenario of scenarios) {
+    if (!scenario.domGate) continue
+    const obs = domShapes.filter(([id]) => id === scenario.id).map(([, o]) => o)
+    if (GATE_ONLY || obs.length === 0) printDomCensus(scenario.id, obs)
+    if (obs.length === 0 && !POOL_FILES) {
+      domGateFailures.push(`✗ DOM-shape gate: ${scenario.id} — no arm reported a DOM shape (stale build?)`)
+      continue
+    }
+    domGateFailures.push(...formatDomShapeMismatches(scenario.id, compareDomShapes(obs)))
+  }
+  if (domGateFailures.length > 0) {
+    for (const l of domGateFailures) console.log(l)
+    console.log('✗ DOM-shape gate FAILED — the arms above did different DOM work; no number from this run is a comparison.')
+    process.exitCode = 1
+  } else if (scenarios.some((s) => s.domGate)) {
+    console.log('✓ DOM-shape gate: every arm built the same DOM (elements, content text nodes, text) for every op')
+  }
+  if (GATE_ONLY) {
+    if (gateFailures.size > 0) {
+      for (const [k, e] of gateFailures) console.log(`✗ correctness gate: ${k.split('\u0000').join(' / ')}: ${e}`)
+      process.exitCode = 1
+    }
+    console.log('[bench-scenarios] --gate-only: correctness and DOM equality only; nothing was timed.')
+  }
+
+  // ── Report ────────────────────────────────────────────────────────────────
+  for (const scenario of GATE_ONLY ? [] : scenarios) {
     console.log(`\n${scenario.label}`)
     console.log('═'.repeat(78))
     const ops = [

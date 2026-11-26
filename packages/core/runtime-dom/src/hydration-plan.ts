@@ -28,7 +28,7 @@
  * time.
  */
 import type { VNode, VNodeChild } from '@pyreon/core'
-import { _rdLabelBinding, _renderBind } from '@pyreon/reactivity'
+import { _rdLabelBinding, _renderBind } from '@pyreon/reactivity/internal'
 import { bindPolymorphicText } from './mount'
 import { _markAdoptedHtmlEl, applyClassProp, applyProp, applyProps, applyStyleProp, makeEventBinder } from './props'
 import { _isTplHoleEl, _isTplHtmlEl, _markMidSlotText, _parkSlotRange, _setTplHoleCursors } from './template'
@@ -243,7 +243,7 @@ function walkPlan(vnode: VNode, domPath: number[], plan: RowPlan): boolean {
     }
     if (typeof child === 'string' || typeof child === 'number' || typeof child === 'bigint') {
       if (prevWasText) return false // parser merges adjacent text — interpretive owns splitText
-      if (String(child).length === 0) return false // empty text: no DOM node
+      if (child === '') return false // empty text: no DOM node
       plan.sigKinds.push(K_TEXT)
       prevWasText = true
       domIdx++

@@ -165,6 +165,12 @@ fn is_svg_root_tag(tag: &str) -> bool {
     )
 }
 
+/// `<input>`, `<textarea>`, `<select>`: their `value` goes through the runtime
+/// `_setValue`. Mirrors jsx.ts `isValueControlTag`.
+fn is_value_control_tag(tag: &str) -> bool {
+    tag == "input" || tag == "textarea" || tag == "select"
+}
+
 fn is_void_element(tag: &str) -> bool {
     matches!(
         tag,
@@ -654,6 +660,8 @@ struct Ctx<'a> {
     hoist_idx: u32,
 
     needs_tpl_import: bool,
+    /// A `<select value>` anywhere in the module (see `has_select_value`).
+    has_select_value: bool,
     needs_rp_import: bool,
     needs_rpd_import: bool,
     needs_pk_import: bool,
@@ -951,6 +959,7 @@ impl<'a> Ctx<'a> {
             hoists: Vec::new(),
             hoist_idx: 0,
             needs_tpl_import: false,
+            has_select_value: false,
             needs_rp_import: false,
             needs_rpd_import: false,
             needs_pk_import: false,
@@ -1070,7 +1079,8 @@ impl<'a> Ctx<'a> {
     }
 
     fn build_result(mut self) -> TransformResult {
-        if self.replacements.is_empty() && self.hoists.is_empty() {
+        let needs_select_wait = self.has_select_value && !self.ssr;
+        if self.replacements.is_empty() && self.hoists.is_empty() && !needs_select_wait {
             return TransformResult {
                 code: self.source.to_string(),
                 uses_templates: None,
@@ -1107,6 +1117,12 @@ impl<'a> Ctx<'a> {
                 .map(|h| format!("const {} = /*@__PURE__*/ {};\n", h.name, h.text))
                 .collect();
             result = preamble + &result;
+        }
+
+        // `<select value>` in the module: turn on the runtime's late-option
+        // handling (#4820). Mirrors the JS preamble (below the runtime-dom import).
+        if needs_select_wait {
+            result = format!("import {{ _selectWait }} from \"@pyreon/runtime-dom\";\n_selectWait();\n{}", result);
         }
 
         if self.needs_tpl_import {
@@ -2258,7 +2274,16 @@ fn expr_children_any_dynamic(expr: &Expression, ctx: &mut Ctx) -> bool {
         Expression::YieldExpression(y) => {
             y.argument.as_ref().map_or(false, |a| is_dynamic(a, ctx))
         }
-        Expression::NewExpression(_) => true,
+        // Like the JS generic recursion: dynamic only when the callee or an
+        // argument is. `client={new QueryClient()}` is a fixed value; wrapping
+        // it in `_rp` made every props read construct a new instance.
+        Expression::NewExpression(n) => {
+            is_dynamic(&n.callee, ctx)
+                || n.arguments.iter().any(|a| match a {
+                    Argument::SpreadElement(s) => is_dynamic(&s.argument, ctx),
+                    _ => a.as_expression().map_or(false, |e| is_dynamic(e, ctx)),
+                })
+        }
         // Don't recurse into function expressions
         Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => false,
         // TypeScript expression wrappers — recurse through
@@ -2817,6 +2842,38 @@ fn jsx_tag_name<'a>(el: &'a JSXElement<'a>) -> &'a str {
 
 fn is_self_closing(el: &JSXElement) -> bool {
     el.closing_element.is_none()
+}
+
+/// A `<select … value=…>` or `<select {...spread}>` anywhere in the program (a
+/// plain `select` tag with a `value` attribute or a spread that may carry one).
+/// Mirrors the JS `isSelectWithValue` check in `buildMaps`.
+fn has_select_value(program: &Program) -> bool {
+    struct SelectFinder {
+        found: bool,
+    }
+    impl<'a> Visit<'a> for SelectFinder {
+        fn visit_jsx_opening_element(&mut self, it: &JSXOpeningElement<'a>) {
+            if let JSXElementName::Identifier(name) = &it.name {
+                if name.name.as_str() == "select"
+                    && it.attributes.iter().any(|a| match a {
+                        // A spread may carry `value`; the compiler cannot see inside it.
+                        JSXAttributeItem::SpreadAttribute(_) => true,
+                        JSXAttributeItem::Attribute(attr) => {
+                            matches!(&attr.name, JSXAttributeName::Identifier(n) if n.name.as_str() == "value")
+                        }
+                    })
+                {
+                    self.found = true;
+                }
+            }
+            if !self.found {
+                oxc_ast_visit::walk::walk_jsx_opening_element(self, it);
+            }
+        }
+    }
+    let mut finder = SelectFinder { found: false };
+    finder.visit_program(program);
+    finder.found
 }
 
 /// Does expr contain JSX (element or fragment)?
@@ -4920,6 +4977,7 @@ pub fn transform_jsx(
     );
     ctx.client_tpl_components = client_tpl_components;
     ctx.foreign_holes = collect_foreign_holes(&ret.program);
+    ctx.has_select_value = has_select_value(&ret.program);
 
     // Seed signal_vars from known_signals (cross-module imports resolved by Vite plugin)
     if let Some(signals) = known_signals {
@@ -5208,7 +5266,9 @@ fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
                 s
             } else { vec![] };
             if let Some(body) = &func.body {
+                let outer_depth = enter_component_body(is_capitalized_fn_decl(func), ctx);
                 walk_fn_body(&func.params, &body.statements, ctx);
+                ctx.callback_depth = outer_depth;
             }
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -5349,7 +5409,9 @@ fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
                         s
                     } else { vec![] };
                     if let Some(body) = &func.body {
+                        let outer_depth = enter_component_body(is_capitalized_fn_decl(func), ctx);
                         walk_fn_body(&func.params, &body.statements, ctx);
+                        ctx.callback_depth = outer_depth;
                     }
                     for name in &shadows { ctx.shadowed_signals.remove(name); }
                     for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -5388,7 +5450,9 @@ fn walk_statement_inner(stmt: &Statement, ctx: &mut Ctx) {
                             s
                         } else { vec![] };
                         if let Some(body) = &func.body {
+                            let outer_depth = enter_component_body(is_capitalized_fn_decl(func), ctx);
                             walk_fn_body(&func.params, &body.statements, ctx);
+                            ctx.callback_depth = outer_depth;
                         }
                         for name in &shadows { ctx.shadowed_signals.remove(name); }
                         for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -5454,7 +5518,17 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
         Expression::JSXFragment(frag) => {
             let old = ctx.parent_is_jsx;
             let old_eager = ctx.parent_eager_mount;
+            // A fragment breaks the "direct parent is a component" relationship,
+            // as the JSX-child fragment arm of `walk_jsx_child` already says. An
+            // expression-position fragment (`{(r) => (<><dt/><dd/></>)}` under a
+            // `<For>` that is a component's sole child) inherited the outer
+            // component's flags, so each `<dt>` became `_lc(() => _tpl(…))`
+            // where JS `isSoleComponentChild` (parent is a fragment) says no.
+            let old_component = ctx.parent_is_component_jsx_element;
+            let old_sole_child = ctx.parent_component_has_sole_child;
             ctx.parent_is_jsx = true;
+            ctx.parent_is_component_jsx_element = false;
+            ctx.parent_component_has_sole_child = false;
             // A fragment parent is ALWAYS eager: its children are collected into
             // the array a `jsx(Fragment, …)` / component call receives.
             ctx.parent_eager_mount = true;
@@ -5462,6 +5536,8 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
                 walk_jsx_child(child, ctx);
             }
             ctx.parent_is_jsx = old;
+            ctx.parent_is_component_jsx_element = old_component;
+            ctx.parent_component_has_sole_child = old_sole_child;
             ctx.parent_eager_mount = old_eager;
         }
         Expression::ArrowFunctionExpression(arrow) => {
@@ -5476,6 +5552,8 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
             let is_callback_arg = ctx.in_callback_argument;
             ctx.in_jsx_child_callback = false;
             ctx.in_callback_argument = false;
+            // A capitalized `const X = () => …` (read before the props arm takes it).
+            let is_component = !is_callback_arg && ctx.fold_decl_name.is_some();
             if !is_jsx_child_cb && !is_callback_arg {
                 maybe_register_component_props_arrow(arrow, ctx);
             }
@@ -5498,7 +5576,9 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
                 for name in &s { ctx.shadowed_jsx_fns.insert(name.clone()); }
                 s
             } else { vec![] };
+            let outer_depth = enter_component_body(is_component, ctx);
             walk_arrow_body(arrow, ctx);
+            ctx.callback_depth = outer_depth;
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
             ctx.parent_is_jsx = old;
@@ -5516,6 +5596,8 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
             let is_callback_arg = ctx.in_callback_argument;
             ctx.in_jsx_child_callback = false;
             ctx.in_callback_argument = false;
+            // A capitalized `const X = function (…) {…}` (read before the props arm takes it).
+            let is_component = !is_callback_arg && ctx.fold_decl_name.is_some();
             if !is_jsx_child_cb && !is_callback_arg {
                 maybe_register_component_props_fn(func, ctx);
             }
@@ -5535,7 +5617,9 @@ fn walk_expression_inner(expr: &Expression, ctx: &mut Ctx) {
                 s
             } else { vec![] };
             if let Some(body) = &func.body {
+                let outer_depth = enter_component_body(is_component, ctx);
                 walk_fn_body(&func.params, &body.statements, ctx);
+                ctx.callback_depth = outer_depth;
             }
             for name in &shadows { ctx.shadowed_signals.remove(name); }
             for name in &jsx_fn_shadows { ctx.shadowed_jsx_fns.remove(name); }
@@ -9485,6 +9569,11 @@ struct TemplateBuilder {
     disposer_names: Vec<String>,
     reactive_bind_exprs: Vec<String>,
     reactive_effect_exprs: Vec<String>,
+    /// The template's REF TAIL (#4764), post-order, emitted after the attribute
+    /// effects. Mirrors `jsx.ts:refTail`.
+    ref_tail: Vec<String>,
+    /// The disposer the last spread attribute captured. Mirrors `jsx.ts:spreadDisp`.
+    spread_disp: Option<String>,
     var_idx: u32,
     disp_idx: u32,
     placeholder_idx: u32,
@@ -9532,6 +9621,8 @@ impl TemplateBuilder {
             disposer_names: Vec::new(),
             reactive_bind_exprs: Vec::new(),
             reactive_effect_exprs: Vec::new(),
+            ref_tail: Vec::new(),
+            spread_disp: None,
             var_idx: 0,
             disp_idx: 0,
             placeholder_idx: 0,
@@ -9772,6 +9863,8 @@ fn build_template_call(
         tb.bind_lines
             .push(format!("const {} = renderEffect(() => {{ {} }})", name, body));
     }
+    let mut ref_tail = std::mem::take(&mut tb.ref_tail);
+    tb.bind_lines.append(&mut ref_tail);
 
     if tb.needs_bind {
         ctx.needs_bind_import = true;
@@ -10028,7 +10121,8 @@ fn process_element(
     // so a `_mountSlot`-mounted option list exists before `el.value` runs.
     // Mirrors jsx.ts:processElement.
     let mut deferred_lines: Vec<String> = Vec::new();
-    let html_attrs = process_attrs(el, &var_name, tag, &mut deferred_lines, tb, ctx);
+    let mut element_refs: Vec<String> = Vec::new();
+    let html_attrs = process_attrs(el, &var_name, tag, &mut deferred_lines, &mut element_refs, tb, ctx);
     // Children are processed BEFORE the opening tag is assembled, because
     // whether this element is a mount hole is only known once its children are
     // classified. Bind-line ORDER is unaffected — `process_attrs` has already
@@ -10054,6 +10148,7 @@ fn process_element(
         child_html
     );
     tb.bind_lines.append(&mut deferred_lines);
+    tb.ref_tail.append(&mut element_refs);
     if !is_void_element(tag) {
         html.push_str(&format!("</{}>", tag));
     }
@@ -10065,6 +10160,7 @@ fn process_attrs(
     var_name: &str,
     tag: &str,
     deferred_lines: &mut Vec<String>,
+    ref_out: &mut Vec<String>,
     tb: &mut TemplateBuilder,
     ctx: &mut Ctx,
 ) -> String {
@@ -10083,6 +10179,8 @@ fn process_attrs(
         }
     }
     let mut html_attrs = String::new();
+    // `ref` lines (a literal `ref` and a spread's `.r()`) go to `ref_out`, the
+    // template's ref tail (#4764). Mirrors jsx.ts:processAttrs.
     for (i, attr) in attrs.iter().enumerate() {
         if let JSXAttributeItem::Attribute(a) = attr {
             {
@@ -10120,9 +10218,21 @@ fn process_attrs(
                     }
                     continue;
                 }
+                if attr_name.as_ref() == "ref" {
+                    let before = tb.bind_lines.len();
+                    html_attrs.push_str(&process_one_attr(attr, var_name, tag, tb, ctx));
+                    if tb.bind_lines.len() > before {
+                        ref_out.extend(tb.bind_lines.drain(before..));
+                    }
+                    continue;
+                }
             }
         }
         html_attrs.push_str(&process_one_attr(attr, var_name, tag, tb, ctx));
+        if let Some(sd) = tb.spread_disp.take() {
+            let d = tb.next_disp();
+            ref_out.push(format!("const {} = {}.r()", d, sd));
+        }
     }
     html_attrs
 }
@@ -10149,13 +10259,15 @@ fn process_one_attr(
                 // next AND on unmount.
                 tb.needs_bind_spread = true;
                 tb.bind_lines
-                    .push(format!("const {} = _bindSpread({}, () => ({}))", d, var_name, expr_text));
+                    .push(format!("const {} = _bindSpread({}, () => ({}), 1)", d, var_name, expr_text));
             } else {
                 // Static spread runs once at mount — capture its disposer.
                 tb.needs_apply_props = true;
                 tb.bind_lines
-                    .push(format!("const {} = _applyProps({}, {})", d, var_name, expr_text));
+                    .push(format!("const {} = _applyProps({}, {}, 1)", d, var_name, expr_text));
             }
+            // The spread's `ref` is applied from the ref tail (`.r()`), #4764.
+            tb.spread_disp = Some(d);
             String::new()
         }
         JSXAttributeItem::Attribute(a) => {
@@ -10557,15 +10669,15 @@ fn attr_setter(
         // Mirrors the JS backend's attrSetter (jsx.ts).
         tb.needs_set_html = true;
         format!("_setHtml({}, {})", var_name, expr)
-    } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
-        // `<input>`/`<textarea>` `value`: delegate to the runtime `_setValue`
-        // (= applyValueProp), which assigns the property AND establishes
-        // `defaultValue` on the first application. A bare `el.value = v` sets
-        // only the property, and a property assignment never creates the
-        // `value` ATTRIBUTE that `form.reset()` restores from. Scoped by TAG so
-        // every other element owning a `value` property (`<progress>`,
-        // `<option>`, `<select>`, custom elements) keeps the plain property
-        // assignment. Mirrors the JS backend's attrSetter (jsx.ts).
+    } else if html_attr_name == "value" && is_value_control_tag(tag) {
+        // `<input>`/`<textarea>`/`<select>` `value`: delegate to the runtime
+        // `_setValue` (= applyValueProp). On input/textarea it assigns the
+        // property AND establishes `defaultValue` on the first application; on
+        // a select it records the controlled value the reconcilers re-apply
+        // when the options change (#4820). Scoped by TAG so every other element
+        // owning a `value` property (`<progress>`, `<option>`, custom elements)
+        // keeps the plain property assignment. Mirrors the JS backend's
+        // attrSetter (jsx.ts).
         tb.needs_set_value = true;
         format!("_setValue({}, {})", var_name, expr)
     } else if is_dom_prop(html_attr_name) && !resolve {
@@ -10655,7 +10767,7 @@ fn emit_dynamic_attr(
         } else if html_attr_name == "dangerouslySetInnerHTML" {
             tb.needs_set_html = true;
             format!("(v) => _setHtml({}, v)", var_name)
-        } else if html_attr_name == "value" && (tag == "input" || tag == "textarea") {
+        } else if html_attr_name == "value" && is_value_control_tag(tag) {
             tb.needs_set_value = true;
             format!("(v) => _setValue({}, v)", var_name)
         } else if is_dom_prop(html_attr_name) {
@@ -11458,8 +11570,8 @@ fn maybe_register_component_props_fn(func: &oxc_ast::ast::Function, ctx: &mut Ct
     }
     let first = &func.params.items[0];
     if let BindingPattern::BindingIdentifier(id) = &first.pattern {
-        if let Some(body) = &func.body {
-            if body_contains_jsx(body) {
+        if func.body.is_some() {
+            if function_contains_jsx(func) {
                 register_props_name(ctx, id.name.as_str());
                 let capitalized = if func.is_function_declaration() {
                     func.id.as_ref().is_some_and(|i| is_capitalized(i.name.as_str()))
@@ -11511,6 +11623,25 @@ fn set_fold_decl_name(declarator: &VariableDeclarator, init: &Expression, ctx: &
             ctx.fold_decl_name = Some(id.name.to_string());
         }
     }
+}
+
+/// Enter a function body: a COMPONENT nested in a callback (`test('…', () => {
+/// function Page() {…} })`) starts at callback depth 0, so its `signal()` /
+/// prop-derived consts are tracked exactly as at module level. Returns the depth
+/// the caller restores on leaving. Mirrors the JS `outerCallbackDepth` reset in
+/// `walkNode`.
+fn enter_component_body(is_component: bool, ctx: &mut Ctx) -> u32 {
+    let outer = ctx.callback_depth;
+    if is_component {
+        ctx.callback_depth = 0;
+    }
+    outer
+}
+
+/// `function Card(…) {…}` — a capitalized function declaration (jsx.ts
+/// `isCapitalizedComponent`'s declaration arm).
+fn is_capitalized_fn_decl(func: &oxc_ast::ast::Function) -> bool {
+    func.id.as_ref().is_some_and(|i| is_capitalized(i.name.as_str()))
 }
 
 fn is_capitalized(name: &str) -> bool {
@@ -11625,64 +11756,36 @@ fn fold_prop_emit(expr: &Expression, inner: &str, ctx: &mut Ctx) -> Option<Strin
     Some(format!("{} ? ({}) : _rp(() => {})", conds.join(" && "), inner, inner))
 }
 
-fn body_contains_jsx(body: &FunctionBody) -> bool {
-    body.statements.iter().any(|s| stmt_contains_jsx(s))
-}
-
-fn stmt_contains_jsx(stmt: &Statement) -> bool {
-    match stmt {
-        Statement::ReturnStatement(ret) => {
-            ret.argument.as_ref().map_or(false, |e| expr_contains_jsx(e))
-        }
-        Statement::ExpressionStatement(expr) => expr_contains_jsx(&expr.expression),
-        Statement::VariableDeclaration(decl) => decl
-            .declarations
-            .iter()
-            .any(|d| d.init.as_ref().map_or(false, |e| expr_contains_jsx(e))),
-        Statement::IfStatement(if_stmt) => {
-            stmt_contains_jsx(&if_stmt.consequent)
-                || if_stmt
-                    .alternate
-                    .as_ref()
-                    .map_or(false, |s| stmt_contains_jsx(s))
-        }
-        Statement::BlockStatement(block) => block.body.iter().any(|s| stmt_contains_jsx(s)),
-        Statement::TryStatement(t) => {
-            t.block.body.iter().any(|s| stmt_contains_jsx(s))
-                || t.handler.as_ref().map_or(false, |h| h.body.body.iter().any(|s| stmt_contains_jsx(s)))
-                || t.finalizer.as_ref().map_or(false, |f| f.body.iter().any(|s| stmt_contains_jsx(s)))
-        }
-        Statement::ForStatement(f) => stmt_contains_jsx(&f.body),
-        Statement::ForInStatement(f) => stmt_contains_jsx(&f.body),
-        Statement::ForOfStatement(f) => stmt_contains_jsx(&f.body),
-        Statement::WhileStatement(w) => stmt_contains_jsx(&w.body),
-        Statement::DoWhileStatement(d) => stmt_contains_jsx(&d.body),
-        Statement::SwitchStatement(s) => s.cases.iter().any(|c| c.consequent.iter().any(|s| stmt_contains_jsx(s))),
-        Statement::LabeledStatement(l) => stmt_contains_jsx(&l.body),
-        _ => false,
-    }
-}
-
-fn expr_contains_jsx(expr: &Expression) -> bool {
-    match expr {
-        Expression::JSXElement(_) | Expression::JSXFragment(_) => true,
-        Expression::ParenthesizedExpression(p) => expr_contains_jsx(&p.expression),
-        Expression::ConditionalExpression(c) => {
-            expr_contains_jsx(&c.consequent) || expr_contains_jsx(&c.alternate)
-        }
-        Expression::LogicalExpression(l) => {
-            expr_contains_jsx(&l.left) || expr_contains_jsx(&l.right)
-        }
-        Expression::ArrowFunctionExpression(a) => arrow_contains_jsx(a),
-        _ => false,
-    }
+/// Does a function contain JSX ANYWHERE — params, body, nested functions and
+/// callbacks included (`return items.map((i) => <li/>)`, `return { render: ()
+/// => <b/> }`)? Mirrors the JS `maybeRegisterComponentProps` `checkJSX` walk,
+/// which visits every child. The shape-by-shape statement/expression matcher
+/// this replaces missed calls, object literals and more, so a component whose
+/// JSX sat in a `.map` callback never had its props registered and a
+/// `title={p.x}` there compiled to a one-time read on the native backend only.
+fn function_contains_jsx(func: &oxc_ast::ast::Function) -> bool {
+    let mut finder = JsxAnywhere { found: false };
+    finder.visit_function(func, oxc_syntax::scope::ScopeFlags::empty());
+    finder.found
 }
 
 fn arrow_contains_jsx(arrow: &ArrowFunctionExpression) -> bool {
-    if let Some(expr) = arrow.get_expression() {
-        return expr_contains_jsx(expr);
+    let mut finder = JsxAnywhere { found: false };
+    finder.visit_arrow_function_expression(arrow);
+    finder.found
+}
+
+struct JsxAnywhere {
+    found: bool,
+}
+
+impl<'a> Visit<'a> for JsxAnywhere {
+    fn visit_jsx_element(&mut self, _it: &JSXElement<'a>) {
+        self.found = true;
     }
-    arrow.get_function_body().is_some_and(body_contains_jsx)
+    fn visit_jsx_fragment(&mut self, _it: &JSXFragment<'a>) {
+        self.found = true;
+    }
 }
 
 // ─── Prop-derived variable collection ────────────────────────────────────────

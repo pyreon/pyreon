@@ -240,6 +240,12 @@ Sibling boundaries unmount in renderer order (keyed `<For>` removals, `<Show>` f
 
 ---
 
+### [FIXED, 2026-11] "Nearest" read off a module-level stack at DISPATCH time (#4831)
+
+A frame pushed at setup and popped at UNMOUNT stays on the stack for the component's whole life, so the top at any later moment is the last frame MOUNTED, not the one enclosing the code that failed. `<ErrorBoundary>` used exactly that: a component throwing next to a mounted boundary rendered the sibling's fallback, an async component's rejection went to whichever boundary mounted last, and a rejected `<Defer>` chunk (rethrown from a reactive re-run) reached none. **Rule: resolve "nearest" through the owner chain (`provide` + `useContext`), which mirrors the tree; code that fails LATER captures the resolution at setup (`nearestErrorBoundary()` in `Defer`) or re-enters the owner (`runWithContextOwner(asyncOwner, …)` for async components).** A setup-time stack read is safe only while the frame is pushed for the duration of the subtree's synchronous mount. Locks: `runtime-dom/src/tests/error-boundary-nearest.test.ts` (bisect-verified: restoring the stack fails the sibling/async/fallback specs; dropping Defer's capture fails the Defer specs).
+
+---
+
 ### Position-based pop on SSR and compat context stacks
 
 Client context is owner-based (`provide()` writes onto the component's `EffectScope`), so this does not apply to client `provide()`/`useContext()`. It does apply to the SSR request-scoped stack (`pushContext`/`popContext`) and the `*-compat` layers' own stacks: capture the pushed frame and remove it by identity with `removeContextFrame`. Reference: `packages/core/core/src/context.ts:removeContextFrame`; `packages/core/runtime-dom/src/tests/ctx-stack-growth-repro.test.tsx`.

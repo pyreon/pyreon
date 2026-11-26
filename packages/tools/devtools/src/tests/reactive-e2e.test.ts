@@ -17,7 +17,6 @@
  */
 import { h } from '@pyreon/core'
 import {
-  __resetReactiveDevtoolsForTesting,
   computed,
   type ReactiveFire as FwFire,
   type ReactiveGraph as FwGraph,
@@ -25,6 +24,7 @@ import {
   effect,
   signal,
 } from '@pyreon/reactivity'
+import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createRecorder, ingestFires, layoutGraph } from '../reactive-view'

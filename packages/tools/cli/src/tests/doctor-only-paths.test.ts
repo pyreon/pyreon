@@ -9,6 +9,7 @@ import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { type DoctorOptions, doctor } from '../doctor'
+import { stdoutToConsoleLog } from './stdout-to-console'
 
 function makeTmpDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'cli-doctor-only-'))
@@ -24,6 +25,7 @@ describe('doctor — only selection', () => {
   it('only: [islands-audit] runs just that gate', async () => {
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     await doctor({
       ...defaults(cwd),
       json: true,
@@ -31,6 +33,7 @@ describe('doctor — only selection', () => {
     })
     const out = log.mock.calls.map((c) => c[0]).join('')
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
 
     const parsed = JSON.parse(out)
@@ -43,6 +46,7 @@ describe('doctor — only selection', () => {
   it('only: [ssg-audit] runs just that gate', async () => {
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     await doctor({
       ...defaults(cwd),
       json: true,
@@ -50,6 +54,7 @@ describe('doctor — only selection', () => {
     })
     const out = log.mock.calls.map((c) => c[0]).join('')
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
 
     const parsed = JSON.parse(out)
@@ -62,12 +67,14 @@ describe('doctor — only selection', () => {
   it('non-ci exit returns totals.errors + warnings + infos', async () => {
     const cwd = makeTmpDir()
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = stdoutToConsoleLog()
     const ret = await doctor({
       ...defaults(cwd),
       ci: false,
       only: ['islands-audit'],
     })
     log.mockRestore()
+    stdout.mockRestore()
     fs.rmSync(cwd, { recursive: true, force: true })
 
     expect(typeof ret).toBe('number')

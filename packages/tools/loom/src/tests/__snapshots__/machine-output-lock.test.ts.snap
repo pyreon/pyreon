@@ -283,10 +283,11 @@ exports[`loom scan --json is locked > --json --no-write: the report on stdout, t
       "severity": "error",
       "pkg": "@fix/plugin",
       "dep": "@fix/util",
-      "message": "\`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace",
+      "message": "\`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace; as a peer range it also misses the workspace copy (1.0.0) by a major",
       "details": {
         "declared": "^9.0.0",
-        "actual": "1.0.0"
+        "actual": "1.0.0",
+        "peerMajorMismatch": true
       }
     },
     {
@@ -316,17 +317,6 @@ exports[`loom scan --json is locked > --json --no-write: the report on stdout, t
             "@fix/util"
           ]
         }
-      }
-    },
-    {
-      "code": "peer-mismatch",
-      "severity": "warning",
-      "pkg": "@fix/plugin",
-      "dep": "@fix/util",
-      "message": "\`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships 1.0.0 — the peer contract and the local reality disagree by a major",
-      "details": {
-        "declared": "^9.0.0",
-        "actual": "1.0.0"
       }
     },
     {
@@ -437,7 +427,7 @@ exports[`loom scan --json is locked > --json --no-write: the report on stdout, t
     "depth": 1,
     "cycles": 1,
     "errors": 5,
-    "warnings": 3,
+    "warnings": 2,
     "infos": 8
   }
 }
@@ -445,7 +435,7 @@ exports[`loom scan --json is locked > --json --no-write: the report on stdout, t
 `;
 
 exports[`loom scan --json is locked > --json --strict --no-imports > stderr 1`] = `
-"loom: 4 error(s) + 2 warning(s) (strict)
+"loom: 4 error(s) + 1 warning(s) (strict)
 "
 `;
 
@@ -721,10 +711,11 @@ exports[`loom scan --json is locked > --json --strict --no-imports > stdout 1`] 
       "severity": "error",
       "pkg": "@fix/plugin",
       "dep": "@fix/util",
-      "message": "\`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace",
+      "message": "\`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the workspace; as a peer range it also misses the workspace copy (1.0.0) by a major",
       "details": {
         "declared": "^9.0.0",
-        "actual": "1.0.0"
+        "actual": "1.0.0",
+        "peerMajorMismatch": true
       }
     },
     {
@@ -742,17 +733,6 @@ exports[`loom scan --json is locked > --json --strict --no-imports > stdout 1`] 
             "@fix/util"
           ]
         }
-      }
-    },
-    {
-      "code": "peer-mismatch",
-      "severity": "warning",
-      "pkg": "@fix/plugin",
-      "dep": "@fix/util",
-      "message": "\`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships 1.0.0 — the peer contract and the local reality disagree by a major",
-      "details": {
-        "declared": "^9.0.0",
-        "actual": "1.0.0"
       }
     },
     {
@@ -802,7 +782,7 @@ exports[`loom scan --json is locked > --json --strict --no-imports > stdout 1`] 
     "depth": 1,
     "cycles": 1,
     "errors": 4,
-    "warnings": 2,
+    "warnings": 1,
     "infos": 1
   }
 }

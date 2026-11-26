@@ -137,6 +137,7 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
         const text = readDocument(id)
         const doc = parseSpecText(text)
         keyNotes.push(...duplicateKeyNotes(text, id))
+
         return { doc }
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) }
@@ -145,6 +146,7 @@ export function loadOpenApi(source: string, options: LoadOptions = {}): LoadResu
     const bundled = bundle(specAt, docs)
     return { doc: loadParsed(bundled.doc, options, [...keyNotes, ...bundled.notes]), documents: bundled.documents }
   }
+
   return { doc: loadParsed(raw as Json, options, keyNotes), documents: specAt !== undefined ? [specAt] : [] }
 }
 
@@ -176,6 +178,7 @@ export function loadParsed(raw: Json, options: LoadOptions = {}, preNotes: reado
     const upgraded = upgradeSwagger2(raw, options.sourceUrl)
     return convert(upgraded.doc, options, [...preNotes, ...upgraded.notes])
   }
+
   return convert(raw, options, preNotes)
 }
 
@@ -223,6 +226,7 @@ export function openApiVersionProblem(doc: unknown): string | undefined {
       '  Nothing was generated and the output directory was not touched.'
     )
   }
+
   return undefined
 }
 
@@ -248,6 +252,7 @@ function serverUrl(server: Json | undefined, at: string, ctx: Ctx, sourceUrl: st
       at,
       message: `server variable \`{${name}}\` has no default — it stays in the URL literally. Pass \`baseUrl\` in the config.`,
     })
+
     return match
   })
   if (!/^[a-z][a-z\d+.-]*:/i.test(url)) {
@@ -264,6 +269,7 @@ function serverUrl(server: Json | undefined, at: string, ctx: Ctx, sourceUrl: st
       message: `server url \`${url}\` is RELATIVE — the web client resolves it against the page's origin, but native needs an absolute URL (PMTC bakes it at compile time). Pass \`baseUrl\` in the config, or generate from the spec's URL so it can be resolved.`,
     })
   }
+
   return stripTrailingSlash(url)
 }
 
@@ -367,6 +373,7 @@ function convert(spec: Json, options: LoadOptions = {}, preNotes: readonly IrNot
     notes,
   }
   if (ctx.int64 === 'bigint') markAcceptsBigInt(doc)
+
   return doc
 }
 
@@ -407,6 +414,7 @@ function collectWebhooks(spec: Json, ctx: Ctx): IrWebhook[] {
     const item = pathItemOf(hooks[name], at, ctx)
     if (item) out.push(...webhookEntries('webhook', name, item, at, undefined, ctx))
   }
+
   return out
 }
 
@@ -424,6 +432,7 @@ function webhookEntries(
     const op = obj(item[method.toLowerCase()]) as Json
     const mAt = sub(at, method.toLowerCase())
     const body = bodyOf(method, op, mAt, ctx)
+
     return {
       kind,
       name: methods.length > 1 ? `${name}.${method.toLowerCase()}` : name,
@@ -433,6 +442,34 @@ function webhookEntries(
       ...(body ? { payload: body.type, mediaType: body.mediaType } : {}),
     }
   })
+}
+
+/**
+ * A union's declared discriminator with each member's tag values, per OpenAPI:
+ * the `mapping` keys whose target is that member, else the member's component
+ * name. `undefined` when there is no discriminator, or a member is not a
+ * `$ref` (an inline member has no name to be its implicit tag).
+ */
+function declaredDiscriminator(
+  schema: Json,
+  members: readonly unknown[],
+): { property: string; tags: string[][] } | undefined {
+  const d = obj(schema.discriminator)
+  const property = str(d?.propertyName)
+  if (!property) return undefined
+  const mapping = Object.entries(obj(d?.mapping) ?? {}).filter((e): e is [string, string] => typeof e[1] === 'string')
+  const tags: string[][] = []
+  for (const m of members) {
+    const ref = str(obj(m)?.$ref)
+    const prefix = '#/components/schemas/'
+    if (!ref?.startsWith(prefix)) return undefined
+    const name = ref.slice(prefix.length).replace(/~1/g, '/').replace(/~0/g, '~')
+    // A mapping value is a full reference or a bare schema name.
+    const mapped = mapping.filter(([, target]) => target === ref || target === name).map(([tag]) => tag)
+    tags.push(mapped.length > 0 ? mapped : [name])
+  }
+
+  return { property, tags }
 }
 
 /**
@@ -464,6 +501,7 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx,
       seen.add(cur.name)
       cur = byName.get(cur.name)?.type
     }
+
     return cur?.kind === 'object' ? cur : undefined
   }
 
@@ -484,6 +522,7 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx,
         claimed.add(v)
       }
     }
+
     return undefined
   }
 
@@ -508,9 +547,16 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx,
         // check would then reject for having a non-object member.
         const hasNull = options.some((o) => o.kind === 'null' || o.kind === 'nullable')
         if (hasNull && options.length > 1) {
-          options = options.filter((o) => o.kind !== 'null').map((o) => (o.kind === 'nullable' ? o.inner : o))
+          const kept = options.map((o, i) => [o, i] as const).filter(([o]) => o.kind !== 'null')
+          options = kept.map(([o]) => (o.kind === 'nullable' ? o.inner : o))
           if (options.length === 0) return { kind: 'null' }
-          const rest = walk({ ...type, options }, at) as IrType
+          // The declared tags stay aligned with the members that remain.
+          const declared = type.declared && {
+            property: type.declared.property,
+            tags: kept.map(([, i]) => type.declared?.tags[i] ?? []),
+          }
+          const rest = walk({ ...type, options, declared }, at) as IrType
+
           return rest.kind === 'null' || rest.kind === 'nullable' ? rest : { kind: 'nullable', inner: rest }
         }
         if (options.length === 1) return options[0] as IrType
@@ -526,9 +572,11 @@ function normalizeUnions(models: IrModel[], operations: IrOperation[], ctx: Ctx,
               at,
               message: `discriminator \`${type.discriminator}\` cannot be proven from the members (${why}) - emitted as a plain union instead, which validates the same data without the tag dispatch.`,
             })
-            return { kind: 'union', options, discriminator: undefined }
+
+            return { kind: 'union', options, discriminator: undefined, declared: type.declared }
           }
         }
+
         return { ...type, options }
       }
       default:
@@ -621,6 +669,7 @@ function modelType(key: string, ctx: Ctx): IrType | undefined {
   const t = toType(schema, ptr('components', 'schemas', key), ctx)
   ctx.converting.delete(key)
   ctx.modelTypes.set(key, t)
+
   return t
 }
 
@@ -630,6 +679,7 @@ function claimName(base: string, ctx: Ctx): string {
   let name = root
   for (let n = 2; ctx.taken.has(name); n++) name = `${root}${n}`
   ctx.taken.add(name)
+
   return name
 }
 
@@ -794,6 +844,7 @@ function collectOperations(spec: Json, ctx: Ctx): IrOperation[] {
       }
     }
   }
+
   return ops
 }
 
@@ -901,6 +952,7 @@ function collectSecuritySchemes(spec: Json, ctx: Ctx): IrSecurityScheme[] {
       })
     }
   }
+
   return out
 }
 
@@ -917,6 +969,7 @@ function paginationOf(raw: unknown, at: string, ctx: Ctx): Pick<IrOperation, 'pa
     ctx.notes.push({ code: 'invalid-pagination', at: `${at}/x-pyreon-pagination`, message: parsed })
     return {}
   }
+
   return { pagination: parsed }
 }
 
@@ -959,6 +1012,7 @@ function queryStyle(po: Json): Pick<IrParam, 'style' | 'explode'> {
   const style = QUERY_STYLES.find((s) => s === po.style)
   if (style) out.style = style
   if (typeof po.explode === 'boolean') out.explode = po.explode
+
   return out
 }
 
@@ -980,6 +1034,7 @@ function tagFileNames(raw: readonly string[]): Map<string, string> {
     taken.add(tagFile(t))
     out.set(tag, t)
   }
+
   return out
 }
 
@@ -1017,6 +1072,7 @@ function paramSchema(po: Json): Json {
   if (direct) return direct
   const content = obj(po.content)
   const first = content ? obj(content[Object.keys(content)[0] ?? '']) : undefined
+
   return obj(first?.schema) ?? { type: 'string' }
 }
 
@@ -1038,6 +1094,7 @@ function withUndeclaredPathParams(
     have.add(id)
     out.push({ name: id, type: { kind: 'string' }, required: true, doc: undefined })
   }
+
   return out
 }
 
@@ -1058,6 +1115,7 @@ function encodingOf(mediaType: string): BodyEncoding {
   if (base === 'application/x-www-form-urlencoded') return 'form'
   if (base.startsWith('multipart/')) return 'multipart'
   if (base.startsWith('text/')) return 'text'
+
   return 'binary'
 }
 
@@ -1080,6 +1138,7 @@ function bodyOf(method: string, op: Json, at: string, ctx: Ctx): IrBody | undefi
       at: where,
       message: `${method} declares a requestBody, which fetch refuses to send — the body is dropped from the generated call. Move the data to query parameters in the spec.`,
     })
+
     return undefined
   }
   const required = rb.required === true
@@ -1102,6 +1161,7 @@ function bodyOf(method: string, op: Json, at: string, ctx: Ctx): IrBody | undefi
   if (encoding === 'binary') return { mediaType, encoding, required, type: { kind: 'string', format: 'binary' } }
   const example = exampleOf(media, schema, sub(where, 'content', mediaType), ctx)
   const type = schema ? toType(schema, sub(where, 'content', mediaType, 'schema'), ctx) : { kind: 'unknown' as const, reason: 'no schema' }
+
   return {
     mediaType,
     encoding,
@@ -1136,6 +1196,7 @@ function exampleOf(holder: Json, schema: Json | undefined, at: string, ctx: Ctx)
       if (entry && entry.value !== undefined) return jsonValue(entry.value)
     }
   }
+
   return schema?.example !== undefined ? jsonValue(schema.example) : undefined
 }
 
@@ -1155,6 +1216,7 @@ function resolveChain(node: unknown, at: string, ctx: Ctx): Json | undefined {
     seen.add(ref)
     cur = obj(deref(cur, at, ctx))
   }
+
   return cur
 }
 
@@ -1170,6 +1232,7 @@ function pathItemOf(raw: unknown, at: string, ctx: Ctx): Json | undefined {
   if (!target) return undefined
   const siblings: Json = {}
   for (const [k, v] of Object.entries(o)) if (k !== '$ref') siblings[k] = v
+
   return { ...target, ...siblings }
 }
 
@@ -1188,8 +1251,10 @@ function jsonValue(value: unknown): unknown {
       if (j === undefined) return undefined
       out[k] = j
     }
+
     return out
   }
+
   return undefined
 }
 
@@ -1198,6 +1263,7 @@ function externalDocsOf(value: unknown): { url: string; description?: string | u
   const ed = obj(value)
   const url = ed ? str(ed.url) : undefined
   if (!ed || !url || !/^https?:\/\//.test(url)) return undefined
+
   return { url, description: str(ed.description) }
 }
 
@@ -1213,6 +1279,7 @@ function fieldEncodingOf(encoding: Json | undefined): Record<string, IrFieldEnco
     const explode = typeof e.explode === 'boolean' ? e.explode : undefined
     if (style !== undefined || explode !== undefined) out[key] = { style, explode }
   }
+
   return Object.keys(out).length > 0 ? out : undefined
 }
 
@@ -1255,6 +1322,7 @@ function responseOf(op: Json, at: string, ctx: Ctx): Pick<IrOperation, 'response
   }
   const content = obj(res?.content)
   if (!content) return typedErrors
+
   return { ...pickResponseContent(content, cAt, ctx), ...typedErrors }
 }
 
@@ -1297,6 +1365,7 @@ function errorResponsesOf(responses: Json, chosen: string | undefined, rAt: stri
       message: `error response${untyped.length > 1 ? 's' : ''} ${untyped.map((k) => `\`${k}\``).join(', ')} ${untyped.length > 1 ? 'have' : 'has'} no JSON schema, so ${untyped.length > 1 ? 'their bodies are' : 'its body is'} not typed — the rejection's \`body\` is \`unknown\` for ${untyped.length > 1 ? 'those statuses' : 'that status'}.`,
     })
   }
+
   return out
 }
 
@@ -1333,6 +1402,7 @@ function pickResponseContent(
         message: `no JSON media type (found ${keys.join(', ')}) — the client decodes \`${first}\`.`,
       })
     }
+
     return withStream({ response: { kind: 'unknown', reason: `media type ${first}` }, responseMedia: first })
   }
   const others = keys.filter((k) => k !== streaming)
@@ -1344,6 +1414,7 @@ function pickResponseContent(
     })
   }
   const schema = obj(obj(content[json])?.schema)
+
   return withStream({
     response: schema ? toType(schema, sub(at, 'content', json, 'schema'), ctx) : { kind: 'unknown', reason: 'no schema' },
   })
@@ -1404,6 +1475,7 @@ function streamOf(media: string, node: unknown, at: string, ctx: Ctx): IrStream 
           : { format, media, data: 'json', event: toType(rawData, dataAt, ctx) }
       }
       noteEvent('`itemSchema` has no `data` property — it is read as the type of each event\'s JSON `data`.')
+
       return { format, media, data: 'json', event: toType(rawItem, sub(at, 'itemSchema'), ctx) }
     }
     if (!rawSchema || !schema) {
@@ -1411,6 +1483,7 @@ function streamOf(media: string, node: unknown, at: string, ctx: Ctx): IrStream 
       return { format, media, data: 'text', event: { kind: 'string' } }
     }
     if (schema.type === 'string') return { format, media, data: 'text', event: { kind: 'string' } }
+
     return { format, media, data: 'json', event: toType(rawSchema, sub(at, 'schema'), ctx) }
   }
   if (rawItem) return { format, media, data: 'json', event: toType(rawItem, sub(at, 'itemSchema'), ctx) }
@@ -1425,6 +1498,7 @@ function streamOf(media: string, node: unknown, at: string, ctx: Ctx): IrStream 
     noteEvent('an `array` schema on an NDJSON response is read as its `items` — one item per line.')
     return { format, media, data: 'json', event: toType(items, sub(at, 'schema', 'items'), ctx) }
   }
+
   return { format, media, data: 'json', event: toType(rawSchema, sub(at, 'schema'), ctx) }
 }
 
@@ -1440,6 +1514,7 @@ function deref(node: unknown, at: string, ctx: Ctx): unknown {
       at,
       message: `\`$ref\` \`${ref}\` points into another document, which was not read — generate from the spec FILE (so relative refs resolve), or \`lathe pull\` a remote spec, which bundles every document it references.`,
     })
+
     return { }
   }
   let cur: unknown = ctx.spec
@@ -1451,6 +1526,7 @@ function deref(node: unknown, at: string, ctx: Ctx): unknown {
       return {}
     }
   }
+
   return cur
 }
 
@@ -1525,13 +1601,19 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
     const discriminator = str(obj(schema.discriminator)?.propertyName)
     const unions: IrType[] = []
     if (oneOf.length > 0) {
-      unions.push({ kind: 'union', options: oneOf.map((o, i) => toType(obj(o) ?? {}, sub(at, 'oneOf', i), ctx)), discriminator })
+      unions.push({
+        kind: 'union',
+        options: oneOf.map((o, i) => toType(obj(o) ?? {}, sub(at, 'oneOf', i), ctx)),
+        discriminator,
+        declared: declaredDiscriminator(schema, oneOf),
+      })
     }
     if (anyOf.length > 0) {
       unions.push({
         kind: 'union',
         options: anyOf.map((o, i) => toType(obj(o) ?? {}, sub(at, 'anyOf', i), ctx)),
         discriminator: oneOf.length > 0 ? undefined : discriminator,
+        declared: oneOf.length > 0 ? undefined : declaredDiscriminator(schema, anyOf),
       })
     }
     // Properties NEXT TO the union are shared by every member (GitHub 14,
@@ -1546,6 +1628,7 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
       const baseType = toTypeNonNull(base, at, ctx)
       const members = oneOf.length > 0 ? oneOf : anyOf
       const union = unions[0] as Extract<IrType, { kind: 'union' }>
+
       return {
         kind: 'union',
         options: members.map((m, i) =>
@@ -1559,11 +1642,13 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
           ),
         ),
         discriminator: union.discriminator,
+        declared: union.declared,
       }
     }
     const parts: MergePart[] = []
     if (base) parts.push({ type: toTypeNonNull(base, at, ctx), required: stringList(schema.required) })
     for (const u of unions) parts.push({ type: u, required: [] })
+
     return mergeParts(parts, at, ctx)
   }
 
@@ -1578,6 +1663,7 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
       at: sub(at, 'const'),
       message: `\`const: ${JSON.stringify(v)}\` is not a JSON scalar, so it is not enforced — typed as unknown.`,
     })
+
     return { kind: 'unknown', reason: 'non-scalar const' }
   }
   if (Array.isArray(schema.enum)) {
@@ -1589,6 +1675,7 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
       at,
       message: `enum holds ${schema.enum.length - values.length} non-scalar value(s) -- kept the ${values.length} scalar one(s); the rest are not accepted.`,
     })
+
     return enumOf(values)
   }
 
@@ -1617,6 +1704,7 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
         ctx.int64At.add(at)
         if (ctx.int64 === 'bigint') return bigintType(schema)
       }
+
       return numberType(schema, t === 'integer')
     case 'boolean':
       return { kind: 'boolean' }
@@ -1640,8 +1728,10 @@ function toTypeNonNull(schema: Json, at: string, ctx: Ctx): IrType {
           return { kind: 'object', fields: [], additional: toType(ap as Json, sub(at, 'additionalProperties'), ctx) }
         }
         if (t === 'object' || ap === true) return { kind: 'object', fields: [], additional: { kind: 'unknown', reason: 'free-form object' } }
+
         return { kind: 'unknown', reason: 'schema declares no type' }
       }
+
       return { kind: 'object', fields: fieldsOf(schema, props, at, ctx), additional: undefined }
     }
     default:
@@ -1679,6 +1769,7 @@ function refType(ref: string, schema: Json, at: string, ctx: Ctx): IrType {
         at,
         message: `\`$ref\` \`${ref}\` resolves back to itself through references alone, so it describes no value — typed as unknown.`,
       })
+
       return { kind: 'unknown', reason: `cyclic $ref ${ref}` }
     }
     ctx.reentered.add(ref)
@@ -1687,6 +1778,7 @@ function refType(ref: string, schema: Json, at: string, ctx: Ctx): IrType {
       synthetic = claimName(ref.split('/').pop() || 'Schema', ctx)
       ctx.hoisted.set(ref, synthetic)
     }
+
     return { kind: 'ref', name: synthetic }
   }
 
@@ -1701,6 +1793,7 @@ function refType(ref: string, schema: Json, at: string, ctx: Ctx): IrType {
     ctx.reentered.delete(ref)
     return { kind: 'ref', name: synthetic }
   }
+
   return t
 }
 
@@ -1725,6 +1818,7 @@ function constrainingSiblings(schema: Json): Json | undefined {
   }
   if (Object.keys(rest).length === 0) return undefined
   if (typeof schema.type === 'string' || Array.isArray(schema.type)) rest.type = schema.type
+
   return rest
 }
 
@@ -1735,6 +1829,7 @@ function inferType(schema: Json): string | undefined {
   if (typeof schema.minLength === 'number' || typeof schema.maxLength === 'number' || typeof schema.pattern === 'string') {
     return 'string'
   }
+
   return undefined
 }
 
@@ -1753,6 +1848,7 @@ function enumOf(values: readonly IrLiteral[]): IrType {
   const nonNull = unique.filter((v) => v !== null)
   if (nonNull.length === 0) return { kind: 'null' }
   const e: IrType = { kind: 'enum', values: nonNull }
+
   return nonNull.length === unique.length ? e : { kind: 'nullable', inner: e }
 }
 
@@ -1806,6 +1902,7 @@ function bigintType(schema: Json): IrBigIntType {
   const n = numberType(schema, true)
   const exact = (v: number | undefined): number | undefined =>
     v !== undefined && Number.isSafeInteger(v) ? v : undefined
+
   return {
     kind: 'bigint',
     minimum: exact(n.minimum),
@@ -1833,6 +1930,7 @@ function numberType(schema: Json, integer: boolean): IrNumberType {
     maximum = undefined
   }
   const multipleOf = num(schema.multipleOf)
+
   return {
     kind: 'number',
     integer,
@@ -1861,6 +1959,7 @@ function fieldsOf(schema: Json, props: Json, at: string, ctx: Ctx): IrField[] {
       writeOnly: p.writeOnly === true ? true : undefined,
     })
   }
+
   return out
 }
 
@@ -1900,6 +1999,7 @@ function mergeAllOf(parts: unknown[], self: Json, at: string, ctx: Ctx): IrType 
     const { allOf: _allOf, properties: _p, required: _r, additionalProperties: _a, ...union } = self
     merged.push({ type: toTypeNonNull(union, at, ctx), required: [] })
   }
+
   return mergeParts(merged, at, ctx)
 }
 
@@ -1921,11 +2021,13 @@ function resolvePart(t: IrType, at: string, ctx: Ctx): { type: IrType; nullable:
         at,
         message: `allOf reaches \`${t.name}\` again while merging it — the cyclic part contributes no fields.`,
       })
+
       return undefined
     }
     const hoisted = ctx.extraModels.find((m) => m.name === t.name)
     if (hoisted) return resolvePart(hoisted.type, at, ctx)
   }
+
   return { type: t, nullable: false }
 }
 
@@ -1980,11 +2082,12 @@ function mergeParts(parts: readonly MergePart[], at: string, ctx: Ctx): IrType {
           ctx,
         ),
       )
-      result = { kind: 'union', options, discriminator: union.discriminator }
+      result = { kind: 'union', options, discriminator: union.discriminator, declared: union.declared }
     }
   } else {
     result = mergeObjects(resolved, at, ctx)
   }
+
   return admitsNull ? nullable(result) : result
 }
 
@@ -2008,6 +2111,7 @@ function mergeObjects(
       ctx.notes.push({ code: 'unsupported-schema', at, message: 'allOf of incompatible non-object schemas — kept the first.' })
       return first
     }
+
     return values.slice(1).reduce((acc, v) => refineType(acc, v.type), first)
   }
   if (values.length > 0) {
@@ -2041,6 +2145,7 @@ function mergeObjects(
   }
   const required = new Set(parts.flatMap((p) => p.required))
   const out = [...fields.values()].map((f) => (required.has(f.name) && !f.required ? { ...f, required: true } : f))
+
   return { kind: 'object', fields: out, additional }
 }
 
@@ -2088,12 +2193,14 @@ function refineType(a: IrType, b: IrType): IrType {
       ...(a.acceptsBigInt || b.acceptsBigInt ? { acceptsBigInt: true as const } : {}),
     }
   }
+
   return b
 }
 
 function maxOf(a: number | undefined, b: number | undefined): number | undefined {
   return a === undefined ? b : b === undefined ? a : Math.max(a, b)
 }
+
 function minOf(a: number | undefined, b: number | undefined): number | undefined {
   return a === undefined ? b : b === undefined ? a : Math.min(a, b)
 }
@@ -2109,6 +2216,7 @@ function decodePointerSegment(seg: string): string {
   } catch {
     // A lone `%` is not an escape; the segment is taken literally.
   }
+
   return s.replace(/~1/g, '/').replace(/~0/g, '~')
 }
 
@@ -2128,8 +2236,10 @@ function specVersion(raw: unknown, notes: IrNote[]): string {
       at: '#/info/version',
       message: `\`info.version\` is the number ${raw}, not a string -- used as \`${raw}\`. Quote it in YAML (\`version: '1.0'\`); an unquoted \`1.0\` has already lost its \`.0\` by the time it is read.`,
     })
+
     return String(raw)
   }
+
   return str(raw) ?? '0.0.0'
 }
 
@@ -2152,18 +2262,23 @@ function sub(at: string, ...segments: ReadonlyArray<string | number>): string {
 function stripTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url
 }
+
 function obj(v: unknown): Json | undefined {
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : undefined
 }
+
 function arr(v: unknown): unknown[] {
   return Array.isArray(v) ? v : []
 }
+
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined
 }
+
 function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined
 }
+
 /** A non-negative integer count (`minLength`, `minItems`, …). */
 function count(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : undefined

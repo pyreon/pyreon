@@ -1,4 +1,4 @@
-import { createTerm, finding, header } from '@pyreon/ansi'
+import { createTerm, exitAfterFlush, finding, header } from '@pyreon/ansi'
 import { reportFailure } from './report'
 import { type ChildProcess, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -93,7 +93,7 @@ export async function preview(root: string | undefined, options: PreviewOptions)
       const forward = (signal: NodeJS.Signals) => child.kill(signal)
       process.once('SIGINT', forward)
       process.once('SIGTERM', forward)
-      child.on('exit', (code) => process.exit(code ?? 0))
+      child.on('exit', (code) => void exitAfterFlush(code ?? 0))
       return
     }
     if (target.serverBuildWithoutRunner) {
@@ -127,6 +127,6 @@ export async function preview(root: string | undefined, options: PreviewOptions)
     server.printUrls()
   } catch (error) {
     reportFailure('zero preview', 'Failed to start the preview server', error)
-    process.exit(1)
+    await exitAfterFlush(1)
   }
 }

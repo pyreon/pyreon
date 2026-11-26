@@ -1027,7 +1027,11 @@ and read back, typed, by the current route. A route's
 `loader: () => <expr>` is now **auto-emitted** (v1): the compiler wraps
 the route in a runtime `PyreonRouteLoader` host that fires the loader once
 on appear (`.task` / `LaunchedEffect`) and calls `setLoaderData`, so
-`useLoaderData<T>()` reads it with no manual wiring. v1 covers zero-param,
+`useLoaderData<T>()` reads it with no manual wiring. As on the web,
+`useLoaderData<T>()` returns an accessor: bind it once
+(`const data = useLoaderData<Post>()`) and read through the call
+(`data().title`), which lowers to the native value read (`data.title` on a
+Swift computed property / a Kotlin `val`), typed by `T`. v1 covers zero-param,
 expression-body loaders (signal/store reads + sync expressions);
 param-using, block-body, and truly-async loaders WARN and emit unloaded —
 see the loader-auto-emit note in the roadmap.
@@ -1333,11 +1337,13 @@ every warning; treat any warning as "this construct is outside v1."
   keeps its own per-key lowering (router section). **Still warn-drop:** a
   rest element (`const { data, ...rest } = …`) or a nested pattern
   (`const { user: { id } } = …`) — v1 lowers all-simple destructures only.
-  `useLoaderData<T>()` destructures too (`const { title } = useLoaderData<Post>()`,
-  renames included), one accessor per field of `T`. Its reads are NON-optional, as on
-  the web: the component renders only once its loader data exists (Kotlin returns
-  early, Swift gates the body, and `PyreonRouteLoader` holds the route's component
-  back until the loader has run), so `onMount` sees the data too.
+  `useLoaderData<T>()` is NOT destructured: it returns an accessor on the web, so
+  `const { title } = useLoaderData<Post>()` reads fields off a function and warns
+  with the fix — bind it (`const data = useLoaderData<Post>()`) and read
+  `data().title`. Its reads are NON-optional, as on the web: the component renders
+  only once its loader data exists (Kotlin returns early, Swift gates the body, and
+  `PyreonRouteLoader` holds the route's component back until the loader has run), so
+  `onMount` sees the data too.
 - **Destructured function/arrow params → lowered.** A helper with a
   destructured param — `const dist = ({ x, y }: Point): number => x + y`,
   `const apply = ({ id }: T) => { remove(id) }` — synthesizes a positional
@@ -1734,6 +1740,27 @@ DECLARES (Info.plist usage strings, AndroidManifest permissions; the scaffold
 lists them commented out) — and `window.open` / `target="_blank"` handed to the
 system browser for `http(s)`, `mailto`, `tel` and `sms`. Device-proven by
 `examples/native-tasks`' `/webhost` screen on both platforms.
+
+**Downloads.** A download the page starts — `<a download>` (also for a
+`blob:` / `data:` URL the page built), a `Content-Disposition: attachment`
+response, or a type the engine cannot display — calls
+`onDownload({ url, filename, mimeType })` and is then saved for the user: on
+iOS through a `WKDownload` and the share sheet (Save to Files, AirDrop, …), on
+Android through `DownloadManager` (http(s), with its notification) or, for a
+`blob:` / `data:` URL that only the page can read, by reading it in the page
+and opening the system "save as" picker. `saveDownloads={false}` leaves every
+download to `onDownload`. Without this both hosts silently dropped downloads.
+Downloads are scoped like the bridge: only the MAIN frame on the host's origin,
+after a user gesture there (one download per gesture, recorded on iOS by a
+script in an isolated content world the page cannot forge, on Android by the
+token-holding main-frame shim), one at a time; anything else is refused with a
+`[Pyreon] <WebView>` log and no `onDownload`. The `/webhost` screen's
+"Download CSV" export (a detached `<a download>` on a `blob:` URL revoked
+right after the click) is asserted in the device lanes: `onDownload` receives
+the page's file name and the share sheet / save picker opens. The `http(s)` →
+`DownloadManager` path and the `Content-Disposition` / undisplayable-type
+routes are covered by the policy unit tests only. On the web the browser
+handles downloads in the iframe and the two props are ignored.
 
 ### The `/webview` subpaths — web engines that cross by HOSTING
 

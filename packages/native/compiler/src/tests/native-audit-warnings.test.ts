@@ -762,35 +762,27 @@ describe('Round-3 audit — diagnostic warnings for silently-broken shapes', () 
       expect(result.code).toContain('val data = useLoaderData<User>() ?: return')
     })
 
-    it('B6 destructure form LOWERS, one non-optional accessor per field', () => {
-      const result = transform(
-        `
+    it('a destructure is NOT lowered — useLoaderData returns an accessor on the web, so it warns with the fix', () => {
+      for (const form of [
+        'const { name } = useLoaderData<{ name: string }>()',
+        'const { user: { name } } = useLoaderData<{ user: User }>()',
+      ]) {
+        for (const target of ['swift', 'kotlin'] as const) {
+          const result = transform(
+            `
         export function ProfilePage() {
-          const { name } = useLoaderData<{ name: string }>()
+          ${form}
           return <Text>Hi</Text>
         }
         `,
-        { target: 'swift' },
-      )
-      expect(result.warnings.filter((w) => w.includes('useLoaderData'))).toEqual([])
-      expect(result.code).toContain('private var name: String { __pyreonLoaderData.name }')
-    })
-
-    it('a destructure shape that does not lower (a nested pattern) warns by name', () => {
-      const result = transform(
-        `
-        export function ProfilePage() {
-          const { user: { name } } = useLoaderData<{ user: User }>()
-          return <Text>Hi</Text>
+            { target },
+          )
+          const w = result.warnings.join('\n')
+          expect(w, `${target}: ${form}`).toContain('destructures an accessor and is not lowered on native')
+          expect(w, `${target}: ${form}`).toContain('`const data = useLoaderData<T>()`, then `data().')
+          expect(result.code, `${target}: ${form}`).not.toContain('__pyreonLoaderData')
         }
-        `,
-        { target: 'swift' },
-      )
-      expect(
-        result.warnings.some(
-          (w) => w.includes('useLoaderData<T>()') && w.includes('only a plain or renamed field'),
-        ),
-      ).toBe(true)
+      }
     })
 
     it('several single-binding loader reads all emit, none warns', () => {

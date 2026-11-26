@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope } from '@pyreon/reactivity'
 import { useFetch } from '../useFetch'
 
 // Stub the PLATFORM fetch boundary (not the framework) — the hook's
@@ -93,6 +94,7 @@ describe('useFetch', () => {
         if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
         return r
       }
+
       return jsonResponse({ v: 'fresh' })
     })
     const r = useFetch<{ v: string }>('/api/race')
@@ -136,4 +138,54 @@ describe('useFetch', () => {
     const init = spy.mock.calls[0]?.[1]
     expect(init?.signal).toBeInstanceOf(AbortSignal)
   })
+
+  // A promise source (an `@pyreon/http` endpoint call) settling AFTER its
+  // owner went away must write nothing — both the resolve and reject paths.
+  describe('promise source disposed before it settles', () => {
+    it('ignores a late resolution', async () => {
+      let resolve!: (v: unknown) => void
+      const scope = effectScope()
+      let r!: ReturnType<typeof useFetch>
+      scope.runInScope(() => {
+        r = useFetch(new Promise((res) => (resolve = res)) as never)
+      })
+      scope.stop()
+      resolve({ late: true })
+      await flush()
+      expect(r.data()).toBeUndefined()
+      expect(r.isPending()).toBe(true)
+    })
+
+    it('ignores a late rejection', async () => {
+      let reject!: (e: unknown) => void
+      const scope = effectScope()
+      let r!: ReturnType<typeof useFetch>
+      scope.runInScope(() => {
+        r = useFetch(new Promise((_res, rej) => (reject = rej)) as never)
+      })
+      scope.stop()
+      reject(new Error('late'))
+      await flush()
+      expect(r.error()).toBeUndefined()
+      expect(r.isPending()).toBe(true)
+    })
+
+    it('refetch() on a promise source is silent in production', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const prev = process.env.NODE_ENV
+      process.env.NODE_ENV = 'production'
+      try {
+        const scope = effectScope()
+        scope.runInScope(() => {
+          useFetch(Promise.resolve({}) as never).refetch()
+        })
+        scope.stop()
+        expect(warn).not.toHaveBeenCalled()
+      } finally {
+        process.env.NODE_ENV = prev
+        warn.mockRestore()
+      }
+    })
+  })
 })
+

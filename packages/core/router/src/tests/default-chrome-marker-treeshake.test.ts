@@ -49,7 +49,7 @@ const ROUTER_LIB = resolve(HERE, '../../lib/index.js')
 // exactly the shape that lets the PURE call be dropped.
 const ENTRY = `
 import { RouterProvider, resolveRoute } from ${JSON.stringify(ROUTER_LIB)}
-import { isNativeCompat } from '@pyreon/core'
+import { isNativeCompat } from '@pyreon/core/compat'
 void RouterProvider
 const PageOnly = () => null
 const NotFound = () => null

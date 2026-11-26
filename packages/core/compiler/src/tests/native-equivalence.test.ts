@@ -357,6 +357,12 @@ describe('JS syntax and optional native parity — template emission', () => {
   test('ref after a slot', () => compare('<div>{items().map((i) => <b>{i}</b>)}<span ref={r} /></div>'))
   test('ref beside a reactive text', () => compare('<p ref={r}>{count()}</p>'))
   test('ref in a For row', () => compare('<ul><For each={rows} by={(x) => x}>{(x) => <li ref={r}>{x}</li>}</For></ul>'))
+  // #4764: a ref runs after its element's children lines (and after a deferred `<select value>`).
+  test('ref over slot placeholders', () => compare('<p ref={r}><s />{v}{() => vn}{x()}</p>'))
+  test('nested refs run children first', () => compare('<div ref={a}><span ref={b}>{v}</span><i ref={c} /></div>'))
+  test('ref beside a select value', () => compare('<select ref={r} value={sel()}>{opts()}</select>'))
+  test('ref after attribute effects', () => compare('<div ref={r} class={`a ${cls()}`} title={tip()}><i ref={q} />{v}</div>'))
+  test('spread refs deferred', () => compare('<p {...p}><s {...make()} />{v}<b ref={r} {...q} /></p>'))
 
   // Regression: a child element with a block-arrow ref AND adjacent
   // reactive props used to emit `const __e0 = __root.children[N]`

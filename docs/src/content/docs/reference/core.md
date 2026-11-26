@@ -139,7 +139,7 @@ const Card = () => {
 | [`Match`](#match-component) | component | A branch inside a `<Switch>`. |
 | [`For`](#for-component) | component | Keyed reactive list rendering. |
 | [`Suspense`](#suspense-component) | component | Async boundary that shows `fallback` while any `lazy()` component or async component inside is loading — at ANY depth: a… |
-| [`ErrorBoundary`](#errorboundary-component) | component | Catches render errors thrown by descendant components. |
+| [`ErrorBoundary`](#errorboundary-component) | component | Catches render errors thrown by descendant components — the boundary that ENCLOSES the component in the tree (resolved… |
 | [`lazy`](#lazy-function) | function | Wrap a dynamic import for code splitting. |
 | [`Dynamic`](#dynamic-component) | component | Renders a component by reference or string tag name. |
 | [`cx`](#cx-function) | function | Combine a class value into a single string. |
@@ -155,9 +155,7 @@ const Card = () => {
 | [`createRef`](#createref-function) | function | Create a mutable ref object (`{ current: T \| null }`) for holding DOM element references. |
 | [`elementRef`](#elementref-function) | function | A single value that is BOTH a ref and the `() => T \| null` accessor element-consuming hooks take (`useElementSize`,… |
 | [`nativeCompat`](#nativecompat-function) | function | Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip… |
-| [`isNativeCompat`](#isnativecompat-function) | function | Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. |
-| [`NATIVE_COMPAT_MARKER`](#native_compat_marker-constant) | constant | The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native… |
-| [`Defer`](#defer-component) | component | Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the… |
+| [`Defer`](#defer-component) | component | Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when` loads once the condition… |
 | [`registerErrorHandler / reportError`](#registererrorhandler-reporterror-function) | function | `registerErrorHandler` is the telemetry hook for Sentry/Datadog/custom error reporting — called whenever a component… |
 | [`isClient / isServer`](#isclient-isserver-constant) | constant | Re-exported from `@pyreon/reactivity` for convenience — `isServer = typeof document === 'undefined'`, `isClient` its… |
 | [`escapeJsonForScript`](#escapejsonforscript-function) | function | Neutralise JSON TEXT for the body of an inline `<script>`: every `<` becomes `\u003C` (so `</script`, `<!--` and… |
@@ -629,7 +627,7 @@ const LazyPage = lazy(() => import("./HeavyPage"))
 <ErrorBoundary fallback={(err, reset) => VNodeChild}>{children}</ErrorBoundary>
 ```
 
-Catches render errors thrown by descendant components. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`.
+Catches render errors thrown by descendant components — the boundary that ENCLOSES the component in the tree (resolved through the context owner chain), never a sibling. Also receives a `<Defer>` chunk that fails to load and an async component that rejects, whenever that happens. An error thrown while the boundary already shows its fallback (the fallback threw) goes to the next boundary out. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`.
 
 **Example**
 
@@ -1031,7 +1029,7 @@ function Card() {
 <T>(fn: T) => T
 ```
 
-Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip their wrapping and route the component through Pyreon's mount path. Use on every `@pyreon/*` JSX component whose setup body uses `provide()` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (`Symbol.for("pyreon:native-compat")`), so framework and compat sides share it without an import dependency between them.
+Mark a Pyreon framework component as "self-managing" so compat layers (`@pyreon/{react,preact,vue,solid}-compat`) skip their wrapping and route the component through Pyreon's mount path. Use on every `@pyreon/*` JSX component whose setup body uses `provide()` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (`Symbol.for("pyreon:native-compat")`), so framework and compat sides share it without an import dependency between them. The compat layers read it through `isNativeCompat()` from `@pyreon/core/compat`, an internal subpath with no semver promise.
 
 **Example**
 
@@ -1048,58 +1046,17 @@ export const RouterView = nativeCompat(function RouterView(props) {
 - Forgetting to mark a new framework JSX export — under compat mode, the component's `provide()` / `onMount()` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.
 - Marking user-app components — only `@pyreon/*` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).
 
-**See also:** `isNativeCompat` · `NATIVE_COMPAT_MARKER`
-
----
-
-### `isNativeCompat` `function`
-
-```ts
-(fn: unknown) => boolean
-```
-
-Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. Compat `jsx()` calls this to decide whether to skip the React/Vue/Solid/Preact-style wrapping. Always returns `false` for non-function inputs.
-
-**Example**
-
-```tsx
-// In a compat layer's jsx-runtime:
-if (isNativeCompat(type)) return h(type, props)
-return wrapCompatComponent(type)(props)
-```
-
-**See also:** `nativeCompat` · `NATIVE_COMPAT_MARKER`
-
----
-
-### `NATIVE_COMPAT_MARKER` `constant`
-
-```ts
-symbol
-```
-
-The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framework component. Most callers should use `nativeCompat()` / `isNativeCompat()` instead of touching the symbol directly; exported for advanced cases (e.g., a compat layer that wants to inspect the property without going through the helper).
-
-**Example**
-
-```tsx
-import { NATIVE_COMPAT_MARKER } from '@pyreon/core'
-
-// Equivalent to nativeCompat(MyComponent):
-;(MyComponent as Record<symbol, boolean>)[NATIVE_COMPAT_MARKER] = true
-```
-
-**See also:** `nativeCompat` · `isNativeCompat`
+**See also:** `createContext` · `provide`
 
 ---
 
 ### `Defer` `component`
 
 ```ts
-<Defer chunk={() => import('./X')} when={() => boolean} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>
+<Defer chunk={() => import('./X')} when={boolean | (() => boolean)} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>
 ```
 
-Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when={accessor}` loads once the accessor becomes truthy (the modal-open pattern); `on="visible"` loads when the wrapper scrolls into the viewport (`IntersectionObserver`, `rootMargin` default `'200px'` so it's typically ready before the user scrolls to it); `on="idle"` loads during browser idle time (`requestIdleCallback`, falling back to `setTimeout(1)`). The chunk fetch fires EXACTLY ONCE per `Defer` instance — a `when` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (`<Defer when={x}><Modal/></Defer>`) that `@pyreon/compiler`'s `transformDeferInline` rewrites into the explicit form at BUILD time — the inline form requires `@pyreon/vite-plugin`; without it, `Defer` throws a clear dev-mode error naming the fix. `fallback` renders while the chunk loads (default `null`); a chunk-load failure is caught, dev-warned, and re-thrown into the nearest `ErrorBoundary` on render.
+Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): `when` loads once the condition becomes truthy (the modal-open pattern) and, like `<Show when>`, takes a value or an accessor — `when={open}` with a component-local signal/computed, `when={open()}` and `when={() => open()}` are all reactive; `on="visible"` loads when the wrapper scrolls into the viewport (`IntersectionObserver`, `rootMargin` default `'200px'` so it's typically ready before the user scrolls to it); `on="idle"` loads during browser idle time (`requestIdleCallback`, falling back to `setTimeout(1)`). The chunk fetch fires EXACTLY ONCE per `Defer` instance — a `when` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (`<Defer when={x}><Modal/></Defer>`) that `@pyreon/compiler`'s `transformDeferInline` rewrites into the explicit form at BUILD time — the inline form requires `@pyreon/vite-plugin`; without it, `Defer` throws a clear dev-mode error naming the fix. `fallback` renders while the chunk loads (default `null`). A chunk-load failure (offline, a deploy replaced the hashed file) goes to the enclosing `<ErrorBoundary>` like any other render error — on mount or on a later load — so its fallback and `reset()` (which remounts the `Defer` and retries) handle it; with no boundary it is reported to `registerErrorHandler`, dev-logged, and the slot renders nothing.
 
 **Example**
 

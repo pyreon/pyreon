@@ -1,4 +1,4 @@
-import { isNativeCompat } from '@pyreon/core'
+import { isNativeCompat } from '@pyreon/core/compat'
 import { describe, expect, it } from 'vitest'
 import { QueryDevtools } from '../devtools'
 import { HydrationBoundary } from '../hydration-boundary'

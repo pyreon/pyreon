@@ -60,25 +60,25 @@ export const SETCHILD_EMPTY_CASES: SetChildEmptyCase[] = [
   {
     name: "a ref that clears, beside a sibling cell",
     source: "export const App = () => <div><span ref={clear}>{vNode}</span><em>{vArr}</em></div>",
-    compiled: "const App = () => _tpl(\"<div><span></span><em></em></div>\", (__root) => {\n  const __e0 = __root.firstElementChild;\n  const __e1 = __e0.nextElementSibling;\n  const __d0 = _ref(__e0, clear);\n  _setChild(__e0, vNode);\n  _setChild(__e1, vArr);\n  return __d0;\n});\n",
+    compiled: "const App = () => _tpl(\"<div><span></span><em></em></div>\", (__root) => {\n  const __e0 = __root.firstElementChild;\n  const __e1 = __e0.nextElementSibling;\n  _setChild(__e0, vNode);\n  _setChild(__e1, vArr);\n  const __d0 = _ref(__e0, clear);\n  return __d0;\n});\n",
     server: "<div><span><b>n</b></span><em>t<b>n</b></em></div>",
   },
   {
     name: "a ref that prepends",
     source: "export const App = () => <div><span ref={prepend}>{vArr}</span></div>",
-    compiled: "const App = () => _tpl(\"<div><span></span></div>\", (__root) => {\n  const __e0 = __root.firstElementChild;\n  const __d0 = _ref(__e0, prepend);\n  _setChild(__e0, vArr);\n  return __d0;\n});\n",
+    compiled: "const App = () => _tpl(\"<div><span></span></div>\", (__root) => {\n  const __e0 = __root.firstElementChild;\n  _setChild(__e0, vArr);\n  const __d0 = _ref(__e0, prepend);\n  return __d0;\n});\n",
     server: "<div><span>t<b>n</b></span></div>",
   },
   {
     name: "a root spread with dangerouslySetInnerHTML and a cell",
     source: "export const App = () => <div {...hp}>{vNode}</div>",
-    compiled: "const App = () => _tpl(\"<div></div>\", (__root) => {\n  const __d0 = _applyProps(__root, hp);\n  _setChild(__root, vNode);\n  return __d0;\n});\n",
+    compiled: "const App = () => _tpl(\"<div></div>\", (__root) => {\n  const __d0 = _applyProps(__root, hp, 1);\n  _setChild(__root, vNode);\n  const __d1 = __d0.r();\n  return _dispose2(__d0, __d1);\n});\n",
     server: "<div><i>h</i></div>",
   },
   {
     name: "plan-replayed <For> rows whose cells hold elements, with a ref that appends",
     source: "export const App = () => <ul><For each={rowsMix} by={(r) => r.id}>{(r) => <li ref={append}>{r.cell}</li>}</For></ul>",
-    compiled: "const App = () => _tpl(\"<ul data-pyreon-hole></ul>\", (__root) => {\n  const __d0 = _mountChild(/* @__PURE__ */ h(For, { each: rowsMix, by: (r) => r.id }, (r) => _tpl(\"<li></li>\", (__root2) => {\n    const __d02 = _ref(__root2, append);\n    _setChild(__root2, r.cell);\n    return __d02;\n  })), __root, null);\n  return __d0;\n});\n",
+    compiled: "const App = () => _tpl(\"<ul data-pyreon-hole></ul>\", (__root) => {\n  const __d0 = _mountChild(/* @__PURE__ */ h(For, { each: rowsMix, by: (r) => r.id }, (r) => _tpl(\"<li></li>\", (__root2) => {\n    _setChild(__root2, r.cell);\n    const __d02 = _ref(__root2, append);\n    return __d02;\n  })), __root, null);\n  return __d0;\n});\n",
     server: "<ul><!--pyreon-for--><li>s</li><li><b>two</b></li><li><b>three</b></li><!--/pyreon-for:1 2 3--></ul>",
   },
 ]

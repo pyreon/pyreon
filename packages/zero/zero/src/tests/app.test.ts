@@ -150,6 +150,28 @@ describe('createApp — base option (PR E)', () => {
   })
 })
 
+describe('createApp — trailingSlash option', () => {
+  const Page: ComponentFn = () => h('span', null, 'page')
+  const routes: RouteRecord[] = [
+    { path: '/', component: Page },
+    { path: '/:id', component: Page },
+  ]
+
+  it("forwards 'add' so the router keeps a directory URL's slash", async () => {
+    // A static host serves `<dir>/index.html` at `/dir/`; a router that
+    // strips the slash writes a URL the host answers only with a redirect.
+    const { router } = createApp({ routes, url: '/', trailingSlash: 'add' })
+    await router.push('/button')
+    expect(router.currentRoute().path).toBe('/button/')
+  })
+
+  it("defaults to the router's own 'strip'", async () => {
+    const { router } = createApp({ routes, url: '/' })
+    await router.push('/button/')
+    expect(router.currentRoute().path).toBe('/button')
+  })
+})
+
 // ─── PR-S1: RouterProvider unwrap regression ────────────────────────────────
 //
 // Locks in the contract: App is router-AGNOSTIC; the per-request RouterProvider
@@ -185,7 +207,7 @@ describe('createApp — PR-S1 RouterProvider unwrap regression', () => {
 
     const DataView: ComponentFn = () => {
       const data = useLoaderData<{ value: string }>()
-      return h('div', { id: 'loaded' }, `value:${data?.value ?? 'MISSING'}`)
+      return h('div', { id: 'loaded' }, () => `value:${data()?.value ?? 'MISSING'}`)
     }
 
     const routes: RouteRecord[] = [
@@ -209,7 +231,7 @@ describe('createApp — PR-S1 RouterProvider unwrap regression', () => {
 
     const ParamView: ComponentFn = () => {
       const data = useLoaderData<{ who: string }>()
-      return h('div', { id: 'who' }, `who:${data?.who ?? 'MISSING'}`)
+      return h('div', { id: 'who' }, () => `who:${data()?.who ?? 'MISSING'}`)
     }
 
     const routes: RouteRecord[] = [

@@ -16,7 +16,8 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { _setSourceTextSupport, parseJsonLossless, stringifyJsonLossless } from '@pyreon/http/json'
+import { parseJsonLossless, stringifyJsonLossless } from '@pyreon/http/json'
+import { _setSourceTextSupport } from '@pyreon/http/internal'
 import { resolveConfig } from '../core/config'
 import { generate } from '../core/generate'
 

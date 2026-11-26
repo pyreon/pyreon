@@ -525,3 +525,137 @@ describe('getFocusable — robust query', () => {
     expect(ids(getFocusable(container))).toEqual(['pos', 'bad', 'natural'])
   })
 })
+
+describe('useFocusTrap — named initialFocus with focus already inside', () => {
+  let container: HTMLDivElement
+  let btn1: HTMLButtonElement
+  let btn2: HTMLButtonElement
+  let btn3: HTMLButtonElement
+
+  beforeEach(() => {
+    mountCallbacks = []
+    unmountCallbacks = []
+    container = document.createElement('div')
+    btn1 = document.createElement('button')
+    btn2 = document.createElement('button')
+    btn3 = document.createElement('button')
+    container.append(btn1, btn2, btn3)
+    document.body.appendChild(container)
+  })
+
+  afterEach(() => {
+    unmountCallbacks.forEach((cb) => cb())
+    container.remove()
+  })
+
+  // #4355 + review: with focus already inside the container, a NAMED target
+  // moves it only on first activation or when a user event at the focused
+  // element (the trigger) activated the trap. `window.event` is what the hook
+  // reads; happy-dom has none, so it is stubbed for the activating write.
+  describe('named initialFocus with focus already inside the container', () => {
+    function withEvent<T>(target: EventTarget | null, fn: () => T): T {
+      const ev = target ? ({ target } as unknown as Event) : undefined
+      const desc = Object.getOwnPropertyDescriptor(window, 'event')
+      Object.defineProperty(window, 'event', { configurable: true, get: () => ev })
+      try {
+        return fn()
+      } finally {
+        if (desc) Object.defineProperty(window, 'event', desc)
+        else delete (window as { event?: unknown }).event
+      }
+    }
+
+    it('first activation moves focus to the named target even from inside', async () => {
+      const open = signal(false)
+      btn1.focus()
+      useFocusTrap(() => container, { active: () => open(), initialFocus: () => btn3 })
+      mountCallbacks.forEach((cb) => cb())
+      open.set(true)
+      await tick()
+      expect(document.activeElement).toBe(btn3)
+    })
+
+    it('a re-activation by the focused trigger\'s own event moves focus again', async () => {
+      const open = signal(false)
+      useFocusTrap(() => container, { active: () => open(), initialFocus: () => btn3 })
+      mountCallbacks.forEach((cb) => cb())
+      open.set(true)
+      await tick()
+      open.set(false)
+      btn1.focus()
+      withEvent(btn1, () => open.set(true))
+      await tick()
+      expect(document.activeElement).toBe(btn3)
+    })
+
+    it('a re-activation with no user event leaves focus where the user is working', async () => {
+      const open = signal(false)
+      useFocusTrap(() => container, { active: () => open(), initialFocus: () => btn3 })
+      mountCallbacks.forEach((cb) => cb())
+      open.set(true)
+      await tick()
+      open.set(false)
+      btn2.focus()
+      withEvent(null, () => open.set(true))
+      await tick()
+      expect(document.activeElement).toBe(btn2)
+    })
+
+    it('a re-activation whose event targets something else does not steal focus', async () => {
+      const open = signal(false)
+      const outside = document.createElement('button')
+      document.body.appendChild(outside)
+      try {
+        useFocusTrap(() => container, { active: () => open(), initialFocus: () => btn3 })
+        mountCallbacks.forEach((cb) => cb())
+        open.set(true)
+        await tick()
+        open.set(false)
+        btn2.focus()
+        withEvent(outside, () => open.set(true))
+        await tick()
+        expect(document.activeElement).toBe(btn2)
+      } finally {
+        outside.remove()
+      }
+    })
+
+    it('focus on <body> is not a trigger, so a re-activation with an event moves focus in', async () => {
+      const open = signal(false)
+      useFocusTrap(() => container, { active: () => open(), initialFocus: () => btn3 })
+      mountCallbacks.forEach((cb) => cb())
+      open.set(true)
+      await tick()
+      open.set(false)
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      withEvent(document.body, () => open.set(true))
+      await tick()
+      expect(document.activeElement).toBe(btn3)
+    })
+
+    it('initialFocus: true never moves focus that is already inside', async () => {
+      const open = signal(false)
+      btn2.focus()
+      useFocusTrap(() => container, { active: () => open(), initialFocus: true })
+      mountCallbacks.forEach((cb) => cb())
+      open.set(true)
+      await tick()
+      expect(document.activeElement).toBe(btn2)
+    })
+
+    it('never moves focus already inside the named target', async () => {
+      const open = signal(false)
+      const wrap = document.createElement('div')
+      const inner = document.createElement('button')
+      wrap.tabIndex = 0
+      wrap.appendChild(inner)
+      container.appendChild(wrap)
+      inner.focus()
+      useFocusTrap(() => container, { active: () => open(), initialFocus: () => wrap })
+      mountCallbacks.forEach((cb) => cb())
+      open.set(true)
+      await tick()
+      expect(document.activeElement).toBe(inner)
+    })
+  })
+})

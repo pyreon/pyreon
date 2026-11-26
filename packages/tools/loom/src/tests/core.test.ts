@@ -2,7 +2,8 @@
  * The core engine over the synthetic fixture — one assertion block per issue
  * class the fixture encodes, plus the graph analysis and the report fold.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -167,9 +168,24 @@ describe('detectors (via the report)', () => {
     expect(hit?.message).toContain('lexical evidence')
   })
 
-  it('peer-mismatch: internal peer range disagreeing with the workspace copy by a major', () => {
-    const hit = byCode('peer-mismatch').find((i) => i.pkg === '@fix/plugin')
-    expect(hit?.dep).toBe('@fix/util')
+  // #4391 — the edge `@fix/plugin` → `@fix/util` (peer `^9.0.0`, workspace 1.0.0)
+  // is a bare range on a workspace member AND a peer off by a major. It used to
+  // be reported twice (an internal-range error plus a peer-mismatch warning);
+  // internal-range owns the edge and names the major mismatch.
+  it('a bare internal peer range off by a major is ONE internal-range finding', () => {
+    const onEdge = report.issues.filter((i) => i.pkg === '@fix/plugin' && i.dep === '@fix/util')
+    expect(onEdge.map((i) => i.code)).toEqual(['internal-range'])
+    expect(onEdge[0]?.message).toContain('misses the workspace copy (1.0.0) by a major')
+    // Carried structurally, not only as message text.
+    expect(onEdge[0]?.details).toMatchObject({ peerMajorMismatch: true })
+  })
+
+  it('lowering internal-range to info keeps a peer MAJOR mismatch at warning; a plain bare range goes to info', () => {
+    const lowered = buildReport(root, { settings: { severity: { 'internal-range': 'info' } } })
+    const peer = lowered.issues.find((i) => i.pkg === '@fix/plugin' && i.dep === '@fix/util')
+    expect(peer).toMatchObject({ code: 'internal-range', severity: 'warning' })
+    const bare = lowered.issues.find((i) => i.pkg === '@fix/app' && i.dep === '@fix/util')
+    expect(bare).toMatchObject({ code: 'internal-range', severity: 'info' })
   })
 
   it('comments and template literals never produce findings', () => {
@@ -400,9 +416,40 @@ describe('stale loom.ignore entries', () => {
     }
   })
 
+  // The full import scan of this repo runs in a CHILD process, so V8's coverage
+  // instrumenter never sees it. In process it lexed every source file in the
+  // repo (~9.8k files, ~68 MB) through instrumented `stripWithMask`: 0.6 s
+  // plain, 2.0 s under local coverage, and 62 s in `Coverage (Full)` on a
+  // loaded 4-vCPU runner, three times the 20 s budget. What it measured of
+  // loom's own code (six arms in imports.ts the fixtures did not reach) now has
+  // fixture specs in scanner-correctness.test.ts, so the coverage counts are
+  // the same either way. The repo stays the input: this asserts on DATA (the
+  // root `loom.ignore`), which no fixture can stand in for.
+  // The result comes back through a temp FILE, not the child's stdout: captured
+  // child output is not reliable under parallel load (.agents/rules/
+  // anti-patterns.md, "Test script policy as a pure function, not through a
+  // subprocess").
   it('the monorepo has none', () => {
-    const repo = buildReport(new URL('../../../../..', import.meta.url).pathname)
-    expect(repo.issues.filter((i) => i.code === 'stale-ignore').map((i) => i.message)).toEqual([])
+    const repoRoot = new URL('../../../../..', import.meta.url).pathname
+    const core = new URL('../core/index.ts', import.meta.url).pathname
+    const dir = mkdtempSync(join(tmpdir(), 'loom-stale-repo-'))
+    const outFile = join(dir, 'out.json')
+    const script =
+      `import { writeFileSync } from 'node:fs'\n` +
+      `import { buildReport } from ${JSON.stringify(core)}\n` +
+      `const r = buildReport(${JSON.stringify(repoRoot)})\n` +
+      `writeFileSync(${JSON.stringify(outFile)}, JSON.stringify({ packages: r.model.packages.length, ` +
+      `stale: r.issues.filter((i) => i.code === 'stale-ignore').map((i) => i.message) }))`
+    let out: { packages: number; stale: string[] }
+    try {
+      execFileSync('bun', ['--eval', script], { stdio: ['ignore', 'ignore', 'pipe'], timeout: 18_000, killSignal: 'SIGKILL' })
+      out = JSON.parse(readFileSync(outFile, 'utf8')) as typeof out
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+    // An empty scan must never read as "no stale entries".
+    expect(out.packages).toBeGreaterThan(100)
+    expect(out.stale).toEqual([])
   })
 })
 

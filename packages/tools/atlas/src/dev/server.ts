@@ -7,11 +7,17 @@
  * dev` CLI" — a promise the CLI did not keep. Until this exists Atlas is a
  * demo, not a tool.
  *
- * Vite is imported DYNAMICALLY and is an optional peer. `atlas scan` must keep
- * working in a project that has no Vite (a library validating its catalog in
- * CI), and a top-level import would drag a dev server into that path — and into
- * anything that imports the CLI at all.
+ * The workbench is a `@pyreon/zero` app shipped in this package (see
+ * `./zero-app`): this runs it under Vite's dev server with zero's dev mode,
+ * the Pyreon compiler, and `atlasDevPlugin` supplying the derived catalog.
+ *
+ * Vite, `@pyreon/vite-plugin` and `@pyreon/zero` are imported DYNAMICALLY and
+ * are optional peers. `atlas scan` must keep working in a project that has no
+ * bundler (a library validating its catalog in CI), and a top-level import
+ * would drag a dev server into that path — and into anything that imports the
+ * CLI at all.
  */
+import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { discoverComponents } from '../discover'
 import { workspaceDirsFor, workspaceResolvePlugin } from '../discover/workspace-packages'
@@ -21,7 +27,9 @@ import { runScan } from '../cli/run'
 import { configCandidatePaths } from '../discover/config'
 import { scanInChild } from './rescan'
 import type { ComponentIntelligence } from '../core'
-import { atlasDevPlugin, devHtml, type RpcMethod } from './plugin'
+import { atlasDevPlugin, type RpcMethod } from './plugin'
+import { appDir, loadZeroStack, missingStackMessage, projectDirs, PYREON_OPTIONS, zeroOptions } from './zero-app'
+import { loadProjectViteConfig, projectConfigFields, tailwindSourcePlugin } from './project-vite'
 import type { CatalogEntrySource } from './catalog-module'
 
 export interface DevServerOptions {
@@ -49,19 +57,6 @@ export interface DevServerHandle {
 // thing that calls it; a second copy here is how the dev server and the static
 // build would come to disagree about which components are infrastructure.
 export { importsAtlas } from '../build/entries'
-
-/**
- * Missing-Vite message.
- *
- * Written out rather than letting the raw resolution error surface: "Cannot
- * find package 'vite'" does not tell a library author why a workbench needed
- * one, and the fix (install it) is not obvious from the error.
- */
-const NO_VITE =
-  '[Pyreon] atlas dev needs Vite, which is not installed in this project.\n' +
-  '  Install it as a dev dependency:\n\n' +
-  '    bun add -d vite @pyreon/vite-plugin\n\n' +
-  '  `atlas scan` does not need Vite and keeps working without it.'
 
 /**
  * What a save must touch to re-derive the catalog: the scan root, EVERY
@@ -145,55 +140,21 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   // project that has no Vite at all.
   type ViteServer = { listen: () => Promise<unknown>; close: () => Promise<void> }
   type CreateServer = (config: Record<string, unknown>) => Promise<ViteServer>
-  let createServer: CreateServer
+  let vite: { createServer: CreateServer; searchForWorkspaceRoot: (dir: string) => string }
   try {
-    const mod = (await import('vite')) as unknown as { createServer: CreateServer }
-    createServer = mod.createServer
+    vite = (await import('vite')) as unknown as typeof vite
   } catch {
-    throw new Error(NO_VITE)
+    throw new Error(missingStackMessage('dev', 'Vite'))
   }
-
-  // The Pyreon JSX transform is what makes signal-preserving HMR work. It is
-  // optional for the same reason Vite is — but without it the workbench cannot
-  // compile the project's `.tsx`, so its absence is fatal HERE while Vite's is
-  // merely diagnosable.
-  // The try covers ONLY the import: its catch translates "the import failed"
-  // into "not installed", and anything else it swallows is masked behind that
-  // wrong message. The first cut wrapped the whole block — the explicit
-  // did-not-export throw below was eaten by its own catch and reported as a
-  // missing install, and a factory that threw when CALLED was reported the same
-  // way.
-  let mod: { default?: (o?: unknown) => unknown; pyreon?: (o?: unknown) => unknown }
-  try {
-    mod = (await import('@pyreon/vite-plugin')) as unknown as typeof mod
-  } catch {
-    throw new Error(
-      NO_VITE.replace('atlas dev needs Vite, which is not installed', '@pyreon/vite-plugin is not installed'),
-    )
-  }
-  // The plugin factory is the DEFAULT export; `pyreon` is accepted as a
-  // named alias so this keeps working if the package adds one later.
-  const factory = mod.default ?? mod.pyreon
-  if (typeof factory !== 'function') {
-    throw new Error('[Pyreon] atlas dev: @pyreon/vite-plugin did not export a plugin factory')
-  }
-  // `devErrorPrinter: false` — that feature injects a virtual module importing
-  // `@pyreon/compiler/diagnose` into the served app. It is aimed at a user's
-  // OWN app, where a thrown component error should print its documented fix;
-  // the workbench surfaces component errors in its own canvas instead.
-  //
-  // It also failed to resolve under this loader (the plugin is imported
-  // dynamically, so it resolves through the `bun` condition to source rather
-  // than the built `lib/`), and the resulting Vite error OVERLAY covers the
-  // page — every click in the workbench is then intercepted by an overlay
-  // about a feature the workbench does not use.
-  const pyreonPlugin: unknown = factory({ devErrorPrinter: false })
+  const stack = await loadZeroStack('dev')
+  const app = appDir()
+  const projectVite = await loadProjectViteConfig(root, 'serve')
+  if (projectVite.warning) process.stderr.write(`[Pyreon] atlas dev: ${projectVite.warning}\n`)
 
   // Explicit option wins over the config, which wins over the default — the
   // same precedence `atlas build --title` follows, so a project cannot end up
   // with one title in the dev workbench and another on its deployed site.
   const title = options.title ?? configTitle ?? 'Atlas'
-  const html = devHtml(title)
 
   // Every `@pyreon/*` package any workspace package declares or links — see
   // `./pyreon-singletons` (#3846). The Pyreon plugin only excludes the ones the
@@ -201,33 +162,39 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
   // (`@pyreon/store`) was optimized on a cold start while already loaded raw.
   const singletons = collectPyreonPackages(workspaceDirsFor(root))
 
-  const server = await createServer({
-    root,
+  const server = await vite.createServer({
+    // The workbench APP is the root (zero routes `<root>/src/routes`); the
+    // project is reached by absolute path — see `./zero-app`.
+    root: app,
     configFile: false,
-    // The project's own `resolve.alias`, put back after `configFile: false`
-    // removed it. Without this a single `~/components/…` import fails to
-    // resolve and the dev overlay covers the WHOLE workbench, not just that
-    // component's card (#2744).
+    // The project's `.env*`, `public/` and Atlas's cache dir — see `projectDirs`.
+    ...projectDirs(root),
+    // The project's own vite config — its `resolve`, `css` (PostCSS searched
+    // from the project), `define`, `envPrefix` — with `resolve.alias` as the
+    // scan resolved it (put back after `configFile: false` removed it: without
+    // it a single `~/components/…` import fails to resolve and the overlay
+    // covers the WHOLE workbench, #2744). See `./project-vite`.
     //
     // `dedupe` pins every `@pyreon/*` to one copy however the import chain
     // reaches it (direct, transitive, from a workspace package's own link).
-    resolve: {
-      ...(alias.length > 0 ? { alias: [...alias] } : {}),
-      ...(singletons.length > 0 ? { dedupe: singletons } : {}),
-    },
+    ...projectConfigFields(projectVite, root, { alias: [...alias], dedupe: singletons }),
     // An explicit port is a requirement; the default is a preference. Failing
     // because 5210 is taken — by another workbench, say — made a second
     // `atlas dev` refuse to start with nothing else wrong.
-    server: { port: options.port ?? 5210, strictPort: options.port !== undefined },
-    // Its own dependency cache. Sharing the project's `node_modules/.vite`
-    // made the workbench and the project's own dev server invalidate each
-    // other on every start ("Re-optimizing dependencies because vite config
-    // has changed"), a full re-optimize for both.
-    cacheDir: resolve(root, 'node_modules', '.cache', 'atlas-vite'),
-    // The workbench entry is VIRTUAL, so Vite must not crawl the project's own
-    // `index.html` for dependencies — that file belongs to the consuming app
-    // (it may not even exist), and scanning it pre-bundles the wrong graph and
-    // reports failures that have nothing to do with the workbench.
+    server: {
+      port: options.port ?? 5210,
+      strictPort: options.port !== undefined,
+      // The project's files are served from outside the root (`/@fs/…`), so
+      // its workspace is allowed explicitly, alongside the app's own. From the
+      // REAL path: Vite checks the realpath of what it serves, and a project
+      // under a symlink (`/tmp`, `/var` on macOS) was otherwise refused.
+      fs: {
+        allow: [...new Set([vite.searchForWorkspaceRoot(realpathSync(root)), vite.searchForWorkspaceRoot(app)])],
+      },
+    },
+    // No crawl: the app's entry reaches the catalog through virtual modules
+    // the optimizer's scanner cannot load, and the project's own `index.html`
+    // belongs to the project, not the workbench.
     //
     // `exclude` keeps the framework out of the optimizer ENTIRELY, so no
     // import can ever be served both raw and optimized (two instances — the
@@ -243,7 +210,13 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
       //
       // Same resolver the static build and the module loader use.
       workspaceResolvePlugin(root),
-      pyreonPlugin,
+      stack.pyreon(PYREON_OPTIONS),
+      stack.zero(zeroOptions({ port: options.port ?? 5210 })),
+      // The project's own plugins (Tailwind v4, a custom transform), minus its
+      // own `pyreon()` / `zero()` — see `./project-vite`.
+      // Before them: Tailwind's source scan starts at the project, not the app.
+      tailwindSourcePlugin(root),
+      ...projectVite.plugins,
       atlasDevPlugin({
         root,
         scanRoot,
@@ -281,47 +254,6 @@ export async function startDevServer(options: DevServerOptions = {}): Promise<De
         title,
         ...(options.methods !== undefined ? { methods: options.methods } : {}),
       }),
-      {
-        // Serve the workbench shell for any navigation.
-        //
-        // Registered as a PRE middleware (a direct `use`, not the returned
-        // post-hook), because Vite's own html middleware serves the consuming
-        // project's `index.html` for `/` — and that file belongs to the app,
-        // not the workbench. Post-registration meant the app's page won and the
-        // workbench never rendered in any project that has one.
-        //
-        // Safe as a pre-middleware because it only claims GET navigations: a
-        // path containing a dot (a module, an asset) or starting with `/@`
-        // (Vite's own namespace) is passed straight through.
-        name: 'atlas:dev-html',
-        configureServer(inner: {
-          middlewares: {
-            use: (h: (req: unknown, res: unknown, next: () => void) => void) => void
-          }
-          transformIndexHtml: (url: string, html: string) => Promise<string>
-        }) {
-          inner.middlewares.use(async (req, res, next) => {
-            const request = req as { url?: string; method?: string }
-            const response = res as {
-              setHeader: (k: string, v: string) => void
-              end: (b: string) => void
-            }
-            const url = (request.url ?? '/').split('?')[0] ?? '/'
-            if (request.method !== 'GET' || url.includes('.') || url.startsWith('/@')) {
-              return next()
-            }
-            try {
-              const page = await inner.transformIndexHtml(url, html)
-              response.setHeader('Content-Type', 'text/html')
-              response.end(page)
-            } catch (error) {
-              // Rejected inside middleware, this left the request hanging.
-              response.setHeader('Content-Type', 'text/plain')
-              response.end(`atlas dev: ${error instanceof Error ? error.message : String(error)}`)
-            }
-          })
-        },
-      },
     ],
   })
 

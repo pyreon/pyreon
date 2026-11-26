@@ -5,7 +5,7 @@ description: "Compile-time .md/.mdx → Pyreon JSX, typed content collections, c
 
 > **Generated** from `zero-content`'s `src/manifest.ts` — the same source that powers `llms.txt` and MCP `get_api`. Do not edit this page by hand; edit the manifest. For the conceptual guide, see [zero-content](/docs/zero-content).
 
-Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: markdown pages route through zero's fs-router, view transitions enabled by default, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via Standard Schema inference (use zod / valibot / arktype — the package itself ships no validator runtime): `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<CodeBlock>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.
+Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: markdown pages route through zero's fs-router, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via Standard Schema inference (use zod / valibot / arktype — the package itself ships no validator runtime): `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<CodeBlock>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.
 
 ## Multiplatform
 
@@ -33,7 +33,7 @@ See [Multiplatform](/docs/multiplatform) for the capability matrix and [Multipla
 - Built-in search — minisearch-backed `<Search>` component with Cmd+K + debounced query + SPA navigation + lazy index loading
 - Built-in layout components — `<Sidebar>` with groups + active highlighting, `<Toc>` with scroll-spy via IntersectionObserver
 - Frontmatter JSON Schema + .vscode-settings emission — autocomplete + validation in any .md file via the YAML extension
-- Inherits zero's perf stack — image/font auto-wire, script defer default, resource hints, view transitions
+- Inherits zero's perf stack — image/font auto-wire, script defer default, resource hints
 - `@pyreon/zero-content/blog` — a production blog in five one-line routes: `blogCollection()` (frontmatter schema + publish dates), `defineBlog()` (paginated index, post, tag pages, `getStaticPaths`), queries (tags + counts, previous/next, related, reading time counted at build), SEO (Open Graph, `article:*`, Twitter, JSON-LD `BlogPosting`/`Blog`), restylable components; drafts and future-dated posts reach no surface
 - Every compiled content module exports `wordCount` (prose + code) and `excerpt` (first paragraph), surfaced on `CollectionEntry` — reading time and teasers without walking the page in the browser
 - `getCollection` reads one metadata chunk per collection (`virtual:zero-content/meta/<name>`: frontmatter, slug, headings, word count, excerpt — no bodies); an entry body loads only when `render()` is called
@@ -94,6 +94,7 @@ const docs = await getCollection('docs')
 | [`Example`](#example-component) | component | The Pyreon-native replacement for iframe-sandboxed `<Playground>`. |
 | [`registerExamples`](#registerexamples-function) | function | Register the consumer's example files for `<Example file="./...">` lookups. |
 | [`getOrCreateSharedSignal`](#getorcreatesharedsignal-function) | function | Module-level registry of `Signal<T>` instances keyed by string. |
+| [`resolvePageLayout`](#resolvepagelayout-function) | function | Pick the layout for one content page from its `layout:` frontmatter field. |
 | [`Details`](#details-component) | component | Thin wrapper around native `<details>`/`<summary>` for a collapsible disclosure section. |
 | [`Tabs`](#tabs-component) | component | A generic tab strip with one active panel at a time — distinct from `<CodeGroup>` in that labels can be any string and… |
 | [`PropTable`](#proptable-component) | component | Renders a Markdown-style props reference table from a STATIC, author-supplied row list — no runtime introspection, so… |
@@ -460,6 +461,38 @@ console.log(a()) // 5
 - Disagreeing on `T` across two callers with the same key — both get the same runtime signal but mismatched compile-time types (author error, no runtime safeguard).
 - Calling `clearAllSharedSignals()` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).
 - Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.
+
+---
+
+### `resolvePageLayout` `function`
+
+```ts
+resolvePageLayout(args: { frontmatter: Record<string, unknown>; registry: ContentLayoutRegistry; defaultLayout: ContentLayout }): { layout: ContentLayout; fellBack: boolean; missingName?: string }
+```
+
+Pick the layout for one content page from its `layout:` frontmatter field. Pure and runtime-agnostic: call it from the route that renders the page, with a `registry` you build (usually from `import.meta.glob('./layouts/*.tsx', { eager: true })`) and the route's default layout. No `layout` field (or an empty one) returns `defaultLayout`; a name missing from the registry also returns `defaultLayout`, with `fellBack: true` and the requested name in `missingName` so the route can warn. The plugin does not call it for you: per-page `layout:` only takes effect when the route does.
+
+**Example**
+
+```tsx
+import { resolvePageLayout } from '@pyreon/zero-content'
+import DocsLayout from './layouts/docs'
+import LandingLayout from './layouts/landing'
+
+const { layout: Layout, fellBack, missingName } = resolvePageLayout({
+  frontmatter: page.frontmatter,          // e.g. { title: 'Home', layout: 'landing' }
+  registry: { landing: LandingLayout },
+  defaultLayout: DocsLayout,
+})
+if (fellBack) console.warn(`[content] unknown layout "${missingName}"`)
+
+return <Layout>{page.content}</Layout>
+```
+
+**Common mistakes**
+
+- Expecting `layout:` frontmatter to switch layouts on its own — nothing calls `resolvePageLayout` automatically; the rendering route must
+- Ignoring `fellBack` — a typo in `layout:` silently renders the default layout unless the route reports `missingName`
 
 ---
 

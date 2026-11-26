@@ -241,9 +241,11 @@ describe('CI wiring', () => {
     expect(step).toContain('--dist=docs/dist')
   })
 
-  it('a pull request is judged on its growth against HEAD^1, anything else against the ceilings', () => {
-    expect(step).toMatch(/"\$EVENT_NAME" = "pull_request"[\s\S]*--mode=pr --base-ref='HEAD\^1'[\s\S]*else[\s\S]*--mode=main/)
-    // HEAD^1 of the merge ref exists only in a checkout deeper than one commit.
+  it('a pull request is judged on its growth against the diff base, anything else against the ceilings', () => {
+    // CI_BASE is scripts/diff-base.ts's: the merge commit's first parent.
+    expect(step).toMatch(/"\$EVENT_NAME" = "pull_request"[\s\S]*--mode=pr --base-ref="\$CI_BASE"[\s\S]*else[\s\S]*--mode=main/)
+    expect(e2e).toContain('run: bun scripts/diff-base.ts --github-env')
+    // The merge commit's parent exists only in a checkout deeper than one commit.
     expect(e2e).toMatch(/actions\/checkout@[^\n]*\n\s+with:\n\s+fetch-depth: 2/)
   })
 

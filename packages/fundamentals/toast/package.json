@@ -13,7 +13,9 @@
     "directory": "packages/fundamentals/toast"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -27,12 +29,19 @@
       "bun": "./src/native-plugin.ts",
       "import": "./lib/native-plugin.js",
       "types": "./lib/types/native-plugin.d.ts"
-    }
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
+    },
+    "./styles.css": "./styles.css"
   },
   "files": [
     "lib",
     "!lib/analysis",
     "src",
+    "styles.css",
     "README.md",
     "LICENSE",
     "native/swift",
@@ -70,6 +79,9 @@
     "react-dom": "^19.3.1",
     "react-hot-toast": "^2.6.1",
     "sonner": "^2.0.8"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

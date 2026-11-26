@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * @pyreon/cli — Developer tools for Pyreon
  *
@@ -40,11 +38,22 @@ async function usageError(message: string, fix: string): Promise<never> {
   const { createTerm, finding } = await import('@pyreon/ansi')
   const t = createTerm({ isTTY: Boolean(process.stderr.isTTY) })
   console.error(finding(t, { severity: 'error', source: 'pyreon', message, fix }, { indent: 0, width: t.width }).join('\n'))
-  process.exit(1)
+  return exit(1)
 }
 
-const args = process.argv.slice(2)
-const command = args[0]
+/**
+ * End the process with `code` once stdout and stderr have flushed. Never a
+ * bare `process.exit` after printing: on a pipe it drops what is still
+ * queued, which cut `pyreon doctor --ci --json | jq` off at 64 KiB (#4799).
+ */
+async function exit(code: number): Promise<never> {
+  const { exitAfterFlush } = await import('@pyreon/ansi')
+  return exitAfterFlush(code)
+}
+
+// The argv of the run in progress; set by `runPyreonCli`.
+let args: string[] = []
+let command: string | undefined
 
 function printUsage(): void {
   console.log(`
@@ -193,7 +202,27 @@ const rejectUnknownDoctorFlags = async (): Promise<void> => {
   }
 }
 
-async function main(): Promise<void> {
+/**
+ * Run the `pyreon` CLI for `argv` (without the node and script paths).
+ *
+ * Called by `bin/pyreon.js`, and by this module when Bun runs the source file
+ * directly. Never on import: `zero doctor` imports `doctor` from this entry,
+ * and a self-running entry ran the whole CLI a second time with zero's argv
+ * (two reports, two JSON documents on one stdout, and an exit that cut the
+ * second one off).
+ */
+export async function runPyreonCli(argv: readonly string[]): Promise<void> {
+  args = [...argv]
+  command = args[0]
+  try {
+    await dispatch()
+  } catch (err) {
+    console.error(err)
+    await exit(1)
+  }
+}
+
+async function dispatch(): Promise<void> {
   if (!command || command === '--help' || command === '-h') {
     printUsage()
     return
@@ -219,7 +248,7 @@ async function main(): Promise<void> {
       write: args.includes('--write'),
       json: args.includes('--json'),
     })
-    if (exitCode > 0) process.exit(exitCode)
+    if (exitCode > 0) await exit(exitCode)
 
     return
   }
@@ -234,7 +263,7 @@ async function main(): Promise<void> {
       fix: args.includes('--fix'),
       gha: args.includes('--gha'),
     }))
-    process.exit(exitCode)
+    await exit(exitCode)
   }
 
   if (command === 'plain') {
@@ -247,7 +276,7 @@ async function main(): Promise<void> {
       write: args.includes('--write'),
       includeTests: args.includes('--include-tests'),
     }))
-    process.exit(exitCode)
+    await exit(exitCode)
   }
 
   if (command === 'add') {
@@ -259,7 +288,7 @@ async function main(): Promise<void> {
       dryRun: args.includes('--dry-run'),
       json: args.includes('--json'),
     })
-    process.exit(exitCode)
+    await exit(exitCode)
   }
 
   if (command === 'new') {
@@ -273,7 +302,7 @@ async function main(): Promise<void> {
       native: args.includes('--native'),
       dryRun: args.includes('--dry-run'),
     })
-    process.exit(exitCode)
+    await exit(exitCode)
   }
 
   if (command === 'mcp') {
@@ -285,7 +314,7 @@ async function main(): Promise<void> {
       args: passthrough,
       dryRun: args.includes('--dry-run'),
     })
-    process.exit(exitCode)
+    await exit(exitCode)
   }
 
   if (command === 'atlas') {
@@ -297,7 +326,7 @@ async function main(): Promise<void> {
       args: passthrough,
       dryRun: args.includes('--dry-run'),
     })
-    process.exit(exitCode)
+    await exit(exitCode)
   }
 
   if (command === 'loom') {
@@ -307,7 +336,7 @@ async function main(): Promise<void> {
       args: passthrough,
       dryRun: args.includes('--dry-run'),
     })
-    process.exit(exitCode)
+    await exit(exitCode)
   }
 
   if (command === 'lathe') {
@@ -317,7 +346,7 @@ async function main(): Promise<void> {
       args: passthrough,
       dryRun: args.includes('--dry-run'),
     })
-    process.exit(exitCode)
+    await exit(exitCode)
   }
 
   if (command === 'lint') {
@@ -327,7 +356,7 @@ async function main(): Promise<void> {
     // the long-running --watch/--lsp modes (keep the process alive).
     const { runCli } = await import('@pyreon/lint')
     const code = await runCli(args.slice(1))
-    if (code !== null) process.exit(code)
+    if (code !== null) await exit(code)
 
     return
   }
@@ -360,7 +389,7 @@ async function main(): Promise<void> {
     }
     const exitCode = await interruptible('pyreon doctor', () => doctor(options))
     if (options.ci && exitCode > 0) {
-      process.exit(1)
+      await exit(1)
     }
 
     return
@@ -379,10 +408,6 @@ async function main(): Promise<void> {
   await usageError(`Unknown command: ${command}`, 'run pyreon --help for the list of commands')
 }
 
-main().catch((err) => {
-  console.error(err)
-  process.exit(1)
-})
 
 // Library API — the programmatic surface (unchanged baseline). CLI-only
 // command handlers (info/upgrade/…) are intentionally NOT re-exported here:

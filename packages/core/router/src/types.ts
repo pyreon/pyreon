@@ -54,7 +54,12 @@ export interface RouteMeta {
   requiresAuth?: boolean
   /** Scroll behavior for this route */
   scrollBehavior?: 'top' | 'restore' | 'none'
-  /** Set to false to disable View Transitions API for this route. Default: true */
+  /**
+   * Run navigations TO this route inside `document.startViewTransition()`
+   * (`true`) or never (`false`). Default: the router's `viewTransition`
+   * option, which is `false`. Merged down the matched chain like any meta, so
+   * a layout route's `viewTransition: true` covers its children.
+   */
   viewTransition?: boolean
 }
 
@@ -184,6 +189,31 @@ export type NavigationGuard = (
  * still settles exactly when the navigation settles).
  */
 export type NavigationResult = 'committed' | 'cancelled' | 'superseded'
+
+/**
+ * Per-navigation options for `router.push` / `router.replace`.
+ *
+ * Both default to `true`, EXCEPT for an in-place `replace()` (same matched
+ * route, same params, same hash; only the query changes), where both default to
+ * `false`: that is an edit of the current page (a search box, a filter), not a
+ * new page. Pass them explicitly to decide either way — e.g. a query-only
+ * `push()` that should keep the scroll position.
+ */
+export interface NavigateOptions {
+  /**
+   * Apply the router's scroll handling after the commit (`scrollBehavior`,
+   * default `'top'`). `false` leaves the scroll position alone and does not
+   * consult `scrollBehavior` at all.
+   */
+  scroll?: boolean
+  /**
+   * `true` runs this commit inside a View Transition (when the browser
+   * supports it and the route's `meta.viewTransition` is not `false`), even
+   * if the router's transitions are off (they are opt-in). `false` commits
+   * without one. Unset: the route's meta, then the router's `viewTransition`.
+   */
+  viewTransition?: boolean
+}
 
 export type AfterEachHook = (to: ResolvedRoute, from: ResolvedRoute) => void
 
@@ -481,6 +511,22 @@ export interface RouterOptions {
    */
   scrollBehavior?: ScrollBehaviorFn | 'top' | 'restore' | 'none'
   /**
+   * Run route changes inside `document.startViewTransition()` where the
+   * browser has it. Default: `false`. Per-route `meta.viewTransition` takes
+   * precedence (`true` opts one route in, `false` opts it out).
+   *
+   * Off by default because a transition has a cost on every navigation, in
+   * every browser that supports it: the DOM swap waits for the browser to
+   * capture the old page (the next frame, ~16 ms instead of well under 1 ms),
+   * and while the cross-fade runs (250 ms by default) the page is not
+   * hit-testable, so clicks land on the transition overlay instead of the new
+   * page. Turn it on when the animation is worth that.
+   *
+   * Skipped regardless under `prefers-reduced-motion: reduce` and in
+   * `mode: 'memory'`.
+   */
+  viewTransition?: boolean
+  /**
    * Initial URL for SSR. On the server, window.location is unavailable;
    * pass the request URL here so the router resolves the correct route.
    *
@@ -586,21 +632,27 @@ export interface Router<TNames extends string = string> {
    */
   readonly mode: 'hash' | 'history' | 'memory'
   /** Navigate to a path. Resolves with what the navigation did — see {@link NavigationResult}. */
-  push(path: string): Promise<NavigationResult>
+  push(path: string, options?: NavigateOptions): Promise<NavigationResult>
   /** Navigate to a named route */
-  push(location: {
-    name: TNames
-    params?: Record<string, string>
-    query?: Record<string, string>
-  }): Promise<NavigationResult>
+  push(
+    location: {
+      name: TNames
+      params?: Record<string, string>
+      query?: Record<string, string>
+    },
+    options?: NavigateOptions,
+  ): Promise<NavigationResult>
   /** Replace current history entry. Resolves with what the navigation did — see {@link NavigationResult}. */
-  replace(path: string): Promise<NavigationResult>
+  replace(path: string, options?: NavigateOptions): Promise<NavigationResult>
   /** Replace current history entry using a named route */
-  replace(location: {
-    name: TNames
-    params?: Record<string, string>
-    query?: Record<string, string>
-  }): Promise<NavigationResult>
+  replace(
+    location: {
+      name: TNames
+      params?: Record<string, string>
+      query?: Record<string, string>
+    },
+    options?: NavigateOptions,
+  ): Promise<NavigationResult>
   /**
    * Go back one step in history. In `mode: 'memory'` this moves through the
    * router's own entry stack, through the full navigation pipeline (a guard
@@ -740,6 +792,20 @@ export interface RouterInstance extends Router {
   _erroredChunks: Set<RouteRecord>
   /** Loader data keyed by route record — populated before each navigation commits */
   _loaderData: Map<RouteRecord, unknown>
+  /**
+   * The loader key each `_loaderData` entry was loaded for (`setLoaderData`).
+   * RouterView shows a stored value only while its key matches the route on
+   * screen, so the next page's data, written before the route switches, never
+   * reaches the page that is leaving.
+   */
+  _loaderDataKeys: Map<RouteRecord, string>
+  /**
+   * The loader cache key of `record` for `route` (its `loaderKey`, else path +
+   * params). RouterView remounts a page when this changes: a different key is
+   * a different resource. Data that changes under the same key is delivered
+   * in place (#4814).
+   */
+  _loaderKeyOf: (record: RouteRecord, route: Pick<ResolvedRoute, 'params' | 'query'>) => string
   /** AbortController for the in-flight loader batch — aborted when a newer navigation starts */
   _abortController: AbortController | null
   /** Registered navigation blockers */

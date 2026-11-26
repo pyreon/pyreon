@@ -13,7 +13,7 @@
  *
  * CHECK_BEFORE / CHECK_AFTER: real `pyreon check src/Counter.tsx` output on
  * the React pair, captured 2026-11-11 with the worktree's CLI
- * (`bun packages/tools/cli/src/index.ts check src/Counter.tsx`). Exit codes 1 and 0.
+ * (`bun packages/tools/cli/src/main.ts check src/Counter.tsx`). Exit codes 1 and 0.
  */
 export type Framework = 'React' | 'Preact' | 'Vue' | 'Solid' | 'Svelte'
 

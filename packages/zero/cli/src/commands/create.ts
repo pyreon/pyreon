@@ -13,6 +13,7 @@
  */
 import { reportFailure } from './report'
 import { spawnSync } from 'node:child_process'
+import { exitAfterFlush } from '@pyreon/ansi'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 
@@ -44,6 +45,6 @@ export function runCreate(args: readonly string[]): number {
   return result.status ?? 1
 }
 
-export function create(): void {
-  process.exit(runCreate(argsAfterCreate(process.argv.slice(2))))
+export function create(): Promise<never> {
+  return exitAfterFlush(runCreate(argsAfterCreate(process.argv.slice(2))))
 }

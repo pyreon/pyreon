@@ -307,8 +307,8 @@ const benchmarks = [
     script: 'scripts/bench/core/reactivity.ts',
     extractor: extractReactivity,
     name: 'reactivity',
-    // Full protocol is one process per cell × 3 rounds (~2 min); the aggregate
-    // run takes one round.
+    // Full protocol is one process per cell × 6 processes; the aggregate run
+    // takes two (`--quick`), so its CIs are provisional.
     args: ['--quick'],
     timeoutMs: 300_000,
   },

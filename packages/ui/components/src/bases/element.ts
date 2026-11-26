@@ -34,9 +34,23 @@ export const el = rs({ name: 'Base', component: Element }).styles(
       // Without this branch the key reached unistyle as an unknown property and
       // was dropped, so every field showed the browser's default placeholder.
       const placeholderTheme = makeItResponsive({ theme: placeholderStyles as typeof hoverStyles, styles, css })
+      // Native form controls do not inherit `font-family` — the browser gives
+      // them its control font — so every button/input-based component rendered
+      // off the page font (#4426). One rule, here in the base: only for those
+      // tags (`:where()` adds no specificity), and only when the component's
+      // theme sets no `fontFamily` of its own. Other `el` components emit
+      // nothing, so a `font-serif` / `font-mono` utility on a Box applies as
+      // before; on a control it behaves like any themed property.
 
       return css`
         ${baseTheme};
+
+        ${!('fontFamily' in restStyles) &&
+        css`
+          &:where(button, input, select, textarea) {
+            font-family: inherit;
+          }
+        `};
 
         ${placeholderStyles &&
         css`

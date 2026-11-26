@@ -37,9 +37,7 @@ export const NoOptimizeContext = createContext<boolean>(false)
  *
  * Returns `false` when no provider is mounted — preserves the
  * non-router-aware contract of `<Image>` (it can be used outside any
- * boundary).
- *
- * @internal exported for testing — public API is `<NoOptimize>`.
+ * boundary). `<NoOptimize>` sets the boundary; this hook only reads it.
  */
 export function useNoOptimize(): boolean {
   return useContext(NoOptimizeContext) ?? false

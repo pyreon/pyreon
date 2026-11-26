@@ -1,4 +1,5 @@
 import type { Middleware, MiddlewareContext } from '@pyreon/server'
+import { isCompressible } from './compression-filter'
 
 // ─── Compression middleware ─────────────────────────────────────────────────
 
@@ -77,20 +78,6 @@ export async function compressResponse(
     statusText: response.statusText,
     headers,
   })
-}
-
-const COMPRESSIBLE_TYPES = [
-  'text/',
-  'application/json',
-  'application/javascript',
-  'application/xml',
-  'application/xhtml+xml',
-  'image/svg+xml',
-]
-
-/** Check if a content type is compressible. Exported for testing. */
-export function isCompressible(contentType: string): boolean {
-  return COMPRESSIBLE_TYPES.some((t) => contentType.includes(t))
 }
 
 async function compress(data: ArrayBuffer, encoding: 'gzip' | 'deflate'): Promise<ArrayBuffer> {

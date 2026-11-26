@@ -28,7 +28,11 @@ export interface UseFocusTrapOptions {
    * Move focus INTO the container when the trap activates. Defaults to `false`
    * (no focus move — byte-identical to the pre-0.x single-arg behavior). Set
    * `true` for the first tabbable, or a selector / element / getter to target a
-   * specific node. Skipped when focus is already inside the container.
+   * specific node. With focus already inside the container, `true` never
+   * moves it; a named target moves it only on the first activation or when a
+   * user event at the focused element (a toggle inside the container)
+   * activated the trap — never when focus is already inside the target, and
+   * not when the trap re-arms while the user works inside.
    */
   initialFocus?: InitialFocusTarget
 }
@@ -67,6 +71,7 @@ function orderTabIndex(el: HTMLElement): number {
     const n = Number.parseInt(attr, 10)
     if (!Number.isNaN(n)) return n
   }
+
   return 0
 }
 
@@ -77,6 +82,7 @@ function isTabbable(el: HTMLElement): boolean {
     const n = Number.parseInt(attr, 10)
     if (!Number.isNaN(n) && n < 0) return false
   }
+
   return true
 }
 
@@ -91,6 +97,7 @@ function isDisabled(el: HTMLElement): boolean {
     const legend = fieldset.querySelector(':scope > legend')
     if (!legend || !legend.contains(el)) return true
   }
+
   return false
 }
 
@@ -142,6 +149,7 @@ function isHidden(el: HTMLElement): boolean {
   const view = el.ownerDocument.defaultView
   if (!view) return false
   const style = view.getComputedStyle(el)
+
   return (
     style.display === 'none' ||
     style.visibility === 'hidden' ||
@@ -173,7 +181,28 @@ export function getFocusable(container: HTMLElement): HTMLElement[] {
   // V8's sort is stable, and `nodes` is already in document order, so equal
   // tabindex values keep their document order.
   positive.sort((a, b) => orderTabIndex(a) - orderTabIndex(b))
+
   return [...positive, ...natural]
+}
+
+/**
+ * Whether the current synchronous code runs inside a user event (click, key)
+ * whose target is the focused element or inside it — i.e. the focused element
+ * is what just activated a trap. `window.event` is the event being dispatched
+ * right now (undefined outside a dispatch, e.g. after an `await`).
+ */
+function activatedByFocusedElement(): boolean {
+  // Called only from the activation watcher, which runs after mount — in a
+  // browser — so `window` and `document` exist here.
+  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- client-only: reached from the post-mount activation watcher
+  const ev = (window as { event?: Event }).event
+  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- client-only: reached from the post-mount activation watcher
+  const focused = document.activeElement
+  // pyreon-lint-disable-next-line pyreon/no-window-in-ssr -- client-only: reached from the post-mount activation watcher
+  if (!ev || !focused || focused === document.body) return false
+  const t = ev.target
+
+  return t instanceof Node && focused.contains(t)
 }
 
 /** Resolve an {@link InitialFocusTarget} against the container. */
@@ -196,6 +225,7 @@ function resolveInitialFocus(
     return container.querySelector<HTMLElement>(target)
   }
   if (typeof target === 'function') return target()
+
   return target
 }
 
@@ -243,6 +273,7 @@ function topTrap(): { frame: TrapFrame; el: HTMLElement } | null {
     const el = frame.getEl()
     if (el) return { frame, el }
   }
+
   return null
 }
 
@@ -458,15 +489,35 @@ export function useFocusTrap(
     // second, so a synchronous `focus()` would hit a still-hidden target and be
     // a no-op. A microtask runs after the whole synchronous flush. `focusRun`
     // drops a pending focus when the trap deactivates or unmounts first.
+    //
+    // When focus is already INSIDE the container, initial focus would steal it
+    // from wherever the user is working — unless that focused element is what
+    // activated the trap. A menu button inside the header it traps
+    // (pyreon.dev's nav) is focused by its own click; a trap that re-arms
+    // after `saving()` clears while the user types in a field must leave the
+    // field alone. So, with focus inside:
+    // - `initialFocus: true` ("somewhere sensible") never moves it;
+    // - a NAMED target (selector, element, getter) moves it only on the first
+    //   activation, or when the activation ran inside a user event (click,
+    //   key) dispatched at the focused element — the trigger — and never when
+    //   focus is already inside that target.
+    // Focus outside the container always moves in.
+    let activatedBefore = false
     const applyInitialFocus = () => {
       const run = ++focusRun
+      const first = !activatedBefore
+      activatedBefore = true
+      const byFocusedTrigger = activatedByFocusedElement()
       queueMicrotask(() => {
         if (run !== focusRun || !pushed) return
         const el = getEl()
         if (!el) return
-        // Don't steal focus that's already inside the container.
-        if (el.contains(document.activeElement)) return
-        resolveInitialFocus(el, opts.initialFocus)?.focus?.()
+        const current = document.activeElement
+        const inside = el.contains(current)
+        if (inside && (opts.initialFocus === true || !(first || byFocusedTrigger))) return
+        const target = resolveInitialFocus(el, opts.initialFocus)
+        if (!target || target.contains(current)) return
+        target.focus?.()
       })
     }
 

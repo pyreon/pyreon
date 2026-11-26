@@ -63,7 +63,7 @@ const initial = isClient ? navigator.onLine : true`,
   },
 
   'reactivity/computed': {
-    signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>',
+    signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean; name?: string }) => Computed<T>',
     example: `const count = signal(0)
 const doubled = computed(() => count() * 2)
 doubled()  // 0
@@ -100,9 +100,9 @@ const kept = linked(options, (opts, prev): string =>
   },
 
   'reactivity/effect': {
-    signature: '(fn: () => (() => void) | void) => () => void',
+    signature: '(fn: () => (() => void) | void, options?: { name?: string }) => Effect',
     example: `const count = signal(0)
-const dispose = effect(() => {
+const e = effect(() => {
   console.log("Count:", count())
   onCleanup(() => console.log("cleaning up"))
 })
@@ -112,7 +112,7 @@ effect(() => {
   window.addEventListener("resize", handler)
   return () => window.removeEventListener("resize", handler)
 })`,
-    notes: 'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead. See also: onCleanup, computed, renderEffect.',
+    notes: 'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns an `Effect` whose `dispose()` unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead. See also: onCleanup, computed, renderEffect.',
     mistakes: `- Passing a dependency array — Pyreon auto-tracks; no array needed
 - \`effect(() => { count })\` — must call the signal: \`effect(() => { count() })\`
 - Nesting \`effect()\` inside \`effect()\` — use \`computed()\` for derived values instead
@@ -1002,7 +1002,7 @@ declare const todos: AsyncLike<{ id: number; title: string }[]>
 >
   <App />
 </ErrorBoundary>`,
-    notes: 'Catches render errors thrown by descendant components. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`. See also: Suspense, registerErrorHandler.',
+    notes: 'Catches render errors thrown by descendant components — the boundary that ENCLOSES the component in the tree (resolved through the context owner chain), never a sibling. Also receives a `<Defer>` chunk that fails to load and an async component that rejects, whenever that happens. An error thrown while the boundary already shows its fallback (the fallback threw) goes to the next boundary out. The `fallback` receives the caught error (typed `unknown`) and a `reset()` function — calling `reset()` clears the error and re-renders children. Without an ErrorBoundary, uncaught errors propagate to the nearest `registerErrorHandler` or crash the app. There is no `onCatch` prop — for logging/telemetry, log inside `fallback` or use `registerErrorHandler`. See also: Suspense, registerErrorHandler.',
     mistakes: `- Passing an \`onCatch\` prop — it does not exist. \`fallback\` is the only prop (besides children); log the error inside it or via \`registerErrorHandler\`
 - Reading \`err.message\` directly — \`err\` is typed \`unknown\`; narrow it (\`err instanceof Error ? err.message : String(err)\`) or \`String(err)\``,
   },
@@ -1189,30 +1189,13 @@ export const RouterView = nativeCompat(function RouterView(props) {
   provide(RouterContext, ...)
   return <div>{children}</div>
 })`,
-    notes: `Mark a Pyreon framework component as "self-managing" so compat layers (\`@pyreon/{react,preact,vue,solid}-compat\`) skip their wrapping and route the component through Pyreon's mount path. Use on every \`@pyreon/*\` JSX component whose setup body uses \`provide()\` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (\`Symbol.for("pyreon:native-compat")\`), so framework and compat sides share it without an import dependency between them. See also: isNativeCompat, NATIVE_COMPAT_MARKER.`,
+    notes: `Mark a Pyreon framework component as "self-managing" so compat layers (\`@pyreon/{react,preact,vue,solid}-compat\`) skip their wrapping and route the component through Pyreon's mount path. Use on every \`@pyreon/*\` JSX component whose setup body uses \`provide()\` / lifecycle hooks / signal subscriptions — wrapping breaks those by running the body inside the compat layer's render context instead of Pyreon's. Idempotent; non-function inputs pass through unchanged. The marker is a registry symbol (\`Symbol.for("pyreon:native-compat")\`), so framework and compat sides share it without an import dependency between them. The compat layers read it through \`isNativeCompat()\` from \`@pyreon/core/compat\`, an internal subpath with no semver promise. See also: createContext, provide.`,
     mistakes: `- Forgetting to mark a new framework JSX export — under compat mode, the component's \`provide()\` / \`onMount()\` calls fail with "called outside component setup" warnings and the rendered DOM silently breaks.
 - Marking user-app components — only \`@pyreon/*\` framework components that already manage their own reactivity should be marked. User components in compat mode are SUPPOSED to be wrapped (that's how they get re-render-on-state-change semantics).`,
   },
 
-  'core/isNativeCompat': {
-    signature: '(fn: unknown) => boolean',
-    example: `// In a compat layer's jsx-runtime:
-if (isNativeCompat(type)) return h(type, props)
-return wrapCompatComponent(type)(props)`,
-    notes: 'Compat-layer-side: read whether a function has been marked as a Pyreon native framework component via `nativeCompat()`. Compat `jsx()` calls this to decide whether to skip the React/Vue/Solid/Preact-style wrapping. Always returns `false` for non-function inputs. See also: nativeCompat, NATIVE_COMPAT_MARKER.',
-  },
-
-  'core/NATIVE_COMPAT_MARKER': {
-    signature: 'symbol',
-    example: `import { NATIVE_COMPAT_MARKER } from '@pyreon/core'
-
-// Equivalent to nativeCompat(MyComponent):
-;(MyComponent as Record<symbol, boolean>)[NATIVE_COMPAT_MARKER] = true`,
-    notes: 'The well-known registry symbol (`Symbol.for("pyreon:native-compat")`) used to mark a component as a Pyreon native framework component. Most callers should use `nativeCompat()` / `isNativeCompat()` instead of touching the symbol directly; exported for advanced cases (e.g., a compat layer that wants to inspect the property without going through the helper). See also: nativeCompat, isNativeCompat.',
-  },
-
   'core/Defer': {
-    signature: `<Defer chunk={() => import('./X')} when={() => boolean} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>`,
+    signature: `<Defer chunk={() => import('./X')} when={boolean | (() => boolean)} | on='visible'|'idle' fallback? rootMargin?>{(Component) => VNodeChild}</Defer>`,
     example: `// Signal-driven (modal) — explicit form:
 <Defer chunk={() => import('./ConfirmDeleteModal')} when={open} fallback={<Spinner/>}>
   {Modal => <Modal onClose={() => setOpen(false)} />}
@@ -1222,7 +1205,7 @@ return wrapCompatComponent(type)(props)`,
 <Defer on="visible">
   <Comments postId={id} />
 </Defer>`,
-    notes: `Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): \`when={accessor}\` loads once the accessor becomes truthy (the modal-open pattern); \`on="visible"\` loads when the wrapper scrolls into the viewport (\`IntersectionObserver\`, \`rootMargin\` default \`'200px'\` so it's typically ready before the user scrolls to it); \`on="idle"\` loads during browser idle time (\`requestIdleCallback\`, falling back to \`setTimeout(1)\`). The chunk fetch fires EXACTLY ONCE per \`Defer\` instance — a \`when\` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (\`<Defer when={x}><Modal/></Defer>\`) that \`@pyreon/compiler\`'s \`transformDeferInline\` rewrites into the explicit form at BUILD time — the inline form requires \`@pyreon/vite-plugin\`; without it, \`Defer\` throws a clear dev-mode error naming the fix. \`fallback\` renders while the chunk loads (default \`null\`); a chunk-load failure is caught, dev-warned, and re-thrown into the nearest \`ErrorBoundary\` on render. See also: lazy, Suspense, ErrorBoundary.`,
+    notes: `Client-side lazy-load a chunk on ONE of three triggers (exactly one is provided): \`when\` loads once the condition becomes truthy (the modal-open pattern) and, like \`<Show when>\`, takes a value or an accessor — \`when={open}\` with a component-local signal/computed, \`when={open()}\` and \`when={() => open()}\` are all reactive; \`on="visible"\` loads when the wrapper scrolls into the viewport (\`IntersectionObserver\`, \`rootMargin\` default \`'200px'\` so it's typically ready before the user scrolls to it); \`on="idle"\` loads during browser idle time (\`requestIdleCallback\`, falling back to \`setTimeout(1)\`). The chunk fetch fires EXACTLY ONCE per \`Defer\` instance — a \`when\` accessor oscillating true/false/true does not re-fetch. Two authoring forms: the EXPLICIT render-prop form shown above (works everywhere), and an INLINE JSX form (\`<Defer when={x}><Modal/></Defer>\`) that \`@pyreon/compiler\`'s \`transformDeferInline\` rewrites into the explicit form at BUILD time — the inline form requires \`@pyreon/vite-plugin\`; without it, \`Defer\` throws a clear dev-mode error naming the fix. \`fallback\` renders while the chunk loads (default \`null\`). A chunk-load failure (offline, a deploy replaced the hashed file) goes to the enclosing \`<ErrorBoundary>\` like any other render error — on mount or on a later load — so its fallback and \`reset()\` (which remounts the \`Defer\` and retries) handle it; with no boundary it is reported to \`registerErrorHandler\`, dev-logged, and the slot renders nothing. See also: lazy, Suspense, ErrorBoundary.`,
     mistakes: `- Using the inline JSX form WITHOUT \`@pyreon/vite-plugin\` enabled — the compiler pass that rewrites \`<Defer on="visible"><Comments/></Defer>\` into the chunk-prop form never runs, so \`Defer\` throws a clear "\`<Defer>\` has no \`chunk\` prop" error the moment the trigger fires; use the explicit render-prop form instead in a non-Vite build
 - Expecting the chunk to re-fetch when a \`when\` accessor flips false then true again — it loads exactly once per mounted \`Defer\`; unmount and remount the \`<Defer>\` itself if you need a fresh fetch
 - Forgetting the module needs a \`default\` export — \`Defer\` accepts either \`{ default: Component }\` or a bare \`ComponentFn\`, matching \`lazy()\`'s contract; a module with neither dev-warns and renders nothing`,
@@ -1538,13 +1521,15 @@ const base = signal(1.0)
   },
 
   'primitives/WebView': {
-    signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void; domStorage?: boolean; grow?: boolean }) => VNode',
+    signature: '(props: { html?: string; src?: string; data?: unknown; onMessage?: (message: string) => void; domStorage?: boolean; grow?: boolean; onDownload?: (download: WebViewDownload) => void; saveDownloads?: boolean }) => VNode',
     example: '<WebView html={CHART_HTML} data={metrics()} onMessage={(m) => selected.set(m)} />',
-    notes: `Host a web page/component natively (WKWebView on iOS, Android WebView; \`<iframe srcdoc>\` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: \`data\` is pushed in as \`window.__pyreonData\` (+ a \`pyreondata\` event, live, no reload); the page calls \`window.pyreonPostMessage(payload)\` → your \`onMessage\` closure. \`domStorage\` (default true, native-only literal) keeps \`localStorage\` available in the hosted page (Android disables it by default; \`false\` opts out). SIZING: unsized it is the \`<iframe>\` default on every target — full width, 150 high; \`grow\` (literal, native) takes the free main-axis space of its parent \`<Stack>\`/\`<Inline>\` (\`Modifier.weight(1f)\` / a greedy SwiftUI frame / \`flex: 1 1 150px\`), fills a non-stack parent, and keeps 150 inside a \`<Scroll>\` (warned + dropped on native). BROWSER CHROME works natively: \`<input type=file>\` (picker, or camera for \`capture\` via the app's FileProvider), \`alert\`/\`confirm\`/\`prompt\` as native dialogs, geolocation / camera / microphone after a per-site consent AND only for permissions the app declares (AndroidManifest / Info.plist usage string), \`window.open\` / \`target=_blank\` handed to the system browser for http(s)/mailto/tel/sms. ORIGIN SCOPE (native): the host pins the origin its own load lands on (\`file://\` for \`html\`/bundled \`src\`, else the remote origin after redirects); the main frame stays on it (a tapped off-origin link opens in the system browser, other off-origin navigations are cancelled) and \`data\`/\`onMessage\` reach only the MAIN frame of that origin — never an iframe — matching the web host. Bundled \`src\` names with \`..\` are refused; a non-bundled \`src\` must be http(s). See also: Web, connectWebHost.`,
+    notes: `Host a web page/component natively (WKWebView on iOS, Android WebView; \`<iframe srcdoc>\` on web). THE escape hatch for web-only packages (flow/code/document) on native — they run inside the WebView. Bidirectional bridge: \`data\` is pushed in as \`window.__pyreonData\` (+ a \`pyreondata\` event, live, no reload); the page calls \`window.pyreonPostMessage(payload)\` → your \`onMessage\` closure. \`domStorage\` (default true, native-only literal) keeps \`localStorage\` available in the hosted page (Android disables it by default; \`false\` opts out). SIZING: unsized it is the \`<iframe>\` default on every target — full width, 150 high; \`grow\` (literal, native) takes the free main-axis space of its parent \`<Stack>\`/\`<Inline>\` (\`Modifier.weight(1f)\` / a greedy SwiftUI frame / \`flex: 1 1 150px\`), fills a non-stack parent, and keeps 150 inside a \`<Scroll>\` (warned + dropped on native). BROWSER CHROME works natively: \`<input type=file>\` (picker, or camera for \`capture\` via the app's FileProvider), \`alert\`/\`confirm\`/\`prompt\` as native dialogs, geolocation / camera / microphone after a per-site consent AND only for permissions the app declares (AndroidManifest / Info.plist usage string), \`window.open\` / \`target=_blank\` handed to the system browser for http(s)/mailto/tel/sms. DOWNLOADS (native): an \`<a download>\` (including page-built \`blob:\`/\`data:\` URLs), a \`Content-Disposition: attachment\` response or an undisplayable type is saved for the user — iOS the share sheet (Save to Files), Android \`DownloadManager\` for http(s) and the system "save as" picker for \`blob:\`/\`data:\` (streamed from the page in chunks, up to 256 MB) — and then reported to \`onDownload({ url, filename, mimeType })\`; \`saveDownloads={false}\` (literal) reports it as it starts and leaves it to the app. Only the MAIN frame on the host's origin may download, after a user gesture there (one download per gesture), one at a time; others are refused with a log and never reach \`onDownload\`. On web the browser handles downloads in the iframe itself and both props are ignored. ORIGIN SCOPE (native): the host pins the origin its own load lands on (\`file://\` for \`html\`/bundled \`src\`, else the remote origin after redirects); the main frame stays on it (a tapped off-origin link opens in the system browser, other off-origin navigations are cancelled) and \`data\`/\`onMessage\` reach only the MAIN frame of that origin — never an iframe — matching the web host. Bundled \`src\` names with \`..\` are refused; a non-bundled \`src\` must be http(s). See also: Web, connectWebHost.`,
     mistakes: `- Using it for core UI (nav/forms/lists) — pays WebView boot + bundle cost; use native primitives there. Reserve <WebView> for self-contained web-island panes (editors/diagrams)
 - Expecting native look-and-feel — content renders as a web view, not native widgets
 - Expecting an unsized WebView to fill the screen — it is 150 high on every target (the iframe default); pass \`grow\` as a direct child of the \`<Stack>\` whose remaining space it should take
 - Putting \`grow\` inside a \`<Scroll>\` — there is no free space to fill; native drops it with a warning and the view stays 150 high
+- Starting a download from script with no user gesture, or from an iframe — both hosts refuse it (logged, no \`onDownload\`); a download must follow a tap or key press in the main frame, one per gesture
+- Expecting \`onDownload\` to fire on web — the browser downloads from the iframe itself; \`onDownload\` / \`saveDownloads\` are native-only
 - Expecting a hosted page to read the location or camera without declaring it — add the permission (AndroidManifest) / usage string (Info.plist); an undeclared one is denied and logged
 - Expecting \`target="_blank"\` to open inside the view — it hands the URL to the system browser (http(s)/mailto/tel/sms only), keeping the hosted page in place`,
   },
@@ -2008,10 +1993,10 @@ const Admin = () => (
     <RouterView />  {/* renders Settings, Users, etc. */}
   </div>
 )`,
-    notes: `Render the matched route's component. For nested routes, the parent route component includes a \`<RouterView />\` that renders the matched child. Each \`<RouterView>\` renders one level of the route tree. See also: RouterProvider, createRouter.`,
+    notes: `Render the matched route's component. For nested routes, the parent route component includes a \`<RouterView />\` that renders the matched child. Each \`<RouterView>\` renders one level of the route tree. The page component receives \`params\`, \`query\` and \`meta\` as live props (the page being replaced keeps its own params until it unmounts). It is remounted when its matched record, its params or its LOADER KEY (\`loaderKey\`, else path + params) change, and kept mounted through a navigation that changes only the query or the hash, so a search box or a filter written to the URL with \`router.replace\`, \`useSearchParams().set\` or \`@pyreon/url-state\` keeps its focus and local state. Loader data that changes under the same key (\`revalidate()\`, \`staleWhileRevalidate\`, \`gcTime: 0\`, a server loader) is delivered in place through the \`useLoaderData()\` accessor, never by a remount; the page being replaced never sees the next page's data. A route error boundary's \`errorComponent\` receives \`error\` and \`reset\`. A route error boundary showing its \`errorComponent\` is remounted on any navigation, so it recovers. A \`replace()\` that changes only the query neither scrolls nor starts a view transition; pass \`{ scroll, viewTransition }\` to \`push\`/\`replace\` to decide explicitly. See also: RouterProvider, createRouter.`,
     mistakes: `- SSR renders a BLANK page for a lazy route when the handler only ran \`prefetchLoaderData\` — that runs LOADERS ONLY, it does NOT resolve \`lazy()\` route components. \`renderToString\` is synchronous, so an unresolved lazy component falls back to its empty loading state. The SSR handler must call \`preloadRoute(router, path, req)\` (resolves lazy components into \`_componentCache\` AND runs the loaders) before rendering.
 - Forgetting the inner \`<RouterView />\` inside a LAYOUT component — nested child routes render by placing a SECOND \`<RouterView />\` in the layout body, one per depth level. Without it the layout renders but its children never appear (they have no mount point).
-- Expecting a param-only navigation (\`/user/1 → /user/2\`) to re-run the layout body — it does NOT. Each depth is a single atomic \`computed\` keyed on (matched record, component, its own loader data, route ref); it re-emits only when the matched RECORD or that depth's own loader data changes. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders (via reactive props). Do not put per-navigation side effects in a layout body expecting them to re-fire.
+- Expecting a param-only navigation (\`/user/1 → /user/2\`) to re-run the layout body — it does NOT. Each depth is a single atomic \`computed\` keyed on (matched record, component, its own loader key); the leaf is ALSO keyed on the route params. It re-emits only when the matched RECORD or that depth's loader key changes, plus a param change at the leaf. A loader-LESS layout mounts ONCE and persists; only the page leaf re-renders. A query- or hash-only navigation (same records, same params) does not remount the page unless its loader key changes (a \`loaderKey\` that reads the query) or its route error boundary is showing the error page; new loader data under the same key arrives in place through the \`useLoaderData()\` accessor. The page reads the new query through its live \`props.query\` (in an accessor or effect — a value read once in the body is NOT refreshed), \`useRoute()\` or \`useSearchParams()\` (#4814). Do not put per-navigation side effects in a layout body expecting them to re-fire.
 - Passing the route component as a prop or child to \`<RouterView>\` — it takes none except \`router?\` (explicit router override; defaults to the context/active router) and \`announceRouteChanges\` (a11y live-region opt-out). It reads the matched chain from \`RouterContext\`; configure routes in \`createRouter\`, never on RouterView.
 - In a \`*-compat\` app, wrapping \`<RouterView>\` in your OWN layout helper that uses \`provide()\`/\`onMount()\`/\`effect()\` at body scope without marking it \`nativeCompat()\` — the compat jsx runtime relocates its setup into a wrapper accessor. RouterView itself ships \`nativeCompat\`-marked; your helpers around it must be too.
 - Passing \`layout\` to \`@pyreon/zero\`'s \`createApp\`/\`startClient\` when fs-router already emits \`_layout.tsx\` — the layout is a parent route in the matched chain that RouterView renders, so the explicit \`layout\` mounts it a SECOND time (two navbars / two providers). Let \`_layout.tsx\` be the canonical registration; do not also pass \`layout\`.`,
@@ -2023,7 +2008,7 @@ const Admin = () => (
 <RouterLink to="https://github.com/pyreon">GitHub</RouterLink>{/* auto target=_blank + secure rel */}`,
     notes: 'Declarative navigation link that renders an `<a>` element. Applies `activeClass` when the current route matches the link path (prefix), and `exactActiveClass` for exact matches. Only INTERNAL navigations are intercepted (`router.push()` + `preventDefault`); external URLs, `mailto:`/`tel:`, and `#hash` are detected from `to` at runtime and left to the browser — external links auto-get `target="_blank" rel="noopener noreferrer"`. Resolves its router like every hook does (context ?? active router), so links outside the provider subtree still client-navigate; with NO router resolvable it degrades to a plain anchor (plain-path `href`, no click interception → full-load navigation) and warns once per `to` in dev. `to` is generic (`CheckHref<T>`): with routes registered via the `RegisteredRoutes` augmentation, a mistyped internal path is a compile error, while dynamic `string`s and external URLs are always accepted. See also: useRouter, useIsActive, createRouter.',
     mistakes: `- \`<a href="/about" onClick={() => router.push("/about")}>\` — use \`<RouterLink to="/about">\` instead; it handles the anchor element, active class, and click interception
-- Plain internal \`<a href="/about">\` in a router app — triggers a FULL page reload (dev warns at the document level with the RouterLink replacement). Deliberate full-load links opt out via \`target\`, \`download\`, or \`data-allow-reload\`.
+- Plain internal \`<a href="/about">\` in a router app — triggers a FULL page reload (dev warns at the document level with the RouterLink replacement). Deliberate full-load links opt out via \`target\`, \`download\`, or \`data-allow-reload\` (on the anchor, or on an ancestor to opt out a whole region — embedded content, a component preview).
 - Rendering \`<RouterLink>\` with no \`<RouterProvider>\` ancestor (and no \`setActiveRouter\`) — the link degrades to a plain anchor: plain-path \`href\`, full page load on click (dev warns once per \`to\`). Wrap the tree in \`<RouterProvider router={…}>\` for client-side navigation.
 - Wrapping an external URL in a plain \`<a>\` to avoid router interception — unnecessary: \`<RouterLink to="https://x.com">\` already detects it as external, renders \`target="_blank" rel="noopener noreferrer"\`, and does NOT client-navigate. Override with \`external\` / \`target\` / \`rel\` props or the \`createRouter({ links })\` config.
 - \`<RouterLink to={dynamicPath}>\` without calling the signal — must call: \`<RouterLink to={dynamicPath()}>\` (or let the compiler handle it via \`_rp()\`)`,
@@ -2036,11 +2021,13 @@ const Admin = () => (
 router.push("/settings")
 router.push({ name: "user", params: { id: "42" } })
 router.replace("/login")
+router.push("/list?page=2", { scroll: false, viewTransition: false }) // edit in place
 router.back()
 router.forward()
 router.go(-2)`,
     notes: `Access the router instance for programmatic navigation. Returns the \`Router\` object with \`push()\`, \`replace()\`, \`back()\`, \`forward()\`, \`go()\`. \`await router.push()\` resolves after the View Transition \`updateCallbackDone\` (DOM commit is complete, new route state is live), NOT after the animation finishes — and resolves WITH a \`NavigationResult\`: \`'committed'\` (route changed), \`'cancelled'\` (a blocker/guard/middleware refused), or \`'superseded'\` (a newer navigation won). Browser Back/Forward routes through the same pipeline (guards, blockers, loaders, afterEach, scroll, \`meta.title\`). On iOS and Android \`useRouter()\` lowers to a handle with \`push(path)\`, \`replace(path)\`, \`back()\` and \`forward()\` (string paths, no awaited result); the other members have no native counterpart and fail the native build. See also: useRoute, RouterLink, createRouter.`,
-    mistakes: `- \`router.push("/path")\` at the top level of a component body — this is synchronous imperative navigation during render, causing an infinite loop. Wrap in \`onMount\`, event handler, or \`effect\`
+    mistakes: `- Expecting a query-only \`push()\` to keep the scroll position — a push is a new entry and scrolls to the top (\`scrollBehavior\`). Pass \`router.push(path, { scroll: false })\`; add \`viewTransition: false\` to skip the view transition. A \`replace()\` that changes only the query (same route, params and hash) defaults to both off; \`{ scroll: true }\` turns scrolling back on. With \`scroll: false\` the \`scrollBehavior\` option is not consulted.
+- \`router.push("/path")\` at the top level of a component body — this is synchronous imperative navigation during render, causing an infinite loop. Wrap in \`onMount\`, event handler, or \`effect\`
 - \`await router.push("/path")\` expecting animation completion — \`push\` resolves after DOM commit (\`updateCallbackDone\`), not after View Transition animation finishes. Use the returned transition object's \`.finished\` if you need to wait for animation
 - Calling \`useRouter()\` outside a \`<RouterProvider>\` — throws because no router context exists`,
   },
@@ -2111,16 +2098,28 @@ const data = useMiddlewareData()
   },
 
   'router/useLoaderData': {
-    signature: 'useLoaderData<T>(): T',
+    signature: 'useLoaderData<T>(): () => T',
     example: `// Route: { path: "/user/:id", component: User, loader: ({ params }) => fetchUser(params.id) }
-
 const User = () => {
   const data = useLoaderData<UserData>()
-  return <div>{data.name}</div>
+  return <h1>{data().name}</h1>
+}
+
+// A search page whose server loader re-runs on every keystroke keeps its input
+const Search = () => {
+  const data = useLoaderData<{ hits: Hit[] }>()
+  const q = useUrlState('q', '')
+  return (
+    <>
+      <input value={q()} onInput={(e) => q.set(e.currentTarget.value)} />
+      <For each={() => data().hits} by={(h) => h.id}>{(h) => <li>{h.title}</li>}</For>
+    </>
+  )
 }`,
-    notes: `Access the data returned by the current route's \`loader\` function. The loader runs before the route component mounts; its return value is cached and available synchronously via this hook. Generic over the loader return type. See also: useMiddlewareData, useRoute.`,
-    mistakes: `- Getting \`undefined\` when the route has NO \`loader\` — it reads \`LoaderDataContext\` (default \`undefined\`). The \`<T>\` generic is an unchecked CAST, not validation; \`data.name\` then throws on the undefined.
-- Wrapping \`useLoaderData()\` in an \`effect\` expecting it to re-fire on navigation — it is a plain (non-reactive) context READ, a snapshot at mount, NOT an accessor. RouterView RE-MOUNTS the route component on a real navigation, which re-runs the body and re-reads the hook; there is no signal to subscribe to.
+    notes: `The current route's loader data as a reactive accessor (like \`useRoute()\`). The loader runs before the route component mounts, so \`data()\` is available on the first render. Read it inside JSX, an \`effect\` or a \`computed\`: the page is not remounted when the data changes under the same loader key (\`router.revalidate()\`, a \`staleWhileRevalidate\` refresh, a \`gcTime: 0\` loader, a server loader re-run on a query-only navigation), so inputs keep their focus and local state survives while the data updates in place. A different loader key (\`loaderKey\`, else path + params) is a different resource and remounts the page. Generic over the loader return type. See also: useMiddlewareData, useRoute, RouterView.`,
+    mistakes: `- Reading \`data()\` ONCE in the component body (\`const user = useLoaderData<User>()()\`, or \`const { name } = data()\`) — that is a snapshot, and the page is not remounted when the data changes under the same key, so it goes stale. Read \`data()\` inside JSX, \`<For each={() => data().list}>\`, \`<Show when={() => data().x}>\`, an \`effect\` or a \`computed\`.
+- Destructuring the result (\`const { title } = useLoaderData()\`) — it is an accessor (#4814); bind it and read \`data().title\`.
+- Getting \`undefined\` when the route has NO \`loader\` — the accessor reads \`LoaderDataContext\` (default \`undefined\`). The \`<T>\` generic is an unchecked CAST, not validation; \`data().name\` then throws on the undefined.
 - SSR returning \`undefined\` at render time — loaders are async but \`renderToString\` is synchronous, so the handler must run loaders (\`preloadRoute\` or \`prefetchLoaderData\`) BEFORE rendering. An un-prefetched loader has not resolved when the component reads the hook.
 - Calling it in a component NOT rendered by \`<RouterView>\` (a sibling inside \`<RouterProvider>\`, a portal outside the route tree) — no \`LoaderDataProvider\` wraps it, so the context is the default \`undefined\`.
 - Expecting a nested LAYOUT's \`useLoaderData()\` to return the child PAGE's data — each depth is wrapped with its OWN \`LoaderDataProvider\`, so a layout reads its own loader's data and the page reads the page's. The hook reads the nearest provider, not the leaf.`,
@@ -3421,7 +3420,7 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
   },
 
   'runtime-dom/Transition': {
-    signature: '<Transition name={name} show={() => boolean} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>',
+    signature: '<Transition name={name} show={boolean | (() => boolean)} appear={boolean} onAfterEnter={fn} onAfterLeave={fn}>{children}</Transition>',
     example: `const visible = signal(true)
 
 <Transition name="fade" show={() => visible()}>
@@ -3432,15 +3431,15 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s }
 .fade-enter-from, .fade-leave-to { opacity: 0 }
 */`,
-    notes: 'CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show: () => boolean` accessor — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles. See also: TransitionGroup, @pyreon/kinetic.',
-    mistakes: `- Omitting \`show\` — it is REQUIRED (\`() => boolean\`); Transition drives visibility itself, so a plain child with no \`show\` will not animate
+    notes: 'CSS-based enter/leave animation wrapper. Visibility is driven by the REQUIRED `show` prop — a value or an accessor, like `<Show when>` (`show={open}` with a component-local signal, `show={open()}` and `show={() => open()}` are all reactive) — the child animates in when it flips true and out when it flips false (do NOT wrap the child in a `<Show>`; `show` is the toggle). Applies `{name}-enter-from`/`-enter-active`/`-enter-to` classes on enter and the corresponding `-leave-*` classes on leave. `appear` runs the enter transition on initial mount. Has a 5-second safety timeout — if `transitionend`/`animationend` never fires, the transition completes automatically. `onAfterEnter`/`onAfterLeave` fire when each phase settles. See also: TransitionGroup, @pyreon/kinetic.',
+    mistakes: `- Omitting \`show\` — it is REQUIRED; Transition drives visibility itself, so a plain child with no \`show\` will not animate
 - Wrapping the child in a \`<Show>\` — \`show\` already toggles visibility; a nested \`<Show>\` double-gates it
 - Missing CSS classes — \`<Transition name="fade">\` does nothing without \`.fade-enter-active\` / \`.fade-leave-active\` CSS
 - Passing a \`mode\` prop — Transition has no \`mode\`; for sequenced list moves use TransitionGroup`,
   },
 
   'runtime-dom/TransitionGroup': {
-    signature: '<TransitionGroup items={() => T[]} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />',
+    signature: '<TransitionGroup items={T[] | (() => T[])} keyFn={(item, i) => key} render={(item, i) => VNode} name={name} tag={tag} />',
     example: `const items = signal([{ id: 1, name: "a" }, { id: 2, name: "b" }])
 
 <TransitionGroup
@@ -3456,19 +3455,18 @@ hydrateRoot(document.getElementById("app")!, <App />)`,
 .list-enter-from, .list-leave-to { opacity: 0; transform: translateY(10px) }
 .list-move { transition: transform 0.3s }
 */`,
-    notes: 'Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (a reactive accessor), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`). See also: Transition, For.',
+    notes: 'Animate list item additions and removals with CSS transitions. Unlike `<Transition>`, it does NOT take `<For>` children — it drives the list itself via three required props: `items` (an accessor or an array — `items={list}` with a component-local signal stays reactive), `keyFn` (a stable key extractor), and `render` (returns ONE DOM-element VNode per item, whose `type` must be a string tag like `"li"` so a ref can be injected). Each item gets enter/leave classes on mount/unmount; `-move` classes FLIP-animate reordering. `tag` sets the wrapper element (default `"div"`). See also: Transition, For.',
     mistakes: `- Passing a \`<For>\` as children — TransitionGroup owns iteration via \`items\`/\`keyFn\`/\`render\`, it is not a \`<For>\` wrapper
 - A \`render\` that returns a component or fragment — it must return a single DOM-element VNode (string \`type\`) so the group can inject a ref`,
   },
 
   'runtime-dom/KeepAlive': {
-    signature: '<KeepAlive active={() => boolean}>{children}</KeepAlive>',
+    signature: '<KeepAlive active={boolean | (() => boolean)}>{children}</KeepAlive>',
     example: `// One KeepAlive per route — each keeps its own subtree mounted + hidden.
 <KeepAlive active={() => route() === "/a"}><RouteA /></KeepAlive>
 <KeepAlive active={() => route() === "/b"}><RouteB /></KeepAlive>`,
-    notes: 'Mount children ONCE and keep them alive when hidden — when `active()` returns false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab). See also: Transition, Show.',
-    mistakes: `- \`active\` MUST be a thunk — write \`active={() => cond()}\`, not \`active={cond}\`; the runtime calls \`props.active?.()\`, so any non-function value (a boolean, or a bare signal the compiler auto-calls to a value) THROWS \`TypeError: props.active is not a function\` at mount — there is no \`<Show when>\`-style value-form normalization; only omitting \`active\` entirely defaults to visible
-- KeepAlive CSS-HIDES when inactive, it does NOT unmount — the hidden component's effects, timers, subscriptions, and signals keep RUNNING (memory + side-effect cost); use it ONLY for expensive-to-recreate state, not as a default wrapper
+    notes: 'Mount children ONCE and keep them alive when hidden — when `active` is false the children are CSS-hidden (`display: none`) but stay mounted, so their signals, effects, scroll position, and form inputs are PRESERVED. This is the opposite of conditional rendering (`<Show>`/ternary), which destroys and recreates component state on every toggle. `active` defaults to `true` (always visible). Use one KeepAlive per slot you want cached (e.g. one per route or tab). See also: Transition, Show.',
+    mistakes: `- KeepAlive CSS-HIDES when inactive, it does NOT unmount — the hidden component's effects, timers, subscriptions, and signals keep RUNNING (memory + side-effect cost); use it ONLY for expensive-to-recreate state, not as a default wrapper
 - It is the OPPOSITE of \`<Show>\`/ternary — those DESTROY + recreate state on toggle; reach for KeepAlive precisely when you need state PRESERVED across hide/show (form drafts, scroll, heavy trees)
 - Each KeepAlive slot keeps its OWN children mounted — wrapping N routes in N KeepAlives keeps ALL N subtrees mounted + their effects live simultaneously, not just the active one
 - There is NO \`include\`/\`exclude\`/\`max\`/name-based cache or LRU eviction (that is Vue's KeepAlive) — visibility is driven solely by the \`active\` accessor`,
@@ -4059,22 +4057,25 @@ convert(money('100.00', 'EUR'), 'JPY', '162.5')     // => { amount: '16250', cur
     signature: '(code: CurrencyCode) => number',
     example: `currencyDigits('EUR')                     // => 2
 currencyDigits('JPY')                     // => 0
-currencyDigits('KWD')                     // => 3`,
-    notes: '[EXPERIMENTAL] The minor-unit digits of a currency from the platform (`Intl`; no table is shipped) or `defineCurrency`. Added in v0.53.0.',
+currencyDigits('KWD')                     // => 3
+currencyDigits('HUF')                     // => 2`,
+    notes: '[EXPERIMENTAL] The minor-unit digits of a currency: what `defineCurrency` gave it, else its ISO 4217 minor unit. The same on every engine (`Intl` is never asked for digits: V8 reports CLDR display digits, 0 for HUF, IDR, COP, IQD and others, while JavaScriptCore reports ISO 4217). Added in v0.53.0.',
   },
 
   'money/isCurrency': {
     signature: '(code: string) => boolean',
     example: `isCurrency('EUR')                         // => true
 isCurrency('eur')                         // => false`,
-    notes: '[EXPERIMENTAL] Whether `code` is an upper-case ISO 4217 code the platform knows, or a registered one. Never throws. Added in v0.53.0.',
+    notes: '[EXPERIMENTAL] Whether `code` is a current ISO 4217 code (list one as amended 2026-09-17, shipped: engines list different codes) or a registered one. Never throws. Added in v0.53.0.',
   },
 
   'money/defineCurrency': {
     signature: '(code: string, spec: { digits: number }) => void',
     example: `defineCurrency('PTS', { digits: 0 })
-currencyDigits('PTS')                     // => 0`,
-    notes: '[EXPERIMENTAL] Register a currency the platform does not know (crypto, points, a test currency). The code is 2 to 12 upper-case letters or digits starting with a letter. Re-registering with the same digits is fine; different digits throw, as does changing an ISO currency. At most 64 are registered. Added in v0.53.0.',
+currencyDigits('PTS')                     // => 0
+defineCurrency('ISK', { digits: 2 })
+fromMinor(12345, 'ISK')                   // => { amount: '123.45', currency: 'ISK' }`,
+    notes: '[EXPERIMENTAL] Register a currency the platform does not know (crypto, points, a test currency), or give an ISO currency the digits your payment provider uses (ISK in hundredths). The code is 2 to 12 upper-case letters or digits starting with a letter. A code is defined once, at startup, in a module both the server and client entries import (each realm has its own registry): the same digits again is fine, different digits throw. At most 64 are registered. Added in v0.53.0.',
   },
 
   'money/Money': {
@@ -4914,7 +4915,7 @@ onUnmount(stop)`,
 // → t('validate.string.too-short', { min: 2 }) when key + t resolve
 // → issue.fallback ('Must be at least 2 characters') when t echoes the key
 // → issue.message (raw lib message) when no key at all`,
-    notes: 'Resolve a single issue to a human-readable string. Resolution order: (1) `issue.key` + `t` provided AND `t` returns a non-key string → resolved string; (2) `issue.fallback` if set; (3) `issue.message` (always present per StdSchema spec). Native StdSchema issues without `key`/`fallback` fall through to `message` immediately — no overhead. See also: formatErrors, formatErrorsByPath.',
+    notes: `Resolve a single issue to a human-readable string. Resolution order: (1) \`issue.key\` + \`t\` provided AND \`t\` returns a non-key string → resolved string; (2) \`issue.fallback\` if set; (3) \`issue.message\` (always present per StdSchema spec). Native StdSchema issues without \`key\`/\`fallback\` fall through to \`message\` immediately — no overhead. \`TFn\` accepts \`@pyreon/i18n\`'s \`t\` as-is (also a key-typed instance's \`t\`) and any \`(key, params?) => string\` translate function — no cast wrapper. See also: formatErrors, formatErrorsByPath.`,
   },
 
   'validate/formatErrors': {
@@ -4941,7 +4942,7 @@ const messages = formatErrors(result.issues ?? [], t)`,
     example: `const schema = s.object({ email: s.string().email(), age: s.number().int().min(18) })
 const { t } = useI18n()
 const form = useForm({
-  fields: [emailField, ageField],
+  initialValues: { email: '', age: 0 },
   schema: toFormValidator(schema, t),
   onSubmit,
 })`,
@@ -5240,7 +5241,7 @@ const parse = wrapStandardSchema(schema)
 const r = parse(input)
 if (r instanceof Promise) throw new Error('async schema unsupported')
 if (r.ok) use(r.value)`,
-    notes: 'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. @internal — most consumers go through extractParseFn. See also: extractParseFn, standardSchemaToValidator.',
+    notes: 'Convert a Standard Schema into a synchronous parser returning `SchemaParseResult<T>` (`{ ok: true, value } | { ok: false, issues }`). Unlike standardSchemaToValidator (which returns per-key ERRORS for forms), this returns the coerced VALUE on success — what `@pyreon/store` / `@pyreon/state-tree` need. Surfaces async validation as a `Promise` return so callers can detect and reject async-only schemas. Most consumers go through extractParseFn; call this directly when building your own Standard-Schema-derived parser. See also: extractParseFn, standardSchemaToValidator.',
     mistakes: `- Treating it like standardSchemaToValidator — this returns a coerced-value ParseResult, not a form error record
 - Not probing for a Promise return — an async Standard Schema returns a Promise, which is not a valid sync ParseResult`,
   },
@@ -5383,7 +5384,7 @@ const issues: ValidationIssue[] = [{ path: 'address.city', message: 'Required' }
 // Bind inputs with register():
 // h('input', form.register('email'))
 // h('input', { type: 'checkbox', ...form.register('remember', { type: 'checkbox' }) })`,
-    notes: `Create a signal-based form. \`initialValues\` drives field keys and types end-to-end — TValues is inferred from it, so all downstream typings (\`useField\` field name, \`useWatch\` keys, validator signatures) are fully typed without annotation. Returns \`FormState<TValues>\` with per-field signals, form-level signals (\`isSubmitting\`, \`isValidating\`, \`isValid\`, \`isDirty\`, \`submitCount\`, \`isSubmitted\`, \`isSubmitSuccessful\`, \`submitError\`), and handlers (\`handleSubmit\`, \`reset\`, \`validate\`, \`trigger\`, \`focusFirstError\`, \`registerField\`, \`unregisterField\`). react-hook-form-parity accessors: \`trigger(name?)\` validates a field/subset/whole-form on demand; \`getValues(name?)\` reads one value or all; \`dirtyFields()\` / \`touchedFields()\` return the changed/visited fields as records; \`getFieldState(name)\` returns a field's live signals (\`undefined\` for a name matching no field — an existence probe for dynamic fields); \`isSubmitted\` / \`isSubmitSuccessful\` track submit lifecycle. \`validateOn\` defaults to \`"blur"\` (not \`"change"\`) so users aren't scolded mid-keystroke. \`schema\` accepts a RAW Standard Schema (zod / valibot / arktype / \`@pyreon/validate\`'s \`s\`) directly — no adapter, no \`as never\` cast — as well as a plain \`SchemaValidateFn\` or a \`@pyreon/validation\` typed adapter (\`zodSchema\` / \`valibotSchema\` / \`arktypeSchema\`); it runs after per-field validators, field-level errors win on the same field, and a key matching no field invalidates the form (never silently dropped). A field key with a dot (\`"address.city"\`) declares a FIRST-CLASS leaf field: per-field validators route to the exact leaf, and a DECLARATIVE schema (raw Standard Schema or typed adapter — never a plain function) over a dot-path-leaf form is fed the NESTED value shape (rebuilt from the flat model) so a real nested \`z.object({ address: z.object({ city }) })\` validates correctly and its \`address.city\` error auto-splits to the leaf field; a nested error with no leaf field routes to the nearest ancestor object field. The value model is FLAT (\`values()\` / \`onSubmit\` keep the dot-path keys — honest field-name types); \`nestValues\` / \`flattenValues\` convert to/from a nested API payload. an UNRECOGNIZED \`schema\` object (e.g. a zod<3.24 schema with no \`~standard\` support, or a mistyped object) THROWS at creation instead of silently disabling validation. \`register(field, { type })\` binds an input per type — \`"checkbox"\` → \`checked\`, \`"number"\` → \`valueAsNumber\`, \`"file"\` → a value-less bag whose \`onInput\` writes the \`FileList\`. \`registerField(name, initial?, validator?)\` / \`unregisterField(name)\` add or remove first-class fields at runtime for data-driven forms (idempotent; no silent auto-registration; dynamic fields are runtime-typed). On a failed submit, focus moves to the first errored + \`register()\`-bound field unless \`focusOnError: false\` (also exposed as \`focusFirstError()\`). \`reset(values?, { keepErrors?, keepTouched?, keepDirty?, keepSubmitCount? })\` resets to a new baseline — DURABLY: named fields become the new baseline for the dirty compare, \`resetField\`, and any later plain \`reset()\` (react-hook-form defaultValues-replacement parity); unnamed fields revert to their current baseline. \`resetField(field, { keepError?, keepTouched? })\` resets one field. An explicit \`null\`/\`undefined\` field value is first-class — \`values()\` and the submit payload never fall back to the initial for it (a cleared \`FileList | null\` file field submits \`null\`). See also: useField, FormProvider, useFormState.`,
+    notes: `Create a signal-based form. \`initialValues\` drives field keys and types end-to-end — TValues is inferred from it, so all downstream typings (\`useField\` field name, \`useWatch\` keys, validator signatures) are fully typed without annotation. Returns \`FormState<TValues>\` with per-field signals, form-level signals (\`isSubmitting\`, \`isValidating\`, \`isValid\`, \`isDirty\`, \`submitCount\`, \`isSubmitted\`, \`isSubmitSuccessful\`, \`submitError\`), and handlers (\`handleSubmit\`, \`reset\`, \`validate\`, \`trigger\`, \`focusFirstError\`, \`registerField\`, \`unregisterField\`). react-hook-form-parity accessors: \`trigger(name?)\` validates a field/subset/whole-form on demand; \`getValues(name?)\` reads one value or all; every read accessor (\`values()\`, \`getValues()\`, \`getValues(name)\`, \`errors()\`, \`dirtyFields()\`, \`touchedFields()\`) is REACTIVE — a computed/effect over it re-runs when a field it read (or the registered field set) changes; \`dirtyFields()\` / \`touchedFields()\` return the changed/visited fields as records; \`getFieldState(name)\` returns a field's live signals (\`undefined\` for a name matching no field — an existence probe for dynamic fields); \`isSubmitted\` / \`isSubmitSuccessful\` track submit lifecycle. \`validateOn\` defaults to \`"blur"\` (not \`"change"\`) so users aren't scolded mid-keystroke. \`schema\` accepts a RAW Standard Schema (zod / valibot / arktype / \`@pyreon/validate\`'s \`s\`) directly — no adapter, no \`as never\` cast — as well as a plain \`SchemaValidateFn\` or a \`@pyreon/validation\` typed adapter (\`zodSchema\` / \`valibotSchema\` / \`arktypeSchema\`); it runs after per-field validators, field-level errors win on the same field, and a key matching no field invalidates the form (never silently dropped). A field key with a dot (\`"address.city"\`) declares a FIRST-CLASS leaf field: per-field validators route to the exact leaf, and a DECLARATIVE schema (raw Standard Schema or typed adapter — never a plain function) over a dot-path-leaf form is fed the NESTED value shape (rebuilt from the flat model) so a real nested \`z.object({ address: z.object({ city }) })\` validates correctly and its \`address.city\` error auto-splits to the leaf field; a nested error with no leaf field routes to the nearest ancestor object field. The value model is FLAT (\`values()\` / \`onSubmit\` keep the dot-path keys — honest field-name types); \`nestValues\` / \`flattenValues\` convert to/from a nested API payload. an UNRECOGNIZED \`schema\` object (e.g. a zod<3.24 schema with no \`~standard\` support, or a mistyped object) THROWS at creation instead of silently disabling validation. \`register(field, { type })\` binds an input per type — \`"checkbox"\` → \`checked\`, \`"number"\` → \`valueAsNumber\`, \`"file"\` → a value-less bag whose \`onInput\` writes the \`FileList\`. \`registerField(name, initial?, validator?)\` / \`unregisterField(name)\` add or remove first-class fields at runtime for data-driven forms (idempotent; no silent auto-registration; dynamic fields are runtime-typed). On a failed submit, focus moves to the first errored + \`register()\`-bound field unless \`focusOnError: false\` (also exposed as \`focusFirstError()\`). \`reset(values?, { keepErrors?, keepTouched?, keepDirty?, keepSubmitCount? })\` resets to a new baseline — DURABLY: named fields become the new baseline for the dirty compare, \`resetField\`, and any later plain \`reset()\` (react-hook-form defaultValues-replacement parity); unnamed fields revert to their current baseline. \`resetField(field, { keepError?, keepTouched? })\` resets one field. An explicit \`null\`/\`undefined\` field value is first-class — \`values()\` and the submit payload never fall back to the initial for it (a cleared \`FileList | null\` file field submits \`null\`). See also: useField, FormProvider, useFormState.`,
     mistakes: `- Mutating \`initialValues\` after creation — it is read once at setup; use \`setFieldValue\` for programmatic updates
 - Reading \`form.fields[name].value\` as a plain value — it is \`Signal<T>\`, call it: \`form.fields.email.value()\`
 - Passing \`validateOn: "change"\` without \`debounceMs\` on async validators — fires a network request on every keystroke
@@ -5422,9 +5423,10 @@ tags.remove(0)
 <For each={tags.items()} by={(i) => i.key}>
   {(item) => <input value={item.value()} onInput={(e) => item.value.set(e.currentTarget.value)} />}
 </For>`,
-    notes: 'Manage a dynamic array of form fields with stable keys. Each item is `{ key: number, value: Signal<T> }` — use `item.key` inside `<For by={i => i.key}>` so reordering / inserts do not remount child components. Full mutation surface: `append`, `prepend`, `insert`, `remove`, `update`, `move`, `swap`, `replace`. See also: useForm.',
+    notes: 'Manage a dynamic array of form fields with stable keys. Each item is `{ key: number, value: Signal<T> }` — use `item.key` inside `<For by={i => i.key}>` so reordering / inserts do not remount child components. Full mutation surface: `append`, `prepend`, `insert`, `remove`, `update`, `move`, `swap`, `replace`. `values()` is REACTIVE — it reads `items()` and every `item.value()`, so a computed/effect over it re-runs on any add/remove/reorder AND any item edit (the same contract as `form.values()`; wrap in `untrack` for a one-off snapshot inside an effect). See also: useForm.',
     mistakes: `- Rendering with <For by={(_, i) => i}> — index-based keys lose identity on reorder, defeating the stable-key design
-- Calling tags.items() inside setup and storing the array — it is a Signal, read inside reactive scopes`,
+- Calling tags.items() inside setup and storing the array — it is a Signal, read inside reactive scopes
+- Reading tags.values() inside an effect that also writes the array (append/update) — values() tracks every item, so the effect re-triggers itself; read it through \`untrack(() => tags.values())\` there`,
   },
 
   'form/useWatch': {
@@ -6074,7 +6076,7 @@ await api.post('/orders', { json: { id: 9007199254740993n } })`,
     signature: '(baseUrl: string | undefined, path: string, params: PathParams | undefined, query: QueryParams | undefined) => string',
     example: `buildUrl('/api', '/users/:id', { id: '1' }, { includeDeleted: true })
 // -> '/api/users/1?includeDeleted=true'`,
-    notes: 'The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes `:name` placeholders through `encodePathParam` — `encodeURIComponent`, so an id containing `/` cannot escape its segment, plus a value of exactly `.` / `..` encoded as `%252E` because the URL parser resolves both `..` and `%2E%2E` as dot segments and the request would reach another endpoint — throws on a missing param rather than leaving a literal `:id` in the URL) → `joinUrl` (base + path with exactly one slash between them; a PREFIX join, not `new URL(path, base)` — see the "baseUrl is a PREFIX" gotcha) → `buildQuery` (serializes a query object, DROPPING `undefined`/`null` entries so they never land in the URL as the literal text `"undefined"`, and repeating the key for array values). Each step is also individually exported (`applyPathParams`, `encodePathParam`, `joinUrl`, `buildQuery`, `isAbsoluteUrl`) for anything building URLs outside the client — a custom transport, a test assertion, a devtools panel. See also: createHttp.',
+    notes: 'The full URL-resolution pipeline `createHttp`/`endpoint` build every request URL through: `applyPathParams` (substitutes `:name` placeholders — read in the PATH part only, before the first `?` / `#`, so a colon in a written query string or fragment like `/search?tag=a:b` is sent as written; the type-level `PathParamNames` and the native lowering cut at the same point — through `encodePathParam` — `encodeURIComponent`, so an id containing `/` cannot escape its segment, plus a value of exactly `.` / `..` encoded as `%252E` because the URL parser resolves both `..` and `%2E%2E` as dot segments and the request would reach another endpoint — throws on a missing param rather than leaving a literal `:id` in the URL) → `joinUrl` (base + path with exactly one slash between them; a PREFIX join, not `new URL(path, base)` — see the "baseUrl is a PREFIX" gotcha) → `buildQuery` (serializes a query object, DROPPING `undefined`/`null` entries so they never land in the URL as the literal text `"undefined"`, and repeating the key for array values). Each step is also individually exported (`applyPathParams`, `encodePathParam`, `joinUrl`, `buildQuery`, `isAbsoluteUrl`, and `pathPartStart` / `pathPartEnd` — where the placeholder-bearing PATH part of a URL starts and ends, after `scheme://authority` and before the first `?` / `#`) for anything building URLs outside the client — a custom transport, a test assertion, a devtools panel. See also: createHttp.',
     mistakes: `- Interpolating a param into the path string yourself (\`\` \`/users/\${id}\` \`\`) instead of \`:id\` + \`params\` — that skips encoding, so an id containing \`/\` or \`?\` escapes its segment
 - Expecting \`joinUrl\` to follow WHATWG \`new URL(path, base)\` semantics — a leading slash does NOT discard the base path here; \`joinUrl('/api/v1', '/users')\` is \`/api/v1/users\`, never \`/users\`
 - Passing \`undefined\` in a query object and expecting it omitted only sometimes — it is ALWAYS dropped, on every value including array entries`,
@@ -6213,7 +6215,7 @@ useFocusReturn(() => isOpen())   // returns focus to the opener on close
 
 // Or the single-arg form: inert while getEl() is null, no focus move.
 useFocusTrap(() => modalRef())`,
-    notes: 'Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmatic `.focus()` or mouse click that lands focus outside the container is recaptured back in; Tab-only trapping misses those escapes). Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every event, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally and it turns on/off with it. Concurrent traps form a scope STACK: only the most recently ACTIVATED trap whose container exists handles events, and deactivating/unmounting it reactivates the one beneath (stacked modals no longer fight over the same Tab) — arm each trap with `active` tied to its open state so the stack tracks OPEN order, not mount order. The optional 2nd argument arms the trap reactively WITHOUT unmounting (`active: () => isOpen()`, or the positional shorthand `useFocusTrap(getEl, () => isOpen())`) and moves focus INTO the container on activation (`initialFocus: true` focuses the `[data-autofocus]` descendant when present, else the first tabbable; or a selector / element / getter; default is no focus move, backward-compatible). Initial focus is placed one microtask after activation, so content revealed by the same write (`hidden={!open()}`, a `<Show>`) is focusable by then. The focusable query is spec-grade — it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `checkVisibility` in real browsers); and orders positive-`tabindex` first. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`; making the background actually inert is `useInertOthers`. See also: useFocusReturn, useInertOthers, useScrollLock, useDialog, useClickOutside.',
+    notes: 'Trap focus inside the element returned by `getEl()` — Tab/Shift+Tab edge wrapping PLUS focusin containment (a programmatic `.focus()` or mouse click that lands focus outside the container is recaptured back in; Tab-only trapping misses those escapes). Required for modals / drawers / fullscreen overlays to be keyboard-accessible. The getter is read live on every event, so the trap is INERT while `getEl()` returns null — render the trapped element conditionally and it turns on/off with it. Concurrent traps form a scope STACK: only the most recently ACTIVATED trap whose container exists handles events, and deactivating/unmounting it reactivates the one beneath (stacked modals no longer fight over the same Tab) — arm each trap with `active` tied to its open state so the stack tracks OPEN order, not mount order. The optional 2nd argument arms the trap reactively WITHOUT unmounting (`active: () => isOpen()`, or the positional shorthand `useFocusTrap(getEl, () => isOpen())`) and moves focus INTO the container on activation (`initialFocus: true` focuses the `[data-autofocus]` descendant when present, else the first tabbable; or a selector / element / getter; default is no focus move, backward-compatible). Initial focus is placed one microtask after activation, so content revealed by the same write (`hidden={!open()}`, a `<Show>`) is focusable by then. With focus already inside the container, `true` never moves it; a named target (selector / element / getter) moves it only on the first activation or when the activation ran inside a user event at the focused element (a toggle inside the trapped container), and never when focus is already inside that target — so re-arming while the user types in a field leaves the field alone. The focusable query is spec-grade — it includes `contenteditable`, `audio`/`video[controls]`, and `details > summary`; filters `display:none` / `visibility:hidden` / `[hidden]` / `inert` / disabled / zero-size nodes (via `checkVisibility` in real browsers); and orders positive-`tabindex` first. Restoring focus to the trigger on close is a SEPARATE concern — use `useFocusReturn`; making the background actually inert is `useInertOthers`. See also: useFocusReturn, useInertOthers, useScrollLock, useDialog, useClickOutside.',
     mistakes: `- Keeping the element permanently mounted (e.g. \`display: none\`) and expecting the trap to disable when hidden — either unmount it (so \`getEl()\` returns null) or pass \`active: () => isOpen()\` to disarm without unmounting; visibility alone does not gate it
 - Expecting the trap to MOVE focus into the container on open — by default it only contains focus. Pass \`initialFocus: true\` (or a selector / element / getter) to place focus on activation, and pair with \`useFocusReturn\` to restore it on close
 - Expecting it to also RETURN focus to the trigger on close — that is useFocusReturn; useFocusTrap only contains focus within the container
@@ -7891,7 +7893,7 @@ const json = flow.toJSON(); flow.fromJSON(json)       // round-trip serializatio
 - Reading \`NodeComponentProps.data\` / \`.selected\` / \`.dragging\` as plain values — all three are REACTIVE ACCESSORS: \`props.data()\`, \`props.selected()\`, \`props.dragging()\`
 - Calling \`props.data()\` OUTSIDE a reactive scope — captures the value once at component setup, defeating the per-node reactivity. Read it inside JSX expression thunks, \`effect\`, or \`computed\`
 - Adding \`[key: string]: unknown\` index signature to your node data interface — no longer needed now that \`createFlow\` is generic. Pass \`createFlow<MyData>(...)\` instead
-- Setting \`LayoutOptions.direction\` (or \`layerSpacing\`, or \`edgeRouting\`) on a force / stress / radial / box / rectpacking layout and expecting a directional result — these options are namespaced under ELK's layered / tree pipelines and silently ignored by the geometric algorithms. Dev-mode \`console.warn\` fires when this happens
+- Setting \`LayoutOptions.direction\` (or \`layerSpacing\`, or \`edgeRouting\`) on a force / stress / radial / box / rectpacking layout and expecting a directional result — these options are grouped by layout algorithm (layered / tree) and silently ignored by the geometric algorithms. Dev-mode \`console.warn\` fires when this happens
 - Missing \`<Flow nodeTypes={{ key: Component }}>\` registration — \`node.type\` strings dispatch to that map, unregistered types fall through to the default renderer
 - Using \`createFlow\` inside a component body without \`onUnmount(() => flow.dispose())\` — prefer \`useFlow\` which auto-disposes
 - Using \`direction: 'row'\` on flow's containing Element layout — Pyreon \`Element\` accepts \`'inline'\` / \`'rows'\` / \`'reverseInline'\` / \`'reverseRows'\`, not CSS flex-direction values like \`'row'\` or \`'column'\`
@@ -8142,7 +8144,7 @@ for (const { id, position } of positioned) flow.updateNode(id, { position })`,
     notes: 'Auto-layout from the built-in engine. Runs `algorithm` (default `layered`) over the graph and returns a NEW array of `{ id, position }` pairs (positions only). The engine is PURE and synchronous — the same graph always produces the same positions — but the function stays `async` because that is the published signature, and it leaves room to move heavy layouts to a worker later without another breaking change. See also: createFlow, useFlow.',
     mistakes: `- Forgetting to \`await\` it — \`computeLayout\` returns a Promise even though the engine underneath is synchronous.
 - Expecting it to move your nodes — it does NOT mutate \`nodes\`; it returns only \`{ id, position }\` pairs (no width/height/data). Map the positions back onto your node objects (e.g. via \`updateNode\`).
-- Passing \`direction\` / \`layerSpacing\` / \`edgeRouting\` to a non-\`layered\` algorithm — those apply only to \`layered\` (and \`direction\` to \`tree\`); ELK silently ignores them (a dev-mode warning fires).`,
+- Passing \`direction\` / \`layerSpacing\` / \`edgeRouting\` to a non-\`layered\` algorithm — those apply only to \`layered\` (and \`direction\` to \`tree\`); the layout engine silently ignores them (a dev-mode warning fires).`,
   },
   // <gen-docs:api-reference:end @pyreon/flow>
 
@@ -8800,15 +8802,20 @@ formatNumber(null, { fallback: '-' }) // → "-"`,
   },
 
   'format/formatCurrency': {
-    signature: '(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string',
+    signature: '(value: NumberInput, currency: string, options?: CurrencyOptions | CurrencyPreset) => string | (value: MoneyLike, options?: CurrencyOptions | CurrencyPreset) => string',
     example: `formatCurrency(9.99, 'EUR', { locale: 'en-US' }) // → "€9.99"
+formatCurrency('12345678901234567.89', 'EUR', { locale: 'en-US' }) // → "€12,345,678,901,234,567.89"
+formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // → "€9.99"
+formatCurrency({ amount: '1234.50', currency: 'USDT' }, { locale: 'de' }) // → "1.234,50 USDT"
 formatCurrency(1234.5, 'EUR', { locale: 'de' }) // → "1.234,50 €"
 formatCurrency(1234.5, 'CZK', { locale: 'cs' }) // → "1 234,50 Kč"
 formatCurrency(-5, 'USD', { locale: 'en-US', currencySign: 'accounting' }) // → "($5.00)"
 formatCurrency(5, 'USD', { locale: 'en-US', currencyDisplay: 'name' }) // → "5.00 US dollars"`,
-    notes: 'Format money. `currency` is an ISO 4217 code; a malformed code returns the `fallback` with a dev warning. Presets: `symbol`, `narrowSymbol`, `code`, `name`, `accounting`. See also: formatNumber, defineFormats.',
+    notes: `Format money: a number, bigint or decimal string with an ISO 4217 \`currency\` code, or a Money (\`{ amount, currency }\`, what \`@pyreon/money\` produces) on its own. A decimal string or a Money amount is formatted exactly, at any size (never converted to a float); a Money shows its own digits, so a currency given other digits with \`defineCurrency\` displays them. A plain value with a code uses the engine's display digits for that currency (HUF: 0 in V8, 2 in JavaScriptCore), so format a Money when the digits must not depend on the engine. A custom code such as \`USDT\` (2 to 12 upper-case letters or digits) is placed where the locale puts a currency code, always shown as the code (whatever \`currencyDisplay\` says), with 2 fraction digits for a plain value and the Money's own scale for a Money. An amount with more than 100 fraction digits, or a malformed code or value, returns the \`fallback\` with a dev warning. Presets: \`symbol\`, \`narrowSymbol\`, \`code\`, \`name\`, \`accounting\`. See also: formatNumber, defineFormats, MoneyLike.`,
     mistakes: `- Formatting an amount in minor units (cents) without dividing: \`formatCurrency(999, 'EUR')\` is 999 euros
-- Passing the symbol (\`'€'\`) instead of the code (\`'EUR'\`)`,
+- Passing the symbol (\`'€'\`) instead of the code (\`'EUR'\`)
+- Formatting a Money as \`formatCurrency(Number(m.amount), m.currency)\`: a large amount loses precision; pass the Money (\`formatCurrency(m)\`)
+- Passing a currency next to a Money (\`formatCurrency(m, 'EUR')\`): a Money carries its currency, and this throws`,
   },
 
   'format/formatPercent': {
@@ -8939,8 +8946,10 @@ formatRelativeTo('2026-11-18', '2026-11-18', { locale: 'de' }) // → "heute"`,
     example: `formatDateRange('2026-11-12', '2026-11-15', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
 formatDateRange('2026-11-15', '2026-11-12', { locale: 'en-US' }) // → "Nov 12 – 15, 2026"
 formatDateRange('2026-11-28', '2026-12-02', { locale: 'en-US' }) // → "Nov 28 – Dec 2, 2026"
-formatDateRange('2026-11-12', '2026-11-15', { locale: 'de' }) // → "12.–15.11.2026"`,
-    notes: 'Format a range with the shared parts collapsed. Two calendar strings are a range of calendar days in every zone. A reversed pair (a range picker mid-selection) is ordered first, so the earlier date always comes first; equal ends give the single value where Intl does. See also: formatDate.',
+formatDateRange('2026-11-12', '2026-11-15', { locale: 'de' }) // → "12.–15.11.2026"
+formatDateRange('2026-10-21', '2026-10-27', { locale: 'cs', dateStyle: 'long' }) // → "21.–27. 10. 2026"`,
+    notes: `Format a range with the shared parts collapsed, by the locale's CLDR interval pattern (\`Intl.DateTimeFormat#formatRange\`; Pyreon joins no text itself). Two calendar strings are a range of calendar days in every zone. A reversed pair (a range picker mid-selection) is ordered first, so the earlier date always comes first; equal ends give the single value where Intl does. What is collapsed is locale data and differs between engines' CLDR versions: Czech numeric dates give \`21.10.2026 – 27.10.2026\` (no year collapse), while \`dateStyle: 'long'\` gives \`21.–27. 10. 2026\`. See also: formatDate.`,
+    mistakes: `- Comparing a range with a typed literal: the text is the engine's CLDR data (thin spaces, and some locales such as sk and pl differ between V8 and JavaScriptCore); compare with \`Intl\`'s own \`formatRange\` output`,
   },
 
   'format/formatNumberRange': {
@@ -9029,7 +9038,7 @@ n.parts(1.5).map((p) => p.type) // → ["integer","decimal","fraction"]`,
   },
 
   'format/currencyFormatter': {
-    signature: `(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<NumberInput, 'currency'>`,
+    signature: `(currency: string, options?: CurrencyOptions | CurrencyPreset) => Formatter<CurrencyInput, 'currency'>`,
     example: `const price = currencyFormatter('EUR', { locale: 'en-US' })
 price(9.99) // → "€9.99"
 price.with({ maximumFractionDigits: 0 })(9.99) // → "€10"
@@ -9037,7 +9046,7 @@ price.from((cents) => cents / 100)(999) // → "€9.99"
 ;[999, 1250].map(price.from((cents) => cents / 100)) // → ["€9.99","€12.50"]
 price.range(10, 20) // → "€10.00 – €20.00"
 price.parts(9.99).map((p) => p.type) // → ["currency","integer","decimal","fraction"]`,
-    notes: 'A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. A malformed code returns the fallback with a dev warning. See also: formatCurrency, numberFormatter.',
+    notes: 'A reusable currency formatter. `price.with({ maximumFractionDigits: 0 })` derives a rounded one, `price.from((cents) => cents / 100)` adapts cents, `price.range(10, 20)` formats a range. It takes numbers, decimal strings and Money values in its currency (a Money in another currency is the fallback with a dev warning). A malformed code returns the fallback with a dev warning. See also: formatCurrency, numberFormatter.',
     mistakes: `- Building "€9.99 per month" by concatenation: the platform has no locale data for a currency "per" pattern; format the value and put it in a translated message
 - Passing cents without \`.from\`: \`price(999)\` is nine hundred ninety-nine euros`,
   },
@@ -9285,7 +9294,7 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
   'format/ConvertedUnitOptions': {
     signature: `interface ConvertedUnitOptions extends UnitOptions { convertTo?: Unit; system?: 'auto' | 'metric' | 'us' | 'uk' }`,
     example: `// formatUnit(100, 'kilometer', { system: 'auto', locale: 'en-US' })`,
-    notes: `Options of \`formatUnit\` and \`unitFormatter\` from \`@pyreon/format/units\`: everything in \`UnitOptions\`, plus a conversion before formatting. \`convertTo\` names the unit; \`system\` picks the locale's own (\`'auto'\`, which follows the active locale in the reactive entry) or a fixed system. \`convertTo\` wins when both are given. See also: formatUnit, convert.`,
+    notes: `Options of \`formatUnit\` and \`unitFormatter\` from \`@pyreon/format/units\`: everything in \`UnitOptions\`, plus a conversion before formatting. \`convertTo\` names the unit; \`system\` picks the locale's own (\`'auto'\`, which follows the active locale in the reactive entry) or a fixed system. \`convertTo\` wins when both are given. A conversion is arithmetic on a binary float (\`Number(value)\` times a factor), so a converted decimal string or bigint is no longer exact: \`formatUnit('12345678901234567.89', 'meter', { convertTo: 'kilometer' })\` shows about 17 significant digits. Without \`convertTo\` or \`system\`, a decimal string is formatted exactly. See also: formatUnit, convert.`,
   },
 
   'format/MeasurementSystem': {
@@ -9301,9 +9310,16 @@ formatDateTime(Date.UTC(2026, 10, 18, 23, 30), { locale: 'en-US', dateStyle: 'sh
   },
 
   'format/NumberInput': {
-    signature: 'type NumberInput = number | bigint | null | undefined',
-    example: '// formatNumber(null) // → ""',
-    notes: 'A number-like input. Nullish formats as the `fallback`. See also: DateInput.',
+    signature: 'type NumberInput = number | bigint | string | null | undefined',
+    example: `// formatNumber(null) // → ""
+// formatNumber('12345678901234567890.5', { locale: 'en-US' }) // → "12,345,678,901,234,567,890.5"`,
+    notes: 'A number-like input: a number, a bigint, or a decimal string (an optional `-`, digits, an optional `.` and digits), which is formatted exactly at any size. Nullish formats as the `fallback`; any other string (`"1e3"`, `" 12 "`, `""`) is invalid. See also: DateInput, MoneyLike.',
+  },
+
+  'format/MoneyLike': {
+    signature: 'interface MoneyLike { readonly amount: string; readonly currency: string }',
+    example: `// formatCurrency({ amount: '9.99', currency: 'EUR' }, { locale: 'en-US' }) // → "€9.99"`,
+    notes: 'The structural shape of a `@pyreon/money` Money, which `formatCurrency` and `currencyFormatter` take. No dependency on that package. `CurrencyInput = NumberInput | MoneyLike`. See also: formatCurrency, NumberInput.',
   },
 
   'format/DateInput': {
@@ -10650,17 +10666,6 @@ HTML_TEXT_TAGS.includes('div')    // false — div is structural, not text`,
     notes: `The two tag allowlists \`@pyreon/elements\`' Element/Text bases dispatch on: \`HTML_TAGS\` is every recognized host tag (used to validate/narrow a \`tag\` prop), \`HTML_TEXT_TAGS\` is the subset of TEXT-flavored tags (\`span\`, \`p\`, \`label\`, \`h1\`-\`h6\`, …) Text defaults \`component\` to when no explicit tag is given.`,
   },
 
-  'ui-core/getThemeEngine / setThemeEngine': {
-    signature: 'getThemeEngine(): ThemeEngine · setThemeEngine(engine: ThemeEngine): void',
-    example: `// User code never calls this — it's how @pyreon/unistyle wires itself into
-// <PyreonUI> without ui-core depending on unistyle. Documented here because
-// "theme isn't enriched" / "no CSS variables" debugging starts here: import
-// "@pyreon/unistyle" somewhere in your app to register the real engine.`,
-    notes: `@internal — the registration seam that breaks the \`ui-core ↔ unistyle\` dependency cycle. \`@pyreon/unistyle\` calls \`setThemeEngine({ enrichTheme, themeToCssVars, cpseRewrite, responsiveStyles })\` at module load (a side effect its \`package.json\` marks \`sideEffects\` for, so tree-shaking can't drop the registration); \`<PyreonUI>\` reads it lazily via \`getThemeEngine()\` at each use-site, never eagerly at setup. When unistyle is NOT in the module graph (a bare \`@pyreon/rocketstyle\`-only app), \`getThemeEngine()\` returns a minimal FALLBACK — identity \`enrichTheme\`, no CSS vars, no CPSE — and dev-warns ONCE, so \`<PyreonUI>\` degrades instead of crashing. See also: PyreonUI.`,
-    mistakes: `- Seeing an un-enriched theme (missing default breakpoints/spacing, no CSS variables) and not realizing \`@pyreon/unistyle\` was never imported — every styled \`@pyreon\` UI package except bare \`@pyreon/rocketstyle\` pulls it in transitively, but a minimal custom setup can miss it
-- Calling \`setThemeEngine()\` from app code — it is for a THEME ENGINE PACKAGE to register itself (the unistyle precedent); overwriting it from an app silently replaces every consumer's theme resolution`,
-  },
-
   'ui-core/resolveCssVariables': {
     signature: 'resolveCssVariables(): { enabled: boolean; prefix: string; attribute: string }',
     example: `import { resolveCssVariables } from '@pyreon/ui-core'
@@ -11132,15 +11137,6 @@ hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")`,
     notes: 'The FNV-1a non-cryptographic hash styler uses for compact, deduped class names + rule keys. `hash(str)` is the one-shot form → a base-36 string. The streaming trio composes it: `hashUpdate(HASH_INIT, "ab")` folds bytes into a running 32-bit numeric state, `hashFinalize(state)` renders `(state >>> 0).toString(36)`, and `hashUpdate(hashUpdate(HASH_INIT, "ab"), "cd") === hash("abcd")`. Exported for tooling/consumers that need the SAME class-name hash styler emits (e.g. precomputing a class name before injection). Low-level — most apps never call it. See also: createSheet, styled.',
     mistakes: `- Using it for anything security-sensitive — FNV-1a is NON-cryptographic (fast, collision-cheap for CSS keys, NOT collision-resistant against adversarial input).
 - Feeding the base-36 STRING from \`hashFinalize\` back into \`hashUpdate\` — the streaming state is the 32-bit NUMBER; keep folding numbers with \`hashUpdate\` and call \`hashFinalize\` ONCE at the end.`,
-  },
-
-  'styler/setStyleExtraction': {
-    signature: 'setStyleExtraction(enabled: boolean, rewrite?: (cssText: string, varsOut: Record<string, string>) => string) => void',
-    example: `// Apps enable CPSE through ui-core, not this call:
-import { init } from "@pyreon/ui-core"
-init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood`,
-    notes: `Internal dependency-injection seam for Custom-Property Style Extraction (CPSE). \`@pyreon/ui-core\`'s \`init({ styleExtraction: true })\` calls this to enable CPSE and inject the \`cpseRewrite\` function — which lives in \`@pyreon/unistyle\` (styler cannot import unistyle: dep direction), so it is threaded in at init time. When on, the static + SSR resolve path rewrites resolved CSS to hoist per-instance values into custom properties. Apps do NOT call this directly — enable CPSE via the \`@pyreon/ui-core\` init flag; it is exported only so ui-core can wire it. See also: styled, createSheet.`,
-    mistakes: '- Calling `setStyleExtraction(true)` directly to turn on CPSE — without the `rewrite` from `@pyreon/unistyle` (which `@pyreon/ui-core` supplies) it enables the branch with no rewriter. Use `init({ styleExtraction: true })` from `@pyreon/ui-core`.',
   },
   // <gen-docs:api-reference:end @pyreon/styler>
 
@@ -11676,7 +11672,7 @@ editor.text()                       // computed plain text
 editor.chain()?.toggleBold().run()  // run a command
 
 <RichText instance={editor} style="min-height: 12rem" />`,
-    notes: `Create a reactive WYSIWYG editor instance. \`editor.json\` is a writable Signal<JSONContent> — \`editor.json()\` reads reactively, \`editor.json.set(next)\` replaces the editor content (loop-safe). \`html\`/\`text\`/\`isEmpty\`/\`characterCount\`/\`wordCount\`/\`canUndo\`/\`canRedo\` are computed signals; \`editable\` is a writable Signal<boolean> (runtime read-only toggle); \`editor.isActive('bold')\` is the reactive toolbar primitive. \`characterCount\`/\`wordCount\`/\`isEmpty\` derive from the document JSON, so they report accurately BEFORE the (lazy) engine mounts (stored-JSON draft lists), count VISIBLE characters (not the \`\\n\\n\` block separators \`getText()\` inserts), and — like \`text\`/\`html\`/\`canUndo\` — re-derive only on a CONTENT change, never a pure cursor move (a live word-counter effect doesn't re-fire on every arrow-key); \`isActive\` still tracks the selection. Commands run through \`editor.chain()\` (toggleBold/toggleHeading/toggleBulletList/…) plus \`undo\`/\`redo\`/\`focus\`/\`blur\` helpers. The TipTap \`Editor\` (over ProseMirror) is created lazily when mounted via \`<RichText>\`, so \`@tiptap/*\` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, ariaLabel, starterKit, extensions, autofocus, onChange, and onError (mount failures route here instead of an unhandled rejection). The instance is framework-independent — mount it via \`<RichText instance={editor} />\`. See also: RichText, bindRichTextToSignal.`,
+    notes: `Create a reactive WYSIWYG editor instance. \`editor.json\` is a writable Signal<JSONContent> — \`editor.json()\` reads reactively, \`editor.json.set(next)\` replaces the editor content (loop-safe). \`html\`/\`text\`/\`isEmpty\`/\`characterCount\`/\`wordCount\`/\`canUndo\`/\`canRedo\` are computed signals; \`editable\` is a writable Signal<boolean> (runtime read-only toggle); \`editor.isActive('bold')\` is the reactive toolbar primitive. \`characterCount\`/\`wordCount\`/\`isEmpty\` derive from the document JSON, so they report accurately BEFORE the (lazy) engine mounts (stored-JSON draft lists), count VISIBLE characters (not the \`\\n\\n\` block separators \`getText()\` inserts), and — like \`text\`/\`html\`/\`canUndo\` — re-derive only on a CONTENT change, never a pure cursor move (a live word-counter effect doesn't re-fire on every arrow-key); \`isActive\` still tracks the selection. Commands run through \`editor.chain()\` (toggleBold/toggleHeading/toggleBulletList/…) plus \`undo\`/\`redo\`/\`focus\`/\`blur\` helpers. The TipTap \`Editor\` (over ProseMirror) is created lazily when mounted via \`<RichText>\`, so \`@tiptap/*\` stays out of the initial bundle. Config accepts content (HTML string or ProseMirror JSON), editable, placeholder, ariaLabel, starterKit, extensions, autofocus, onChange, onError (mount failures route here instead of an unhandled rejection), and the CSP pair \`nonce\` / \`injectStyles\`: the editor injects TipTap's base CSS and the placeholder rule as \`<style>\` elements, so under a policy without \`'unsafe-inline'\` pass \`nonce\`, or \`injectStyles: false\` plus \`import '@pyreon/rich-text/styles.css'\` (the same rules as a file). The instance is framework-independent — mount it via \`<RichText instance={editor} />\`. See also: RichText, bindRichTextToSignal.`,
     mistakes: `- Forgetting to declare @pyreon/runtime-dom in consumer app deps — <RichText> JSX emits _tpl() which needs runtime-dom
 - Calling editor.json(newDoc) to write — that reads and ignores the argument. Use editor.json.set(newDoc)
 - Reading editor.html() / editor.chain() before mount — the TipTap Editor is created on mount (async, lazy import). html falls back to the initial string (verbatim — it is your own input; sanitize stored HTML before rendering it), or, after a pre-mount json.set / with JSON content, to an engine-free serialization that drops \`javascript:\` / \`data:\` link hrefs (the same \`isUnsafeUrl\` rule the framework applies to every URL attribute); chain() returns null. Use editor.json.set(...) to set content independently of the view
@@ -12465,9 +12461,13 @@ toast.promise(fetchData(), {
 
 // Dismiss:
 toast.dismiss(id)  // one
-toast.dismiss()    // all`,
-    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), and `.promise(promise, messages)` for async operation tracking. See also: Toaster.',
+toast.dismiss()    // all
+
+// Read the live queue reactively:
+<span>{() => toast.list().length} notifications</span>`,
+    notes: 'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), `.promise(promise, messages)` for async operation tracking, and `.list()`, a reactive read of the live queue (`readonly Readonly<Toast>[]`, oldest first) for a notification count or a custom history view. See also: Toaster.',
     mistakes: `- Forgetting to render \`<Toaster />\` — toasts are created but have no visual container to render into
+- Mutating the array \`toast.list()\` returns — it is the queue's own snapshot; change the queue through \`toast()\` / \`toast.update\` / \`toast.dismiss\` / \`toast.remove\`
 - Calling \`toast.update()\` after the toast has been auto-dismissed — the ID is no longer valid, the update is silently ignored
 - Using \`toast.promise()\` with a function instead of a promise — pass the promise directly, not \`() => fetch(...)\`
 - Expecting \`toast.dismiss(id)\` to remove the toast synchronously — it is SOFT (plays the ~200ms leave animation first); reach for \`toast.remove(id)\` when you need it gone instantly
@@ -12479,10 +12479,20 @@ toast.dismiss()    // all`,
 
   'toast/Toaster': {
     signature: '(props?: ToasterProps) => VNodeChild',
-    example: '<Toaster position="top-right" duration={5000} />',
-    notes: 'Render container for toast notifications. Mount once at the app root. Renders via Portal with CSS transitions, auto-dismiss timer, and a countdown suspended on hover, on keyboard focus, and while the tab is hidden. Position configurable via `position` prop (`top-right`, `top-left`, `bottom-right`, `bottom-left`, `top-center`, `bottom-center`). Duration configurable via `duration` prop (default 4000ms). See also: toast.',
+    example: `<Toaster position="top-right" duration={5000} />
+
+// Localised names that follow a locale signal:
+<Toaster label={() => t('toast.region')} dismissLabel={() => t('toast.dismiss')} />
+
+// Strict CSP (style-src 'self'): load the CSS as a file instead of an inline <style>
+import '@pyreon/toast/styles.css'
+<Toaster injectStyles={false} />
+// …or keep the injection and allow it by nonce:
+<Toaster nonce={cspNonce} />`,
+    notes: `Render container for toast notifications. Mount once at the app root. Renders via Portal with CSS transitions, auto-dismiss timer, and a countdown suspended on hover, on keyboard focus, and while the tab is hidden. Position configurable via \`position\` prop (\`top-right\`, \`top-left\`, \`bottom-right\`, \`bottom-left\`, \`top-center\`, \`bottom-center\`). Duration configurable via \`duration\` prop (default 4000ms). \`label\` / \`dismissLabel\` (a string or an accessor) set the region's and the dismiss buttons' accessible names (default "Notifications" / "Dismiss"; a toast's own \`dismissLabel\` option wins). The stylesheet is injected once as \`<style data-pyreon-toast>\`: under a Content Security Policy without \`'unsafe-inline'\` pass \`nonce\`, or set \`injectStyles={false}\` and \`import '@pyreon/toast/styles.css'\` (the same rules as a file). See also: toast.`,
     mistakes: `- Mounting multiple \`<Toaster />\` instances — toasts render in all of them, causing duplicates
-- Conditional rendering of \`<Toaster />\` — if unmounted, toasts created via \`toast()\` are queued but invisible until the Toaster mounts`,
+- Conditional rendering of \`<Toaster />\` — if unmounted, toasts created via \`toast()\` are queued but invisible until the Toaster mounts
+- \`injectStyles={false}\` without importing \`@pyreon/toast/styles.css\` (or your own rules) — the container is no longer \`position: fixed\` and nothing animates`,
   },
   // <gen-docs:api-reference:end @pyreon/toast>
 
@@ -12838,7 +12848,7 @@ plugins: [pyreon(), zero({
 // Subpath deploy (e.g. served at /blog/)
 plugins: [pyreon(), zero({ base: '/blog/', mode: 'ssg' })]`,
     notes: `Top-level Vite plugin chain for @pyreon/zero. Single config object selects rendering mode (\`'ssr' | 'ssg' | 'isr' | 'spa'\`), subpath base (\`base: '/blog/'\`), SSG settings (paths, concurrency, workers — opt-in worker-thread prerender, onProgress, emit404, emitRedirects), i18n config (locales / defaultLocale / strategy), and deployment adapter. Returns \`Plugin[]\` because the SSG mode adds a companion \`ssgPlugin()\` automatically — Vite's plugins array natively flattens nested arrays so \`plugins: [pyreon(), zero()]\` works without spread. See also: I18nRoutingConfig, GetStaticPaths, Adapter, createISRHandler.`,
-    mistakes: `- Setting \`base\` in BOTH \`vite.config.base\` AND \`zero({ base })\` and expecting them to merge — user's explicit \`vite.config.base\` overrides the plugin-returned base. Set base ONCE via \`zero({ base })\`; let it propagate to Vite + router automatically
+    mistakes: `- Setting \`base\` in BOTH \`vite.config.base\` (or \`vite build --base\`) AND \`zero({ base })\` and expecting them to merge — an explicit \`zero({ base })\` wins; without it Vite's base (CLI flag, inline \`build({ base })\`, \`vite.config.base\`) is the ASSET base, and the ROUTE base (router links, \`__ZERO_BASE__\`, server routing) only when it is a path — a CDN URL or \`./\` leaves routes at \`/\`. \`./\` is rejected for every mode but \`spa\`, and \`zero({ base })\` itself must be a root-relative path (a CDN URL or \`./\` belongs in \`vite.config.base\`). Set base ONCE, in either place
 - Passing \`layout\` to \`createApp\` / \`startClient\` when fs-router already emits \`_layout.tsx\` as a parent route — double-mounts the layout. Drop the explicit option; \`_layout.tsx\` is the canonical layout registration
 - Mixing \`mode: 'ssg'\` with a runtime adapter that has no SSG branch (e.g. expecting \`nodeAdapter\` to write platform routing config under SSG) — node/bun/static adapters no-op for SSG; use vercel/cloudflare/netlify if you need platform routing emission
 - Configuring \`ssg.paths\` AND per-route \`getStaticPaths\` together for the same dynamic route — both produce the same path list and the SSG plugin renders each path TWICE (the second pass overwrites). Pick one: \`ssg.paths\` for top-down explicit lists, \`getStaticPaths\` for per-route enumerators
@@ -13382,7 +13392,7 @@ export default function NewPost() {
 <Link href="/about" prefetch="viewport" activeClass="nav-active">About</Link>
 <Link href="https://example.com">External</Link>  // auto target="_blank" rel="noopener noreferrer"
 <Link href="/report.pdf" external>PDF</Link>       // force external for a same-origin asset`,
-    notes: 'Default navigation link built on an `<a>` tag. Only INTERNAL navigations are intercepted (`router.push()` + prefetch + `activeClass`); external URLs, `mailto:`/`tel:`, and `#hash` are detected from `href` at runtime and left to the browser — external links auto-get `target="_blank" rel="noopener noreferrer"`. `href` is generic (`CheckHref<T, RoutePath>`): once typed-routes codegen has run, a mistyped internal path is a compile error while dynamic strings + external URLs are always accepted. Built on `createLink` so consumers can swap the rendered element via `createLink(MyCustomLink)` without losing any of this. See also: useLink, createLink, prefetchRoute.',
+    notes: `Default navigation link built on an \`<a>\` tag. An internal root-relative \`href\` renders with the router base (\`/about\` → \`/blog/about\` under \`base: '/blog/'\`), like \`<RouterLink>\`. Only INTERNAL navigations are intercepted (\`router.push()\` + prefetch + \`activeClass\`); external URLs, \`mailto:\`/\`tel:\`, and \`#hash\` are detected from \`href\` at runtime and left to the browser — external links auto-get \`target="_blank" rel="noopener noreferrer"\`. \`href\` is generic (\`CheckHref<T, RoutePath>\`): once typed-routes codegen has run, a mistyped internal path is a compile error while dynamic strings + external URLs are always accepted. Built on \`createLink\` so consumers can swap the rendered element via \`createLink(MyCustomLink)\` without losing any of this. See also: useLink, createLink, prefetchRoute.`,
     mistakes: `- Wrapping an external URL in a plain \`<a>\` to avoid \`router.push\` — unnecessary: \`<Link href="https://x.com">\` auto-detects it as external, renders \`target="_blank" rel="noopener noreferrer"\`, and does NOT client-navigate. Override with \`external\` / \`target\` / \`rel\` or \`createApp({ links })\`
 - Using \`<a href={path} onClick={() => router.push(path)}>\` instead of \`<Link>\` — manual approach skips prefetch, active-state class merging, and the keyboard-modifier guard (Cmd+click should open new tab, not navigate in-place)
 - Setting \`prefetch="hover"\` (default) and expecting prefetch on mobile — mobile devices don't fire mouseenter; use \`prefetch="viewport"\` for IntersectionObserver-based prefetch (or accept that touchstart triggers prefetch too)
@@ -13409,7 +13419,7 @@ function CardLink(props: LinkProps) {
     </div>
   )
 }`,
-    notes: 'Composable that returns all link behavior — `{ ref, handleClick, handleMouseEnter, handleTouchStart, isActive, isExactActive, classes }`. Use when `createLink` is too opinionated (e.g. you need a `<button>` link, a card-shaped link, or want to compose with another framework primitive). Internals: hover/viewport prefetch via IntersectionObserver, keyboard-modifier guard (Cmd+click opens new tab), active/exact-active path matching, class-string composition. See also: Link, createLink, UseLinkReturn.',
+    notes: 'Composable that returns all link behavior — `{ href, ref, handleClick, handleMouseEnter, handleTouchStart, isActive, isExactActive, classes, isInternal, target, rel }`. `href()` is the value to render: an internal root-relative path carries the router base (like `<RouterLink>`), anything else is returned as written. Use when `createLink` is too opinionated (e.g. you need a `<button>` link, a card-shaped link, or want to compose with another framework primitive). Internals: hover/viewport prefetch via IntersectionObserver, keyboard-modifier guard (Cmd+click opens new tab), active/exact-active path matching, class-string composition. See also: Link, createLink, UseLinkReturn.',
     mistakes: `- Reading \`link.classes\` as a plain string — it's a \`() => string\` accessor. Call it inside reactive scopes (JSX expression thunks, \`class={link.classes}\`) so the active class updates on route change
 - Forgetting to wire \`link.ref\` to the root element under \`prefetch="viewport"\` — without the ref the IntersectionObserver has nothing to observe; viewport-based prefetch never fires
 - Calling \`link.handleClick(e)\` synchronously in the component body — handlers are meant to be JSX event props (\`onClick={link.handleClick}\`); synchronous invocation in the render body triggers \`router.push\` during render which the lint rule \`no-imperative-navigate-in-render\` flags
@@ -13434,7 +13444,7 @@ const ButtonLink = createLink((props) => (
 ))
 
 <ButtonLink href="/dashboard" activeClass="active">Dashboard</ButtonLink>`,
-    notes: 'HOC that wraps any component with link behavior. The wrapped component receives `LinkRenderProps` with all handlers + state pre-wired (`href`, `ref`, `onClick`, `onMouseEnter`, `onTouchStart`, `isActive`, `isExactActive`, `class`, `target`, `rel`). Use this to build styled link variants (button-links, card-links, design-system anchors) without re-implementing the prefetch + active-state machine. See also: Link, useLink, LinkRenderProps.',
+    notes: 'HOC that wraps any component with link behavior. The wrapped component receives `LinkRenderProps` with all handlers + state pre-wired (`href` — base-prefixed for an internal path, `ref`, `onClick`, `onMouseEnter`, `onTouchStart`, `isActive`, `isExactActive`, `class`, `target`, `rel`). Use this to build styled link variants (button-links, card-links, design-system anchors) without re-implementing the prefetch + active-state machine. See also: Link, useLink, LinkRenderProps.',
     mistakes: `- Not forwarding \`props.ref\` to the rendered element — the prefetch IntersectionObserver and active-state observer both need a real DOM ref to attach to
 - Calling the user-provided \`props.class\` as a function in JSX (\`class={props.class()}\`) — \`class\` is a string-or-accessor union; pass it directly (\`class={props.class}\`) and let the renderer call it if needed
 - Forgetting \`onTouchStart\` — mobile devices don't fire mouseenter; without \`onTouchStart\` mobile users get no prefetch benefit
@@ -13846,7 +13856,7 @@ export default {
     })
   ]
 }`,
-    notes: 'Vite plugin that auto-optimizes Google Fonts and local fonts declared in `zero({ font: { google, local } })`. In dev mode, injects CDN links for fast startup; in build mode, downloads fonts at build time, self-hosts them from `/assets/fonts/` with hashed filenames, injects preload + preconnect hints into the HTML, applies `font-display: swap` to prevent FOIT (Flash of Invisible Text), and optionally generates size-adjusted fallback `@font-face` rules to reduce CLS. Self-hosting shares a 60-second download deadline across CSS and all font bodies; failure aborts active requests, warns and falls back to the CDN. Complete downloads are cached. Auto-wired by the zero plugin unless disabled via `zero({ font: false })`. See also: fontImportPlugin, FontConfig, usePreloadFont.',
+    notes: 'Vite plugin that auto-optimizes Google Fonts and local fonts declared in `zero({ font: { google, local } })`. In dev mode, injects CDN links for fast startup; in build mode, downloads fonts at build time, self-hosts them from `<base>assets/fonts/` (the resolved build base) with hashed filenames, injects preload + preconnect hints into the HTML, applies `font-display: swap` to prevent FOIT (Flash of Invisible Text), and optionally generates size-adjusted fallback `@font-face` rules to reduce CLS. Self-hosting shares a 60-second download deadline across CSS and all font bodies; failure aborts active requests, warns and falls back to the CDN. Complete downloads are cached. Auto-wired by the zero plugin unless disabled via `zero({ font: false })`. See also: fontImportPlugin, FontConfig, usePreloadFont.',
     mistakes: `- Declaring fonts in both \`google\` and \`local\` with the same family name — the plugin applies all CSS at once; duplicate families cause cascade conflicts
 - Using \`display: 'block'\` for all fonts — this causes FOIT (Flash of Invisible Text); \`'swap'\` is the default for a reason and avoids invisible text during font load
 - Forgetting to add fallback metrics when using variable-weight fonts — without CLS-reduction fallback overrides, layout shift occurs when the custom font replaces the system fallback
@@ -14247,6 +14257,25 @@ console.log(a()) // 5`,
     mistakes: `- Disagreeing on \`T\` across two callers with the same key — both get the same runtime signal but mismatched compile-time types (author error, no runtime safeguard).
 - Calling \`clearAllSharedSignals()\` in production (default-page-nav handler etc.) — signals are normally session-scoped; clearing wipes intentional app-wide state (theme/locale/...).
 - Re-implementing the registry per-feature instead of reusing this — the registry is the canonical home for module-level shared signals across mount boundaries.`,
+  },
+
+  'zero-content/resolvePageLayout': {
+    signature: 'resolvePageLayout(args: { frontmatter: Record<string, unknown>; registry: ContentLayoutRegistry; defaultLayout: ContentLayout }): { layout: ContentLayout; fellBack: boolean; missingName?: string }',
+    example: `import { resolvePageLayout } from '@pyreon/zero-content'
+import DocsLayout from './layouts/docs'
+import LandingLayout from './layouts/landing'
+
+const { layout: Layout, fellBack, missingName } = resolvePageLayout({
+  frontmatter: page.frontmatter,          // e.g. { title: 'Home', layout: 'landing' }
+  registry: { landing: LandingLayout },
+  defaultLayout: DocsLayout,
+})
+if (fellBack) console.warn(\`[content] unknown layout "\${missingName}"\`)
+
+return <Layout>{page.content}</Layout>`,
+    notes: `Pick the layout for one content page from its \`layout:\` frontmatter field. Pure and runtime-agnostic: call it from the route that renders the page, with a \`registry\` you build (usually from \`import.meta.glob('./layouts/*.tsx', { eager: true })\`) and the route's default layout. No \`layout\` field (or an empty one) returns \`defaultLayout\`; a name missing from the registry also returns \`defaultLayout\`, with \`fellBack: true\` and the requested name in \`missingName\` so the route can warn. The plugin does not call it for you: per-page \`layout:\` only takes effect when the route does.`,
+    mistakes: `- Expecting \`layout:\` frontmatter to switch layouts on its own — nothing calls \`resolvePageLayout\` automatically; the rendering route must
+- Ignoring \`fellBack\` — a typo in \`layout:\` silently renders the default layout unless the route reports \`missingName\``,
   },
 
   'zero-content/Details': {
@@ -16145,10 +16174,7 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json (^2.0.0)
      ↳ packages/util/package.json (^3.0.0)
 
-  ! 3 warnings
-  ! peer-mismatch · \`@fix/plugin\` peer-requires \`@fix/util\` at \`^9.0.0\` but the workspace ships
-     1.0.0 — the peer contract and the local reality disagree by a major
-     ↳ packages/plugin/package.json
+  ! 2 warnings
   ! prod-import-of-dev-dep · \`@fix/app\` imports \`dev-only-pkg\` in shipping source but declares it
      only in devDependencies — consumers won't have it installed
      ↳ packages/app/src/index.ts
@@ -16165,7 +16191,7 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json
   ✗ internal-range · \`@fix/plugin\` declares workspace member \`@fix/util\` as \`^9.0.0\` (not
      \`workspace:\`) — a version slip silently installs the REGISTRY copy instead of linking the
-     workspace
+     workspace; as a peer range it also misses the workspace copy (1.0.0) by a major
      ↳ packages/plugin/package.json
   ✗ phantom-dep · \`@fix/app\` imports \`undeclared-pkg\` in shipping source but never declares it —
      resolvable only through hoisting luck
@@ -16175,8 +16201,8 @@ loom scan · . · 5 packages
      ↳ packages/app/package.json (^1.0.0)
      ↳ packages/util/package.json (^2.0.0)
 
-✗ 5 errors, 3 warnings, 8 info · 5 packages · 3 ms`,
-    notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); eight detectors emit findings with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
+✗ 5 errors, 2 warnings, 8 info · 5 packages · 3 ms`,
+    notes: 'Read the workspace, analyze the dependency fabric, and report. Discovery reads the same declarations an install tool reads; analysis splits edges by semantics (runtime vs dev); the detectors emit findings under eight codes with stable codes, honest severities (error gates, warning advises, info knows its own limits), and structured evidence (which files import the phantom, which packages declare which range). Writes `loom-report.json` next to the root manifest and EXITS NON-ZERO on error-severity findings — the CI contract. `--strict` reds on warnings too; `--no-imports` skips the lexical detectors (phantom/dev-dep/unused); `--json` prints the full report to stdout and ONLY that (the write notice moves to stderr), so `loom scan . --json > report.json` is a valid JSON file. See also: loom dev.',
     mistakes: `- Treating a dev-edge "cycle" as a bug — loom deliberately excludes devDependencies from cycle detection; monorepos legitimately share test utilities both ways, and a detector that cries wolf is a dead gate
 - Reading \`unused-dep\` as a removal order — it is INFO with lexical evidence only; bins, plugin autoloads, and CSS imports load without an import statement
 - Expecting outdated-vs-latest or duplicate-install findings — loom reads DECLARED truth; lockfile + registry layers are documented future work, not silently half-done
@@ -16268,7 +16294,7 @@ const config = resolveConfig({
 })
 
 const { files } = generate(specText, config)`,
-    notes: `Fills defaults and validates one project's settings, and is where the whole option surface lives: \`plugins\` (which emitters run — built-in names and \`definePlugin\` plugins), \`filters\` / \`patches\` / \`operations\` / \`naming\` / \`format\` (author control over the subset, the spec, per-operation hooks and validation, generated names, and formatting), \`client\` (\`pyreon\` | \`fetch\` | \`axios\` | \`ky\`), \`validator\` (\`pyreon\` | \`zod\`), \`target\` (\`web\` | \`multiplatform\`), \`baseUrl\`, \`strictNative\` and \`responseValidation\` (\`strict\` | \`warn\` | \`off\`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for \`components\` gets \`queries\`, \`client\` and \`schemas\` too, and the CLI report says what came along. Use \`resolveProjects\` instead when the config may declare \`projects: [...]\`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.`,
+    notes: `Fills defaults and validates one project's settings, and is where the whole option surface lives: \`plugins\` (which emitters run — built-in names and \`definePlugin\` plugins), \`filters\` / \`patches\` / \`operations\` / \`naming\` / \`format\` (author control over the subset, the spec, per-operation hooks and validation, generated names, and formatting), \`client\` (\`pyreon\` | \`fetch\` | \`axios\` | \`ky\`), \`validator\` (\`pyreon\` | \`zod\`), \`target\` (\`web\` | \`multiplatform\`), \`baseUrl\`, \`strictNative\`, \`nativeModels\` (\`kotlinPackage\`, \`swiftAccess\` for the \`swift\` / \`kotlin\` plugins) and \`responseValidation\` (\`strict\` | \`warn\` | \`off\`, what the web client does with a response that does not match its schema). A plugin selection is EXPANDED to cover what its output imports rather than refused -- asking for \`components\` gets \`queries\`, \`client\` and \`schemas\` too, and the CLI report says what came along. Use \`resolveProjects\` instead when the config may declare \`projects: [...]\`; it always returns a LIST, so a single-project config is a one-element list rather than a special case.`,
     mistakes: `- Expecting \`plugins: ['faker']\` to emit ONLY factories. It expands to include \`schemas\`, because the factories exist to produce data the schema accepts and are typed against the model types it exports.
 - Combining \`target: 'multiplatform'\` with a non-Pyreon \`client\`. It is REFUSED, not downgraded: PMTC lowers \`createHttp\` and \`api.endpoint(...)\` by name and cannot see through axios or ky, so native modules over one would lower to nothing -- the exact silent regression that target exists to catch.
 - Importing \`installMocks\`, \`mockRoutes\` or the faker factories from the generated \`index.ts\`. They are NOT there by design -- they live in \`./dev\`, so a page bundle has no import edge that could reach a fixture table or \`@faker-js/faker\`.
@@ -16492,7 +16518,7 @@ atlas verify Button · 1 component · 9 scenarios · static (--no-mount)
     signature: 'atlas dev [dir] [--port=5210]',
     example: `$ atlas dev . --port=5210
 atlas dev: 10 component(s) → http://localhost:5210/`,
-    notes: 'Boot the workbench: real Vite + the real Pyreon compiler over your source, a derived catalog in the sidebar (nested by directory), live controls (bool/string/number/color editors), canvas addons (viewport / background / zoom / measure overlay / pseudo-state force), an A11y panel with on-demand axe-core, autodocs pages, an Actions log, and the Reactivity Lens. Components in files that import `@pyreon/atlas` are treated as workbench HOSTS and excluded from the nav (import-specifier match, never substrings). Every @pyreon package any workspace package declares or links is kept out of Vite’s dependency optimizer and deduped, so a framework package only a COMPONENT package depends on (not the root manifest) keeps ONE runtime instance on a cold node_modules/.cache/atlas-vite too — a raw + optimized pair trips the singleton sentinel and the first preview fails to load. See also: atlas scan.',
+    notes: `Boot the workbench: the workbench is a \`@pyreon/zero\` app shipped in the package (\`app/\`: \`/\` and \`/:component\` file routes under one \`_layout\`, every route \`renderMode = 'spa'\`), served by zero's dev mode with the real Pyreon compiler over your source, so \`/<component>/\` is a real URL in dev exactly as on the built site. Needs \`vite\`, \`@pyreon/vite-plugin\` and \`@pyreon/zero\` (optional peers; \`atlas scan\` needs none). Your components are imported by absolute path, so the project's own \`src/routes\` and \`index.html\` are never served. It gives you a derived catalog in the sidebar (nested by directory), live controls (bool/string/number/color editors), canvas addons (viewport / background / zoom / measure overlay / pseudo-state force), an A11y panel with on-demand axe-core, autodocs pages, an Actions log, and the Reactivity Lens. Components in files that import \`@pyreon/atlas\` are treated as workbench HOSTS and excluded from the nav (import-specifier match, never substrings). Every @pyreon package any workspace package declares or links is kept out of Vite’s dependency optimizer and deduped, so a framework package only a COMPONENT package depends on (not the root manifest) keeps ONE runtime instance on a cold node_modules/.cache/atlas-vite too — a raw + optimized pair trips the singleton sentinel and the first preview fails to load. See also: atlas scan.`,
     mistakes: `- Expecting authored \`play\` functions to run on DERIVED catalogs in the workbench — play crosses no JSON boundary; the ▶ button appears for hand catalogs, and derived play scripts run in \`atlas scan\` / the verify pipeline
 - Styling per-instance frames with inline styles — the workbench styles through the Element \`css\` prop channel (hashed classes); custom viewport widths ship zero inline styles`,
   },
@@ -16502,9 +16528,10 @@ atlas dev: 10 component(s) → http://localhost:5210/`,
     example: `$ atlas build . --out docs/components --title "Acme DS"
 atlas build: 10 component(s) → /repo/docs/components
   title: Acme DS`,
-    notes: 'Compile the workbench into a STATIC, deployable site — the same derived catalog `atlas dev` serves, as plain files for Pages / Netlify / Cloudflare / S3, with no server component. Crucially it BAKES the two node-answered panels: the Docs source block and the Reactivity Lens read files and run the TypeScript compiler API, neither of which can run in a page, so the build precomputes them per component and ships the answers as data — the Lens still reports real per-expression live/static verdicts on a fully static page. An answer that genuinely cannot be computed bakes its REASON, so the panel says what is wrong instead of surfacing a network error about a request that was never going to work. `--out` defaults to `atlas-dist` and a RELATIVE `--out` resolves against the scanned project, not your shell — `atlas build packages/ui --out site` writes `packages/ui/site`, the same base Vite uses for `outDir` and the same place `atlas scan` writes its catalog. Pass an absolute path when you want it elsewhere; the resolved directory is always printed. Emits a DIRECTORY PER COMPONENT, so `/button/` is a real page on a plain file server — pasteable, bookmarkable, and readable back by the workbench from its own path (the component leaves the query string, so the two can never disagree). Real URLs, not prerendered pages: the body is empty until JS runs. Skipped for a relative `--base`, whose assets would resolve against the wrong directory. `--base` is for a subdirectory deploy (`--base /my-repo/` for a GitHub Pages project site); `--title` wins over `atlas.config.ts`’s `title`. Fails loudly when discovery finds nothing rather than deploying an empty site. See also: atlas dev, atlas scan.',
+    notes: `Compile the workbench into a STATIC, deployable site — the same derived catalog \`atlas dev\` serves, as plain files for Pages / Netlify / Cloudflare / S3, with no server component. Crucially it BAKES the two node-answered panels: the Docs source block and the Reactivity Lens read files and run the TypeScript compiler API, neither of which can run in a page, so the build precomputes them per component and ships the answers as data — the Lens still reports real per-expression live/static verdicts on a fully static page. An answer that genuinely cannot be computed bakes its REASON, so the panel says what is wrong instead of surfacing a network error about a request that was never going to work. \`--out\` defaults to \`atlas-dist\` and a RELATIVE \`--out\` resolves against the scanned project, not your shell — \`atlas build packages/ui --out site\` writes \`packages/ui/site\`, the same base Vite uses for \`outDir\` and the same place \`atlas scan\` writes its catalog. Pass an absolute path when you want it elsewhere; the resolved directory is always printed. It is the SAME zero app \`atlas dev\` serves, built by zero's SSG pass with \`ssg.paths\` naming \`/\` plus one path per component: every route is \`spa\`, so each page is the client shell written at its own path (plus a \`404.html\` shell). That makes \`/button/\` a real page on a plain file server — pasteable, bookmarkable, and readable back by the workbench from its own path (the component leaves the query string, so the two can never disagree). Real URLs, not prerendered pages: the body is empty until JS runs. \`--base\` must be absolute; a relative one is refused before any work. \`--base\` is for a subdirectory deploy (\`--base /my-repo/\` for a GitHub Pages project site); \`--title\` wins over \`atlas.config.ts\`’s \`title\`. Fails loudly when discovery finds nothing rather than deploying an empty site. See also: atlas dev, atlas scan.`,
     mistakes: `- Assuming a plain \`vite build\` of the workbench is equivalent — it produces a site that LOOKS complete while the Docs source block and the Reactivity Lens are permanently dark, because nothing baked their node-only answers
 - Deploying to a subdirectory without \`--base\` — assets are requested from the domain root and every one 404s, leaving a blank page with no error on the page itself
+- Passing a RELATIVE \`--base\` (\`./\`) — refused before any work: each component page lives in its own directory, so relative asset URLs and the workbench router would resolve against the wrong path; pass \`/\` or \`/my-repo/\`
 - Expecting \`pages.<name>.title\` to rename the component — it is a DISPLAY label only; the usage snippet, the source/Lens lookup and an agent’s import all use the real \`name\`, which is exactly why the two are separate fields
 - Expecting \`pages.<name>.order\` to sort across groups — it pins a component within its OWN group; a cross-group sort would scramble the tree from a single config line
 - Expecting \`--dir\` to apply when \`atlas.config.ts\` declares \`projects\` — the declared roots win, because a monorepo that listed its packages meant it and silently scanning \`src\` instead would emit an empty site`,

@@ -137,15 +137,17 @@ export const loader = async ({ params }: LoaderContext): Promise<PostData> => {
 }
 
 export default function PostPage() {
-  const { post } = useLoaderData<PostData>()
+  const data = useLoaderData<PostData>()
   return (
     <article>
-      <h1>{post.title}</h1>
-      <p>{post.body}</p>
+      <h1>{data().post.title}</h1>
+      <p>{data().post.body}</p>
     </article>
   )
 }
 ```
+
+`useLoaderData()` returns a reactive accessor, not the data: read `data()` inside JSX, an `effect` or a `computed`. The page stays mounted when its loader data changes under the same loader key (a `router.revalidate()`, a `staleWhileRevalidate` refresh), so a `data()` read once in the component body, or a destructured result, would never see the new value.
 
 :::warning{title="useLoaderData takes the DATA type, not typeof loader"}
 `useLoaderData<T>()` is generic over the loader's *return* type (`useLoaderData<PostData>()`), not the loader function (`useLoaderData<typeof loader>()` does not infer correctly). Declare the loader's return shape as a named type and pass it to both `loader(): Promise<T>` and `useLoaderData<T>()`.

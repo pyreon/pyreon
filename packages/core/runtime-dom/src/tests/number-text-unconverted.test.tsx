@@ -55,7 +55,10 @@ function spyMethod(proto: object, name: string, api: string): void {
 }
 
 function spySetter(proto: object, name: string, api: string): void {
-  const d = Object.getOwnPropertyDescriptor(proto, name)!
+  // happy-dom defines `textContent` on Element.prototype as well as on
+  // Node.prototype; a browser only on Node.prototype.
+  const d = Object.getOwnPropertyDescriptor(proto, name)
+  if (d?.set === undefined) return
   Object.defineProperty(proto, name, {
     ...d,
     set(this: unknown, v: unknown) {
@@ -73,6 +76,7 @@ beforeEach(() => {
   spyMethod(Element.prototype, 'append', 'append')
   spySetter(CharacterData.prototype, 'data', 'data')
   spySetter(Node.prototype, 'textContent', 'textContent')
+  spySetter(Element.prototype, 'textContent', 'textContent')
 })
 
 afterEach(() => {

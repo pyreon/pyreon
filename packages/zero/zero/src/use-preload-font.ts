@@ -84,8 +84,6 @@ export interface PreloadFontOptions {
  * Infer the MIME type from the file extension. Returns the canonical
  * MIME type per the IANA font registry — preload-scanner matches against
  * these exact strings.
- *
- * @internal exported for testing
  */
 export function inferFontMimeType(href: string): string {
   // Strip query string + fragment before extension match.

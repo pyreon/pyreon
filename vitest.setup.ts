@@ -59,6 +59,35 @@ import { scrubGitEnv } from './packages/internals/vitest-config/src/git-env'
 // `process` is absent in real-browser runs, which spawn no git anyway.
 if (typeof process !== 'undefined' && process.env) scrubGitEnv(process.env)
 
+// ## happy-dom `textContent = 0` writes nothing
+//
+// The `textContent` setter is WebIDL `DOMString?`: `null` (and `undefined`)
+// clear the node, any other value is converted with ECMAScript `ToString`, so
+// `el.textContent = 0` renders "0" in every browser. happy-dom tests the value
+// for truthiness instead and renders nothing for `0` and `NaN`. Pyreon's static
+// text sinks hand a number to the DOM unconverted (JS-side `String(n)` grows
+// V8's ~64 KB Number→String cache; see `_replaceText` in
+// `packages/core/runtime-dom/src/template.ts`), so the test DOM applies the
+// spec conversion here rather than production code working around it.
+// Feature-detected: a no-op in real browsers, jsdom, and a fixed happy-dom.
+if (typeof document !== 'undefined' && typeof Element !== 'undefined') {
+  const probe = document.createElement('div')
+  probe.textContent = 0 as unknown as string
+  if (probe.textContent !== '0') {
+    for (const proto of [Element.prototype, DocumentFragment.prototype]) {
+      const d = Object.getOwnPropertyDescriptor(proto, 'textContent')
+      if (d?.set === undefined) continue
+      const set = d.set
+      Object.defineProperty(proto, 'textContent', {
+        ...d,
+        set(this: Node, v: unknown) {
+          set.call(this, v == null ? v : String(v))
+        },
+      })
+    }
+  }
+}
+
 class InMemoryStorage implements Storage {
   private _data = new Map<string, string>()
   get length(): number {

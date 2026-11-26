@@ -62,6 +62,25 @@ describe('atlas dev — live rescan', () => {
     expect(plugin.load('\0virtual:atlas/catalog')).toContain('"card"')
   })
 
+  it('leaves the page alone when the rescan derives the SAME catalog (a body-only edit)', async () => {
+    // A save that changes a component's body, not its props, variants or the
+    // config, re-derives a byte-identical catalog. Invalidating it and sending
+    // a reload then only stacked a second reload on Vite's own update of the
+    // edited module.
+    const rescan = vi.fn(async () => [entry('Button')])
+    const plugin = atlasDevPlugin({ root: '/p', scanRoot: '/p/src', entries: [entry('Button')], rescan })
+    const fake = fakeServer()
+    plugin.configureServer(fake.server)
+    plugin.load('\0virtual:atlas/catalog')
+
+    fake.fire('change', '/p/src/Button.tsx')
+    await settle()
+
+    expect(rescan).toHaveBeenCalledTimes(1)
+    expect(fake.invalidated).toHaveLength(0)
+    expect(fake.sent).toEqual([])
+  })
+
   it('debounces a burst of saves into one rescan, and ignores files outside the scan root', async () => {
     const rescan = vi.fn(async () => [entry('Button')])
     const plugin = atlasDevPlugin({ root: '/p', scanRoot: '/p/src', entries: [entry('Button')], rescan })

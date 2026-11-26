@@ -42,6 +42,9 @@ function activate(_context) {
       { scheme: 'file', language: 'javascript' },
       { scheme: 'file', language: 'javascriptreact' },
     ],
+    // Used for files with no `.pyreonlintrc.json` above them; a project's own
+    // config always wins (the server reads it per document).
+    initializationOptions: { preset: config.get('preset', 'recommended') },
   }
 
   client = new LanguageClient(

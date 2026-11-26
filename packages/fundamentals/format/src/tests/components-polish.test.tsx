@@ -4,9 +4,9 @@ import { mount } from '@pyreon/runtime-dom'
 import { renderToString } from '@pyreon/runtime-server'
 import { DateTime, Num } from '../components'
 import { currencyFormatter, dateFormatter, setLocale } from '../index'
-import { _resetLocaleState } from '../locale'
+import { resetLocaleState } from '../locale'
 
-afterEach(() => _resetLocaleState())
+afterEach(() => resetLocaleState())
 
 function render(vnode: unknown) {
   const root = document.createElement('div')

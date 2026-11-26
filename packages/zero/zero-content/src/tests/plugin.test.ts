@@ -4,7 +4,8 @@
  */
 import { countStringOps } from '@pyreon/test-utils'
 import { describe, expect, it, vi } from 'vitest'
-import content, { _setResolvedRootForPaths, isMarkdownId, reportPath } from '../plugin'
+import { _setResolvedRootForPaths, isMarkdownId, reportPath } from '../internal-server'
+import content from '../plugin'
 
 describe('content() Vite plugin', () => {
   it('has the expected name + `pre` ordering', () => {

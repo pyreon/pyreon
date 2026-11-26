@@ -58,7 +58,7 @@ const docxBuffer = await render(tree, 'docx')
 | `DocSection` | `'section'` | `Element` | Semantic section grouping |
 | `DocRow` | `'row'` | `Element` | Horizontal layout row |
 | `DocColumn` | `'column'` | `Element` | Vertical layout column with optional `width` |
-| `DocHeading` | `'heading'` | `Text` | `level` 1-6 (or `h1`-`h6` flags) |
+| `DocHeading` | `'heading'` | `Text` | `level`: `"h1"` through `"h6"` (default `"h1"`) |
 | `DocText` | `'text'` | `Text` | Paragraph text |
 | `DocLink` | `'link'` | `Text` | `href` |
 | `DocImage` | `'image'` | `Element` | `src` / `alt` / `width` / `height` |

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  _resetRenderers,
   Button,
   Code,
   Column,
@@ -21,6 +20,7 @@ import {
   Table,
   Text,
 } from '../index'
+import { _resetRenderers } from '../internal'
 
 afterEach(() => {
   _resetRenderers()

@@ -11,7 +11,8 @@
  */
 
 import type { ComponentFn, Props, VNode, VNodeChild } from '@pyreon/core'
-import { _compatProps, Fragment, h, isNativeCompat, mapCompatDomProps, onUnmount } from '@pyreon/core'
+import { Fragment, h, onUnmount } from '@pyreon/core'
+import { _compatProps, isNativeCompat, mapCompatDomProps } from '@pyreon/core/compat'
 import { getCurrentScope, onScopeDispose, signal } from '@pyreon/reactivity'
 
 export { Fragment }

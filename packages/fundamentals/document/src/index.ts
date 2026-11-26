@@ -64,7 +64,7 @@ export {
 } from './nodes'
 
 // Render
-export { _resetRenderers, registerRenderer, render, unregisterRenderer } from './render'
+export { registerRenderer, render, unregisterRenderer } from './render'
 
 // Types
 export type {

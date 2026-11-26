@@ -846,7 +846,7 @@ const User = () => {
 
   return (
     <div>
-      <h1>{data.name} (ID: {route().params.id})</h1>
+      <h1>{data().name} (ID: {route().params.id})</h1>
       <Show when={isTransitioning()}>
         <ProgressBar />
       </Show>
@@ -856,7 +856,7 @@ const User = () => {
 }
 ```
 
-> **View Transitions — what push() awaits**: `await router.push()` resolves after `updateCallbackDone` (DOM commit), NOT after animation finishes. It does NOT wait for `.finished` (~200-300ms). `.ready` and `.finished` get empty `.catch()` handlers so `AbortError: Transition was skipped` rejections (from interrupted transitions) do not leak as unhandled promise rejections.
+> **View Transitions — opt-in, and what push() awaits**: Off by default: a transition defers the DOM swap to the next frame and leaves the page un-hit-testable while it animates. Turn on with `createRouter({ viewTransition: true })` or per route with `meta.viewTransition: true` (`false` opts a route out). With it on, `await router.push()` resolves after `updateCallbackDone` (DOM commit), NOT after animation finishes. It does NOT wait for `.finished` (~200-300ms). `.ready` and `.finished` get empty `.catch()` handlers so `AbortError: Transition was skipped` rejections (from interrupted transitions) do not leak as unhandled promise rejections.
 >
 > **Hash mode uses pushState**: Hash mode uses `history.pushState` — NOT `window.location.hash` assignment — to avoid double-update from the hashchange event. Reading `location.hash` directly will not reflect router state; use `useRoute()` instead.
 >
@@ -1634,7 +1634,7 @@ setStoreRegistryProvider(() => als.getStore() ?? new Map())
 
 ## @pyreon/money — Money
 
-A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits come from `Intl` (no table is shipped); `defineCurrency` adds custom ones. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `@pyreon/format` displays a Money.
+A Money is `{ amount: "9.99", currency: "EUR" }`: plain, JSON-safe, exact, with exactly the currency's minor digits so equal amounts are the same string. All arithmetic runs on bigint scaled integers, never on binary floats: `add`, `subtract`, `multiply`, `divide`, `percentage`, `allocate` (parts that sum exactly), `round` (nine `Intl` rounding modes and cash-rounding increments), `convert` with a rate. A `number` is accepted only when its shortest text fits the currency, so `money(0.1 + 0.2, "EUR")` throws and explains floating point instead of hiding the bug. Currency digits are ISO 4217 minor units (ISO 4217 list one is shipped, 178 codes and their minor units, so codes and digits agree on every engine; `Intl` is never asked); `defineCurrency` adds custom currencies or gives an ISO one the digits a payment provider uses. `@pyreon/money/decimal` exposes the exact decimal-string math, `@pyreon/money/fp` the value-last forms. Zero dependencies. It formats nothing: `formatCurrency(m)` from `@pyreon/format` displays a Money exactly.
 
 ```typescript
 import { money, add, multiply, allocate, round } from '@pyreon/money'
@@ -1654,7 +1654,7 @@ allocate(money('100.00', 'EUR'), [1, 1, 1]).map((p) => p.amount)   // => ['33.34
 >
 > **Defaults**: `divide` of decimals and `ratio` need a scale: 20 digits for `decimal.divide`, 10 for `ratio`, both overridable. `divide(Money, n)` rounds to the currency's digits.
 >
-> **Formatting**: This package formats nothing. `@pyreon/format` will take a `{ amount, currency }` directly; until then use `Intl.NumberFormat` with the amount STRING (`new Intl.NumberFormat("en", { style: "currency", currency: "EUR" }).format("9.99")`), which formats decimal strings exactly. `formatCurrency(Number(m.amount), ...)` loses precision for large amounts.
+> **Formatting**: This package formats nothing. `formatCurrency(m)` from `@pyreon/format` takes a Money directly and formats the amount string exactly, with the Money's own digits. Never `formatCurrency(Number(m.amount), ...)`: a large amount loses precision as a number.
 
 ## @pyreon/state-tree — State Tree
 
@@ -2683,6 +2683,8 @@ now()                                         // => 1795003200000
 >
 > **Tickers are bounded**: `second` and `minute` tickers are always shared. Up to 16 other tickers (custom intervals and per-zone `hour`/`day` tickers) are shared; a reader beyond that gets a private ticker that is stopped with it.
 >
+> **Testing**: Pin the clock with `setClock` and reset between tests with `resetClockState()` and `resetLocaleState()` from `@pyreon/ambient/testing` (in `afterEach`). They drop every ticker, the pin and the hand-over, and forget the memoized runtime locale and zone, the provide flags and the printed warnings.
+>
 > **Peer dependencies**: `@pyreon/core` and `@pyreon/reactivity` are both required peers: the entry imports them when it loads, and every Pyreon app has them. The non-reactive story is to pass a locale, zone or instant explicitly to the core entries of `@pyreon/format` and `@pyreon/time`.
 
 ## @pyreon/a11y — Accessibility Primitives
@@ -3050,6 +3052,8 @@ const binding = bindRichTextToSignal({ editor, signal: draft })
 >
 > **Accessibility**: The content area is a `role="textbox"` `aria-multiline` region; supply `ariaLabel` (defaults to "Rich text editor") so screen readers announce a name.
 >
+> **Content Security Policy**: On mount the editor injects two `<style>` elements — TipTap's base CSS (`data-tiptap-style`) and the placeholder rule (`data-pyreon-rich-text-placeholder`). A policy without `'unsafe-inline'` in `style-src` refuses both. Pass `nonce` (set on both elements), or `injectStyles: false` and `import '@pyreon/rich-text/styles.css'`, which carries the same rules as a file.
+>
 > **Toolbars**: Build a toolbar with `editor.chain()?.toggleBold().run()` for commands + `editor.isActive("bold")` for active state. `isActive` is reactive — call it inside a reactive scope (`class={() => editor.isActive("bold") ? "active" : ""}`), not at component-body top level, or the highlight won't update. Gate undo/redo buttons on `editor.canUndo()` / `editor.canRedo()`.
 >
 > **Counts**: `characterCount`/`wordCount`/`isEmpty` are derived from the document JSON (not the mounted engine): they report before mount (a stored-JSON draft list needs no editor instance), count VISIBLE characters (excluding `getText()`'s `\n\n` block separators), and are selection-immune. Schema-less by design (StarterKit-accurate); a custom node whose rendered text differs from its text descendants may count differently than its live `getText()`. String (HTML) content parses on mount, so its counts populate once mounted — stored ProseMirror JSON is the pre-mount case.
@@ -3390,6 +3394,8 @@ toast.remove()          // hard-remove all
 >
 > **Peer dep**: `@pyreon/runtime-dom` is required because `<Toaster />` JSX emits `_tpl()` calls — declare it in consumer app dependencies.
 >
+> **Content Security Policy**: `<Toaster />` injects its stylesheet once as `<style data-pyreon-toast>`, which a policy without `'unsafe-inline'` in `style-src` refuses (a console error on every page, and no base layout). Pass `nonce` to have the element carry the request's nonce, or set `injectStyles={false}` and `import '@pyreon/toast/styles.css'` — the same rules as a file, which `style-src 'self'` allows. Inline `style` props are applied through CSSOM and are not affected.
+>
 > **When the countdown is suspended**: The auto-dismiss timer suspends while the pointer is over the stack, while keyboard focus is inside it, and while the tab is hidden — a four-second toast is four seconds of ATTENTION, not of wall clock, so one raised just before the user switches tabs is still there when they come back. The three are INDEPENDENT holds: releasing one (a `mouseleave`) does not restart the clock while another (focus still inside) is outstanding. Built into `<Toaster />` with no configuration needed.
 
 ## @pyreon/url-state — URL State
@@ -3493,6 +3499,8 @@ const InvertedSection = () => (
 > **Provider replacement**: The legacy split (separate theme / mode / config providers) is removed. `PyreonUI` is the only correct mount; calling `init()` directly is the escape hatch for SSR or test environments where the provider tree is unavailable.
 >
 > **System-mode subscription**: `mode="system"` lazily creates a `matchMedia('(prefers-color-scheme: dark)')` subscription on first read; the listener stays alive for the document lifetime, so a single subscription handles every `useMode()` consumer.
+>
+> **Un-enriched theme means unistyle is not loaded**: `@pyreon/unistyle` registers the theme engine (theme enrichment with default breakpoints/spacing, CSS variables, CPSE) into ui-core at module load, so ui-core carries no unistyle dependency. Without it in the module graph — a bare `@pyreon/rocketstyle`-only setup — `<PyreonUI>` falls back to an identity engine and dev-warns once. Missing default breakpoints/spacing or no CSS variables: `import '@pyreon/unistyle'` somewhere reachable from the app (every styled `@pyreon` UI package except bare rocketstyle pulls it in transitively).
 >
 > **Low-level Provider / context**: The package also exports a low-level `Provider` (default export) + `context` from `context.tsx`. It feeds the core theme + mode context and is the path `@pyreon/rocketstyle`'s public `Provider` delegates to, so it is supported and does not warn. App code should still mount `<PyreonUI theme={theme}>`, which sets up every context layer, and read with `useMode()` / `useThemeValue()`.
 
@@ -3614,10 +3622,6 @@ isDynamic("12px")          // false → static, cached
 import { hash, hashUpdate, hashFinalize, HASH_INIT } from "@pyreon/styler"
 hash("color:red")  // e.g. "1a2b3c"
 hashFinalize(hashUpdate(hashUpdate(HASH_INIT, "a"), "b")) === hash("ab")
-
-// Apps enable CPSE through ui-core, not this call:
-import { init } from "@pyreon/ui-core"
-init({ styleExtraction: true }) // ui-core calls setStyleExtraction under the hood
 ```
 
 > **css / keyframes return lazy values, not strings**: The `css` tagged template yields a `CSSResult` (resolved on use, never injected by itself); `keyframes` stringifies to an animation NAME and injects its `@keyframes` rule at CALL time; `createGlobalStyle` returns a `ComponentFn` — a fully static template injects at call time, a dynamic one when the component mounts.
@@ -3864,7 +3868,7 @@ $ loom dev . --port=5230   # the observatory UI over the same report
 
 ## @pyreon/atlas — Component Workbench
 
-Atlas inverts Storybook’s authoring-first model: your components and their TypeScript types are the source of truth, and Atlas DERIVES the catalog — controls inferred from props, scenarios generated from variant axes (rocketstyle dimensions included), and a six-check verify verdict per scenario (a11y, interaction, leak, SSR parity, reactivity coverage, snapshot). `atlas scan` writes `atlas-catalog.json` + `atlas-agent-guide.md` (the machine-readable surface an AI assistant consumes), `atlas dev` serves a zero-config workbench over the real Vite compiler, and `atlas verify-browser` runs the browser half of verification in real Chromium. Authoring is opt-in, not required: an `atlas.config.ts` can add a theme, a wrapper, presets (viewports / locales / roles), and authored scenarios with `play` interaction scripts.
+Atlas inverts Storybook’s authoring-first model: your components and their TypeScript types are the source of truth, and Atlas DERIVES the catalog — controls inferred from props, scenarios generated from variant axes (rocketstyle dimensions included), and a six-check verify verdict per scenario (a11y, interaction, leak, SSR parity, reactivity coverage, snapshot). `atlas scan` writes `atlas-catalog.json` + `atlas-agent-guide.md` (the machine-readable surface an AI assistant consumes), `atlas dev` serves a zero-config workbench — a `@pyreon/zero` app shipped in the package, run with zero's dev mode over the real Pyreon compiler — and `atlas verify-browser` runs the browser half of verification in real Chromium. Authoring is opt-in, not required: an `atlas.config.ts` can add a theme, a wrapper, presets (viewports / locales / roles), and authored scenarios with `play` interaction scripts.
 
 ```typescript
 // atlas.config.ts — ALL of this is optional; scan/dev work with none of it.
@@ -4134,7 +4138,7 @@ export default function PostPage() { /* component body */ }
 
 ## @pyreon/zero-content — Zero Content — markdown-driven Pyreon sites
 
-Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: markdown pages route through zero's fs-router, view transitions enabled by default, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via Standard Schema inference (use zod / valibot / arktype — the package itself ships no validator runtime): `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<CodeBlock>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.
+Pyreon Zero's content layer. Tight coupling to zero (no standalone use) — that integration is the value: markdown pages route through zero's fs-router, theme + dark mode flow through zero's theme system. Markdown is parsed via the unified+remark ecosystem (battle-tested by Astro/Next/Nuxt) and walked into Pyreon JSX (not `dangerouslySetInnerHTML` — full reactivity + tree-shaking preserved). Content collections give Astro-style typed queries via Standard Schema inference (use zod / valibot / arktype — the package itself ships no validator runtime): `getCollection('docs')` returns fully-typed entries. MDX components resolve via three tiers: built-ins (`<Callout>`, `<CodeGroup>`, `<CodeBlock>`) → convention-scanned `src/mdx/**/*.tsx` (PascalCase exports, drop a file and use it) → per-`.md` `import` statements (one-offs) → escape-hatch `defineComponents` wrappers for per-collection overrides.
 
 ```typescript
 // vite.config.ts
@@ -4586,7 +4590,7 @@ const vnode = (
 const docTree = extractDocumentTree(vnode)
 const pdf = await render(docTree, 'pdf')      // Buffer
 const docx = await render(docTree, 'docx')    // Buffer
-const md = await render(docTree, 'markdown')  // string
+const md = await render(docTree, 'md')        // string
 
 // Extraction is a SNAPSHOT — reactive accessors are resolved at extraction
 // time, not subscribed. Re-extract after a signal change for a fresh tree:

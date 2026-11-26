@@ -7,6 +7,8 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { formUseFormFields } from './form-use-form-fields'
+import { internalExportsSubpath } from './internal-exports-subpath'
 import { routerServerLoaderFunctions } from './router-server-loader-functions'
 import { routerTabsFunction } from './router-tabs-function'
 import { runtimeDomRenderToMount } from './runtime-dom-render-to-mount'
@@ -24,6 +26,8 @@ export const CODEMODS: readonly Codemod[] = [
   runtimeDomRenderToMount,
   routerServerLoaderFunctions,
   routerTabsFunction,
+  formUseFormFields,
+  internalExportsSubpath,
 ]
 
 function versionKey(v: string): number[] {

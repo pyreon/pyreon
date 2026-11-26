@@ -20,7 +20,7 @@ import { isModuleState, moduleStateClassName, moduleStateDecls, shadowingNames }
 import { GESTURE_EVENT_NAMES, GESTURE_EVENTS } from './gesture-events'
 import { CANVAS_SHAPES, isCanvasShape, shapeColorLiteral } from './canvas-shapes'
 import type { GestureEventName } from './gesture-events'
-import { lowerWebViewDomStorage } from './webview-options'
+import { lowerWebViewDomStorage, lowerWebViewSaveDownloads, WEBVIEW_DOWNLOAD_PARAM_TYPE } from './webview-options'
 import { LayoutScopeTracker, lowerWebViewGrow } from './webview-sizing'
 import { classifyFallback, unconsumedSlotWarning } from './jsx-slot-attrs'
 import { swiftStr } from './string-literals'
@@ -165,6 +165,7 @@ import {
   widenFloatLocals,
   rootedAtExtDecl,
   widenFloatSignals,
+  isValueAccessorForFunction,
 } from './infer-type'
 import {
   safeIdent,
@@ -9874,7 +9875,17 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   }
   const domStorage = lowerWebViewDomStorage(e, readStaticAttr, 'swift')
   if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
-  const args = [content, dataArg, onMsgArg, domStorage.arg, swiftWebViewGrowArg(e)]
+  // Downloads — `onDownload={(d) => …}` receives the runtime's
+  // `PyreonWebViewDownload`; `saveDownloads={false}` turns the built-in save off.
+  // After `grow` (their position in the runtime initializer).
+  const onDl = e.attrs.find((a) => a.kind === 'event' && a.name === 'download')
+  const onDlArg =
+    onDl?.kind === 'event'
+      ? `onDownload: ${emitSwiftMessageHandler(onDl.handler, WEBVIEW_DOWNLOAD_PARAM_TYPE)}`
+      : undefined
+  const saveDownloads = lowerWebViewSaveDownloads(e, readStaticAttr, 'swift')
+  if (saveDownloads.warning !== undefined) _emitWarnings.push(saveDownloads.warning)
+  const args = [content, dataArg, onMsgArg, domStorage.arg, swiftWebViewGrowArg(e), onDlArg, saveDownloads.arg]
     .filter((a) => a !== undefined)
     .join(', ')
   // The generic tail (`padding`/`margin`, `data-testid` →
@@ -9904,7 +9915,7 @@ function swiftWebViewGrowArg(e: Extract<ExprIR, { kind: 'jsx-element' }>): strin
  * param keeps it (`{ m in … }`); a zero-param arrow ignores it
  * (`{ _ in … }`); a bare function reference is called with the message.
  */
-function emitSwiftMessageHandler(handler: ExprIR): string {
+function emitSwiftMessageHandler(handler: ExprIR, defaultParamType: TypeIR = { kind: 'string' }): string {
   // The page-posted payload is ALWAYS a string (the runtime bridge hands over `String(m)`), so
   // an unannotated parameter is a `String`. Without that the receiver of `m.slice(2)` /
   // `m.startsWith(…)` is unknown and the string lowerings never fire: Kotlin happened to
@@ -9913,7 +9924,7 @@ function emitSwiftMessageHandler(handler: ExprIR): string {
   // block-body path emits through the generic action emitter, which seeds handler-local consts
   // but not the closure's own parameter.
   const messageParam = handler.kind === 'arrow' ? handler.params[0] : undefined
-  const paramType: TypeIR = (handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? { kind: 'string' }
+  const paramType: TypeIR = (handler.kind === 'arrow' ? handler.paramTypes?.[0] : undefined) ?? defaultParamType
   return withSwiftLocals(messageParam !== undefined ? [[messageParam, paramType]] : [], () => {
     if (handler.kind === 'arrow') {
       // A BLOCK body (`(event) => { a.set(x); b.set(y) }`) parses to an empty
@@ -12077,9 +12088,12 @@ function emitSwiftGeneric(e: Extract<ExprIR, { kind: 'jsx-element' }>, indent: n
       // Also `swiftIdent`-escape the attr label in case the kebab→camel
       // conversion lands on a reserved keyword (e.g. `for-class` →
       // `forClass` — both halves are reserved when used as identifiers).
+      // An accessor passed uncalled to a `() => T` prop is a VALUE natively (`data`, a signal): pass it as a closure.
+      const expected = isUserComponent ? _componentPropsMap.get(e.tag)?.find((p) => p.name === a.name)?.type : undefined
+      const value = emitSwiftExpr(a.value, indent)
       argEntries.push({
         name: a.name,
-        part: `${swiftArgLabel(safeIdent(a.name))}: ${emitSwiftExpr(a.value, indent)}`,
+        part: `${swiftArgLabel(safeIdent(a.name))}: ${isValueAccessorForFunction(a.value, expected, _activeInferCtx) ? `{ ${value} }` : value}`,
       })
     } else if (a.kind === 'event' && isUserComponent) {
       // User component prop named `on<Cap>` — the parser stripped the

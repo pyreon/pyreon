@@ -303,14 +303,14 @@ export default function SiteNav(props: { path: string }) {
     scroll.unlock()
   })
 
-  useFocusTrap(() => headerEl, { active: () => sheetOpen() })
+  // Opening the sheet moves focus to its first link. The sheet renders in the
+  // same update that activates the trap; `initialFocus` runs after it (#4355).
+  useFocusTrap(() => headerEl, {
+    active: () => sheetOpen(),
+    initialFocus: () => headerEl?.querySelector<HTMLElement>(`#${SHEET_ID} a`) ?? null,
+  })
 
-  const openSheet = () => {
-    sheetOpen.set(true)
-    // The sheet renders in this same flush; move focus once it can take it
-    // (useFocusTrap's initialFocus fires too early for this, #4355).
-    requestAnimationFrame(() => document.querySelector<HTMLElement>(`#${SHEET_ID} a`)?.focus())
-  }
+  const openSheet = () => sheetOpen.set(true)
   useClickOutside(() => navEl, () => closeMenu())
 
   useEventListener('keydown', (e) => {

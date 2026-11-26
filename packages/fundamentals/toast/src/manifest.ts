@@ -69,6 +69,8 @@ toast.remove()          // hard-remove all`,
     'Animated enter AND leave — a dismissed toast fades + collapses in place, siblings reflow smoothly',
     '<Toaster /> with Portal, CSS transitions, auto-dismiss, a countdown suspended on hover / focus / a hidden tab, configurable default duration',
     'Accessible: type-aware live regions — role="alert" (assertive) for error/warning, role="status" (polite) for info/success',
+    'Translatable accessible names — `label` (region) and `dismissLabel` (close button) take a string or an accessor that follows a locale signal; a toast can set its own `dismissLabel`',
+    'Strict-CSP ready — a `nonce` for the injected `<style>`, or `injectStyles={false}` plus `import "@pyreon/toast/styles.css"`',
   ],
   api: [
     {
@@ -76,7 +78,7 @@ toast.remove()          // hard-remove all`,
       kind: 'function',
       signature: '(message: string, options?: ToastOptions) => string',
       summary:
-        'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), and `.promise(promise, messages)` for async operation tracking.',
+        'Create a toast notification imperatively. Returns the toast ID for later `update()` or `dismiss()`. Works from anywhere in the app — no context or provider needed. Options include `type`, `duration` (0 = persistent), `description` (a secondary line), `icon` (any VNode), `action` (a button), `dismissible`, and `onDismiss`. The function also exposes `.success()`, `.error()`, `.warning()`, `.info()`, `.loading()` preset methods, `.update(id, options)` for modifying an existing toast (message/type/duration/description), `.dismiss(id?)` for SOFT removal (plays the CSS leave animation, then removes), `.remove(id?)` for HARD instant removal (no animation), `.promise(promise, messages)` for async operation tracking, and `.list()`, a reactive read of the live queue (`readonly Readonly<Toast>[]`, oldest first) for a notification count or a custom history view.',
       example: `// Basic:
 toast('Hello!')
 const id = toast.success('Saved!')
@@ -98,9 +100,13 @@ toast.promise(fetchData(), {
 
 // Dismiss:
 toast.dismiss(id)  // one
-toast.dismiss()    // all`,
+toast.dismiss()    // all
+
+// Read the live queue reactively:
+<span>{() => toast.list().length} notifications</span>`,
       mistakes: [
         'Forgetting to render `<Toaster />` — toasts are created but have no visual container to render into',
+        'Mutating the array `toast.list()` returns — it is the queue\'s own snapshot; change the queue through `toast()` / `toast.update` / `toast.dismiss` / `toast.remove`',
         'Calling `toast.update()` after the toast has been auto-dismissed — the ID is no longer valid, the update is silently ignored',
         'Using `toast.promise()` with a function instead of a promise — pass the promise directly, not `() => fetch(...)`',
         'Expecting `toast.dismiss(id)` to remove the toast synchronously — it is SOFT (plays the ~200ms leave animation first); reach for `toast.remove(id)` when you need it gone instantly',
@@ -116,11 +122,21 @@ toast.dismiss()    // all`,
       kind: 'component',
       signature: '(props?: ToasterProps) => VNodeChild',
       summary:
-        'Render container for toast notifications. Mount once at the app root. Renders via Portal with CSS transitions, auto-dismiss timer, and a countdown suspended on hover, on keyboard focus, and while the tab is hidden. Position configurable via `position` prop (`top-right`, `top-left`, `bottom-right`, `bottom-left`, `top-center`, `bottom-center`). Duration configurable via `duration` prop (default 4000ms).',
-      example: `<Toaster position="top-right" duration={5000} />`,
+        'Render container for toast notifications. Mount once at the app root. Renders via Portal with CSS transitions, auto-dismiss timer, and a countdown suspended on hover, on keyboard focus, and while the tab is hidden. Position configurable via `position` prop (`top-right`, `top-left`, `bottom-right`, `bottom-left`, `top-center`, `bottom-center`). Duration configurable via `duration` prop (default 4000ms). `label` / `dismissLabel` (a string or an accessor) set the region\'s and the dismiss buttons\' accessible names (default "Notifications" / "Dismiss"; a toast\'s own `dismissLabel` option wins). The stylesheet is injected once as `<style data-pyreon-toast>`: under a Content Security Policy without `\'unsafe-inline\'` pass `nonce`, or set `injectStyles={false}` and `import \'@pyreon/toast/styles.css\'` (the same rules as a file).',
+      example: `<Toaster position="top-right" duration={5000} />
+
+// Localised names that follow a locale signal:
+<Toaster label={() => t('toast.region')} dismissLabel={() => t('toast.dismiss')} />
+
+// Strict CSP (style-src 'self'): load the CSS as a file instead of an inline <style>
+import '@pyreon/toast/styles.css'
+<Toaster injectStyles={false} />
+// …or keep the injection and allow it by nonce:
+<Toaster nonce={cspNonce} />`,
       mistakes: [
         'Mounting multiple `<Toaster />` instances — toasts render in all of them, causing duplicates',
         'Conditional rendering of `<Toaster />` — if unmounted, toasts created via `toast()` are queued but invisible until the Toaster mounts',
+        '`injectStyles={false}` without importing `@pyreon/toast/styles.css` (or your own rules) — the container is no longer `position: fixed` and nothing animates',
       ],
       seeAlso: ['toast'],
     },
@@ -133,6 +149,10 @@ toast.dismiss()    // all`,
     {
       label: 'Peer dep',
       note: '`@pyreon/runtime-dom` is required because `<Toaster />` JSX emits `_tpl()` calls — declare it in consumer app dependencies.',
+    },
+    {
+      label: 'Content Security Policy',
+      note: '`<Toaster />` injects its stylesheet once as `<style data-pyreon-toast>`, which a policy without `\'unsafe-inline\'` in `style-src` refuses (a console error on every page, and no base layout). Pass `nonce` to have the element carry the request\'s nonce, or set `injectStyles={false}` and `import \'@pyreon/toast/styles.css\'` — the same rules as a file, which `style-src \'self\'` allows. Inline `style` props are applied through CSSOM and are not affected.',
     },
     {
       label: 'When the countdown is suspended',

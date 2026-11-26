@@ -1,0 +1,140 @@
+# Post-publish smoke — install the PUBLISHED packages from npm in a clean
+# directory and prove the scaffolds work (scripts/post-publish-smoke.ts).
+#
+# Every other scaffold gate resolves @pyreon/* to workspace source, so none of
+# them can see what exists only after a publish: a file missing from a tarball,
+# a lib/ that differs from src/, a dependency the monorepo hoists but no
+# manifest declares, a scaffolder stamping the wrong version, a dist-tag that
+# never moved. This tests npm, not a pull request, so it is never a PR check.
+#
+# Triggers:
+#   - after `Release` succeeds on a `chore: version packages` commit (the
+#     publish path; Release also runs on every changeset push, which publishes
+#     nothing), and after `Release Native Binaries` succeeds (the compiler
+#     binaries land minutes after the JS packages). Both pass the released
+#     version as --expect-version, read from the commit the release built, so
+#     a `latest` tag that did not move is a failure, not a pass on the old one.
+#   - daily against `latest`: npm-side rot (a dependency range that starts
+#     resolving to a broken release) arrives with no commit here.
+#   - manual, with any dist-tag (`rc` for the 1.0 release candidates).
+#
+# Red runs on the default branch reach the `[main] Post-Publish Smoke is red`
+# sticky issue through main-red-status.yml (it watches this workflow by name).
+name: Post-Publish Smoke
+
+on:
+  workflow_run:
+    workflows: [Release, Release Native Binaries]
+    types: [completed]
+    # Releases only run on the default branch; without this filter every PR run
+    # of the followed workflows would start a run here (check-main-red-watchlist).
+    branches: [main]
+  schedule:
+    # Daily 06:53 UTC — after published-state (05:23) and zero-freshness (06:41).
+    - cron: '53 6 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'npm dist-tag to test (latest, rc, next, …)'
+        required: false
+        default: latest
+        type: string
+      expect-version:
+        description: 'Fail unless the dist-tag points at this version (optional)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+# One smoke per dist-tag at a time; a second release finishing while one runs
+# queues behind it rather than cancelling it (each run is a verdict).
+concurrency:
+  group: post-publish-smoke-${{ inputs.tag || 'latest' }}
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Published scaffolds install, build and render
+    # workflow_run: only a SUCCESSFUL release run, and for `Release` only the
+    # publish path. A failed release is the published-state alarm's case.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       (github.event.workflow_run.name != 'Release' ||
+        startsWith(github.event.workflow_run.head_commit.message, 'chore: version packages')))
+    runs-on: ubuntu-latest
+    # Measured locally: three cells in about 70 s on a warm machine, the first
+    # npm install (cold private cache) 36 s. Setup (install, Chromium) about
+    # 3 min. 25 leaves room for a slow registry without hiding a hang.
+    timeout-minutes: 25
+    steps:
+      # It downloads several hundred packages from npm and executes them:
+      # audit the egress, like the publishing workflow does.
+      - name: Harden runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # npm is the installer under test (what `npm create` users run); the
+      # repo's own install only provides Playwright for the browser checks.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+
+      # Restore-only under ci.yml's key: one writer per cache artifact.
+      - name: Restore bun dependencies
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-cache-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-install-cache-${{ runner.os }}-
+
+      # PYREON_BOOTSTRAP_SKIP: nothing here uses the workspace's lib/.
+      - name: Install repo dependencies (Playwright only)
+        env:
+          PYREON_BOOTSTRAP_SKIP: '1'
+        run: bun install --frozen-lockfile
+
+      - name: Restore Playwright browsers
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: playwright-chromium-${{ runner.os }}-
+
+      - name: Install Playwright Chromium
+        run: bash scripts/install-playwright.sh chromium
+
+      # After a release: the version the release built, read from that commit
+      # (its head_sha), so the smoke fails when the dist-tag did not move.
+      - name: Released version
+        id: expect
+        if: github.event_name == 'workflow_run'
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$SHA"
+          version=$(git show "$SHA:packages/core/core/package.json" | jq -er .version)
+          echo "Release built $version at $SHA"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Fails closed: the script exits 1 on any failed step, a registry error
+      # or a missing browser, and annotates the cell and the step that failed.
+      - name: Post-publish smoke
+        env:
+          TAG: ${{ inputs.tag || 'latest' }}
+          EXPECT: ${{ steps.expect.outputs.version || inputs.expect-version || '' }}
+        run: |
+          set -euo pipefail
+          args=(--tag "$TAG")
+          if [ -n "$EXPECT" ]; then args+=(--expect-version "$EXPECT"); fi
+          bun scripts/post-publish-smoke.ts "${args[@]}"

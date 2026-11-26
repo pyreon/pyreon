@@ -1135,13 +1135,13 @@ class RouterDemoInstrumentedTest {
         )
     }
 
-    // Route loader data, destructured. The page's fields come from
-    // `const { title, views } = useLoaderData<Loaded>()`, which lowers to an
-    // early `?: return` so the composable (and its onMount LaunchedEffect)
-    // runs only once the loader's data exists — the web's order. Reached via
+    // Route loader data, read through its accessor. The page's fields come
+    // from `const data = useLoaderData<Loaded>()` read as `data().title`,
+    // which lowers to `val data = … ?: return`, so the composable (and its
+    // onMount LaunchedEffect) runs only once the loader's data exists — the web's order. Reached via
     // the deep-link seam, like the lifecycle page, to spend no fold budget.
     @Test
-    fun routeLoaderDataIsDestructuredAndReadyBeforeMount() {
+    fun routeLoaderDataIsReadAndReadyBeforeMount() {
         val instr = InstrumentationRegistry.getInstrumentation()
         composeRule.onNodeWithTag("home-page").assertIsDisplayed()
         instr.runOnMainSync {

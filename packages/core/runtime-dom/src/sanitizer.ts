@@ -9,7 +9,8 @@
  * module's source uses `innerHTML`. `dangerouslySetInnerHTML` is raw by
  * design (React semantics) and never involves this module.
  */
-import { isSafeImageDataUri, isUnsafeUrl, URL_ATTRS } from '@pyreon/core'
+import { isUnsafeUrl, URL_ATTRS } from '@pyreon/core'
+import { isSafeImageDataUri } from '@pyreon/core/internal'
 import { _setDefaultSanitizer } from './props'
 
 // Safe HTML tags allowed by the fallback sanitizer (block + inline, no scripts/embeds/forms)

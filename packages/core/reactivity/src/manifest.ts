@@ -146,7 +146,7 @@ const initial = isClient ? navigator.onLine : true`,
     {
       name: 'computed',
       kind: 'function',
-      signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean }) => Computed<T>',
+      signature: '<T>(fn: () => T, options?: { equals?: (a: T, b: T) => boolean; name?: string }) => Computed<T>',
       params: [
         {
           name: 'fn',
@@ -155,9 +155,9 @@ const initial = isClient ? navigator.onLine : true`,
         },
         {
           name: 'options',
-          type: '{ equals?: (a: T, b: T) => boolean }',
+          type: '{ equals?: (a: T, b: T) => boolean; name?: string }',
           optional: true,
-          description: 'Custom equality comparator. A computed already gates on `Object.is` by default (like `signal.set`), so an identical primitive or the same object reference stops propagation without it. Pass `equals` only when identity is the wrong test — a derivation that rebuilds a fresh array/object whose CONTENTS are unchanged, which `Object.is` can never gate. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke.',
+          description: '`name` is a dev-only debug name shown in devtools (`@pyreon/vite-plugin` injects it for `const x = computed(…)`). `equals`: custom equality comparator. A computed already gates on `Object.is` by default (like `signal.set`), so an identical primitive or the same object reference stops propagation without it. Pass `equals` only when identity is the wrong test — a derivation that rebuilds a fresh array/object whose CONTENTS are unchanged, which `Object.is` can never gate. NOTE the trade: `equals` also switches the computed from LAZY to EAGER, because gating requires knowing the new value at notification time. With a live subscriber that costs nothing (it would have evaluated anyway), but a computed that is read imperatively and never subscribed goes from ZERO evaluations to one per dependency change. So gate computeds with a CHEAP body (`n > 0`, `arr.length`, `x !== undefined`) and leave expensive ones alone — gating `computed(() => walkEntireDocument(doc()))` buys a suppressed notification and pays a full walk on every keystroke.',
         },
       ],
       returns: {
@@ -211,22 +211,28 @@ const kept = linked(options, (opts, prev): string =>
     {
       name: 'effect',
       kind: 'function',
-      signature: '(fn: () => (() => void) | void) => () => void',
+      signature: '(fn: () => (() => void) | void, options?: { name?: string }) => Effect',
       params: [
         {
           name: 'fn',
           type: '() => (() => void) | void',
           description: 'Effect body — auto-tracks the signals it reads; may return a cleanup callback run before each re-run and on dispose.',
         },
+        {
+          name: 'options',
+          type: '{ name?: string }',
+          optional: true,
+          description: '`name` is a dev-only debug name shown in devtools (`@pyreon/vite-plugin` injects it for `const x = effect(…)`).',
+        },
       ],
       returns: {
-        type: '() => void',
-        description: 'A dispose function — call it to stop the effect and run its final cleanup.',
+        type: 'Effect',
+        description: '`{ dispose() }` — call `dispose()` to stop the effect and run its final cleanup.',
       },
       summary:
-        'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns a dispose function that unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.',
+        'Run a side effect that auto-tracks signal dependencies and re-runs when they change. Returns an `Effect` whose `dispose()` unsubscribes. The effect function can return a cleanup callback (equivalent to calling `onCleanup()` inside the body) — the cleanup runs before each re-execution and on final dispose. For DOM-specific effects with lighter overhead, use `renderEffect()` instead.',
       example: `const count = signal(0)
-const dispose = effect(() => {
+const e = effect(() => {
   console.log("Count:", count())
   onCleanup(() => console.log("cleaning up"))
 })

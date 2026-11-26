@@ -1,5 +1,6 @@
 import type { NativeItem, VNodeChild } from '@pyreon/core'
-import { _childText, _isStructuralChild } from '@pyreon/core'
+import { _isStructuralChild } from '@pyreon/core/internal'
+import { getContextOwner } from '@pyreon/reactivity'
 import {
   _noopDispose,
   _rdCloseBindingFrame,
@@ -7,10 +8,10 @@ import {
   _rdLabelDirect,
   _rdNodeId,
   _rdOpenBindingFrame,
-  getContextOwner,
   _renderBind,
-} from '@pyreon/reactivity'
+} from '@pyreon/reactivity/internal'
 import { _tagTextBinding } from './binding-registry'
+import { textChanged, textValue, type TextValue } from './text-value'
 import { _takeParkedRange, hasParkedRange, isMidSlotText, peekParkedRange } from './slot-brands'
 import {
   _adoptParkedText,
@@ -116,8 +117,8 @@ function _isMountableTextValue(v: unknown): boolean {
 }
 
 /**
- * Replace `node`'s children with ONE text node holding `text` — the
- * `textContent =` write, except that a NUMBER reaches the DOM unconverted.
+ * Replace `node`'s children with ONE text node holding `text` — a
+ * `textContent =` write, with a NUMBER handed to the DOM unconverted.
  *
  * Why a number is never `String()`-ed here: JS-side Number→String of more than
  * ~200 distinct integers makes V8 grow its Number→String cache
@@ -126,12 +127,14 @@ function _isMountableTextValue(v: unknown): boolean {
  * `ToString`, so the characters are identical) does not touch that cache. A
  * `<For>` of rows rendering `{row.id}` paid the 64 KB once per page.
  *
- * Why not `textContent = n`: happy-dom writes `''` for a falsy number (`0`,
- * `NaN`). `replaceChildren(n)` converts per the spec in every environment.
+ * Why `textContent` and not `replaceChildren(n)` / `append(n)` /
+ * `createTextNode(n)`: it is the cheapest of them in Chromium, ~21 µs less per
+ * 1,000 row-id cells than `replaceChildren(n)` on the row board's create path.
+ * happy-dom writes `''` for `textContent = 0` / `NaN`; that is fixed in the
+ * test setup (`vitest.setup.ts`), never bent around here.
  */
 function _replaceText(node: Element, text: string | number): void {
-  if (typeof text === 'number') node.replaceChildren(text as unknown as string)
-  else node.textContent = text
+  node.textContent = text as string
 }
 
 /**
@@ -168,7 +171,7 @@ export function _setChild(node: Element, value: unknown): void {
   // or mounted fresh where user code filled it.
   if (typeof value === 'function' || _isMountableTextValue(value)) {
     if (!_freshBind && _slotHydrator !== null) {
-      ownByScope(_slotHydrator(value as never, node, null))
+      ownByScope(_slotHydrator(value as never, node, null, 1))
       return
     }
     // The element leaves as a unit with its template, so the mount needs only
@@ -186,11 +189,10 @@ export function _setChild(node: Element, value: unknown): void {
     // skipped (`textContent =` would replace any children regardless).
     const fc = _freshBind ? null : node.firstChild
     // The shared child-text rule (`_childText`), never the DOM's own coercion:
-    // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`, and the
-    // DOM's handling of a number is not even uniform across implementations
-    // (happy-dom writes `''` for `0`). A string, the dominant value, skips the
-    // call. A NUMBER is handed to the DOM unconverted (see `_replaceText`).
-    const text = typeof value === 'string' || typeof value === 'number' ? value : _childText(value)
+    // `textContent = ['a', 'b']` renders `a,b` where SSR renders `ab`. A
+    // string, the dominant value, skips the call. A NUMBER is handed to the DOM
+    // unconverted (see `_replaceText`).
+    const text = textValue(value)
     // Dev, adopting: the same write, reported if it changed the server's text
     // (#4419). A separate block so production keeps exactly the write below:
     // neither consumes a #4599 region's mark, so `_settleRegions` treats the
@@ -251,7 +253,7 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
   // child list, so it is handed over as `_mountSlot` hands over its own.
   const open = isRangeOpen(placeholder)
   if (_slotHydrator !== null && (open || (!isCloneSlotPlaceholder(placeholder) && !isMidSlotText(placeholder)))) {
-    ownByScope(_slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null))
+    ownByScope(_slotHydrator(value as never, parent as Element, open ? (placeholder as Comment) : null, 1))
     return
   }
   // A function is an accessor (see `_setChild`) — mount it reactively.
@@ -264,7 +266,7 @@ export function _setChildAt(parent: Node, placeholder: ChildNode, value: unknown
     // "null" (and "false", and `a,b` for an array) on the page where SSR
     // renders nothing / `ab`. A number reaches the DOM unconverted (see
     // `_replaceText`); `createTextNode` and `Text.data` convert it per the spec.
-    const text = (typeof value === 'string' || typeof value === 'number' ? value : _childText(value)) as string
+    const text = textValue(value) as string
     if (!isMidSlotText(placeholder)) {
       parent.replaceChild(document.createTextNode(text), placeholder)
     } else if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind) {
@@ -406,16 +408,17 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
     // functions (a VNode, an accessor) keep the general path below.
     const v = d.value as unknown
     if (v === null || (typeof v !== 'object' && typeof v !== 'function')) {
-      // A number on a FRESH clone goes to the DOM unconverted (see
-      // `_replaceText`); an adopted node keeps the string read-back below.
-      if (typeof v === 'number' && _freshBind) {
-        node.data = v as unknown as string
+      // A number goes to the DOM unconverted (see `text-value.ts`). A FRESH
+      // clone is written outright; an adopted node only when its server text
+      // differs.
+      const next = textValue(v)
+      if (_freshBind) {
+        node.data = next as string
         return _noopDispose
       }
-      const next = v == null || typeof v === 'boolean' ? '' : String(v as string | number)
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
-      if (node.data !== next) node.data = next
+      if (textChanged(next, node.data)) node.data = next as string
 
       return _noopDispose
     }
@@ -435,27 +438,22 @@ export function _bindProp(props: object, key: string, node: Text, parent: Node):
  */
 function bindTextTracked(fn: () => unknown, node: Text, ownerAtSetup: ReturnType<typeof getContextOwner>): () => void {
   let core: PolyTextCore | null = null
-  // Last string written — same read-back saving as the fast path above.
-  let written: string | null | undefined = null
+  // Last value written, raw — same read-back saving as the fast path above.
+  let written: TextValue | null | undefined = null
   const disposeEffect = _renderBind(() => {
     const v = fn()
     if (core !== null) {
       core.apply(v as VNodeChild)
       return
     }
-    const next =
-      v == null || typeof v === 'boolean'
-        ? ''
-        : typeof v === 'object'
-          ? _childText(v)
-          : String(v as string | number)
+    const next = textValue(v)
     if (written === null) {
       written = _freshBind ? undefined : node.data
       // Dev: the first write into ADOPTED server text (#4419).
       if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
         reportFirstText(node, v, next, 'reactive')
     }
-    if (next !== written) {
+    if (textChanged(next, written)) {
       if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
         const parent = node.parentNode
         if (parent !== null) {
@@ -465,7 +463,8 @@ function bindTextTracked(fn: () => unknown, node: Text, ownerAtSetup: ReturnType
         }
       }
       if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
-      node.data = next
+      // A number goes to the DOM unconverted (see `text-value.ts`).
+      node.data = next as string
       written = next
     }
   })
@@ -503,29 +502,27 @@ export function _bindText(
     // an upgrade, the combined cleanup after one. The returned disposer reads it
     // late so ONE stable function survives the subscriber swap.
     let disposer: (() => void) | null = null
-    // The string this binding last wrote. Comparing against it instead of
-    // reading `node.data` back saves a DOM read (and the string it returns) on
-    // every update. `null` until the first call, which reads the node once so a
-    // hydration-adopted node whose server text already matches is not rewritten.
+    // The value this binding last wrote, RAW (a number stays a number, see
+    // `text-value.ts`). Comparing against it instead of reading `node.data`
+    // back saves a DOM read (and the string it returns) on every update.
+    // `null` until the first call, which reads the node once so a
+    // hydration-adopted node whose server text already matches is not
+    // rewritten (`textChanged` compares a number with that text by the DOM's
+    // own conversion).
     // `undefined` = the first call ran on a FRESH clone, where the current text
     // is the template placeholder and nothing needs preserving: write
     // unconditionally instead of reading the node back.
-    let written: string | null | undefined = null
+    let written: TextValue | null | undefined = null
     const textUpdate = () => {
       const v = source._v
-      const next =
-      v == null || typeof v === 'boolean'
-        ? ''
-        : typeof v === 'object'
-          ? _childText(v)
-          : String(v as string | number)
+      const next = textValue(v)
       if (written === null) {
         written = _freshBind ? undefined : node.data
         // Dev: the first write into ADOPTED server text (#4419).
         if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
           reportFirstText(node, v, next, 'reactive')
       }
-      if (next !== written) {
+      if (textChanged(next, written)) {
         // Value actually changed — the ONLY place the upgrade check runs, never
         // on the no-change hot path. Strings and numbers short-circuit on typeof.
         if (typeof v === 'object' && v !== null && _isMountableTextValue(v)) {
@@ -551,7 +548,7 @@ export function _bindText(
           // through to the historical String() coercion + dev warning.
         }
         if (process.env.NODE_ENV !== 'production') _warnTextCoercion(v, node)
-        node.data = next
+        node.data = next as string
         written = next
       }
     }
@@ -756,26 +753,13 @@ export function _setTplAdoptVerifier(v: TplAdoptVerifier): void {
   _tplAdoptVerifier = v
 }
 
-/**
- * DECLARED ROOT DECORATION (#4382). A component that adds `class` / `style` to
- * a compiled child element (kinetic's per-item hidden state) does it on the
- * client at mount, and on the server to the root tag of the child's raw HTML
- * (`withRootAttrs`). The server element's root then carries attributes the
- * template's static skeleton does not, and the static-skeleton gate refused
- * it: the item was re-created at hydration instead of adopted.
- *
- * The decorating component declares the decoration on the item it receives,
- * and for that item ONLY the gate leaves the ROOT's `class` and `style` out of
- * the comparison: the declaring component owns them and re-applies them at
- * mount. Every other attribute and every descendant is still compared. Carried
- * on the item (leak class C: never a registry), read once by its adoption.
- */
-const ROOT_DECORATED: unique symbol = Symbol('pyreon.rootDecorated')
+// DECLARED ROOT DECORATION (#4382): the brand `_declareRootDecoration`
+// (`./root-decoration`, exported from `@pyreon/runtime-dom/internal`) sets on
+// an item whose root `class` / `style` its decorating component owns. Read
+// here through the same registry symbol, not an import, so the internal entry
+// shares no chunk with the main one.
+const ROOT_DECORATED: unique symbol = Symbol.for('pyreon.rootDecorated') as never
 type DecoratedItem = NativeItem & { [ROOT_DECORATED]?: true }
-
-export function _declareRootDecoration(item: NativeItem): void {
-  ;(item as DecoratedItem)[ROOT_DECORATED] = true
-}
 
 // The adoption frame's flag (see `_tplAdoptTarget`): set by `__adoptAt`,
 // consumed one-shot by the `buildTpl` it arms.
@@ -1219,7 +1203,7 @@ class RemountableItem {
   __adoptAt(domNode: Element): boolean {
     const inner = this.built()
     // A declaration made on this (outer) item belongs to the build it adopts.
-    if ((this as unknown as DecoratedItem)[ROOT_DECORATED] === true) _declareRootDecoration(inner)
+    if ((this as unknown as DecoratedItem)[ROOT_DECORATED] === true) (inner as DecoratedItem)[ROOT_DECORATED] = true
     return (inner as Partial<DeferredNativeItem>).__adoptAt?.(domNode) ?? false
   }
 }

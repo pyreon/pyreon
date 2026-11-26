@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { createTerm, stripAnsi } from '@pyreon/ansi'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type CheckOptions, type CheckRun, check, type Finding, renderCheckText } from '../check'
+import { stdoutToConsoleLog } from './stdout-to-console'
 
 let tmp: string
 let logs: string[]
@@ -17,6 +18,7 @@ beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
     logs.push(a.map(String).join(' '))
   })
+  stdoutToConsoleLog()
   vi.spyOn(console, 'error').mockImplementation((...a: unknown[]) => {
     errs.push(a.map(String).join(' '))
   })

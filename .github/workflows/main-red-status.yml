@@ -55,6 +55,7 @@ on:
       - Native Device Green-Streak Tracker
       - Native Device Nightly Status
       - Perf
+      - Post-Publish Smoke
       - Published State
       - Real Bench App Smoke
       - Release

@@ -697,8 +697,12 @@ export interface ZeroConfig {
    */
   adapter?: 'node' | 'bun' | 'static' | 'vercel' | 'cloudflare' | 'netlify' | 'deno' | Adapter
 
-  /** Base URL path. Default: "/" */
-  base?: string
+  /**
+   * Route base: where the pages live — a root-relative path such as `/docs/`.
+   * `undefined` = unset (then Vite's base decides, see the Base Path docs).
+   * A CDN URL or `./` belongs in `vite.config.base`. Default: `/`.
+   */
+  base?: string | undefined
 
   /**
    * i18n routing — locale-prefixed route variants generated at build time

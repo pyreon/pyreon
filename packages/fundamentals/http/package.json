@@ -63,6 +63,11 @@
       "import": "./lib/native-plugin.js",
       "types": "./lib/types/native-plugin.d.ts"
     },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -124,6 +129,9 @@
     "wretch": "^3.0.9",
     "valibot": "^1.5.0",
     "zod": "^4.6.7"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

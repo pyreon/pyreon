@@ -13,7 +13,9 @@
     "directory": "packages/fundamentals/rich-text"
   },
   "type": "module",
-  "sideEffects": false,
+  "sideEffects": [
+    "**/*.css"
+  ],
   "main": "./lib/index.js",
   "module": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -32,12 +34,14 @@
       "bun": "./src/native-plugin.ts",
       "import": "./lib/native-plugin.js",
       "types": "./lib/types/native-plugin.d.ts"
-    }
+    },
+    "./styles.css": "./styles.css"
   },
   "files": [
     "lib",
     "!lib/analysis",
     "src",
+    "styles.css",
     "README.md",
     "LICENSE"
   ],
@@ -69,6 +73,9 @@
     "@pyreon/tsconfig": "workspace:*",
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

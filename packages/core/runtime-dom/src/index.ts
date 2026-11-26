@@ -33,6 +33,9 @@ export { KeepAlive } from './keep-alive'
 // instead of mounting a second one — see `template.ts`'s MOUNT HOLES section.
 export { bindPolymorphicText, mountChild } from './mount'
 export type { SanitizeFn } from './props'
+// `<select value>` whose option arrives after mount (#4820); the compiler emits
+// the call for modules that render `<select value>`.
+export { _selectWait } from './select-wait'
 export {
   applyAttrProp as _setAttr,
   applyClassProp as _setClass,
@@ -48,9 +51,9 @@ export {
   foreignAttrNamespace,
   applyStyleProp as _setStyle,
   applyStyleOnce as _setStyleOnce,
-  // `<input>`/`<textarea>` `value`: property assignment plus a first-time
-  // `defaultValue` reflection, so a client-mounted form resets like a hydrated
-  // one. Emitted by the compiler for those two tags only.
+  // `<input>`/`<textarea>`/`<select>` `value`: property assignment, plus a
+  // first-time `defaultValue` reflection on input/textarea so a client-mounted
+  // form resets like a hydrated one.
   applyValueProp as _setValue,
   // DOM-property bindings (`checked`, `disabled`, …): a function value is an
   // accessor, as on the h() path. `_setProp` runs inside a reactive binding;
@@ -70,7 +73,6 @@ export {
   _bindText,
   _bindProp,
   _ref,
-  _declareRootDecoration,
   _mountChild,
   _mountSlot,
   _textSlot,

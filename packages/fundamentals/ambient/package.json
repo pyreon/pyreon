@@ -27,6 +27,11 @@
       "bun": "./src/testing.ts",
       "import": "./lib/testing.js",
       "types": "./lib/types/testing.d.ts"
+    },
+    "./internal": {
+      "bun": "./src/internal.ts",
+      "import": "./lib/internal.js",
+      "types": "./lib/types/internal.d.ts"
     }
   },
   "files": [
@@ -60,6 +65,9 @@
     "@pyreon/vitest-config": "workspace:*",
     "@vitest/browser-playwright": "^5.1.0",
     "happy-dom": "^21.0.4"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "publishConfig": {
     "access": "public"

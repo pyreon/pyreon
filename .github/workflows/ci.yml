@@ -99,10 +99,15 @@ permissions:
 # lockfile hash inside setup-pyreon.
 env:
   BOOTSTRAP_KEY: bootstrap-${{ github.run_id }}
-  # All selectors in one run compare against the same immutable base, even
-  # when main advances while matrices are queued. Full-history checkouts
-  # contain this commit; a missing commit fails closed in affected.ts.
-  CI_BASE: ${{ github.event.pull_request.base.sha }}
+  # NO workflow-level CI_BASE. Each job that selects from the diff runs
+  # `bun scripts/diff-base.ts --github-env` (the "Resolve the diff base" step),
+  # which exports CI_BASE = the FIRST PARENT of this run's merge commit: the
+  # main commit GitHub actually built refs/pull/N/merge on. It is fixed by
+  # GITHUB_SHA, so every job of one run (and a re-run) gets the same base even
+  # while main advances. `github.event.pull_request.base.sha` is NOT that
+  # commit — it is main when the event fired, and GitHub may build the merge
+  # ref on a newer main; a diff from it blamed a PR for main's own commits
+  # (#4776). check-ci-fail-fast enforces the shape.
 
 jobs:
   # ── Install: ONE job for install → decide → build lib/ ─────────────────
@@ -172,6 +177,12 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
+      # The base every selector below diffs against (scripts/diff-base.ts):
+      # the merge commit's first parent. A checkout that cannot supply it
+      # fails this step with a [Pyreon] message — never a silent guess.
+      - name: Resolve the diff base
+        if: github.event_name == 'pull_request'
+        run: bun scripts/diff-base.ts --github-env
       - name: Resolve PR CI mode
         id: mode
         env:
@@ -458,10 +469,9 @@ jobs:
             echo "Full scaffold matrix forced (event: ${{ github.event_name }})"
             exit 0
           fi
-          BASE="$CI_BASE"
-          # Changed files (handles fetch failures cleanly — fall back to
-          # running the matrix if we can't determine the diff).
-          if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
+          # Changed files. Resolve the diff base already proved the base is
+          # present; any later diff failure still runs the matrix (safety).
+          if ! CHANGED=$(bun scripts/diff-base.ts --files); then
             emit true
             echo "Could not determine changes — running full matrix (safety)"
             exit 0
@@ -517,8 +527,7 @@ jobs:
             echo "Full run forced (event: ${{ github.event_name }})"
             exit 0
           fi
-          BASE="$CI_BASE"
-          if ! CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null); then
+          if ! CHANGED=$(bun scripts/diff-base.ts --files); then
             # Couldn't determine diff — safe default = run.
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -652,6 +661,11 @@ jobs:
         with:
           restore-bootstrap: 'false' # every gate here is lib-free
           node-version: '26' # Doc Examples typechecks under node
+      # Fails Fast Gates loudly ([Pyreon] message) when this checkout cannot
+      # supply the merge commit's first parent; Doc Examples reads the same base.
+      - name: Resolve the diff base
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
+        run: bun scripts/diff-base.ts --github-env
       # ── repo policy ──────────────────────────────────────────────────────
       # Every PR must be gated by CI, and GitHub can only gate a PR whose base
       # is a PROTECTED branch. Protecting feature branches is structurally
@@ -727,7 +741,7 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if ! CHANGED=$(git diff --name-only "$CI_BASE...HEAD" 2>/dev/null); then
+          if ! CHANGED=$(bun scripts/diff-base.ts --files); then
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -849,8 +863,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # affected.ts needs the merge-base to compute a real diff;
-          # the install job uses fetch-depth: 0 for the same reason.
+          # The diff base (scripts/diff-base.ts) is the merge commit's first
+          # parent, which needs depth >= 2; full history kept for the rest.
           fetch-depth: 0
       - uses: ./.github/actions/setup-pyreon
         with:
@@ -859,6 +873,9 @@ jobs:
           # bootstrap restore lets typecheck start as soon as Install
           # finishes (~60s) instead of waiting for Bootstrap (~210s).
           restore-bootstrap: 'false'
+      - name: Resolve the diff base
+        if: github.event_name == 'pull_request'
+        run: bun scripts/diff-base.ts --github-env
       # Incremental typecheck cache (`incremental` in @pyreon/tsconfig/base.json).
       #
       # Every package resolves its @pyreon/* deps to SOURCE, so a cold typecheck
@@ -1044,6 +1061,9 @@ jobs:
           node-version: '26'
           # P3c — needs lib/ for bundle-size tests + nested-Vite-SSR
           # tests; default `restore-bootstrap: 'true'` is correct.
+      - name: Resolve the diff base
+        if: github.event_name == 'pull_request'
+        run: bun scripts/diff-base.ts --github-env
       # Compile-verdict cache for the batch containing `native-rest` (validate-cache.ts —
       # content-addressed by validator kind + compiler version + stub text +
       # exact bytes, so a stale entry can only miss, never lie). Membership
@@ -1221,8 +1241,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2 # `Check Site Route Budgets` measures HEAD^1, the commit a pull request merges into
+          fetch-depth: 2 # `Check Site Route Budgets` measures the diff base: the merge commit's first parent
       - uses: ./.github/actions/setup-pyreon
+      - name: Resolve the diff base
+        if: github.event_name == 'pull_request'
+        run: bun scripts/diff-base.ts --github-env
       # RESTORE always; SAVE only on main. The browser bundle is ~261 MB and
       # depends only on the Playwright version in bun.lock, so a per-branch save
       # stored the SAME bytes once per PR — four live copies, 783 MB of pure
@@ -1285,8 +1308,8 @@ jobs:
       # ── site route budgets ───────────────────────────────────────────────
       # The JavaScript each budgeted pyreon.dev page requests on load, judged
       # like the three size steps of `Build`. A pull request is judged on the
-      # bytes IT adds: the gate builds HEAD^1 (the commit this merge ref
-      # merges into) in a worktree and compares, and builds nothing there when
+      # bytes IT adds: the gate builds CI_BASE (scripts/diff-base.ts: the
+      # merge commit's first parent, the commit this merge ref merges into) in a worktree and compares, and builds nothing there when
       # no changed path can move a page. A push to main and a merge-queue
       # group are judged against the ceilings, which is where the sum of
       # several merges shows. It runs in the cell that ran the `docs` suite,
@@ -1298,7 +1321,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            bun run check-site-budgets --dist=docs/dist --mode=pr --base-ref='HEAD^1' --base-dir="$RUNNER_TEMP/site-base-tree"
+            bun run check-site-budgets --dist=docs/dist --mode=pr --base-ref="$CI_BASE" --base-dir="$RUNNER_TEMP/site-base-tree"
           else
             bun run check-site-budgets --dist=docs/dist --mode=main
           fi
@@ -1479,7 +1502,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # coverage's affected.ts needs the merge-base
+          fetch-depth: 0 # the diff base (merge commit's first parent) for coverage, size base and the wrangler lock check
       # ── native compiler binary (restore BEFORE setup-pyreon) ─────────────
       # The binary is a pure function of build-native.ts and the crate
       # directory it copies (every *.rs and *.toml, Cargo.lock), so restore
@@ -1514,6 +1537,12 @@ jobs:
           # Coverage REQUIRES node (bun's inspector lacks the V8 coverage API);
           # check-coverage.ts spawns vitest under node explicitly.
           node-version: '26'
+      # The base Coverage (changed packages), Prepare size base and the
+      # wrangler lock check all read (scripts/diff-base.ts). A failure here
+      # turns Build red with a [Pyreon] message naming the fix.
+      - name: Resolve the diff base
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && github.event_name == 'pull_request' }}
+        run: bun scripts/diff-base.ts --github-env
       # ── examples ─────────────────────────────────────────────────────────
       # @pyreon/* is already built (lib/ restored from this run's cache); only
       # the example apps build here. Including @pyreon/* in the filter would
@@ -1544,7 +1573,7 @@ jobs:
           # Verify Modes with it). Pushes to main stay strict.
           if ! npm audit --prefix "$RUNNER_TEMP/wrangler" --audit-level=high; then
             if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && \
-               git diff --quiet HEAD^1 HEAD -- scripts/verify-modes-tools/package-lock.json; then
+               git diff --quiet "$CI_BASE" HEAD -- scripts/verify-modes-tools/package-lock.json; then
               echo "::warning::High-severity advisory in the pinned wrangler toolchain lock, pre-existing on the base — not blocking this PR. Bump scripts/verify-modes-tools/package-lock.json."
             else
               exit 1
@@ -1552,7 +1581,8 @@ jobs:
           fi
       # ── size gates: how the three steps below judge ─────────────────────
       # A pull request is judged on the bytes IT adds: `size-base.ts` measures
-      # HEAD^1 (the commit this merge ref merges into) and the gates compare.
+      # CI_BASE (scripts/diff-base.ts: the merge commit's first parent, the
+      # commit this merge ref merges into) and the gates compare.
       # A push to main and a merge-queue group are judged against the ceilings
       # in scripts/size-budgets/, which is where the sum of several merges
       # shows. The base is rebuilt only when a changed path can move a size;
@@ -1566,7 +1596,7 @@ jobs:
           if [ "$EVENT_NAME" = "pull_request" ]; then
             echo "PYREON_SIZE_MODE=pr" >> "$GITHUB_ENV"
             echo "PYREON_SIZE_BASE=$RUNNER_TEMP/size-base.json" >> "$GITHUB_ENV"
-            bun scripts/size-base.ts --ref='HEAD^1' --out="$RUNNER_TEMP/size-base.json" --dir="$RUNNER_TEMP/size-base-tree"
+            bun scripts/size-base.ts --ref="$CI_BASE" --out="$RUNNER_TEMP/size-base.json" --dir="$RUNNER_TEMP/size-base-tree"
           else
             echo "PYREON_SIZE_MODE=main" >> "$GITHUB_ENV"
           fi
@@ -1838,6 +1868,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2 # the advisory audit's base on a PR: the merge commit's first parent
       - uses: ./.github/actions/setup-pyreon
         with:
           restore-bootstrap: 'false'
@@ -1846,22 +1878,22 @@ jobs:
       # published against a dependency already on main turns every open PR
       # red, docs-only PRs included. Pre-existing advisories surface as
       # warnings + summary; pushes to main still enforce the full set. The
-      # PR checkout is the merge commit, so its first parent IS the base it
-      # was merged against — one extra level of history is all it needs.
-      # A merge-queue group is judged the same way against the commit it was
-      # built on (`merge_group.base_sha`): the queue must not freeze on an
-      # advisory main already carries, which is the four-day class above.
+      # base is scripts/diff-base.ts's: on a PR the merge commit's first
+      # parent (the checkout's depth 2 holds it — re-fetching $GITHUB_REF here
+      # could fetch a NEWER merge commit than the one checked out); in a
+      # merge-queue group `merge_group.base_sha`, the commit it was built on,
+      # so the queue does not freeze on an advisory main already carries.
       - name: Reject high-severity dependency advisories
         env:
           EVENT: ${{ github.event_name }}
           MG_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
-          if [ "$EVENT" = "pull_request" ]; then
-            git fetch --no-tags --quiet --depth=2 origin "$GITHUB_REF"
-            bun scripts/audit-new-advisories.ts --level high --base HEAD^1
-          elif [ "$EVENT" = "merge_group" ]; then
-            git fetch --no-tags --quiet --depth=1 origin "$MG_BASE"
-            bun scripts/audit-new-advisories.ts --level high --base "$MG_BASE"
+          if [ "$EVENT" = "pull_request" ] || [ "$EVENT" = "merge_group" ]; then
+            if [ "$EVENT" = "merge_group" ]; then
+              git fetch --no-tags --quiet --depth=1 origin "$MG_BASE"
+            fi
+            BASE=$(bun scripts/diff-base.ts)
+            bun scripts/audit-new-advisories.ts --level high --base "$BASE"
           else
             bun scripts/audit-new-advisories.ts --level high
           fi

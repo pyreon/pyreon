@@ -57,7 +57,3 @@ export { formatCombo, matchesCombo, parseShortcut, splitShortcutList } from './p
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type { HotkeyEntry, HotkeyOptions, InputKind, KeyCombo } from './types'
-
-// ─── Testing ─────────────────────────────────────────────────────────────────
-
-export { _resetHotkeys } from './registry'

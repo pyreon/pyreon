@@ -18,10 +18,10 @@ import { defineManifest } from '@pyreon/manifest'
 
 export default defineManifest({
   name: '@pyreon/flow',
-  tagline: 'Reactive flow diagrams — signal-native nodes, edges, pan/zoom, elkjs auto-layout',
+  tagline: 'Reactive flow diagrams — signal-native nodes, edges, pan/zoom, built-in auto-layout',
   description:
     'Reactive flow diagrams for Pyreon. Signal-native nodes and edges, pan/zoom via pointer events, ' +
-    'auto-layout via lazy-loaded elkjs. No D3.',
+    'auto-layout from a lazy-loaded built-in engine. No elkjs, no D3.',
   category: 'browser',
   peerDeps: ['@pyreon/runtime-dom'],
   features: [

@@ -50,6 +50,7 @@ toast.promise(saveDraft(), {
 | `toast.dismiss(id?)` | dismiss one or every toast (soft — plays the leave animation) | |
 | `toast.remove(id?)` | remove one or every toast instantly (hard — no leave animation) | |
 | `toast.promise(promise, opts)` | transitions loading → success / error automatically | |
+| `toast.list()` | reactive read of the live queue (`readonly Readonly<Toast>[]`, oldest first), e.g. a notification count | |
 
 ```ts
 toast(message: string | VNodeChild, options?: ToastOptions): string
@@ -70,6 +71,7 @@ interface ToastOptions {
   description?: string | VNodeChild // secondary line under the message
   icon?: VNodeChild // leading icon
   dismissible?: boolean // shows × dismiss button, default true
+  dismissLabel?: string // this toast's dismiss-button name (overrides the Toaster's)
   action?: { label: string; onClick: (ctx: { id: string; dismiss: () => void }) => void }
   onDismiss?: () => void // fires on manual or auto dismiss
 }
@@ -85,7 +87,23 @@ There is **no per-toast `position`** — position is a `<Toaster>` prop, not a `
   max={5} // visible toasts simultaneously
   gap={8} // px between toasts
   offset={16} // px from viewport edge
+  label="Notifications" // region name — a string or an accessor (() => t('…'))
+  dismissLabel="Dismiss" // every dismiss button's name — a string or an accessor
+  nonce={cspNonce} // CSP nonce for the injected <style>
+  injectStyles // default true; false = load '@pyreon/toast/styles.css' yourself
 />
+```
+
+### Content Security Policy
+
+The Toaster injects its stylesheet once as `<style data-pyreon-toast>`. A policy without `'unsafe-inline'` in `style-src` refuses it. Either pass the request's nonce, or turn the injection off and import the same rules as a file (which `style-src 'self'` allows):
+
+```tsx
+<Toaster nonce={cspNonce} />
+
+// or
+import '@pyreon/toast/styles.css'
+<Toaster injectStyles={false} />
 ```
 
 Positions: `'top-left'` · `'top-center'` · `'top-right'` · `'bottom-left'` · `'bottom-center'` · `'bottom-right'`.
@@ -146,14 +164,19 @@ Fully custom toast content IS supported — `message`, `description`, and `icon`
 
 ## Testing
 
+Use the helpers in `@pyreon/testing/toast`:
+
 ```ts
-import { _reset, _toasts } from '@pyreon/toast'
+import { clearToasts, expectToast, findToast } from '@pyreon/testing/toast'
 import { afterEach } from 'vitest'
 
-afterEach(_reset)
+afterEach(clearToasts)
+
+expectToast(/saved/) // a matching toast exists now
+await findToast(/saved/) // wait for one to appear
 ```
 
-`_reset()` clears the queue and timers; `_toasts` is the raw `Signal<Toast[]>` for assertions.
+`clearToasts()` clears the queue and timers.
 
 ## Gotchas
 

@@ -510,7 +510,7 @@ pyreon doctor --only native-audit                          # multiplatform PMTC 
 pyreon doctor --only islands-audit,ssg-audit               # several gates
 ```
 
-An unknown argument is a usage error (exit 1): an ignored selector would silently widen the run to every gate. The pre-1.0 single-purpose flags (`--audit-tests`, `--check-islands`, `--check-ssg`, `--check-content`, `--check-native`) are removed; use `--only <gate>`.
+An unknown argument is a usage error (exit 1): an ignored selector would silently widen the run to every gate. The single-purpose flags `--audit-tests`, `--check-islands`, `--check-ssg`, `--check-content` and `--check-native` were removed in 0.54; use `--only <gate>`.
 
 ### Gate deep-dives
 
@@ -623,8 +623,16 @@ Codemods only make changes that keep behaviour the same, and skip `node_modules`
 | --- | --- | --- |
 | `zero-remove-vite-option` | 0.52.0 | Removes the `vite` option from `zero({...})` in `vite.config.*`. `zero()` never read it; the old value is kept as a comment so you can move it into `defineConfig`. |
 | `zero-placeholder-color` | 0.54.0 | Rewrites the image option `placeholder: 'dominant-color'` to `placeholder: 'color'`. The removed name was an alias, so behaviour is unchanged. |
+| `runtime-dom-render-to-mount` | 0.54.0 | Switches the removed `render` (an alias of `mount`) to `mount` in imports from `@pyreon/runtime-dom`. |
+| `url-state-debounce-ms` | 0.54.0 | Renames the removed `useUrlState` option `debounce` to `debounceMs` (same value). |
+| `router-server-loader-functions` | 0.54.0 | Rewrites `router.preload(path, req)` to `preloadRoute(router, path, req)`, `router.preload(path, _, { skipLoaders: true })` to `router.preloadComponents(path)`, and `router.runServerLoaders(path, req)` to `runServerLoaders(router, path, req)`. |
+| `router-tabs-function` | 0.54.0 | Wraps the `tabs` option of `createRouter` in `routerTabs(...)`. |
+| `form-use-form-fields` | 0.55.0 | Rewrites the removed `useForm({ fields: [field(…)] })` shape to `useForm({ initialValues, validators })` when the field definitions are inline or declared in the same file. |
+| `internal-exports-subpath` | 0.55.0 | Moves imports of the `_` internals and the compat plumbing that left the public entries to their new `./internal` and `@pyreon/core/compat` subpaths (same bindings). |
 
-Every `@pyreon/zero` changeset that bumps a minor version states how to upgrade in an `Upgrade:` line: `none`, the codemod id, or the manual step. That line appears in the changelog. Before 1.0 a breaking change ships as a minor bump; for the rules from 1.0, see [Stability, Versioning & Direction](/docs/stability-and-direction).
+For every breaking change on the way to 1.0, with the codemod that covers it or the step you take by hand, see [Upgrading to 1.0](/docs/upgrading-to-v1).
+
+Every `@pyreon/zero` changeset that bumps a minor version states how to upgrade in an `Upgrade:` line: `none`, the codemod id, or the manual step. That line appears in the changelog. While Pyreon is `0.x`, a breaking change ships as a minor bump; for the rules from 1.0, see [Stability, Versioning & Direction](/docs/stability-and-direction).
 
 ## `pyreon lint`
 

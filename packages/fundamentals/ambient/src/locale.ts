@@ -62,7 +62,7 @@ function runtimeDefaultZone(): string {
 }
 
 /** Test hook: forget the memoized runtime defaults, the provide flags and the printed warnings. */
-export function _resetLocaleState(): void {
+export function resetLocaleState(): void {
   _resetWarnings()
   runtimeLocale = undefined
   runtimeZone = undefined

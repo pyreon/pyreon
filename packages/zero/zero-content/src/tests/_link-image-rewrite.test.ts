@@ -5,8 +5,8 @@
  *   H8 — `[foo](./bar.md)` rewrites to the route URL.
  */
 import { describe, expect, it } from 'vitest'
-import { isRelativePath, makeInternalLinkResolver } from '../plugin'
 import { compileMarkdown } from '../pipeline/parse'
+import { isRelativePath, makeInternalLinkResolver } from '../internal-server'
 
 describe('PR-F H8 — isRelativePath classifier', () => {
   it.each([

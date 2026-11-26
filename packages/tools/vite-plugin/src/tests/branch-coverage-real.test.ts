@@ -4,6 +4,7 @@
  * NO v8-ignore annotations.
  */
 import { describe, expect, it } from 'vitest'
+import { buildLpihClientScript, resolveLpihCachePath } from '../lpih-bridge'
 import {
   _getCompatTarget,
   _isPyreonWorkspaceFile,
@@ -15,9 +16,7 @@ import {
   _offsetToLineCol,
   _computeLineStarts,
   _collectImportedNames,
-  buildLpihClientScript,
-  resolveLpihCachePath,
-} from '../index'
+} from '../internal'
 
 // ─── _isTruthyEnv — falsy variants ──────────────────────────────────────────
 

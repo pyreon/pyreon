@@ -14,8 +14,12 @@ export interface TransitionProps {
    * Default: "pyreon"
    */
   name?: string
-  /** Reactive boolean controlling whether the child is shown. */
-  show: () => boolean
+  /**
+   * Whether the child is shown: an accessor (`show={() => open()}`) or a value.
+   * The compiler turns `show={open}` / `show={open()}` into a reactive prop
+   * that already reads the value, so both shapes stay reactive (like `<Show when>`).
+   */
+  show: boolean | (() => boolean)
   /**
    * If true, runs the enter transition on the initial mount (instead of
    * appearing immediately). Default: false.
@@ -75,7 +79,11 @@ function Transition(props: TransitionProps): VNodeChild {
 
   // Ref injected into the child element so we can apply/remove classes
   const ref = createRef<HTMLElement>()
-  const isMounted = signal(runUntracked<boolean>(props.show))
+  const readShow = (): boolean => {
+    const show = props.show
+    return typeof show === 'function' ? show() : show
+  }
+  const isMounted = signal(runUntracked<boolean>(readShow))
 
   // Cancel in-progress enter / leave when the component unmounts or when a
   // new transition supersedes the current one. Both are set inside their
@@ -224,7 +232,7 @@ function Transition(props: TransitionProps): VNodeChild {
   // the initial mount — that scheduling IS this subscription's job, not setup work.
   // pyreon-lint-disable-next-line pyreon/no-imperative-effect-on-create
   effect(() => {
-    const visible = props.show()
+    const visible = readShow()
     if (!initialized) {
       initialized = true
       if (visible && props.appear) {

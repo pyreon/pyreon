@@ -22,7 +22,7 @@ export default defineManifest({
     'LSP code actions: a quick fix per fixable finding and a `source.fixAll.pyreon` action for fix-on-save',
     'Per-rule options via tuple form in config or `--rule-options id=\'{json}\'`',
     'AstCache (FNV-1a hash) for repeat runs',
-    'LSP server for IDE integration (startLspServer)',
+    'LSP server for IDE integration (startLspServer) — per-document `.pyreonlintrc.json`, else the client\'s `initializationOptions.preset` (the VS Code `pyreonLint.preset` setting)',
     'Whole-file opt-out with a mandatory reason: // pyreon-lint-disable-file <rule> -- <why>',
     'Inline suppression: // pyreon-lint-ignore <rule> OR // pyreon-lint-disable-next-line <rule> (both accept a trailing `-- reason`) — the same comment also silences a `pyreon doctor` / MCP `validate` DETECTOR finding, by its bare code or the prefixed id the tool prints (`pyreon-patterns/as-unknown-as-vnodechild`)',
   ],
