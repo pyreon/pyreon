@@ -10,7 +10,10 @@ import { signal } from '@pyreon/reactivity'
 //     page it replaced;
 //   - `onLoad` runs once per document (not for the in-page `#two` navigation),
 //     an unreachable page reports `onError` with kind 'load', and a new
-//     `reloadKey` loads it again.
+//     `reloadKey` loads it again. The unreachable page is a closed, ordinary
+//     port (4), not one on the browsers' restricted list such as 9: Android
+//     reported port 9 as a load error, iOS never did, so it did not test a
+//     refused connection on both platforms.
 // The page posts where it is through the reverse bridge, so the tests read it in
 // NATIVE text instead of inside the web view. The link is the only way the page
 // gets history: a user activation, so WebView's history intervention keeps it.
@@ -57,7 +60,7 @@ export function TabWebHome() {
         data-testid="tabs-web-view"
       />
       <WebView
-        src="https://127.0.0.1:9/"
+        src="https://127.0.0.1:4/"
         reloadKey={attempt()}
         onError={(e) => {
           errors.set(errors() + 1)

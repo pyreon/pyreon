@@ -48,6 +48,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
+import androidx.navigationevent.NavigationEventDispatcherOwner
+import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
+import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 
 /** The window width at and above which tabs become a rail and a split shows two panes. */
 private const val PYREON_WIDE_DP = 600
@@ -215,15 +218,29 @@ fun PyreonSplit(
  * dispatcher of its own that nothing ever presses; when it is shown again its
  * handlers move back to the activity's dispatcher (BackHandler re-registers on
  * a new dispatcher). The tree shape does not change, so no state is lost.
+ *
+ * Since activity-compose 1.12 `BackHandler` registers with the
+ * `NavigationEventDispatcher` from `LocalNavigationEventDispatcherOwner` when
+ * there is one, not with the `OnBackPressedDispatcher`, so the hidden content
+ * also gets a CHILD navigation-event dispatcher that is disabled while hidden
+ * (a disabled dispatcher's handlers never receive Back). Both are provided: a
+ * handler built on either API is detached.
  */
 @Composable
 internal fun PyreonBackScope(shown: Boolean, content: @Composable () -> Unit) {
     val parent = LocalOnBackPressedDispatcherOwner.current
     val detached = remember { PyreonDetachedBackOwner() }
     detached.parent = parent
-    CompositionLocalProvider(
-        LocalOnBackPressedDispatcherOwner provides (if (shown && parent != null) parent else detached),
-    ) {
+    val backOwner = LocalOnBackPressedDispatcherOwner provides (if (shown && parent != null) parent else detached)
+    // No navigation-event owner above (a host without one): BackHandler uses the
+    // OnBackPressedDispatcher alone, and a root dispatcher here would swallow Back.
+    val navParent: NavigationEventDispatcherOwner? = LocalNavigationEventDispatcherOwner.current
+    if (navParent == null) {
+        CompositionLocalProvider(backOwner) { content() }
+        return
+    }
+    val navOwner = rememberNavigationEventDispatcherOwner(enabled = shown, parent = navParent)
+    CompositionLocalProvider(backOwner, LocalNavigationEventDispatcherOwner provides navOwner) {
         content()
     }
 }
