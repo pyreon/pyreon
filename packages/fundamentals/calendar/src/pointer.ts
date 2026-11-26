@@ -316,7 +316,7 @@ function onDown<Meta>(c: Ctx<Meta>, event: PointerEvent): void {
   const key = ev.dataset.key as string
   const kind = handle === null ? 'move' : 'resize'
   if (!c.calendar.canEdit(key, kind)) return
-  const s: Session = { ...base, kind, holder: ev, el: ev, key, edge: (handle?.dataset.edge as 'start' | 'end' | undefined) ?? 'end', grab: at.hit, fromResource: ev.dataset.resource, anchor: at.hit, anchorSlot: at.slotStart ?? 0, originCell: ev.parentElement }
+  const s: Session = { ...base, kind, holder: ev, el: ev, key, edge: (handle?.dataset.edge as 'start' | 'end' | undefined) ?? 'end', grab: at.hit, fromResource: ev.dataset.resource, anchor: at.hit, anchorSlot: at.slotStart ?? 0, originCell: ev.closest<HTMLElement>('.pcal-tl-lane') ?? ev.parentElement }
   c.session = s
   if (event.pointerType === 'touch') s.timer = window.setTimeout(() => start(c, s), LONG_PRESS_MS)
 }

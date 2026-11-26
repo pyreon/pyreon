@@ -1,6 +1,7 @@
 // Single axis — points along one horizontal axis (category or value), sized by a second dimension.
 
 import type { Domain, Double, DrawCmd, Pt, Rect } from './types'
+import type { Formatter } from './format'
 
 export interface SingleAxisSpec {
   type?: 'category' | 'value' | undefined
@@ -55,7 +56,7 @@ function niceTicks(lo: Double, hi: Double, count: number): Double[] {
 }
 
 /** Lay the axis across `box` (vertically centred) and place the points on it. */
-export function layoutSingleAxis(axis: SingleAxisSpec, points: readonly SingleAxisPoint[], box: Rect, options?: SingleAxisOptions): SingleAxisLayout {
+export function layoutSingleAxis(axis: SingleAxisSpec, points: readonly SingleAxisPoint[], box: Rect, options?: SingleAxisOptions, fmt?: Formatter): SingleAxisLayout {
   const fontSize = options?.fontSize ?? 11.0
   const base = options?.radius ?? 5.0
   const isCat = axis.type === 'category'
@@ -99,7 +100,7 @@ export function layoutSingleAxis(axis: SingleAxisSpec, points: readonly SingleAx
   } else {
     let index = 0
     for (const v of niceTicks(lo, hi, 6)) {
-      ticks.push({ x: px(v), label: String(v), index })
+      ticks.push({ x: px(v), label: fmt === undefined ? String(v) : fmt(v), index })
       index++
     }
   }

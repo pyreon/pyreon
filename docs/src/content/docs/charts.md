@@ -554,7 +554,10 @@ A canvas is a single opaque node to a screen reader, so every component
 renders an **offscreen data table** by default (`accessibleTable={false}` to
 opt out) and derives an `aria-label` from the actual data via `describeChart`.
 Pass `title` to name the chart — without it the description falls back to a
-bare "Chart".
+bare "Chart". The words are English until you give them: see "Locales" for
+`messages`, which every surface (description, table headers, keyboard
+announcements, data view) and both native targets read; `description` replaces
+the sentence outright.
 
 Natively the same sentence is the canvas's accessibility label: `a11y.ts`
 crosses with the engine, so VoiceOver and TalkBack read `describeChart` over
@@ -836,6 +839,58 @@ the accessor form.
 `locale` prop picks it up for its number and date formatting. `numberFormatter`
 and `dateFormatter` are exported from `@pyreon/charts/engine` for hosts that
 build specs by hand.
+
+A pack's `messages` (`ChartMessages`) are the words of the accessible surfaces,
+which are English by default: the spoken description, the accessible table's
+`Category` / `(upper)` / `(lower)` / `(size)` headers and truncated caption,
+the keyboard announcements (`no value`, `3 of 12`), the scale note, the data
+view's close button and the gauge, candlestick and heatmap sentences. Each
+field is a template with `{slots}` that may be dropped or reordered; unset
+fields stay English. A chart's own `messages` prop wins over the pack field by
+field, and the family hosts and the `*ToSvg` functions that derive a
+description take it too. The mark kind in the sentence (`kindBars`, `kindLine`,
+…), the series names a family chart gives itself (`valueLabel`, `openLabel`,
+`closeLabel`, `medianLabel`, `seriesLabel`, `funnelLabel`, …), the map
+legend's `noDataLabel` and the sign of a change (`percent`, `multiple`) are
+fields too. With `locale`, the figures a sentence writes itself (a change of
+`3,2×`, a count) use that locale's digits; family charts take `locale` as well,
+for their pack's words and every number they say or draw (tooltips, the gauge's
+value, axes, ticks, the visualMap strip), on the web and natively (the platform
+number formatter). Every `*ToSvg` export takes `locale` too, and the
+descriptions the family exports derive are messages (`funnelDescription`,
+`treemapDescription`, … `singleAxisDescription`, each slot already in the
+locale's digits).
+
+```tsx
+import { Bar, Chart, registerLocale } from '@pyreon/charts'
+
+registerLocale('cs-CZ', {
+  messages: {
+    overview: '{title}. {series} v {count} kategoriích od {first} do {last}.',
+    oneSeries: '1 řada',
+    manySeries: 'řady: {n}',
+    trend: '{label}: {direction}{change} z {first} na {last}, rozsah {low}{lowAt} až {high}{highAt}.',
+    rising: 'roste',
+    falling: 'klesá',
+    flat: 'beze změny',
+    at: ' ({category})',
+    category: 'Kategorie',
+  },
+})
+
+const rows = [{ day: 'po', n: 3 }, { day: 'út', n: 5 }]
+export const Sales = () => (
+  <Chart data={rows} x="day" title="Prodej po dnech" locale="cs-CZ">
+    <Bar y="n" label="Prodej" />
+  </Chart>
+)
+// aria-label: 'Prodej po dnech. 1 řada v 2 kategoriích od po do út. Prodej: roste 67% z 3 na 5, rozsah 3 (po) až 5 (út).'
+```
+
+Natively the pack registry does not exist, so pass the words as the `messages`
+prop (a constant or an expression): it lowers to the engine's `ChartMessages`
+struct and VoiceOver / TalkBack, the data view and an untitled family chart's
+name read it.
 
 ## Interaction
 

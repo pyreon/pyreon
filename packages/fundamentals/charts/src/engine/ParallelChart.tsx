@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost } from './canvas-host'
+import { chartNumber } from './locale'
 import type { CanvasHostProps } from './canvas-host'
 import type { ChartTheme } from './render'
 import { layoutParallel, renderParallel } from './parallel'
@@ -33,6 +34,9 @@ export function ParallelChart(props: ParallelChartProps): VNode {
     const colorOf = props.rowColor
     return colorOf === undefined ? base : { ...base, lineColors: parallelLineColors(readRows(), colorOf) }
   }
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<ParallelLayout>({
     props,
     transpose: () => props.orient === 'vertical',
@@ -43,7 +47,7 @@ export function ParallelChart(props: ParallelChartProps): VNode {
     },
     layout: (box, _measure, theme) => {
       const g = props.gutter ?? 40.0
-      return layoutParallel(props.axes, parallelRows(props.axes, readRows()), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme))
+      return layoutParallel(props.axes, parallelRows(props.axes, readRows()), { x: box.x + g, y: box.y + 8.0, w: Math.max(0.0, box.w - g * 2.0), h: Math.max(0.0, box.h - 16.0) }, opts(theme), num())
     },
     animates: true,
     render: (layout, _measure, theme, progress) => renderParallel(layout, { ...opts(theme), progress }),

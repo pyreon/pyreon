@@ -8,7 +8,8 @@
 // adapter, the colour callback, `lineRuns` and the nullable hit live in
 // parallel-web.ts; the svg half in family-svg.ts.
 
-import { plain } from './format'
+import { formatNumber } from './format'
+import type { Formatter } from './format'
 import { DEFAULT_PALETTE, paletteAt } from './palette'
 import { sankeyRgba } from './sankey'
 import { isFiniteNumber } from './scale'
@@ -103,7 +104,7 @@ function parallelHighlighted(highlight: Double[], index: Double): boolean {
 }
 
 /** Lay out the axes into `box` and place every row. */
-export function layoutParallel(axes: readonly ParallelAxis[], rows: Double[][], box: Rect, options?: ParallelOptions): ParallelLayout {
+export function layoutParallel(axes: readonly ParallelAxis[], rows: Double[][], box: Rect, options?: ParallelOptions, fmt?: Formatter): ParallelLayout {
   const fontSize = options?.fontSize ?? 11.0
   const top = box.y + fontSize * 1.8
   const bottom = box.y + box.h - fontSize * 1.4
@@ -149,8 +150,8 @@ export function layoutParallel(axes: readonly ParallelAxis[], rows: Double[][], 
         iF = iF + 1.0
       }
     } else {
-      ticks.push({ y: inverse ? top : bottom, label: plain(lo) })
-      ticks.push({ y: inverse ? bottom : top, label: plain(hi) })
+      ticks.push({ y: inverse ? top : bottom, label: formatNumber(lo, fmt) })
+      ticks.push({ y: inverse ? bottom : top, label: formatNumber(hi, fmt) })
     }
     outAxes.push({ name: axis.name, x, y0: top, y1: bottom, domain: { min: lo, max: hi }, ticks, isCategory: isCat, inverse })
     aF = aF + 1.0

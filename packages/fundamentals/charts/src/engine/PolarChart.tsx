@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { polarLegend, polarTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import type { ChartTheme } from './render'
@@ -23,6 +24,9 @@ export interface PolarChartProps extends CanvasHostProps {
 export function PolarChart(props: PolarChartProps): VNode {
   const readSeries = (): readonly PolarSeries[] => (typeof props.series === 'function' ? props.series() : props.series)
   const opts = (t: ChartTheme): PolarOptions => ({ palette: t.palette, labelColor: t.label, gridColor: t.grid, ...props.polar })
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<PolarLayout>({
     props,
     defaultHeight: 300,
@@ -30,7 +34,7 @@ export function PolarChart(props: PolarChartProps): VNode {
     track: () => {
       readSeries()
     },
-    layout: (box, _measure, theme) => layoutPolar(props.axes, readSeries(), box, opts(theme)),
+    layout: (box, _measure, theme) => layoutPolar(props.axes, readSeries(), box, opts(theme), num()),
     animates: true,
     render: (layout, _measure, theme, progress) => renderPolar(layout, { ...opts(theme), progress }),
     legend: (_layout, theme) => polarLegend(readSeries(), theme.palette),
@@ -38,7 +42,7 @@ export function PolarChart(props: PolarChartProps): VNode {
       props.onSelect?.(hitPolar(layout, px, py))
       props.onSelectIndex?.(hitPolarIndex(layout, px, py))
     },
-    tooltip: (layout, px, py) => orNull(polarTip(layout, readSeries(), px, py)),
+    tooltip: (layout, px, py) => orNull(polarTip(layout, readSeries(), px, py, num())),
     item: (layout, px, py) => {
       const hit = hitPolarIndex(layout, px, py)
       const s = layout.sectors[hit.sector]

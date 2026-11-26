@@ -21,6 +21,7 @@ export { AgendaView } from './agenda-view'
 export { DayPopover } from './popover'
 export { TimeGridView } from './timegrid-view'
 export { TimelineView } from './timeline-view'
+export type { TimelineViewProps } from './timeline-view'
 export { YearView } from './year-view'
 export type { YearViewProps } from './year-view'
 export type { DayCell }
@@ -94,6 +95,8 @@ export interface CalendarProps<Meta = unknown> extends CalendarViewProps<Meta> {
   moreDialog?: boolean
   /** A day of the year view was chosen. Default: show that day in the day view. */
   onDayClick?: (date: PlainDate) => void
+  /** The timeline's row windowing (see `TimelineViewProps.windowed`): `true`, `false`, or the resource count above which it windows. Default 100. */
+  windowed?: boolean | number
 }
 
 /**
@@ -136,7 +139,7 @@ export function Calendar<Meta = unknown>(props: CalendarProps<Meta>): VNodeChild
         popover.set(null)
         if (view === 'agenda') return <AgendaView {...shared} />
         if (view === 'year') return <YearView {...shared} onDayClick={dayClick} />
-        if (view === 'timeline') return <TimelineView {...shared} />
+        if (view === 'timeline') return <TimelineView {...shared} {...(props.windowed === undefined ? {} : { windowed: props.windowed })} />
         if (view === 'week' || view === 'workWeek' || view === 'day' || view === 'days') return <TimeGridView {...shared} />
 
         return <MonthView {...shared} onMore={openMore} />

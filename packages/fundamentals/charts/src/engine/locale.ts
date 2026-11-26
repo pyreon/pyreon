@@ -1,8 +1,10 @@
-// Locale packs — number and date formatting for axis labels and tooltips.
+// Locale packs — number and date formatting for axis labels and tooltips, and
+// the words of the accessible description and table (`messages`).
 //
 // Built on Intl so the common locales need no registration; a pack overrides
 // or extends what Intl produces (custom month names, a fixed number format).
 
+import type { ChartMessages } from './a11y'
 import type { Formatter } from './format'
 import type { Double } from './types'
 
@@ -13,6 +15,8 @@ export interface LocalePack {
   date?: Intl.DateTimeFormatOptions | undefined
   /** Twelve month names, when Intl's are not wanted. */
   monthNames?: string[] | undefined
+  /** The words of the accessible description, table and keyboard announcements (`ChartMessages`); a chart's `messages` prop wins field by field. */
+  messages?: ChartMessages | undefined
 }
 
 const registry = new Map<string, LocalePack>()
@@ -43,6 +47,34 @@ export function numberFormatter(tag: string): Formatter {
   return (v: Double): string => (Number.isFinite(v) ? nf.format(v) : '')
 }
 
+/**
+ * A family chart's number format for what it draws and its tooltips: its own
+ * `format`, else its `locale`'s (`3,5` in Czech), else none (`plain`). The
+ * locale's formatter is built once per tag for the chart that reads it.
+ */
+export function chartNumber(props: { readonly locale?: string | undefined; readonly format?: Formatter | undefined }): () => Formatter | undefined {
+  let memo: { tag: string; fmt: Formatter } | null = null
+  return () => {
+    if (props.format !== undefined) return props.format
+    const tag = props.locale
+    if (tag === undefined) return undefined
+    if (memo === null || memo.tag !== tag) memo = { tag, fmt: numberFormatter(tag) }
+
+    return memo.fmt
+  }
+}
+
+/**
+ * The PLAIN number format of `tag` (up to 2 decimals, grouped), for the
+ * figures an accessible sentence says itself: a change of `3,2×`, a count.
+ * Not the pack's `number` options, which style the axis (a currency, a unit)
+ * and would turn a ratio into money.
+ */
+export function plainNumberFormatter(tag: string): Formatter {
+  const nf = safeNumberFormat(tag, undefined)
+  return (v: Double): string => (Number.isFinite(v) ? nf.format(v) : '')
+}
+
 /** A date formatter over epoch milliseconds for `tag`; `monthNames` in a pack win over Intl. */
 export function dateFormatter(tag: string): Formatter {
   const pack = registry.get(tag)
@@ -59,5 +91,19 @@ export function dateFormatter(tag: string): Formatter {
   } catch {
     df = new Intl.DateTimeFormat('en', { timeZone: 'UTC', month: 'short', day: 'numeric', ...pack?.date })
   }
+
   return (ms: Double): string => (Number.isFinite(ms) ? df.format(new Date(ms)) : '')
+}
+
+/**
+ * The accessible words for a chart: the `locale` pack's `messages`, then the
+ * chart's own `messages` field by field. `undefined` when neither has any, so
+ * the engine keeps its English.
+ */
+export function chartMessagesFor(tag: string | undefined, own: ChartMessages | undefined): ChartMessages | undefined {
+  const pack = tag === undefined ? undefined : registry.get(tag)?.messages
+  if (pack === undefined) return own
+  if (own === undefined) return pack
+
+  return { ...pack, ...own }
 }

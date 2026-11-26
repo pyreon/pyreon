@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { treeLegend, treeTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import type { ChartTheme } from './render'
@@ -21,6 +22,9 @@ export interface TreeChartProps extends CanvasHostProps {
 export function TreeChart(props: TreeChartProps): VNode {
   const readData = (): readonly TreeNode[] => (typeof props.data === 'function' ? (props.data as () => readonly TreeNode[])() : props.data)
   const opts = (t: ChartTheme): TreeOptions => ({ palette: t.palette, labelColor: t.label, linkColor: t.label, ...props.tree })
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<TreeLayout>({
     props,
     defaultHeight: 300,
@@ -36,7 +40,7 @@ export function TreeChart(props: TreeChartProps): VNode {
       props.onSelect?.(hitTree(layout, px, py, props.tree?.symbolSize))
       props.onSelectIndex?.(hitTreeIndex(layout, px, py, props.tree?.symbolSize))
     },
-    tooltip: (layout, px, py) => orNull(treeTip(layout, px, py, props.tree?.symbolSize)),
+    tooltip: (layout, px, py) => orNull(treeTip(layout, px, py, props.tree?.symbolSize, num())),
     item: (layout, px, py) => {
       const i = hitTreeIndex(layout, px, py, props.tree?.symbolSize)
       const n = layout.nodes[i]
@@ -54,10 +58,10 @@ export function TreeChart(props: TreeChartProps): VNode {
       const r = (props.tree?.symbolSize ?? 8.0) / 2.0 + 3.0
       return { x: node.at.x - r, y: node.at.y - r, w: r * 2.0, h: r * 2.0 }
     },
-    a11y: (layout) => ({
+    a11y: (layout, m) => ({
       title: props.title,
       categories: layout.nodes.map((n) => n.name),
-      series: [{ label: props.title ?? 'Tree', values: layout.nodes.map((n) => n.value ?? n.depth), kind: 'bars' }],
+      series: [{ label: props.title ?? m?.treeLabel ?? 'Tree', values: layout.nodes.map((n) => n.value ?? n.depth), kind: 'bars' }],
     }),
   })
 }

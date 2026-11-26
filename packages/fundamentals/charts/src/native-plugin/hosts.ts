@@ -24,7 +24,7 @@ import { DEFAULT_PALETTE } from '../engine/palette'
 import { palettes } from '../engine/palettes'
 import { visualMap, visualStripOf } from '../engine/visual-map'
 import type { VisualMapOptions, VisualMapSpec } from '../engine/visual-map'
-import type { AttrIR, ExprIR } from '@pyreon/native-compiler/plugin-api'
+import type { AttrIR, ExprIR, TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { CHART_ENGINE_STRUCTS } from './engine-structs'
 
 /** Per-target expression helpers the host specs build their draw list with. */
@@ -146,6 +146,17 @@ export interface ChartHostArgs {
   showLabels?: string
   /** The theme's font size as emitted text (the pie's label size); the default when absent. */
   fontSize?: string
+  /**
+   * The chart's number format as emitted text: the platform's locale formatter
+   * (`pyreonLocaleNumberFormatter(tag)`) when the chart has a `locale`, as the
+   * web host's `Intl` digits. Absent: the engine's `plain`.
+   */
+  fmt?: string
+}
+
+/** `, <fmt>` for an engine call's trailing formatter argument, or nothing. */
+export function fmtArg(a: ChartHostArgs): string {
+  return a.fmt === undefined ? '' : `, ${a.fmt}`
 }
 
 export interface ChartHostSpec {
@@ -625,7 +636,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     hit: (l, x, y) => `hitSankeyIndex(${l}, ${x}, ${y})`,
     transposable: true,
     legend: (l) => `sankeyLegend(${l})`,
-    tooltip: (l, x, y) => `sankeyTip(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `sankeyTip(${l}, ${x}, ${y}${fmtArg(a)})`,
     adapt: { nodes: sankeyNodesAdapter, links: sankeyLinksAdapter },
   },
   GraphChart: {
@@ -637,7 +648,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutGraph(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
     render: (l, a, t) => `renderGraph(${l}, ${box00(a, t)}, ${a.options})`,
     hit: (l, x, y) => `hitGraphIndex(${l}, ${x}, ${y})`,
-    tooltip: (l, x, y) => `graphTip(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `graphTip(${l}, ${x}, ${y}${fmtArg(a)})`,
     adapt: { nodes: graphNodesAdapter, links: graphLinksAdapter },
   },
   TreemapChart: {
@@ -650,7 +661,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a) => `renderTreemap(${l}, ${a.options})`,
     hit: (l, x, y) => `hitTreemapIndex(${l}, ${x}, ${y})`,
     legend: (l) => `treemapLegend(${l})`,
-    tooltip: (l, x, y) => `treemapTip(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `treemapTip(${l}, ${x}, ${y}${fmtArg(a)})`,
   },
   SunburstChart: {
     data: ['data'],
@@ -665,7 +676,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a, t) => `renderSunburst(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${a.options})`,
     hit: (l, x, y, a, t) => `hitSunburstIndex(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${x}, ${y})`,
     legend: (l) => `sunburstLegend(${l})`,
-    tooltip: (l, x, y, a, t) => `sunburstTip(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${x}, ${y})`,
+    tooltip: (l, x, y, a, t) => `sunburstTip(${l}, ${t.pt(`${a.W} / 2.0`, `${a.H} / 2.0`)}, ${x}, ${y}${fmtArg(a)})`,
   },
   TreeChart: {
     data: ['data'],
@@ -677,7 +688,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a) => `renderTree(${l}, ${a.options})`,
     hit: (l, x, y, a, t) => `hitTreeIndex(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')})`,
     legend: (l) => `treeLegend(${l})`,
-    tooltip: (l, x, y, a, t) => `treeTip(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')})`,
+    tooltip: (l, x, y, a, t) => `treeTip(${l}, ${x}, ${y}, ${optField(a, t, 'symbolSize')}${fmtArg(a)})`,
   },
   ChordChart: {
     data: ['nodes', 'links'],
@@ -690,7 +701,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a) => `renderChord(${l}, ${a.options})`,
     hit: (l, x, y) => `hitChordIndex(${l}, ${x}, ${y})`,
     legend: (l) => `chordLegend(${l})`,
-    tooltip: (l, x, y) => `chordTip(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `chordTip(${l}, ${x}, ${y}${fmtArg(a)})`,
   },
   RiverChart: {
     data: ['series'],
@@ -713,7 +724,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     layout: (a, t) => `layoutGantt(${a.data[0]}, ${t.rect('4.0', '4.0', `${a.W} - 8.0`, `${a.H} - 8.0`)}, ${a.options})`,
     render: (l, a) => `renderGantt(${l}, ${a.options})`,
     hit: (l, x, y) => `hitGanttIndex(${l}, ${x}, ${y})`,
-    tooltip: (l, x, y) => `ganttTip(${l}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `ganttTip(${l}, ${x}, ${y}${fmtArg(a)})`,
   },
   PolarChart: {
     data: ['axes', 'series'],
@@ -721,12 +732,12 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     optionsStruct: 'PolarOptions',
     themeDefaults: ['palette', 'labelColor', 'gridColor'],
     defaultHeight: 300,
-    layout: (a, t) => `layoutPolar(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
+    layout: (a, t) => `layoutPolar(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options}${fmtArg(a)})`,
     render: (l, a) => `renderPolar(${l}, ${a.options})`,
     hit: (l, x, y) => `hitPolarIndex(${l}, ${x}, ${y})`,
     // The engine's DEFAULT_PALETTE is a private module constant in the generated Swift; the web default is inlined instead.
     legend: (_l, a, t) => `polarLegend(${a.data[1]}, ${t.coalesce(optField(a, t, 'palette'), t.list(CHART_HOST_PALETTE.map(t.str)))})`,
-    tooltip: (l, x, y, a) => `polarTip(${l}, ${a.data[1]}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `polarTip(${l}, ${a.data[1]}, ${x}, ${y}${fmtArg(a)})`,
   },
   CalendarChart: {
     visualMap: true,
@@ -739,7 +750,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     render: (l, a) => `renderCalendar(${l}, ${a.data[2]}, ${a.options})`,
     hit: (l, x, y) => `hitCalendarIndex(${l}, ${x}, ${y})`,
     transposable: true,
-    tooltip: (l, x, y, a) => `calendarTip(${l}, ${a.data[2]}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `calendarTip(${l}, ${a.data[2]}, ${x}, ${y}${fmtArg(a)})`,
     adapt: { values: calendarValuesAdapter },
   },
   MapChart: {
@@ -769,7 +780,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     // Web-only state and callbacks: warned BY NAME, never silently dropped.
     warnProps: ['selectedMode', 'emphasis', 'onSelectionChange', 'tooltipFormatter', 'flows', 'flowOptions', 'sizeLegend', 'fitTo', 'zoomOnClick'],
     extraHits: [{ event: 'selectpointindex', hit: (l, x, y, a) => `hitGeoOverlayPoint(${l}, ${a.data[3]}, ${x}, ${y}, (${a.data[4]}).radius)` }],
-    tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y})`,
+    tooltip: (l, x, y, a) => `geoTip(${l}, ${a.data[1]}, ${x}, ${y}${fmtArg(a)})`,
     adapt: {
       map: geoShapesAdapter,
       values: geoValuesAdapter,
@@ -787,7 +798,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     themeDefaults: ['palette', 'labelColor', 'axisColor', 'highlightColor'],
     defaultHeight: 300,
     gutterDefault: 40,
-    layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options})`,
+    layout: (a, t) => `layoutParallel(${a.data[0]}, ${a.data[1]}, ${t.rect(a.gutter, '8.0', t.max0(`${a.W} - ${a.gutter} * 2.0`), t.max0(`${a.H} - 16.0`))}, ${a.options}${fmtArg(a)})`,
     render: (l, a) => `renderParallel(${l}, ${a.options})`,
     hit: (l, x, y) => `hitParallelIndex(${l}, ${x}, ${y})`,
     transposable: true,
@@ -800,7 +811,7 @@ export const CHART_HOSTS: Readonly<Record<string, ChartHostSpec>> = {
     optionsStruct: 'SingleAxisOptions',
     themeDefaults: ['labelColor', 'axisColor'],
     defaultHeight: 160,
-    layout: (a, t) => `layoutSingleAxis(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options})`,
+    layout: (a, t) => `layoutSingleAxis(${a.data[0]}, ${a.data[1]}, ${box00(a, t)}, ${a.options}${fmtArg(a)})`,
     render: (l, a) => `renderSingleAxis(${l}, ${a.options})`,
     hit: (l, x, y) => `hitSingleAxis(${l}, ${x}, ${y})`,
     adapt: { axis: singleAxisSpecAdapter, points: literalStructArrayAdapter('points', 'SingleAxisPoint', ['x'], ['size', 'name', 'color']) }, // typed rows: a bare `{ x }` literal otherwise synthesizes an anonymous struct the engine's [SingleAxisPoint] rejects
@@ -907,12 +918,21 @@ export function describeInput(describe: string): string {
  * linear chart): the web's `scaleNote` — the picture's spacing is not the data's,
  * and a listener should know. Read from the compile-time literals.
  */
-export function scaleNote(yScale: unknown, yView: { kind: string } | undefined, xView: { kind: string } | undefined): string {
+export function scaleNote(yScale: unknown, yView: { kind: string } | undefined, xView: { kind: string } | undefined, messages?: string): string {
   const y = yView !== undefined ? yView.kind : typeof yScale === 'string' && yScale !== 'linear' ? yScale : ''
-  const text = (y === '' ? '' : ` The value axis is on a ${y} scale.`) + (xView === undefined ? '' : ` The x axis is on a ${xView.kind} scale.`)
+  const x = xView === undefined ? '' : xView.kind
+  if (y === '' && x === '') return ''
+  // With the chart's `messages` the note is built at run time by the engine's
+  // `scaleNoteText`, in the chart's words; without, the English literal (what
+  // `scaleNoteText` returns for no messages) is written in place.
+  if (messages !== undefined) return ` + /*scale-note*/scaleNoteText("${y}", "${x}", ${messages})`
+  const text = (y === '' ? '' : ` The value axis is on a ${y} scale.`) + (x === '' ? '' : ` The x axis is on a ${x} scale.`)
 
-  return text === '' ? '' : ` + /*scale-note*/"${text}"`
+  return ` + /*scale-note*/"${text}"`
 }
+
+/** The chart's `messages` prop as the engine's `ChartMessages` struct type, for `exprAs`. */
+export const CHART_MESSAGES_TYPE: TypeIR = { kind: 'typeRef', name: 'ChartMessages', args: [] }
 
 /** The `{ kind, param }` literal `scaleAttr` made, or undefined. */
 export function scaleViewOf(v: ExprIR | undefined): { kind: string; param: number } | undefined {
@@ -1423,7 +1443,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
     render: (items, a, t) => `renderFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${a.options})`,
     hit: (items, x, y, a, t) => `hitFunnel(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
     legend: (items) => `funnelLegend(${items})`,
-    tooltip: (items, x, y, a, t) => `funnelTip(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options})`,
+    tooltip: (items, x, y, a, t) => `funnelTip(${items}, ${t.rect('8.0', '8.0', `${a.W} - 16.0`, `${a.H} - 16.0`)}, ${x}, ${y}, ${a.options}${fmtArg(a)})`,
   },
   PieChart: {
     data: 'data',
@@ -1441,7 +1461,7 @@ export const ACCESSOR_CHART_HOSTS: Readonly<Record<string, AccessorHostSpec>> = 
       return `hitArc(layoutArcs(${items}), ${fit}.center, ${fit}.radius, ${fit}.radius * ${a.innerRatio}, ${t.pt(x, y)})`
     },
     legend: (items) => `pieLegend(${items})`,
-    tooltip: (items, x, y, a, t) => `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y})`,
+    tooltip: (items, x, y, a, t) => `pieTip(${items}, ${box00(a, t)}, ${a.innerRatio}, ${x}, ${y}${fmtArg(a)})`,
   },
 }
 
@@ -2261,6 +2281,7 @@ const PLOT_UNLOWERED_REASON: Readonly<Record<string, string>> = {
   accessibleTable: 'it renders a hidden DOM `<table>`; the native canvas carries `describeChart`\'s sentence instead',
   facet: 'it renders a GRID of sub-plots rather than a chart setting; compose the panels yourself',
   facetColumns: 'it sizes the `facet` grid, which is web-only',
+  description: 'it may be a function of the web host\'s accessible data; on native name the canvas with `accessibilityLabel` (a string), or translate the derived sentence with `messages`, which does cross',
   // ── Emit work, not an obstacle ─────────────────────────────────────────
   // Each of these names what is MISSING, because "not lowered" without that
   // reads as impossible when it is merely unbuilt.
@@ -2287,7 +2308,7 @@ export function plotUnloweredWarning(tag: string, present: readonly string[]): s
 // `updateAnimation`, `updateDuration`, `toolbox`, `onSaveImage`,
 // `accessibleTable`) are reported through `chartChromeUnlowered` for the plot
 // host too — listing them here as well would warn twice.
-export const PLOT_UNLOWERED_PROPS: readonly string[] = ['density', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns']
+export const PLOT_UNLOWERED_PROPS: readonly string[] = ['density', 'onHighlight', 'onClick', 'onDoubleClick', 'onContextMenu', 'onRendered', 'emphasis', 'crosshair', 'link', 'keyboard', 'accessibleTable', 'facet', 'facetColumns', 'description']
 
 /**
  * A host's `visualMap` at COMPILE time — the web `VisualMapSpec` literal, or a

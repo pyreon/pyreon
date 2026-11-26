@@ -104,8 +104,8 @@ export { compact, currency, date, fixed, formatDate, percent, plain } from './en
 export type { Formatter } from './engine/format'
 
 // Accessibility
-export { chartTable, describeChart } from './engine/a11y'
-export type { A11yInput, A11ySeries, A11yTable } from './engine/a11y'
+export { chartTable, describeChart, scaleNoteText } from './engine/a11y'
+export type { A11yInput, A11ySeries, A11yTable, ChartMessages } from './engine/a11y'
 
 // Large-series decimation. `lttbIndices` is the crossing form (it reaches
 // iOS/Android through the generated chart engine) and the one the chart itself

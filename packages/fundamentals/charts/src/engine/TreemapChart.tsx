@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { treemapLegend, treemapTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { hitTreemap, hitTreemapIndex, layoutTreemap, renderTreemap } from './treemap'
@@ -18,6 +19,9 @@ export interface TreemapChartProps extends CanvasHostProps {
 
 export function TreemapChart(props: TreemapChartProps): VNode {
   const readData = (): readonly TreeNode[] => (typeof props.data === 'function' ? (props.data as () => readonly TreeNode[])() : props.data)
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<TreemapCell[]>({
     props,
     defaultHeight: 300,
@@ -33,7 +37,7 @@ export function TreemapChart(props: TreemapChartProps): VNode {
       props.onSelect?.(hitTreemap(cells, px, py))
       props.onSelectIndex?.(hitTreemapIndex(cells, px, py))
     },
-    tooltip: (cells, px, py) => orNull(treemapTip(cells, px, py)),
+    tooltip: (cells, px, py) => orNull(treemapTip(cells, px, py, num())),
     item: (cells, px, py) => {
       const i = hitTreemapIndex(cells, px, py)
       const c = cells[i]
@@ -47,12 +51,12 @@ export function TreemapChart(props: TreemapChartProps): VNode {
       props.onSelectIndex?.(cells.indexOf(leaf))
     },
     focusRect: (cells, i) => cells.filter((c) => c.leaf)[i]?.rect ?? null,
-    a11y: (cells) => {
+    a11y: (cells, m) => {
       const leaves = cells.filter((c) => c.leaf)
       return {
         title: props.title,
         categories: leaves.map((c) => c.name),
-        series: [{ label: props.title ?? 'Treemap', values: leaves.map((c) => c.value), kind: 'bars' }],
+        series: [{ label: props.title ?? m?.treemapLabel ?? 'Treemap', values: leaves.map((c) => c.value), kind: 'bars' }],
       }
     },
   })

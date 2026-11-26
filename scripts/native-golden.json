@@ -972,13 +972,13 @@
       "warnings": 0
     },
     "golden-fixture:chart-kotlin-34.tsx|swift": {
-      "sha": "942c285e3a5b5153b7ca00ffcaebdec71f1fb6e79ddfe1b30caf9b4dd5cff85c",
-      "bytes": 6062,
+      "sha": "8376ec9d988fe19f8705d1cb54f871732a7dfc48180aa82309f10487a6c81b61",
+      "bytes": 6164,
       "warnings": 2
     },
     "golden-fixture:chart-kotlin-34.tsx|kotlin": {
-      "sha": "010fb0f948b925a0db65eb8cc561fafdfdb0332bb2e8073fd51c5a87accd0189",
-      "bytes": 6726,
+      "sha": "3cddf1ab42663039c2ef2ed26a547f365a2bec448c91b31ec48e6ddb77a7d168",
+      "bytes": 6830,
       "warnings": 2
     },
     "golden-fixture:chart-kotlin-35.tsx|swift": {

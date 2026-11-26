@@ -2,10 +2,12 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost } from './canvas-host'
+import { chartNumber } from './locale'
 import type { CanvasHostProps } from './canvas-host'
 import { calendarDomain, hitCalendarIndex, layoutCalendar, renderCalendar } from './calendar'
 import { calendarValues, hitCalendar } from './calendar-web'
 import type { CalendarCell, CalendarLayout, CalendarOptions } from './calendar'
+import { fillMessage } from './a11y'
 import { plain } from './format'
 import type { Double, Rect } from './types'
 import type { VisualMapSpec } from './visual-map'
@@ -39,6 +41,8 @@ export function CalendarChart(props: CalendarChartProps): VNode {
   const vm = visualMapHost(
     () => (typeof props.visualMap === 'function' ? props.visualMap() : props.visualMap),
     (sel) => props.onVisualMapChange?.(sel),
+    // The strip's numbers: `format`, else the chart's `locale` digits.
+    chartNumber(props),
   )
   let outer: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }
   const dragSpec = {
@@ -99,15 +103,20 @@ export function CalendarChart(props: CalendarChartProps): VNode {
       const v = readValues()[c.date]
       return v === undefined ? [c.date] : [c.date, plain(v)]
     },
-    a11y: (layout) => {
+    a11y: (layout, m, num) => {
       const values = readValues()
       const withData = layout.cells.filter((c) => values[c.date] !== undefined)
       const dom = calendarDomain(layout, calendarValues(values))
       return {
         title: props.title,
         categories: withData.map((c) => c.date),
-        series: [{ label: props.title ?? `${props.start} to ${props.end} (${dom.min} to ${dom.max})`, values: withData.map((c) => values[c.date]!), kind: 'bars' }],
+        series: [{ label: props.title ?? calendarDaysLabel(m?.daysLabel ?? '{start} to {end} ({min} to {max})', `${props.start}`, `${props.end}`, (num ?? String)(dom.min), (num ?? String)(dom.max)), values: withData.map((c) => values[c.date]!), kind: 'bars' }],
       }
     },
   })
+}
+
+/** An untitled calendar's series name: its days and its value range, in `daysLabel`'s words. */
+function calendarDaysLabel(template: string, start: string, end: string, min: string, max: string): string {
+  return fillMessage(fillMessage(fillMessage(fillMessage(template, 'start', start), 'end', end), 'min', min), 'max', max)
 }

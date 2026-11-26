@@ -1,8 +1,10 @@
 // `<CandlestickChart>` — OHLC candles on a canvas, over the shared canvas host.
 
+import { describeCandles } from './a11y'
 import type { VNode } from '@pyreon/core'
 import { signal } from '@pyreon/reactivity'
 import { canvasHost, shiftCmds } from './canvas-host'
+import { chartNumber } from './locale'
 import type { CanvasHostProps } from './canvas-host'
 import { hitCandle, ohlcExtent } from './candlestick'
 import type { CandleOptions, Ohlc } from './candlestick'
@@ -111,6 +113,9 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
     if (span < zoom.minSpan || span > zoom.maxSpan) return win.peek()
     return next
   }
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 200,
@@ -128,7 +133,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       const categories = categoriesOf(rows)
       // The slider takes its band off the bottom; the candles lay out above it.
       const chartH = zoom?.slider === true ? Math.max(0.0, box.h - SLIDER_BAND) : box.h
-      const plot = candlestickFrame(candles, box.w, chartH, categories, theme.fontSize, measure).layout.plot
+      const plot = candlestickFrame(candles, box.w, chartH, categories, theme.fontSize, measure, num()).layout.plot
       const strip =
         zoom?.slider === true
           ? (() => {
@@ -141,7 +146,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
     },
     render: (g, measure, theme) => {
       lastFrame = g
-      const cmds: DrawCmd[] = shiftCmds(renderCandlestickChart(g.candles, g.box.w, g.box.h, g.categories, theme, props.candle ?? {}, measure), g.box.x, g.box.y)
+      const cmds: DrawCmd[] = shiftCmds(renderCandlestickChart(g.candles, g.box.w, g.box.h, g.categories, theme, props.candle ?? {}, measure, num()), g.box.x, g.box.y)
       if (g.strip !== null) for (const c of renderSliderZoom(g.allCloses, g.win, g.strip, true)) cmds.push(c)
       return cmds
     },
@@ -203,7 +208,7 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       const idx = hitAt(g, px, py)
       const c = g.candles[idx]
       if (c === undefined) return null
-      const fmt = props.format ?? groupThousands
+      const fmt = num() ?? groupThousands
       const label = g.categories[idx] ?? `#${idx + 1}`
       return [label, `O ${fmt(c.open)}`, `H ${fmt(c.high)}`, `L ${fmt(c.low)}`, `C ${fmt(c.close)}`]
     },
@@ -214,20 +219,20 @@ export function CandlestickChart<T>(props: CandlestickChartProps<T>): VNode {
       if (c === undefined) return null
       return { seriesIndex: 0, dataIndex: idx + g.offset, name: g.categories[idx] ?? '', value: [c.open, c.close, c.low, c.high] }
     },
-    describe: (g) => {
-      const title = props.title ?? 'Candlestick chart'
-      if (g.candles.length === 0) return `${title}: no data.`
+    describe: (g, m, digits) => {
+      const title = props.title ?? m?.untitled ?? 'Candlestick chart'
+      if (g.candles.length === 0) return describeCandles({ title, count: 0, min: '', max: '', close: '' }, m, digits)
       const ext = ohlcExtent(g.candles)
-      const last = g.candles[g.candles.length - 1]!
-      return `${title}: ${g.candles.length} periods, range ${ext.min} to ${ext.max}, last close ${last.close}.`
+      const fmt = props.format ?? digits ?? String
+      return describeCandles({ title, count: g.candles.length, min: fmt(ext.min), max: fmt(ext.max), close: fmt(g.candles[g.candles.length - 1]!.close) }, m, digits)
     },
-    a11y: (g) => {
+    a11y: (g, m) => {
       return {
         title: props.title,
         categories: g.categories.length > 0 ? g.categories : g.candles.map((_, i) => `#${i + 1}`),
         series: [
-          { label: 'Open', values: g.candles.map((c) => c.open), kind: 'points' },
-          { label: 'Close', values: g.candles.map((c) => c.close), kind: 'points' },
+          { label: m?.openLabel ?? 'Open', values: g.candles.map((c) => c.open), kind: 'points' },
+          { label: m?.closeLabel ?? 'Close', values: g.candles.map((c) => c.close), kind: 'points' },
         ],
         format: props.format,
       }

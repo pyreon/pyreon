@@ -14,7 +14,9 @@ import { canvasHost, orNull } from './canvas-host'
 import type { CanvasHostProps } from './canvas-host'
 import { withItemStates } from './host-states'
 import type { ItemStateProps } from './host-states'
+import { fillMessage } from './a11y'
 import { plain } from './format'
+import { chartMessagesFor, chartNumber } from './locale'
 import { GEO_RAMP_DARK, GEO_RAMP_LIGHT, geoDomainAligned, geoOptionParams, geoRoamPan, geoRoamZoom, hitGeoIndex, layoutGeoShapes, renderGeoAligned } from './geo'
 import { geoHeatStops, hitGeoOverlayPoint, renderGeoHeat, renderGeoTrails, renderGeoOverlayPaths, renderGeoOverlayPoints, renderGeoPies } from './geo-overlay'
 import { alignGeoValues, geoFeatures, getMapDefinition, resolveMapSource } from './geo-web'
@@ -126,7 +128,7 @@ function darkGround(background: string): boolean {
 }
 
 /** The legend entry for regions without a value: a hatched swatch and "No data", beside the visualMap strip. */
-function noDataKey(spec: VisualMapSpec | undefined, box: Rect, wanted: boolean, theme: ChartTheme): DrawCmd[] {
+function noDataKey(spec: VisualMapSpec | undefined, box: Rect, wanted: boolean, theme: ChartTheme, label: string): DrawCmd[] {
   if (spec === undefined || !wanted) return []
   const strip = visualStripOf(spec)
   const place = visualStripPlace(strip, box.w, box.h)
@@ -139,7 +141,7 @@ function noDataKey(spec: VisualMapSpec | undefined, box: Rect, wanted: boolean, 
 
   return [
     { kind: 'polygon', points: ring, fill: theme.muted, pattern: { kind: 'diagonal', color: theme.label, spacing: 4.0, width: 1.0 } },
-    { kind: 'text', text: 'No data', at: { x: x + s + 6.0, y: y + s / 2.0 }, fill: theme.label, size: spec.fontSize, align: 'start', baseline: 'middle' },
+    { kind: 'text', text: label, at: { x: x + s + 6.0, y: y + s / 2.0 }, fill: theme.label, size: spec.fontSize, align: 'start', baseline: 'middle' },
   ]
 }
 
@@ -218,6 +220,8 @@ export function MapChart(props: MapChartProps): VNode {
   const vm = visualMapHost(
     () => (typeof props.visualMap === 'function' ? props.visualMap() : props.visualMap),
     (sel) => props.onVisualMapChange?.(sel),
+    // The strip's numbers: `format`, else the chart's `locale` digits.
+    chartNumber(props),
   )
   let outer: Rect = { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }
   const dragSpec = {
@@ -299,7 +303,7 @@ export function MapChart(props: MapChartProps): VNode {
       ...renderGeoOverlayPoints(layout, allPoints(), { labelColor: theme.label, ...props.overlayOptions, progress }),
       ...sizeKey(theme.label),
       ...vm.cmds(outer),
-      ...noDataKey(vm.current(), outer, aligned().some((v) => !Number.isFinite(v)), theme),
+      ...noDataKey(vm.current(), outer, aligned().some((v) => !Number.isFinite(v)), theme, chartMessagesFor(props.locale, props.messages)?.noDataLabel ?? 'No data'),
     ],
     select: (layout, px, py) => {
       if (vm.click(outer, px, py)) return
@@ -342,13 +346,14 @@ export function MapChart(props: MapChartProps): VNode {
 
       return { seriesIndex: 0, dataIndex: i, name: r.label, value: Number.isFinite(v) ? v : Number.NaN }
     },
-    a11y: (layout) => {
+    a11y: (layout, m, num) => {
       const values = aligned()
       const dom = geoDomainAligned(values)
+      const fmt = num ?? String
       return {
         title: props.title,
         categories: layout.regions.map((r) => r.label),
-        series: [{ label: props.title ?? `Values from ${dom.min} to ${dom.max}`, values: [...values], kind: 'bars' }],
+        series: [{ label: props.title ?? fillMessage(fillMessage(m?.valuesLabel ?? 'Values from {min} to {max}', 'min', fmt(dom.min)), 'max', fmt(dom.max)), values: [...values], kind: 'bars' }],
       }
     },
   }))

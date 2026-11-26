@@ -262,10 +262,10 @@ toRRule({ every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-11-17'
 ### `describeRule` `function` — **experimental**
 
 ```ts
-(rule: Recurrence, options?: { locale?, messages? }) => string
+(rule: Recurrence, options?: { locale?, messages?, formatTime? }) => string
 ```
 
-A rule in words, in English by default; weekday and month names follow `locale` through `Intl`, and `messages` replaces any of about 30 phrases so an app can translate through its own i18n. Rules with no natural sentence (week numbers, year days, set positions) return the `custom` phrase, "Custom schedule". `except` and `also` are not described.
+A rule in words, in English by default; weekday and month names follow `locale` through `Intl`, and `messages` replaces any of about 30 phrases so an app can translate through its own i18n. For languages that inflect a name after a preposition, `messages.weekdays` / `nthWeekdays` / `months` give the forms (Czech `ve středu`, not `ve středa`), and `messages.onNthWeekdays` wraps the n-th weekdays with their own preposition (`v poslední pátek`). Times follow the locale's hour cycle through `Intl` (`7:00 PM` for `en-US`, `19:00` for `cs`; `HH:mm` without a `locale`), and `formatTime` replaces them. Rules with no natural sentence (week numbers, year days, set positions) return the `custom` phrase, "Custom schedule". `except` and `also` are not described.
 
 **Example**
 

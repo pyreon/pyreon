@@ -395,6 +395,22 @@ describeRule({ every: 'week', interval: 2, on: { weekdays: [2] }, start: '2026-1
 
 The templates use `{n}`, `{list}`, `{nth}`, `{weekday}` and `{date}` placeholders (single braces, so an i18n library that interpolates `{{name}}` leaves them alone).
 
+Languages that inflect a name after a preposition need more than the frame. `messages.weekdays` gives the seven weekday names (Monday first) as they read inside `onWeekdays`, `messages.nthWeekdays` as they read inside `nthWeekday` (it falls back to `weekdays`), and `messages.months` the twelve month names inside `inMonths`; without them the names are `Intl`'s, which are nominative. The n-th weekdays ("the last Friday") are wrapped by their own `onNthWeekdays` phrase (it falls back to `onWeekdays`), since the preposition can differ: Czech says `ve středu` but `v poslední pátek`. Times follow the locale's hour cycle through `Intl` (`7:00 PM` in `en-US`, `19:00` in `cs`, `HH:mm` when no `locale` is given), and `formatTime` replaces them:
+
+```ts
+// @check
+import { describeRule } from '@pyreon/schedule'
+
+const rule = { every: 'week', on: { weekdays: [3] }, start: '2026-11-25T19:00', count: 4 } as const
+
+describeRule(rule, {
+  locale: 'cs',
+  messages: { everyWeek: 'Každý týden', onWeekdays: 've {list}', atTimes: 'v {list}', times: '{n}krát', weekdays: ['pondělí', 'úterý', 'středu', 'čtvrtek', 'pátek', 'sobotu', 'neděli'] },
+}) // => 'Každý týden ve středu v 19:00, 4krát'
+describeRule(rule, { locale: 'en-US' }) // => 'Every week on Wednesday at 7:00 PM, 4 times'
+describeRule(rule, { formatTime: ({ hour, minute }) => `${hour}h${String(minute).padStart(2, '0')}` }) // => 'Every week on Wednesday at 19h00, 4 times'
+```
+
 ## Reactive helpers
 
 The root entry adds two hooks for components, built on `@pyreon/time`'s `useToday`, so they follow the rule's `timeZone` or else the active zone and flip at local midnight on one shared ticker:

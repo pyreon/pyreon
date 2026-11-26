@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { graphTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import type { ChartTheme } from './render'
@@ -26,6 +27,9 @@ export function GraphChart(props: GraphChartProps): VNode {
   const readNodes = (): readonly GraphNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): readonly GraphLink[] => (typeof props.links === 'function' ? props.links() : props.links)
   const opts = (t: ChartTheme): GraphOptions => ({ palette: t.palette, labelColor: t.label, linkColor: t.label, ...props.graph })
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 300,
@@ -41,7 +45,7 @@ export function GraphChart(props: GraphChartProps): VNode {
       props.onSelect?.(hitGraph(g.layout, px, py))
       props.onSelectIndex?.(hitGraphIndex(g.layout, px, py))
     },
-    tooltip: (g, px, py) => orNull(graphTip(g.layout, px, py)),
+    tooltip: (g, px, py) => orNull(graphTip(g.layout, px, py, num())),
     item: (g, px, py) => {
       const i = hitGraphIndex(g.layout, px, py)
       const n = g.layout.nodes[i]
@@ -59,10 +63,10 @@ export function GraphChart(props: GraphChartProps): VNode {
       const r = node.radius + 3.0
       return { x: node.at.x - r, y: node.at.y - r, w: r * 2.0, h: r * 2.0 }
     },
-    a11y: (g) => ({
+    a11y: (g, m) => ({
       title: props.title,
       categories: g.layout.nodes.map((n) => n.name),
-      series: [{ label: props.title ?? 'Graph', values: g.layout.nodes.map((n) => n.value ?? 1), kind: 'bars' }],
+      series: [{ label: props.title ?? m?.graphLabel ?? 'Graph', values: g.layout.nodes.map((n) => n.value ?? 1), kind: 'bars' }],
     }),
   })
 }

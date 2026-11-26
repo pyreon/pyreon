@@ -1,7 +1,9 @@
 // `<HeatmapChart>` — a category×category value grid on a canvas, over the shared canvas host.
 
+import { describeHeatmap } from './a11y'
 import type { VNode } from '@pyreon/core'
 import { canvasHost, shiftCmds } from './canvas-host'
+import { chartNumber } from './locale'
 import type { CanvasHostProps } from './canvas-host'
 import { groupThousands } from './format'
 import type { Formatter } from './format'
@@ -77,8 +79,13 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
       return v === true ? derived() : v
     },
     (sel) => props.onVisualMapChange?.(sel),
+    // The strip's numbers: `format`, else the chart's `locale` digits.
+    chartNumber(props),
   )
   const cellAt = (g: Geometry, px: Double, py: Double): number => hitHeatChart(g.grid, g.box.w, g.box.h, g.theme.fontSize, props.gap ?? 1.0, g.measure, px - g.box.x, py - g.box.y)
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 200,
@@ -111,7 +118,7 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
     tooltip: (g, px, py) => {
       const c = g.grid.cells[cellAt(g, px, py)]
       if (c === undefined) return null
-      const fmt = props.format ?? groupThousands
+      const fmt = num() ?? groupThousands
       return [`${g.grid.rows[c.row]!} \u00b7 ${g.grid.cols[c.col]!}: ${fmt(c.value)}`]
     },
     // ECharts' heatmap datum: [x, y, value].
@@ -140,10 +147,9 @@ export function HeatmapChart<T>(props: HeatmapChartProps<T>): VNode {
       const gap = props.gap ?? 1.0
       return { x: g.box.x + plot.x + cw * i + gap / 2.0, y: g.box.y + plot.y, w: Math.max(0.0, cw - gap), h: plot.h }
     },
-    describe: (g) => {
-      const title = props.title ?? 'Heatmap'
-      if (g.grid.cells.length === 0) return `${title}: no data.`
-      return `${title}: ${g.grid.cols.length} columns by ${g.grid.rows.length} rows, values ${g.grid.min} to ${g.grid.max}.`
+    describe: (g, m, digits) => {
+      const fmt = props.format ?? digits ?? String
+      return describeHeatmap({ title: props.title ?? m?.untitled ?? 'Heatmap', columns: g.grid.cols.length, rows: g.grid.rows.length, cells: g.grid.cells.length, min: fmt(g.grid.min), max: fmt(g.grid.max) }, m, digits)
     },
     a11y: (g) => ({
       title: props.title,

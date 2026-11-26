@@ -29,15 +29,15 @@ import { applySeriesSelection, categoryPoints, geometrySpec, layoutChart, render
 import { mirrorCmds, screenRectX } from './rtl'
 import { layoutSeriesPointsAt } from './layout'
 import type { PlotLayout } from './layout'
-import { dateFormatter, numberFormatter } from './locale'
+import { chartMessagesFor, dateFormatter, numberFormatter, plainNumberFormatter } from './locale'
 import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView, Series } from './render'
 import { xPx } from './scale'
 import { bandFrame } from './bar-band'
 import { columnLength, isColumnMark, markLabel, resolveCategories, resolveMarks } from './marks'
 import { plotHitBarsIn, plotHitIndexIn, plotHitSeriesIn } from './plot-hit'
 import type { Mark } from './marks'
-import { chartRowCount, chartTable, chartTableRow, describeChart, describeDatum } from './a11y'
-import type { A11yInput } from './a11y'
+import { chartRowCount, chartTable, chartTableRow, describeChart, describeDatum, scaleNoteText } from './a11y'
+import type { A11yInput, ChartMessages } from './a11y'
 import type { BrushArea } from './brush-area'
 import { hideHiddenSeries, legendEntriesGrouped, legendHitIndex, legendToggleGroup, pagerHit, pinSelection } from './legend-toggle'
 import { clampWindow, isFullWindow, limitZoomWindow, panWindow, sliceRange, windowOfRows, zoomWindow } from './zoom'
@@ -443,9 +443,24 @@ export interface PlotChartProps<T> {
    * reads `1.234,5` and `12. Mär.`. An explicit `format` / `xFormat` wins;
    * a registered locale pack (`registerLocale`) refines what Intl produces.
    * Web only: Intl has no native lowering, so a native host keeps the
-   * engine's plain labels.
+   * engine's plain labels. A pack's `messages` also supply the words of the
+   * accessible description and table (see `messages`).
    */
   locale?: string
+  /**
+   * The words of the spoken description, the accessible table, the keyboard
+   * announcements and the data view, for an app that is not in English
+   * (`ChartMessages`: every field a template, unset fields stay English).
+   * Merged over the `locale` pack's `messages` field by field. Lowers to the
+   * native hosts too: VoiceOver / TalkBack read the same words.
+   */
+  messages?: ChartMessages
+  /**
+   * Replaces the canvas's spoken description outright: a string, or a
+   * function of the chart's accessible data (`A11yInput`, with `messages`)
+   * that returns one. Web only; a native host takes `accessibilityLabel`.
+   */
+  description?: string | ((input: A11yInput) => string)
 }
 
 /**
@@ -480,6 +495,7 @@ function drawWidth(el: HTMLCanvasElement, explicit: Double | undefined): Double 
   if (explicit !== undefined) return explicit
   const box = el.parentElement
   const w = box === null ? 0 : box.clientWidth
+
   return w > 0 ? w : 300
 }
 
@@ -736,6 +752,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
           morphFrom = geoSnap
           tweenFrom = null
           startTween()
+
           return spec
         }
         morphFrom = null
@@ -753,6 +770,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }
     if (tweenT >= 1.0 || tweenFrom === null) return spec
     const frame = tweenValues(tweenFrom, cur, tweenT)
+
     return { ...spec, series: spec.series.map((x, i) => ({ ...x, values: frame[i]! })) }
   }
   // Command-level tween for a shape change under `universalTransition`: the
@@ -771,6 +789,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       coreTweenT = 1.0
       coreTweenFrom = null
       coreTweenTo = null
+
       return
     }
     const duration = props.updateDuration ?? theme().updateMs
@@ -804,6 +823,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       coreTweenT = 1.0
       coreTweenFrom = null
       coreTweenTo = null
+
       return cmds
     }
     if (coreTweenFrom !== null && coreTweenTo !== null && coreTweenT < 1.0) {
@@ -814,6 +834,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         startCoreTween()
       }
       lastCoreCmds = cmds
+
       return out
     }
     let out = cmds
@@ -824,6 +845,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       out = universalTweenCmds(coreTweenFrom, coreTweenTo, 0.0)
     }
     lastCoreCmds = cmds
+
     return out
   }
   // Toolbox state: the magicType override, and last-draw hit boxes.
@@ -874,6 +896,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     // `fill` makes the array packed rather than holey, so `.map` visits it.
     const rows = new Array<T>(n).fill(undefined as T)
     colRows = { marks, n, rows }
+
     return rows
   }
   // The theme in scope (provider → system scheme) with the prop merged over
@@ -952,15 +975,16 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       for (const k of lttbIndices(xs, rows.map((d, i) => Number(m.y(d, i))), per)) keepSet.add(k)
     }
     if (keepSet.size === 0 || keepSet.size >= rows.length) return null
+
     return [...keepSet].sort((a, b) => a - b)
   }
 
   // The number formatter every surface shares: the explicit `format`, else
   // the locale's Intl formatter (built once per tag), else the engine's
   // plain labels. `xFormat` gets the locale's DATE formatter under `xTime`.
-  let localeMemo: { tag: string; number: Formatter; date: Formatter } | null = null
-  const localeFmts = (tag: string): { number: Formatter; date: Formatter } => {
-    if (localeMemo === null || localeMemo.tag !== tag) localeMemo = { tag, number: numberFormatter(tag), date: dateFormatter(tag) }
+  let localeMemo: { tag: string; number: Formatter; plain: Formatter; date: Formatter } | null = null
+  const localeFmts = (tag: string): { number: Formatter; plain: Formatter; date: Formatter } => {
+    if (localeMemo === null || localeMemo.tag !== tag) localeMemo = { tag, number: numberFormatter(tag), plain: plainNumberFormatter(tag), date: dateFormatter(tag) }
     return localeMemo
   }
   const resolvedFormat = (): Formatter | undefined => props.format ?? (props.locale === undefined ? undefined : localeFmts(props.locale).number)
@@ -981,6 +1005,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const built = seriesMode ? applySeriesSelection(withStates, selectedSeries()) : withStates
     // The handle's `legendInverseSelect` flips over the series the chart drew.
     if (props.handle !== undefined && props.handle.seriesCount.peek() !== built.series.length) props.handle.seriesCount.set(built.series.length)
+
     return built
   }
   const buildSpecInner = (allRows: readonly T[], w: Double, hgt: Double): ChartSpec => {
@@ -1014,6 +1039,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       ...(m.r !== undefined ? { r: (d: T, i: number) => m.r!(d, gi(i)) } : {}),
     })), theme().palette, theme().ramp)
     const resolvedCats = full !== null ? full.categories : resolveCategories(rows, props.x === undefined ? undefined : (d, i) => props.x!(d, gi(i)))
+
     return {
     width: w,
     height: hgt,
@@ -1277,6 +1303,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     lastFrame = painted
     lastW = w
     lastH = hgt
+
     return painted
   }
 
@@ -1292,6 +1319,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const buckets = Math.max(1, Math.floor(w / 2.0))
     const next = { rows: allRows, marks: props.marks, w, values: minMaxBuckets(first?.values ?? [], buckets), color: first?.color ?? '#000000' }
     navCache = next
+
     return next
   }
   /** The navigator strip — engine-laid-out (iOS and Android drive the same one); `navRect` is what the drag measures against. */
@@ -1308,6 +1336,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       theme().grid,
     )
     navRect = l.strip
+
     return l.cmds
   }
 
@@ -1333,6 +1362,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     }
     const x0 = cx - bw / 2.0
     const x1 = cx + bw / 2.0
+
     return [{
       kind: 'polyline',
       points: [{ x: x0, y: plot.y }, { x: x1, y: plot.y }, { x: x1, y: plot.y + plot.h }, { x: x0, y: plot.y + plot.h }, { x: x0, y: plot.y }],
@@ -1344,10 +1374,9 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
 
   /** The sentence that names a non-linear scale for the spoken description: the picture's spacing is not the data's, and a listener should know. */
   const scaleNote = (): string => {
-    const note = (axis: string, scale: 'linear' | 'log' | ScaleView | undefined): string =>
-      scale === undefined || scale === 'linear' ? '' : ` The ${axis} axis is on a ${typeof scale === 'string' ? scale : scale.kind} scale.`
+    const kind = (scale: 'linear' | 'log' | ScaleView | undefined): string => (scale === undefined ? '' : typeof scale === 'string' ? scale : scale.kind)
 
-    return note('value', props.yScale) + note('x', props.xScale)
+    return scaleNoteText(kind(props.yScale), kind(props.xScale), a11yInput().messages)
   }
 
   /** An x pixel mirrored about the plot's centre when the x axis is reversed — the pointer's place on the plot as it reads in DATA order. */
@@ -1509,6 +1538,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       if (p === undefined) continue
       out.push({ kind: 'circle', center: p, radius: Math.max(3.0, sr.radius), fill: sr.color })
     }
+
     return out
   }
 
@@ -1526,6 +1556,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const committed = brushSel()
     if (committed === null) return []
     const vis = bf.brushBand(plot, committed, zoomWin() ?? { start: 0.0, end: 1.0 }, readData().length)
+
     return vis.visible ? drawBand(xFlip(plot, vis.lo), xFlip(plot, vis.hi)) : []
   }
 
@@ -1544,6 +1575,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const ctx = el.getContext('2d')
     if (ctx === null) return null
     const spec = withFrameDomain(buildSpec(readData(), plotW > 0.0 ? plotW : w, hgt - topOffset - bottomOffset))
+
     return { spec, layout: layoutChart(spec, sharedCanvasMeasure(ctx, FONT)) }
   }
   /** The plot rect at the current size (in PLOT space — right of a side legend, under the chrome) — gestures are plot-relative. */
@@ -1636,12 +1668,14 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (pts.length < 2) return 0.0
     const dx = pts[0]!.x - pts[1]!.x
     const dy = pts[0]!.y - pts[1]!.y
+
     return Math.sqrt(dx * dx + dy * dy)
   }
   const pinchCenterFrac = (plot: Rect): Double => {
     const pts = [...pointers.values()]
     if (pts.length < 2 || plot.w <= 0.0) return 0.5
     const mid = (pts[0]!.x + pts[1]!.x) / 2.0 - leftOffset
+
     return (xFlip(plot, mid) - plot.x) / plot.w
   }
 
@@ -1668,6 +1702,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       navDrag = null
       suppressClick = true
       ev.preventDefault()
+
       return
     }
     dragStartX = localX(ev.clientX, rect)
@@ -1683,6 +1718,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       dragMode = 'nav'
       suppressClick = false
       ev.preventDefault()
+
       return
     }
     // A new gesture re-arms the click decision. Without this, a drag whose
@@ -1761,6 +1797,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         setZoom(next)
       }
       ev.preventDefault()
+
       return
     }
     if (dragMode !== null) {
@@ -1782,6 +1819,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
           draw()
         }
         dragLastX = x
+
         return
       }
       if (dragMode === 'nav') {
@@ -1805,6 +1843,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         draw()
       }
       dragLastX = x
+
       return
     }
     const w = drawWidth(el, props.width)
@@ -1871,6 +1910,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         const it = props.zoomPresets?.[hit]
         const next = zmc.presetWindow(it === undefined ? 0 : it.count, readData().length)
         setZoom(next)
+
         return
       }
     }
@@ -1965,6 +2005,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
             }
           }
         }
+
         return
       }
     }
@@ -1995,6 +2036,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
             announce.set(`${target} ${nowHidden ? 'hidden' : 'shown'}`)
           }
         })
+
         return
       }
     }
@@ -2027,6 +2069,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (el === null || f === null) return -1
     const rect = el.getBoundingClientRect()
     const idx = plotHitBarsIn(f.spec, f.layout, localX(ev.clientX, rect) - leftOffset, ev.clientY - rect.top - topOffset)
+
     return idx < 0 ? idx : globalOf(idx, viewRange(readData()).from)
   }
 
@@ -2041,14 +2084,18 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     if (m !== null && m.rows === rows && m.marks === props.marks && m.x === props.x && m.palette === palette) return m
     const next = { rows, marks: props.marks, x: props.x, palette, series: resolveMarks(rows, props.marks, palette, theme().ramp), categories: resolveCategories(rows, props.x) }
     lastFull = next
+
     return next
   }
-  let a11yMemo: { rows: readonly T[]; marks: readonly Mark<T>[]; labels: readonly string[] | undefined; format: Formatter | undefined; title: string | undefined; input: A11yInput } | null = null
+  let a11yMemo: { rows: readonly T[]; marks: readonly Mark<T>[]; labels: readonly string[] | undefined; format: Formatter | undefined; title: string | undefined; locale: string | undefined; messages: ChartMessages | undefined; input: A11yInput } | null = null
   const a11yInput = (): A11yInput => {
     const rows = readData()
     const m = a11yMemo
     const fmtNow = resolvedFormat()
-    if (m !== null && m.rows === rows && m.marks === props.marks && m.labels === props.seriesLabels && m.format === fmtNow && m.title === props.title) return m.input
+    const locale = props.locale
+    const own = props.messages
+    if (m !== null && m.rows === rows && m.marks === props.marks && m.labels === props.seriesLabels && m.format === fmtNow && m.title === props.title && m.locale === locale && m.messages === own) return m.input
+    const messages = chartMessagesFor(locale, own)
     const full = resolveFull(rows)
     const resolved = full.series
     const input: A11yInput = {
@@ -2057,6 +2104,10 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
       // whose axis reads "$3.2K" and whose description reads "3204.55" is one
       // chart to a sighted reader and another to a screen-reader user.
       format: fmtNow,
+      // The words: the locale pack's, then the chart's own (`messages`).
+      ...(messages !== undefined ? { messages } : {}),
+      // The figures the sentences say themselves (a change, a count), in the locale's digits.
+      ...(locale !== undefined ? { number: localeFmts(locale).plain } : {}),
       categories: full.categories,
       series: (paintOf()?.companions?.(resolved) ?? resolved).map((s, i) => ({
         // The mark's own label (`line(y, { label })`, `<Line label>`) — what the
@@ -2073,7 +2124,8 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         ...(s.rValues !== undefined ? { rValues: s.rValues } : {}),
       })),
     }
-    a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, input }
+    a11yMemo = { rows, marks: props.marks, labels: props.seriesLabels, format: fmtNow, title: props.title, locale, messages: own, input }
+
     return input
   }
 
@@ -2095,6 +2147,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     const w = props.width ?? 600
     const hgt = props.height ?? 200
     const svg = ser.svg(frameAt(w, hgt, ser.measure()), w, hgt, { fontFamily: FONT, idPrefix: `${tableId}-frame` })
+
     return props.width === undefined ? svg.replace(`width="${w}"`, 'width="100%"') : svg
   }
   const ssrFrameNode = h('div', {
@@ -2127,7 +2180,10 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
     // full — `labelReady` starts true there.
     'aria-label': () => {
       const input = a11yInput()
-      if (!labelReady() && chartRowCount(input) > DEFER_ROWS) return props.title ?? 'Chart'
+      const own = props.description
+      if (own !== undefined) return typeof own === 'string' ? own : own(input)
+      if (!labelReady() && chartRowCount(input) > DEFER_ROWS) return props.title ?? input.messages?.untitled ?? 'Chart'
+
       return describeChart(input) + scaleNote()
     },
     ...(props.accessibleTable === false ? {} : { 'aria-describedby': tableId }),
@@ -2151,6 +2207,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         tweenFrame = 0.0
         coreTweenFrame = 0.0
         frameCache = null
+
         return
       }
       startEntrance()
@@ -2274,7 +2331,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
         'data-pyreon-dataview': '',
         style: 'position:absolute;inset:0;overflow:auto;background:#ffffff;color:#1f2937;font:12px system-ui,sans-serif;padding:8px;box-sizing:border-box',
       },
-      h('button', { type: 'button', style: 'float:right', onClick: () => dataView.set(false) }, 'Close'),
+      h('button', { type: 'button', style: 'float:right', onClick: () => dataView.set(false) }, a11yInput().messages?.close ?? 'Close'),
       h(
         'table',
         { style: 'border-collapse:collapse' },
@@ -2292,7 +2349,7 @@ export function plotCore<T>(props: PlotChartProps<T>, features: PlotFeatures): V
   // from the accessibility tree along with the visual layout.
   // A real table rather than a longer label (see `a11yTableNode`), capped and
   // updated in place.
-  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? 'Chart data', () => chartRowCount(a11yInput()))
+  const tableNode = a11yTableNode(() => chartTable(a11yInput(), A11Y_TABLE_MAX), tableId, () => props.title ?? a11yInput().messages?.untitled ?? 'Chart data', () => chartRowCount(a11yInput()), () => ({ messages: a11yInput().messages, number: a11yInput().number }))
   const table = (): VNode => tableNode
 
 

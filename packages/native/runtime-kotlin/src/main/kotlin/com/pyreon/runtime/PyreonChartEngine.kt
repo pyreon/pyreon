@@ -388,7 +388,13 @@ data class ChartActionState(var zoom: ZoomWindow, var hover: Long, var selected:
 
 data class A11ySeries(var label: String, var values: List<Double>, var kind: String, var values2: List<Double>? = null, var errLow: List<Double>? = null, var errHigh: List<Double>? = null, var rValues: List<Double>? = null)
 
-data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null)
+data class ChartMessages(var untitled: String? = null, var noData: String? = null, var overview: String? = null, var overviewPlain: String? = null, var oneSeries: String? = null, var manySeries: String? = null, var empty: String? = null, var rising: String? = null, var falling: String? = null, var flat: String? = null, var trend: String? = null, var bandTrend: String? = null, var at: String? = null, var category: String? = null, var upper: String? = null, var lower: String? = null, var size: String? = null, var withError: String? = null, var noValue: String? = null, var datum: String? = null, var scaleNote: String? = null, var valueAxis: String? = null, var xAxis: String? = null, var truncated: String? = null, var selected: String? = null, var selectedItem: String? = null, var close: String? = null, var gauge: String? = null, var candlestick: String? = null, var heatmap: String? = null, var percent: String? = null, var multiple: String? = null, var kindBars: String? = null, var kindLine: String? = null, var kindArea: String? = null, var kindPoints: String? = null, var kindStacked: String? = null, var kindGrouped: String? = null, var kindWaterfall: String? = null, var kindBand: String? = null, var kindStackedArea: String? = null, var kindPie: String? = null, var kindGauge: String? = null, var kindRadar: String? = null, var valueLabel: String? = null, var openLabel: String? = null, var closeLabel: String? = null, var medianLabel: String? = null, var q1Label: String? = null, var q3Label: String? = null, var seriesLabel: String? = null, var totalFlowLabel: String? = null, var durationLabel: String? = null, var gaugeLabel: String? = null, var funnelLabel: String? = null, var graphLabel: String? = null, var flowLabel: String? = null, var sunburstLabel: String? = null, var treeLabel: String? = null, var treemapLabel: String? = null, var valuesLabel: String? = null, var daysLabel: String? = null, var noDataLabel: String? = null, var funnelDescription: String? = null, var treemapDescription: String? = null, var noneLabel: String? = null, var sunburstDescription: String? = null, var treeDescription: String? = null, var chordDescription: String? = null, var riverDescription: String? = null, var polarDescription: String? = null, var sankeyDescription: String? = null, var graphDescription: String? = null, var calendarDescription: String? = null, var ganttDescription: String? = null, var parallelDescription: String? = null, var boxplotDescription: String? = null, var mapDescription: String? = null, var mapOverlays: String? = null, var singleAxisDescription: String? = null)
+
+data class A11yInput(var title: String? = null, var categories: List<String>, var series: List<A11ySeries>, var format: ((Double) -> String)? = null, var messages: ChartMessages? = null, var number: ((Double) -> String)? = null)
+
+data class CandleSummary(var title: String, var count: Long, var min: String, var max: String, var close: String)
+
+data class HeatSummary(var title: String, var columns: Long, var rows: Long, var cells: Long, var min: String, var max: String)
 
 data class A11yTable(var headers: List<String>, var rows: List<List<String>>, var total: Long)
 
@@ -828,6 +834,13 @@ fun gradientSolid(g: PyreonChartGradient, fallback: String): String {
   }
 
 fun isFiniteChartNumber(v: Double): Boolean = v == v && v - v == 0.0
+
+fun formatNumber(v: Double, fmt: ((Double) -> String)? = null): String {
+    if (fmt == null) {
+      return plain(v)
+    }
+    return fmt(v)
+  }
 
 fun plain(v: Double): String {
     if (!isFiniteChartNumber(v)) {
@@ -5206,7 +5219,7 @@ fun visualColorFor(s: VisualStrip, v: Double, range: Domain, selected: List<Bool
     return rampColor(s.stops, fraction(s, v))
   }
 
-fun renderVisualStrip(s: VisualStrip, at: PyreonChartPt, range: Domain, selected: List<Boolean>): List<PyreonDrawCmd> {
+fun renderVisualStrip(s: VisualStrip, at: PyreonChartPt, range: Domain, selected: List<Boolean>, fmt: ((Double) -> String)? = null): List<PyreonDrawCmd> {
     val out: MutableList<PyreonDrawCmd> = mutableListOf()
     val fs = s.fontSize
     if (s.piecewise) {
@@ -5226,8 +5239,8 @@ fun renderVisualStrip(s: VisualStrip, at: PyreonChartPt, range: Domain, selected
       return out
     }
     val o = barOrigin(s, at)
-    val high = if (s.highText == "") plain(s.domain.max) else s.highText
-    val low = if (s.lowText == "") plain(s.domain.min) else s.lowText
+    val high = if (s.highText == "") formatNumber(s.domain.max, fmt) else s.highText
+    val low = if (s.lowText == "") formatNumber(s.domain.min, fmt) else s.lowText
     var i = 0.0
     while (i < STRIP_COUNT) {
       val t = if (s.vertical) 1.0 - (i + 0.5) / STRIP_COUNT else (i + 0.5) / STRIP_COUNT
@@ -5257,10 +5270,10 @@ fun renderVisualStrip(s: VisualStrip, at: PyreonChartPt, range: Domain, selected
       val color = rampColor(s.stops, fraction(s, v))
       if (s.vertical) {
         out.add(PyreonDrawCmd(kind = "polygon", fill = color, points = listOf(PyreonChartPt(x = p.x, y = p.y), PyreonChartPt(x = p.x + STRIP_HANDLE, y = p.y - STRIP_HANDLE / 2.0), PyreonChartPt(x = p.x + STRIP_HANDLE, y = p.y + STRIP_HANDLE / 2.0))))
-        out.add(PyreonDrawCmd(kind = "text", fill = s.labelColor, text = plain(v), at = PyreonChartPt(x = p.x + STRIP_HANDLE + STRIP_GAP, y = p.y), size = fs, align = "start", baseline = "middle"))
+        out.add(PyreonDrawCmd(kind = "text", fill = s.labelColor, text = formatNumber(v, fmt), at = PyreonChartPt(x = p.x + STRIP_HANDLE + STRIP_GAP, y = p.y), size = fs, align = "start", baseline = "middle"))
       } else {
         out.add(PyreonDrawCmd(kind = "polygon", fill = color, points = listOf(PyreonChartPt(x = p.x, y = p.y), PyreonChartPt(x = p.x - STRIP_HANDLE / 2.0, y = p.y + STRIP_HANDLE), PyreonChartPt(x = p.x + STRIP_HANDLE / 2.0, y = p.y + STRIP_HANDLE))))
-        out.add(PyreonDrawCmd(kind = "text", fill = s.labelColor, text = plain(v), at = PyreonChartPt(x = p.x, y = p.y + STRIP_HANDLE + STRIP_GAP), size = fs, align = "middle", baseline = "top"))
+        out.add(PyreonDrawCmd(kind = "text", fill = s.labelColor, text = formatNumber(v, fmt), at = PyreonChartPt(x = p.x, y = p.y + STRIP_HANDLE + STRIP_GAP), size = fs, align = "middle", baseline = "top"))
       }
     }
     return out
@@ -6644,7 +6657,7 @@ fun polarTicks(lo: Double, hi: Double): List<Double> {
 
 fun polarColumnKey(s: PolarSeries, i: Long): String = (s.stack ?: "#${i}")
 
-fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect, options: PolarOptions? = null): PolarLayout {
+fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect, options: PolarOptions? = null, fmt: ((Double) -> String)? = null): PolarLayout {
     val palette = (options?.palette ?: DEFAULT_PALETTE)
     val categoryOn = (axes.categoryOn ?: "angle")
     val n = axes.categories.length
@@ -6858,7 +6871,7 @@ fun layoutPolar(axes: PolarAxes, series: List<PolarSeries>, box: PyreonChartRect
     }
     val ticks: MutableList<PolarTick> = mutableListOf()
     for (v in polarTicks(domainLo, domainHi)) {
-      ticks.add(PolarTick(value = v, label = "${pyreonNumberString(v)}"))
+      ticks.add(PolarTick(value = v, label = if (fmt == null) "${pyreonNumberString(v)}" else fmt(v)))
     }
     return PolarLayout(center = center, innerR = innerR, outerR = outerR, domain = Domain(min = domainLo, max = domainHi), categoryOn = categoryOn, sectors = sectors, lines = lines, categoryLabels = categoryLabels, ticks = ticks)
   }
@@ -9466,7 +9479,7 @@ fun parallelHighlighted(highlight: List<Double>, index: Double): Boolean {
     return found
   }
 
-fun layoutParallel(axes: List<ParallelAxis>, rows: List<List<Double>>, box: PyreonChartRect, options: ParallelOptions? = null): ParallelLayout {
+fun layoutParallel(axes: List<ParallelAxis>, rows: List<List<Double>>, box: PyreonChartRect, options: ParallelOptions? = null, fmt: ((Double) -> String)? = null): ParallelLayout {
     val fontSize = (options?.fontSize ?: 11.0)
     val top = box.y + fontSize * 1.8
     val bottom = box.y + box.h - fontSize * 1.4
@@ -9524,8 +9537,8 @@ fun layoutParallel(axes: List<ParallelAxis>, rows: List<List<Double>>, box: Pyre
           iF = iF + 1.0
         }
       } else {
-        ticks.add(ParallelTick(y = if (inverse) top else bottom, label = plain(lo)))
-        ticks.add(ParallelTick(y = if (inverse) bottom else top, label = plain(hi)))
+        ticks.add(ParallelTick(y = if (inverse) top else bottom, label = formatNumber(lo, fmt)))
+        ticks.add(ParallelTick(y = if (inverse) bottom else top, label = formatNumber(hi, fmt)))
       }
       outAxes.add(ParallelLayoutAxis(name = axis.name, x = x, y0 = top, y1 = bottom, domain = Domain(min = lo, max = hi), ticks = ticks, isCategory = isCat, inverse = inverse))
       aF = aF + 1.0
@@ -9663,7 +9676,7 @@ fun niceTicks(lo: Double, hi: Double, count: Long): List<Double> {
     return out
   }
 
-fun layoutSingleAxis(axis: SingleAxisSpec, points: List<SingleAxisPoint>, box: PyreonChartRect, options: SingleAxisOptions? = null): SingleAxisLayout {
+fun layoutSingleAxis(axis: SingleAxisSpec, points: List<SingleAxisPoint>, box: PyreonChartRect, options: SingleAxisOptions? = null, fmt: ((Double) -> String)? = null): SingleAxisLayout {
     val fontSize = (options?.fontSize ?: 11.0)
     val base = (options?.radius ?: 5.0)
     val isCat = axis.type == "category"
@@ -9712,7 +9725,7 @@ fun layoutSingleAxis(axis: SingleAxisSpec, points: List<SingleAxisPoint>, box: P
     } else {
       var index = 0L
       for (v in niceTicks(lo, hi, 6L)) {
-        ticks.add(SingleAxisTick(x = px(v), label = pyreonNumberString(v), index = index))
+        ticks.add(SingleAxisTick(x = px(v), label = if (fmt == null) pyreonNumberString(v) else fmt(v), index = index))
         index = pyreonAdd(index, 1L)
       }
     }
@@ -9776,17 +9789,17 @@ fun hitSingleAxis(layout: SingleAxisLayout, px: Double, py: Double): Long {
     return best
   }
 
-fun candlestickFrame(candles: List<Ohlc>, w: Double, h: Double, categories: List<String>, fontSize: Double, measure: (String, Double) -> Double): CandlestickFrame {
+fun candlestickFrame(candles: List<Ohlc>, w: Double, h: Double, categories: List<String>, fontSize: Double, measure: (String, Double) -> Double, format: ((Double) -> String)? = null): CandlestickFrame {
     val ticks = valueTickTarget(w, h, fontSize, false)
     val domain = niceDomain(ohlcExtent(candles), ticks)
     val n = candles.length
-    val cfg = LayoutConfig(width = w, height = h, xDomain = Domain(min = 0.0, max = if (n > 1L) (pyreonSub(n, 1L)).toDouble() else 1.0), yDomain = domain, categories = categories, fontSize = fontSize, xTickCount = 0.0, yTickCount = ticks, showXAxis = true, showYAxis = true)
+    val cfg = LayoutConfig(width = w, height = h, xDomain = Domain(min = 0.0, max = if (n > 1L) (pyreonSub(n, 1L)).toDouble() else 1.0), yDomain = domain, categories = categories, fontSize = fontSize, xTickCount = 0.0, yTickCount = ticks, showXAxis = true, showYAxis = true, yFormat = format, xFormat = format)
     val layout = computeLayout(cfg, measure)
     return CandlestickFrame(candles = candles, domain = domain, layout = layout)
   }
 
-fun renderCandlestickChart(candles: List<Ohlc>, w: Double, h: Double, categories: List<String>, theme: ChartTheme, options: CandleOptions?, measure: (String, Double) -> Double): List<PyreonDrawCmd> {
-    val f = candlestickFrame(candles, w, h, categories, theme.fontSize, measure)
+fun renderCandlestickChart(candles: List<Ohlc>, w: Double, h: Double, categories: List<String>, theme: ChartTheme, options: CandleOptions?, measure: (String, Double) -> Double, format: ((Double) -> String)? = null): List<PyreonDrawCmd> {
+    val f = candlestickFrame(candles, w, h, categories, theme.fontSize, measure, format)
     val l = f.layout
     val cmds: MutableList<PyreonDrawCmd> = mutableListOf()
     for (tick in l.yTicks) {
@@ -9811,8 +9824,8 @@ fun renderCandlestickChart(candles: List<Ohlc>, w: Double, h: Double, categories
     return cmds
   }
 
-fun hitCandlestickChart(candles: List<Ohlc>, w: Double, h: Double, categories: List<String>, fontSize: Double, measure: (String, Double) -> Double, px: Double, py: Double): Long {
-    val f = candlestickFrame(candles, w, h, categories, fontSize, measure)
+fun hitCandlestickChart(candles: List<Ohlc>, w: Double, h: Double, categories: List<String>, fontSize: Double, measure: (String, Double) -> Double, px: Double, py: Double, format: ((Double) -> String)? = null): Long {
+    val f = candlestickFrame(candles, w, h, categories, fontSize, measure, format)
     return hitCandle(candles.length, f.layout.plot, px, py)
   }
 
@@ -9987,8 +10000,8 @@ fun renderBoxplotChart(rows: List<FiveNumber>, width: Double, height: Double, ca
     return out
   }
 
-fun hitBoxplotChart(count: Long, width: Double, height: Double, categories: List<String>, fontSize: Double, measure: (String, Double) -> Double, px: Double, py: Double, rows: List<FiveNumber>): Long {
-    val f = boxplotFrame(rows, width, height, categories, fontSize, measure)
+fun hitBoxplotChart(count: Long, width: Double, height: Double, categories: List<String>, fontSize: Double, measure: (String, Double) -> Double, px: Double, py: Double, rows: List<FiveNumber>, format: ((Double) -> String)? = null): Long {
+    val f = boxplotFrame(rows, width, height, categories, fontSize, measure, format)
     return hitBox(count, f.layout.plot, px, py)
   }
 
@@ -10563,25 +10576,25 @@ fun pieLegend(slices: List<Slice>): List<LegendEntry> {
     return out
   }
 
-fun treemapTip(cells: List<TreemapCell>, px: Double, py: Double): List<String> {
+fun treemapTip(cells: List<TreemapCell>, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitTreemapIndex(cells, px, py)
     if (i < 0L) {
       return listOf()
     }
     val c = cells[(i).toInt()]
-    return listOf(c.name, plain(c.value))
+    return listOf(c.name, formatNumber(c.value, fmt))
   }
 
-fun sunburstTip(arcs: List<SunburstArc>, center: PyreonChartPt, px: Double, py: Double): List<String> {
+fun sunburstTip(arcs: List<SunburstArc>, center: PyreonChartPt, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitSunburstIndex(arcs, center, px, py)
     if (i < 0L) {
       return listOf()
     }
     val a = arcs[(i).toInt()]
-    return listOf(a.name, plain(a.value))
+    return listOf(a.name, formatNumber(a.value, fmt))
   }
 
-fun treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize: Double? = null): List<String> {
+fun treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize: Double? = null, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitTreeIndex(layout, px, py, symbolSize)
     if (i < 0L) {
       return listOf()
@@ -10590,7 +10603,7 @@ fun treeTip(layout: TreeLayout, px: Double, py: Double, symbolSize: Double? = nu
     val value = n.value ?: run {
       return listOf(n.name)
     }
-    return listOf(n.name, plain(value))
+    return listOf(n.name, formatNumber(value, fmt))
   }
 
 fun riverTip(layout: RiverLayout, px: Double, py: Double, curve: String? = null): List<String> {
@@ -10598,20 +10611,20 @@ fun riverTip(layout: RiverLayout, px: Double, py: Double, curve: String? = null)
     return if (i < 0L) listOf() else listOf(layout.layers[(i).toInt()].name)
   }
 
-fun chordTip(layout: ChordLayout, px: Double, py: Double): List<String> {
+fun chordTip(layout: ChordLayout, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitChordIndex(layout, px, py)
     if (i < 0L) {
       return listOf()
     }
     val a = layout.arcs[(i).toInt()]
-    return listOf(a.name, plain(a.total))
+    return listOf(a.name, formatNumber(a.total, fmt))
   }
 
-fun sankeyTip(layout: SankeyLayout, px: Double, py: Double): List<String> {
+fun sankeyTip(layout: SankeyLayout, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val hit = hitSankeyIndex(layout, px, py)
     if (hit.node >= 0L) {
       val n = layout.nodes[(hit.node).toInt()]
-      return listOf(n.name, plain(n.value))
+      return listOf(n.name, formatNumber(n.value, fmt))
     }
     if (hit.link < 0L) {
       return listOf()
@@ -10621,10 +10634,10 @@ fun sankeyTip(layout: SankeyLayout, px: Double, py: Double): List<String> {
     val to = layout.nodes.getOrNull((l.target).toInt())
     val fromName = if (from == null) "${l.source}" else from.name
     val toName = if (to == null) "${l.target}" else to.name
-    return listOf("${fromName} → ${toName}", plain(l.value))
+    return listOf("${fromName} → ${toName}", formatNumber(l.value, fmt))
   }
 
-fun graphTip(layout: GraphLayout, px: Double, py: Double): List<String> {
+fun graphTip(layout: GraphLayout, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitGraphIndex(layout, px, py)
     if (i < 0L) {
       return listOf()
@@ -10633,25 +10646,25 @@ fun graphTip(layout: GraphLayout, px: Double, py: Double): List<String> {
     val value = n.value ?: run {
       return listOf(n.name)
     }
-    return listOf(n.name, plain(value))
+    return listOf(n.name, formatNumber(value, fmt))
   }
 
-fun ganttTip(layout: GanttLayout, px: Double, py: Double): List<String> {
+fun ganttTip(layout: GanttLayout, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitGanttIndex(layout, px, py)
     if (i < 0L) {
       return listOf()
     }
     val r = layout.rows[(i).toInt()]
-    return listOf(r.task.name, "${plain(ganttDurationDays(r))} days")
+    return listOf(r.task.name, "${formatNumber(ganttDurationDays(r), fmt)} days")
   }
 
-fun polarTip(layout: PolarLayout, series: List<PolarSeries>, px: Double, py: Double): List<String> {
+fun polarTip(layout: PolarLayout, series: List<PolarSeries>, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val hit = hitPolarIndex(layout, px, py)
     if (hit.sector >= 0L) {
       val sec = layout.sectors[(hit.sector).toInt()]
       val s = series.getOrNull((sec.series).toInt())
       val name = if (s == null) "Series ${pyreonAdd(sec.series, 1L)}" else s.name
-      return listOf(name, plain(sec.value))
+      return listOf(name, formatNumber(sec.value, fmt))
     }
     if (hit.line < 0L) {
       return listOf()
@@ -10662,7 +10675,7 @@ fun polarTip(layout: PolarLayout, series: List<PolarSeries>, px: Double, py: Dou
     return listOf(name)
   }
 
-fun calendarTip(layout: CalendarLayout, values: List<CalendarValue>, px: Double, py: Double): List<String> {
+fun calendarTip(layout: CalendarLayout, values: List<CalendarValue>, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitCalendarIndex(layout, px, py)
     if (i < 0L) {
       return listOf()
@@ -10670,46 +10683,46 @@ fun calendarTip(layout: CalendarLayout, values: List<CalendarValue>, px: Double,
     val date = layout.cells[(i).toInt()].date
     for (v in values) {
       if (v.date == date) {
-        return listOf(date, plain(v.value))
+        return listOf(date, formatNumber(v.value, fmt))
       }
     }
     return listOf(date)
   }
 
-fun singleAxisTip(layout: SingleAxisLayout, points: List<SingleAxisPoint>, px: Double, py: Double): List<String> {
+fun singleAxisTip(layout: SingleAxisLayout, points: List<SingleAxisPoint>, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitSingleAxis(layout, px, py)
     if (i < 0L || i >= points.length) {
       return listOf()
     }
     val point = points[(i).toInt()]
     val name = point.name
-    return if (name == null) listOf(plain(point.x)) else listOf(name, plain(point.x))
+    return if (name == null) listOf(formatNumber(point.x, fmt)) else listOf(name, formatNumber(point.x, fmt))
   }
 
-fun geoTip(layout: GeoLayout, values: List<GeoValue>, px: Double, py: Double): List<String> {
+fun geoTip(layout: GeoLayout, values: List<GeoValue>, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitGeoIndex(layout, px, py)
     if (i < 0L) {
       return listOf()
     }
     val region = layout.regions[(i).toInt()]
     val v = geoValueOf(values, region.name)
-    return if (v == v) listOf(region.label, plain(v)) else listOf(region.label)
+    return if (v == v) listOf(region.label, formatNumber(v, fmt)) else listOf(region.label)
   }
 
-fun funnelTip(stages: List<FunnelStage>, plot: PyreonChartRect, px: Double, py: Double, options: FunnelOptions? = null): List<String> {
+fun funnelTip(stages: List<FunnelStage>, plot: PyreonChartRect, px: Double, py: Double, options: FunnelOptions? = null, fmt: ((Double) -> String)? = null): List<String> {
     val i = hitFunnel(stages, plot, px, py, options)
     if (i < 0L) {
       return listOf()
     }
     val s = stages[(i).toInt()]
-    return listOf(s.label, plain(s.value))
+    return listOf(s.label, formatNumber(s.value, fmt))
   }
 
-fun pieTip(slices: List<Slice>, box: PyreonChartRect, innerRatio: Double, px: Double, py: Double): List<String> {
+fun pieTip(slices: List<Slice>, box: PyreonChartRect, innerRatio: Double, px: Double, py: Double, fmt: ((Double) -> String)? = null): List<String> {
     val fit = fitCircle(box)
     val arcs = layoutArcs(slices)
     val i = hitArc(arcs, fit.center, fit.radius, fit.radius * innerRatio, PyreonChartPt(x = px, y = py))
-    return if (i < 0L) listOf() else pieTipAt(slices, arcs[(i).toInt()].index)
+    return if (i < 0L) listOf() else pieTipAt(slices, arcs[(i).toInt()].index, fmt)
   }
 
 fun pieHitWith(slices: List<Slice>, box: PyreonChartRect, innerRatio: Double, arcs: ArcConfig, px: Double, py: Double): Long {
@@ -10719,7 +10732,7 @@ fun pieHitWith(slices: List<Slice>, box: PyreonChartRect, innerRatio: Double, ar
     return if (i < 0L) -1L else laid[(i).toInt()].index
   }
 
-fun pieTipAt(slices: List<Slice>, i: Long): List<String> {
+fun pieTipAt(slices: List<Slice>, i: Long, fmt: ((Double) -> String)? = null): List<String> {
     if (i < 0L || i >= slices.length) {
       return listOf()
     }
@@ -10729,7 +10742,7 @@ fun pieTipAt(slices: List<Slice>, i: Long): List<String> {
       total += x.value
     }
     val pct = if (total > 0.0) Math.floor((s.value / total) * 100.0 + 0.5) else 0.0
-    return listOf(s.label, "${plain(s.value)} (${plain(pct)}%)")
+    return listOf(s.label, "${formatNumber(s.value, fmt)} (${formatNumber(pct, fmt)}%)")
   }
 
 fun renderTooltip(lines: List<String>, at: PyreonChartPt, bounds: PyreonChartRect, opts: TooltipOptions, measure: (String, Double) -> Double): List<PyreonDrawCmd> {
@@ -11677,24 +11690,112 @@ fun applyChartAction(s: ChartActionState, a: ChartActionInput): ChartActionState
     return s
   }
 
+fun kindWord(kind: String, m: ChartMessages?): String {
+    if (m == null) {
+      return kind
+    }
+    if (kind == "bars") {
+      return (m.kindBars ?: kind)
+    }
+    if (kind == "line") {
+      return (m.kindLine ?: kind)
+    }
+    if (kind == "area") {
+      return (m.kindArea ?: kind)
+    }
+    if (kind == "points") {
+      return (m.kindPoints ?: kind)
+    }
+    if (kind == "stacked") {
+      return (m.kindStacked ?: kind)
+    }
+    if (kind == "grouped") {
+      return (m.kindGrouped ?: kind)
+    }
+    return otherKindWord(kind, m)
+  }
+
+fun otherKindWord(kind: String, m: ChartMessages): String {
+    if (kind == "waterfall") {
+      return (m.kindWaterfall ?: kind)
+    }
+    if (kind == "band") {
+      return (m.kindBand ?: kind)
+    }
+    if (kind == "stackedArea") {
+      return (m.kindStackedArea ?: kind)
+    }
+    if (kind == "pie") {
+      return (m.kindPie ?: kind)
+    }
+    if (kind == "gauge") {
+      return (m.kindGauge ?: kind)
+    }
+    if (kind == "radar") {
+      return (m.kindRadar ?: kind)
+    }
+    return kind
+  }
+
+fun fillMessage(template: String, key: String, value: String): String = template.replaceFirst("{${key}}", value)
+
+fun describeGauge(title: String, value: String, max: String, messages: ChartMessages?): String {
+    val g1 = fillMessage((messages?.gauge ?: "{title}: {value} of {max}."), "title", title)
+    return fillMessage(fillMessage(g1, "value", value), "max", max)
+  }
+
+fun describeCandles(s: CandleSummary, messages: ChartMessages?, number: ((Double) -> String)?): String {
+    if (s.count == 0L) {
+      return fillMessage((messages?.noData ?: "{title}: no data."), "title", s.title)
+    }
+    val c1 = fillMessage(fillMessage((messages?.candlestick ?: "{title}: {count} periods, range {min} to {max}, last close {close}."), "title", s.title), "count", countText(s.count, number))
+    return fillMessage(fillMessage(fillMessage(c1, "min", s.min), "max", s.max), "close", s.close)
+  }
+
+fun describeHeatmap(s: HeatSummary, messages: ChartMessages?, number: ((Double) -> String)?): String {
+    if (s.cells == 0L) {
+      return fillMessage((messages?.noData ?: "{title}: no data."), "title", s.title)
+    }
+    val h1 = fillMessage(fillMessage((messages?.heatmap ?: "{title}: {columns} columns by {rows} rows, values {min} to {max}."), "title", s.title), "columns", countText(s.columns, number))
+    return fillMessage(fillMessage(fillMessage(h1, "rows", countText(s.rows, number)), "min", s.min), "max", s.max)
+  }
+
+fun tableCaption(title: String, shown: Long, total: Long, messages: ChartMessages?, number: ((Double) -> String)?): String {
+    if (shown >= total) {
+      return title
+    }
+    val c1 = fillMessage((messages?.truncated ?: "{title} (first {shown} of {total} rows)"), "title", title)
+    return fillMessage(fillMessage(c1, "shown", countText(shown, number)), "total", countText(total, number))
+  }
+
+fun scaleNoteText(yScale: String, xScale: String, messages: ChartMessages?): String {
+    val template = (messages?.scaleNote ?: " The {axis} axis is on a {scale} scale.")
+    val y = if (yScale == "" || yScale == "linear") "" else fillMessage(fillMessage(template, "axis", (messages?.valueAxis ?: "value")), "scale", yScale)
+    val x = if (xScale == "" || xScale == "linear") "" else fillMessage(fillMessage(template, "axis", (messages?.xAxis ?: "x")), "scale", xScale)
+    return y + x
+  }
+
 fun describeChart(input: A11yInput): String {
     val fmt = (input.format ?: ::groupThousands)
+    val m = input.messages
     val parts: MutableList<String> = mutableListOf()
-    val title = (input.title ?: "Chart")
+    val title = ((input.title ?: m?.untitled) ?: "Chart")
     if (input.series.length == 0L) {
-      return "${title}: no data."
+      return fillMessage((m?.noData ?: "{title}: no data."), "title", title)
     }
-    parts.add("${title}.")
     val n = input.series.length
-    parts.add(if (n == 1L) "1 series" else "${n} series")
+    val count = if (n == 1L) (m?.oneSeries ?: "1 series") else fillMessage((m?.manySeries ?: "{n} series"), "n", countText(n, input.number))
     if (input.categories.length > 0L) {
-      parts.add("over ${input.categories.length} categories from ${input.categories[0]} to ${input.categories[(pyreonSub(input.categories.length, 1L)).toInt()]}.")
+      val o1 = fillMessage((m?.overview ?: "{title}. {series} over {count} categories from {first} to {last}."), "title", title)
+      val o2 = fillMessage(fillMessage(o1, "series", count), "count", countText(input.categories.length, input.number))
+      parts.add(fillMessage(fillMessage(o2, "first", input.categories[0]), "last", input.categories[(pyreonSub(input.categories.length, 1L)).toInt()]))
     } else {
-      parts.add(".")
+      parts.add(fillMessage(fillMessage((m?.overviewPlain ?: "{title}. {series}."), "title", title), "series", count))
     }
+    val emptyText = (m?.empty ?: "{label}: empty.")
     for (s in input.series) {
       if (s.values.length == 0L) {
-        parts.add("${s.label}: empty.")
+        parts.add(fillMessage(emptyText, "label", s.label))
         continue
       }
       var lo = 0.0
@@ -11728,12 +11829,14 @@ fun describeChart(input: A11yInput): String {
         seen = pyreonAdd(seen, 1L)
       }
       if (seen == 0L) {
-        parts.add("${s.label}: empty.")
+        parts.add(fillMessage(emptyText, "label", s.label))
         continue
       }
-      val dir = if (last > first) "rising" else if (last < first) "falling" else "flat"
-      val pct = if (first > 0.0 && dir != "flat") " ${percentChange(first, last)}" else ""
-      val at = { i: Long -> if (i < input.categories.length) " at ${input.categories[(i).toInt()]}" else "" }
+      val dir = if (last > first) (m?.rising ?: "rising") else if (last < first) (m?.falling ?: "falling") else (m?.flat ?: "flat")
+      val pct = if (first > 0.0 && last != first) " ${percentChange(first, last, input.number, m)}" else ""
+      val atText = (m?.at ?: " at {category}")
+      val at = { i: Long -> if (i < input.categories.length) fillMessage(atText, "category", input.categories[(i).toInt()]) else "" }
+      var sentence = ""
       val other = (s.values2 ?: listOf())
       if (other.length > 0L) {
         var olo = 0.0
@@ -11757,22 +11860,44 @@ fun describeChart(input: A11yInput): String {
           oseen = pyreonAdd(oseen, 1L)
         }
         if (oseen > 0L) {
-          parts.add("${s.label}, ${s.kind}: upper bound ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}; " + "lower bound ranging ${fmt(olo)} to ${fmt(ohi)}.")
-          continue
+          sentence = fillMessage((m?.bandTrend ?: "{label}, {kind}: upper bound {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}; lower bound ranging {low2} to {high2}."), "low2", fmt(olo))
+          sentence = fillMessage(sentence, "high2", fmt(ohi))
         }
       }
-      parts.add("${s.label}, ${s.kind}: ${dir}${pct} from ${fmt(first)} to ${fmt(last)}, " + "ranging ${fmt(lo)}${at(loAt)} to ${fmt(hi)}${at(hiAt)}.")
+      if (sentence == "") {
+        sentence = (m?.trend ?: "{label}, {kind}: {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}.")
+      }
+      sentence = fillMessage(sentence, "label", s.label)
+      sentence = fillMessage(sentence, "kind", kindWord(s.kind, m))
+      sentence = fillMessage(sentence, "direction", dir)
+      sentence = fillMessage(sentence, "change", pct)
+      sentence = fillMessage(sentence, "first", fmt(first))
+      sentence = fillMessage(sentence, "last", fmt(last))
+      sentence = fillMessage(sentence, "lowAt", at(loAt))
+      sentence = fillMessage(sentence, "low", fmt(lo))
+      sentence = fillMessage(sentence, "highAt", at(hiAt))
+      sentence = fillMessage(sentence, "high", fmt(hi))
+      parts.add(sentence)
     }
-    return parts.joinToString(" ").replaceFirst(" .", ".")
+    return parts.joinToString(" ")
   }
 
-fun percentChange(first: Double, last: Double): String {
+fun percentChange(first: Double, last: Double, number: ((Double) -> String)?, messages: ChartMessages?): String {
     val ratio = last / first
     if (ratio >= 2.0) {
-      return "${pyreonNumberString(Math.floor(ratio * 10.0 + 0.5) / 10.0)}×"
+      val r = Math.floor(ratio * 10.0 + 0.5) / 10.0
+      return fillMessage((messages?.multiple ?: "{n}×"), "n", if (number == null) "${pyreonNumberString(r)}" else number(r))
     }
     val p = Math.floor(Math.abs(ratio - 1.0) * 100.0 + 0.5)
-    return "${pyreonNumberString(p)}%"
+    return fillMessage((messages?.percent ?: "{n}%"), "n", if (number == null) "${pyreonNumberString(p)}" else number(p))
+  }
+
+fun countText(n: Long, number: ((Double) -> String)?): String {
+    if (number == null) {
+      return "${n}"
+    }
+    val v = n * 1.0
+    return number(v)
   }
 
 fun describeDatum(input: A11yInput, series: Long, index: Long): String {
@@ -11784,13 +11909,15 @@ fun describeDatum(input: A11yInput, series: Long, index: Long): String {
       return ""
     }
     val fmt = (input.format ?: ::groupThousands)
+    val m = input.messages
     val v = s.values[(index).toInt()]
-    val value = if (v != v) "no value" else fmt(v)
-    val at = if (index < input.categories.length) " at ${input.categories[(index).toInt()]}" else ""
-    return "${s.label}: ${value}${at}, ${pyreonAdd(index, 1L)} of ${s.values.length}"
+    val value = if (v != v) (m?.noValue ?: "no value") else fmt(v)
+    val at = if (index < input.categories.length) fillMessage((m?.at ?: " at {category}"), "category", input.categories[(index).toInt()]) else ""
+    val d1 = fillMessage(fillMessage((m?.datum ?: "{label}: {value}{at}, {index} of {count}"), "label", s.label), "value", value)
+    return fillMessage(fillMessage(fillMessage(d1, "at", at), "index", countText(pyreonAdd(index, 1L), input.number)), "count", countText(s.values.length, input.number))
   }
 
-fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Long): String {
+fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Long, template: String): String {
     val lo = (s.errLow ?: listOf())
     val hi = (s.errHigh ?: listOf())
     if (i >= lo.length || i >= hi.length) {
@@ -11801,22 +11928,23 @@ fun withError(fmt: (Double) -> String, v: Double, s: A11ySeries, i: Long): Strin
     if (!isFiniteNumber(l) || !isFiniteNumber(h)) {
       return fmt(v)
     }
-    return "${fmt(v)} (${fmt(l)} to ${fmt(h)})"
+    return fillMessage(fillMessage(fillMessage(template, "value", fmt(v)), "low", fmt(l)), "high", fmt(h))
   }
 
 fun chartTable(input: A11yInput, limit: Long = -1L): A11yTable {
-    val headers = mutableListOf("Category")
+    val m = input.messages
+    val headers = mutableListOf((m?.category ?: "Category"))
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
       val rs = (s.rValues ?: listOf())
       if (other.length > 0L) {
-        headers.add("${s.label} (upper)")
-        headers.add("${s.label} (lower)")
+        headers.add(fillMessage((m?.upper ?: "{label} (upper)"), "label", s.label))
+        headers.add(fillMessage((m?.lower ?: "{label} (lower)"), "label", s.label))
       } else {
         headers.add(s.label)
       }
       if (rs.length > 0L) {
-        headers.add("${s.label} (size)")
+        headers.add(fillMessage((m?.size ?: "{label} (size)"), "label", s.label))
       }
     }
     val n = chartRowCount(input)
@@ -11840,7 +11968,8 @@ fun chartRowCount(input: A11yInput): Long {
 
 fun chartTableRow(input: A11yInput, i: Long): List<String> {
     val fmt = (input.format ?: ::groupThousands)
-    val row = mutableListOf(if (i < input.categories.length) input.categories[(i).toInt()] else "${pyreonAdd(i, 1L)}")
+    val errText = (input.messages?.withError ?: "{value} ({low} to {high})")
+    val row = mutableListOf(if (i < input.categories.length) input.categories[(i).toInt()] else countText(pyreonAdd(i, 1L), input.number))
     for (s in input.series) {
       val other = (s.values2 ?: listOf())
       val rs = (s.rValues ?: listOf())
@@ -11857,7 +11986,7 @@ fun chartTableRow(input: A11yInput, i: Long): List<String> {
         continue
       }
       val v = s.values[(i).toInt()]
-      row.add(if (isFiniteNumber(v)) withError(fmt, v, s, i) else "")
+      row.add(if (isFiniteNumber(v)) withError(fmt, v, s, i, errText) else "")
       if (two) {
         if (i >= other.length) {
           row.add("")

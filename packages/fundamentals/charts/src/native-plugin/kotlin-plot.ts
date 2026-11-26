@@ -1,4 +1,4 @@
-import { describeInput, scaleNote, scaleViewArg, scaleViewOf, plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, PLOT_SPEC_LITERAL_PROPS, PLOT_INDICATOR_MARKS, chartStaticFlag, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, marksAreColumns } from './hosts'
+import { CHART_MESSAGES_TYPE, describeInput, scaleNote, scaleViewArg, scaleViewOf, plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, PLOT_SPEC_LITERAL_PROPS, PLOT_INDICATOR_MARKS, chartStaticFlag, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, marksAreColumns } from './hosts'
 import { kotlinIdent, kotlinStr, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { CHART_HANDLE_TYPE, CHARTS_PLUGIN_NAME } from './names'
 import { host } from './kotlin-facade'
@@ -703,13 +703,17 @@ function emitKotlinPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, ind
   const a11ySeries = labels === undefined
     ? `${a11ySource}.map { A11ySeries(label = it.label, values = it.values, kind = it.kind, values2 = it.values2, errLow = it.errLow, errHigh = it.errHigh, rValues = it.rValues) }`
     : `${a11ySource}.mapIndexed { pyreonI, pyreonS -> A11ySeries(label = pyreonSeriesLabels.getOrElse(pyreonI) { pyreonS.label }, values = pyreonS.values, kind = pyreonS.kind, values2 = pyreonS.values2, errLow = pyreonS.errLow, errHigh = pyreonS.errHigh, rValues = pyreonS.rValues) }`
-  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? kotlinStr(plotTitleRaw) : 'null'}, categories = ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series = ${a11ySeries}, format = ${yFormat ?? 'null'}))${scaleNote(host.staticAttr(e, 'yScale'), scaleViewOf(chartAttrExprKotlin(e, 'yView')), scaleViewOf(chartAttrExprKotlin(e, 'xView')))}`
+  const messagesAttr = chartAttrExprKotlin(e, 'messages')
+  if (messagesAttr !== undefined) lets.push(`val pyreonChartMessages: ChartMessages = ${host.exprAs(CHART_MESSAGES_TYPE, messagesAttr, indent)}`)
+  // The chart locale's plain digits for the figures the sentence says itself (a change, a count): the web's `number`.
+  const messagesArg = (messagesAttr === undefined ? '' : ', messages = pyreonChartMessages') + (locale === undefined ? '' : ', number = pyreonLocaleNumberFormatter(pyreonLocale)')
+  const describe = `describeChart(A11yInput(title = ${typeof plotTitleRaw === 'string' ? kotlinStr(plotTitleRaw) : 'null'}, categories = ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series = ${a11ySeries}, format = ${yFormat ?? 'null'}${messagesArg}))${scaleNote(host.staticAttr(e, 'yScale'), scaleViewOf(chartAttrExprKotlin(e, 'yView')), scaleViewOf(chartAttrExprKotlin(e, 'xView')), messagesAttr === undefined ? undefined : 'pyreonChartMessages')}`
   let dataViewOverlay: string | undefined
   if (toolbox?.dataView === true) {
     const input = describeInput(describe)
     dataViewOverlay =
       `if (pyreonDataView) { Box(modifier = Modifier.fillMaxSize().background(Color(0xFFFFFFFF)).testTag("pyreon-dataview")) { Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(8.dp)) { val pyreonTable = chartTable(${input}); Text(pyreonTable.headers.joinToString("  "), fontSize = 12.sp); for (pyreonRow in pyreonTable.rows) Text(pyreonRow.joinToString("  "), fontSize = 12.sp) }; ` +
-      `Text("Close", modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).testTag("pyreon-dataview-close").clickable { pyreonDataView = false }) } }`
+      `Text(${messagesAttr === undefined ? '"Close"' : 'pyreonChartMessages.close ?: "Close"'}, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).testTag("pyreon-dataview-close").clickable { pyreonDataView = false }) } }`
   }
   // TalkBack's per-datum nodes: one per visible category over the plot, the
   // native twin of the web host's hidden table. Evenly spaced columns only —

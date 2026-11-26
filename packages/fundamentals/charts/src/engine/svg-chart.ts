@@ -6,6 +6,7 @@
 // text is wired by default instead of by remembering to.
 
 import { describeChart } from './a11y'
+import type { ChartMessages } from './a11y'
 import type { ItemFill } from './item-colors'
 import type { Mark } from './marks'
 import { resolveCategories, resolveMarks } from './marks'
@@ -15,6 +16,7 @@ import type { Annotation, ChartSpec, ChartTheme, PointMarker, ScaleView } from '
 import { measureApprox, renderSvg } from './svg'
 import type { Formatter } from './format'
 import type { SvgOptions } from './svg'
+import { svgLocale } from './svg-locale'
 import type { Domain, Double, MeasureText } from './types'
 
 /** Options for {@link chartToSvg}. */
@@ -99,6 +101,10 @@ export interface ChartToSvgOptions<T> {
    * what it shows. Pass an empty string to opt out.
    */
   description?: string
+  /** The words of the derived description (`ChartMessages`), for a page that is not in English. */
+  messages?: ChartMessages | undefined
+  /** BCP 47 tag: the value axis and the description in the locale's digits, and the registered pack's words (under `messages`), as `<Chart locale>`. */
+  locale?: string | undefined
   svg?: Omit<SvgOptions, 'title' | 'description'>
 }
 
@@ -164,6 +170,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
   const series = resolveMarks(rows, options.marks, undefined, theme.ramp)
   // A per-datum colour descriptor adds its ramp legend above the plot (see `item-colors.ts`).
   const legend = paintOf(options.marks)?.legend?.(series, { x: 0, y: 0, w: width }, theme)
+  const loc = svgLocale(options)
   const spec = {
     width,
     height: height - (legend?.height ?? 0),
@@ -174,6 +181,7 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
     showYAxis: options.showYAxis ?? true,
     showGrid: options.showGrid ?? true,
     ...optionFields(options, rows),
+    yFormat: loc.format,
   }
   const measure = options.measure ?? measureApprox()
   // Same seam as the canvas host's `present`: RTL is the mirror of the
@@ -189,7 +197,9 @@ export function chartToSvg<T>(options: ChartToSvgOptions<T>): string {
           series,
           categories: spec.categories,
           title: options.title,
-          format: options.format,
+          format: loc.format,
+          messages: loc.messages,
+          number: loc.number,
         })
       : undefined)
 

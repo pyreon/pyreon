@@ -102,7 +102,7 @@ describe('accessibility wiring on a family host', () => {
     await flush()
     const canvas = container.querySelector('canvas')!
     expect(canvas.getAttribute('role')).toBe('img')
-    expect(canvas.getAttribute('aria-label')).toBe('Load: 42 of 100')
+    expect(canvas.getAttribute('aria-label')).toBe('Load: 42 of 100.')
     const id = canvas.getAttribute('aria-describedby')
     expect(id).not.toBeNull()
     const table = query<HTMLTableElement>(container, `#${id}`)
@@ -121,7 +121,7 @@ describe('accessibility wiring on a family host', () => {
     const before = inked(canvas)
     v.set(90)
     await flush()
-    expect(canvas.getAttribute('aria-label')).toBe('Gauge: 90 of 100')
+    expect(canvas.getAttribute('aria-label')).toBe('Gauge: 90 of 100.')
     expect(inked(canvas)).not.toBe(before)
   })
 })

@@ -1,4 +1,4 @@
-import { describeInput, plotFillAccessor, plotFillSpec, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
+import { CHART_MESSAGES_TYPE, describeInput, plotFillAccessor, plotFillSpec, CHART_HOST_PALETTE, CHART_THEME_DEFAULT, CHART_THEME_FIELDS, chartDefaultLabel, chartEnterMs, chartHostAnimates, chartThemeFields, PLOT_MARK_OPTION_FIELDS, chartDouble, chartStaticFlag } from './hosts'
 import type { ChartHostTarget, ChartThemeText } from './hosts'
 import { substituteIdentifier, swiftIdent, swiftStr, type ExprIR, type TypeIR } from '@pyreon/native-compiler/plugin-api'
 import { host } from './swift-facade'
@@ -208,7 +208,10 @@ export function swiftChartA11y(e: Extract<ExprIR, { kind: 'jsx-element' }>, desc
   if (explicit !== undefined) return `.accessibilityLabel(${explicit})${descriptor}`
   if (describe !== undefined) return `.accessibilityLabel(${describe})${descriptor}`
   const title = host.stringAttr(e, 'title', indent)
-  return `.accessibilityLabel(${title ?? swiftStr(chartDefaultLabel(e.tag))})`
+  // An untitled family chart is named by its family word, in the chart's `messages` (`untitled`) when it has them.
+  const messages = chartAttrExpr(e, 'messages')
+  const family = messages === undefined ? swiftStr(chartDefaultLabel(e.tag)) : `((${host.exprAs(CHART_MESSAGES_TYPE, messages, indent)}).untitled ?? ${swiftStr(chartDefaultLabel(e.tag))})`
+  return `.accessibilityLabel(${title ?? family})`
 }
 
 /**

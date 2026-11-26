@@ -3157,16 +3157,217 @@ public struct A11ySeries: Codable {
   }
 }
 
+public struct ChartMessages: Codable {
+  public var untitled: String? = nil
+  public var noData: String? = nil
+  public var overview: String? = nil
+  public var overviewPlain: String? = nil
+  public var oneSeries: String? = nil
+  public var manySeries: String? = nil
+  public var empty: String? = nil
+  public var rising: String? = nil
+  public var falling: String? = nil
+  public var flat: String? = nil
+  public var trend: String? = nil
+  public var bandTrend: String? = nil
+  public var at: String? = nil
+  public var category: String? = nil
+  public var upper: String? = nil
+  public var lower: String? = nil
+  public var size: String? = nil
+  public var withError: String? = nil
+  public var noValue: String? = nil
+  public var datum: String? = nil
+  public var scaleNote: String? = nil
+  public var valueAxis: String? = nil
+  public var xAxis: String? = nil
+  public var truncated: String? = nil
+  public var selected: String? = nil
+  public var selectedItem: String? = nil
+  public var close: String? = nil
+  public var gauge: String? = nil
+  public var candlestick: String? = nil
+  public var heatmap: String? = nil
+  public var percent: String? = nil
+  public var multiple: String? = nil
+  public var kindBars: String? = nil
+  public var kindLine: String? = nil
+  public var kindArea: String? = nil
+  public var kindPoints: String? = nil
+  public var kindStacked: String? = nil
+  public var kindGrouped: String? = nil
+  public var kindWaterfall: String? = nil
+  public var kindBand: String? = nil
+  public var kindStackedArea: String? = nil
+  public var kindPie: String? = nil
+  public var kindGauge: String? = nil
+  public var kindRadar: String? = nil
+  public var valueLabel: String? = nil
+  public var openLabel: String? = nil
+  public var closeLabel: String? = nil
+  public var medianLabel: String? = nil
+  public var q1Label: String? = nil
+  public var q3Label: String? = nil
+  public var seriesLabel: String? = nil
+  public var totalFlowLabel: String? = nil
+  public var durationLabel: String? = nil
+  public var gaugeLabel: String? = nil
+  public var funnelLabel: String? = nil
+  public var graphLabel: String? = nil
+  public var flowLabel: String? = nil
+  public var sunburstLabel: String? = nil
+  public var treeLabel: String? = nil
+  public var treemapLabel: String? = nil
+  public var valuesLabel: String? = nil
+  public var daysLabel: String? = nil
+  public var noDataLabel: String? = nil
+  public var funnelDescription: String? = nil
+  public var treemapDescription: String? = nil
+  public var noneLabel: String? = nil
+  public var sunburstDescription: String? = nil
+  public var treeDescription: String? = nil
+  public var chordDescription: String? = nil
+  public var riverDescription: String? = nil
+  public var polarDescription: String? = nil
+  public var sankeyDescription: String? = nil
+  public var graphDescription: String? = nil
+  public var calendarDescription: String? = nil
+  public var ganttDescription: String? = nil
+  public var parallelDescription: String? = nil
+  public var boxplotDescription: String? = nil
+  public var mapDescription: String? = nil
+  public var mapOverlays: String? = nil
+  public var singleAxisDescription: String? = nil
+  public init(untitled: String? = nil, noData: String? = nil, overview: String? = nil, overviewPlain: String? = nil, oneSeries: String? = nil, manySeries: String? = nil, empty: String? = nil, rising: String? = nil, falling: String? = nil, flat: String? = nil, trend: String? = nil, bandTrend: String? = nil, at: String? = nil, category: String? = nil, upper: String? = nil, lower: String? = nil, size: String? = nil, withError: String? = nil, noValue: String? = nil, datum: String? = nil, scaleNote: String? = nil, valueAxis: String? = nil, xAxis: String? = nil, truncated: String? = nil, selected: String? = nil, selectedItem: String? = nil, close: String? = nil, gauge: String? = nil, candlestick: String? = nil, heatmap: String? = nil, percent: String? = nil, multiple: String? = nil, kindBars: String? = nil, kindLine: String? = nil, kindArea: String? = nil, kindPoints: String? = nil, kindStacked: String? = nil, kindGrouped: String? = nil, kindWaterfall: String? = nil, kindBand: String? = nil, kindStackedArea: String? = nil, kindPie: String? = nil, kindGauge: String? = nil, kindRadar: String? = nil, valueLabel: String? = nil, openLabel: String? = nil, closeLabel: String? = nil, medianLabel: String? = nil, q1Label: String? = nil, q3Label: String? = nil, seriesLabel: String? = nil, totalFlowLabel: String? = nil, durationLabel: String? = nil, gaugeLabel: String? = nil, funnelLabel: String? = nil, graphLabel: String? = nil, flowLabel: String? = nil, sunburstLabel: String? = nil, treeLabel: String? = nil, treemapLabel: String? = nil, valuesLabel: String? = nil, daysLabel: String? = nil, noDataLabel: String? = nil, funnelDescription: String? = nil, treemapDescription: String? = nil, noneLabel: String? = nil, sunburstDescription: String? = nil, treeDescription: String? = nil, chordDescription: String? = nil, riverDescription: String? = nil, polarDescription: String? = nil, sankeyDescription: String? = nil, graphDescription: String? = nil, calendarDescription: String? = nil, ganttDescription: String? = nil, parallelDescription: String? = nil, boxplotDescription: String? = nil, mapDescription: String? = nil, mapOverlays: String? = nil, singleAxisDescription: String? = nil) {
+    self.untitled = untitled
+    self.noData = noData
+    self.overview = overview
+    self.overviewPlain = overviewPlain
+    self.oneSeries = oneSeries
+    self.manySeries = manySeries
+    self.empty = empty
+    self.rising = rising
+    self.falling = falling
+    self.flat = flat
+    self.trend = trend
+    self.bandTrend = bandTrend
+    self.at = at
+    self.category = category
+    self.upper = upper
+    self.lower = lower
+    self.size = size
+    self.withError = withError
+    self.noValue = noValue
+    self.datum = datum
+    self.scaleNote = scaleNote
+    self.valueAxis = valueAxis
+    self.xAxis = xAxis
+    self.truncated = truncated
+    self.selected = selected
+    self.selectedItem = selectedItem
+    self.close = close
+    self.gauge = gauge
+    self.candlestick = candlestick
+    self.heatmap = heatmap
+    self.percent = percent
+    self.multiple = multiple
+    self.kindBars = kindBars
+    self.kindLine = kindLine
+    self.kindArea = kindArea
+    self.kindPoints = kindPoints
+    self.kindStacked = kindStacked
+    self.kindGrouped = kindGrouped
+    self.kindWaterfall = kindWaterfall
+    self.kindBand = kindBand
+    self.kindStackedArea = kindStackedArea
+    self.kindPie = kindPie
+    self.kindGauge = kindGauge
+    self.kindRadar = kindRadar
+    self.valueLabel = valueLabel
+    self.openLabel = openLabel
+    self.closeLabel = closeLabel
+    self.medianLabel = medianLabel
+    self.q1Label = q1Label
+    self.q3Label = q3Label
+    self.seriesLabel = seriesLabel
+    self.totalFlowLabel = totalFlowLabel
+    self.durationLabel = durationLabel
+    self.gaugeLabel = gaugeLabel
+    self.funnelLabel = funnelLabel
+    self.graphLabel = graphLabel
+    self.flowLabel = flowLabel
+    self.sunburstLabel = sunburstLabel
+    self.treeLabel = treeLabel
+    self.treemapLabel = treemapLabel
+    self.valuesLabel = valuesLabel
+    self.daysLabel = daysLabel
+    self.noDataLabel = noDataLabel
+    self.funnelDescription = funnelDescription
+    self.treemapDescription = treemapDescription
+    self.noneLabel = noneLabel
+    self.sunburstDescription = sunburstDescription
+    self.treeDescription = treeDescription
+    self.chordDescription = chordDescription
+    self.riverDescription = riverDescription
+    self.polarDescription = polarDescription
+    self.sankeyDescription = sankeyDescription
+    self.graphDescription = graphDescription
+    self.calendarDescription = calendarDescription
+    self.ganttDescription = ganttDescription
+    self.parallelDescription = parallelDescription
+    self.boxplotDescription = boxplotDescription
+    self.mapDescription = mapDescription
+    self.mapOverlays = mapOverlays
+    self.singleAxisDescription = singleAxisDescription
+  }
+}
+
 public struct A11yInput {
   public var title: String? = nil
   public var categories: [String]
   public var series: [A11ySeries]
   public var format: ((Double) -> String)? = nil
-  public init(title: String? = nil, categories: [String], series: [A11ySeries], format: ((Double) -> String)? = nil) {
+  public var messages: ChartMessages? = nil
+  public var number: ((Double) -> String)? = nil
+  public init(title: String? = nil, categories: [String], series: [A11ySeries], format: ((Double) -> String)? = nil, messages: ChartMessages? = nil, number: ((Double) -> String)? = nil) {
     self.title = title
     self.categories = categories
     self.series = series
     self.format = format
+    self.messages = messages
+    self.number = number
+  }
+}
+
+public struct CandleSummary: Codable {
+  public var title: String
+  public var count: Int
+  public var min: String
+  public var max: String
+  public var close: String
+  public init(title: String, count: Int, min: String, max: String, close: String) {
+    self.title = title
+    self.count = count
+    self.min = min
+    self.max = max
+    self.close = close
+  }
+}
+
+public struct HeatSummary: Codable {
+  public var title: String
+  public var columns: Int
+  public var rows: Int
+  public var cells: Int
+  public var min: String
+  public var max: String
+  public init(title: String, columns: Int, rows: Int, cells: Int, min: String, max: String) {
+    self.title = title
+    self.columns = columns
+    self.rows = rows
+    self.cells = cells
+    self.min = min
+    self.max = max
   }
 }
 
@@ -3626,6 +3827,13 @@ public func gradientSolid(_ g: PyreonChartGradient, _ fallback: String) -> Strin
   }
 
 public func isFiniteChartNumber(_ v: Double) -> Bool { v == v && v - v == 0.0 }
+
+public func formatNumber(_ v: Double, _ fmt: ((Double) -> String)? = nil) -> String {
+    guard let fmt else {
+      return plain(v)
+    }
+    return fmt(v)
+  }
 
 public func plain(_ v: Double) -> String {
     if !isFiniteChartNumber(v) {
@@ -8000,7 +8208,7 @@ public func visualColorFor(_ s: VisualStrip, _ v: Double, _ range: Domain, _ sel
     return rampColor(s.stops, fraction(s, v))
   }
 
-public func renderVisualStrip(_ s: VisualStrip, _ at: PyreonChartPt, _ range: Domain, _ selected: [Bool]) -> [PyreonDrawCmd] {
+public func renderVisualStrip(_ s: VisualStrip, _ at: PyreonChartPt, _ range: Domain, _ selected: [Bool], _ fmt: ((Double) -> String)? = nil) -> [PyreonDrawCmd] {
     var out: [PyreonDrawCmd] = []
     let fs = s.fontSize
     if s.piecewise {
@@ -8020,8 +8228,8 @@ public func renderVisualStrip(_ s: VisualStrip, _ at: PyreonChartPt, _ range: Do
       return out
     }
     let o = barOrigin(s, at)
-    let high = s.highText == "" ? plain(s.domain.max) : s.highText
-    let low = s.lowText == "" ? plain(s.domain.min) : s.lowText
+    let high = s.highText == "" ? formatNumber(s.domain.max, fmt) : s.highText
+    let low = s.lowText == "" ? formatNumber(s.domain.min, fmt) : s.lowText
     var i = 0.0
     while i < STRIP_COUNT {
       let t = s.vertical ? 1.0 - (i + 0.5) / STRIP_COUNT : (i + 0.5) / STRIP_COUNT
@@ -8051,10 +8259,10 @@ public func renderVisualStrip(_ s: VisualStrip, _ at: PyreonChartPt, _ range: Do
       let color = rampColor(s.stops, fraction(s, v))
       if s.vertical {
         out.append(PyreonDrawCmd(kind: "polygon", fill: color, points: [PyreonChartPt(x: p.x, y: p.y), PyreonChartPt(x: p.x + STRIP_HANDLE, y: p.y - STRIP_HANDLE / 2.0), PyreonChartPt(x: p.x + STRIP_HANDLE, y: p.y + STRIP_HANDLE / 2.0)]))
-        out.append(PyreonDrawCmd(kind: "text", fill: s.labelColor, text: plain(v), at: PyreonChartPt(x: p.x + STRIP_HANDLE + STRIP_GAP, y: p.y), size: fs, align: "start", baseline: "middle"))
+        out.append(PyreonDrawCmd(kind: "text", fill: s.labelColor, text: formatNumber(v, fmt), at: PyreonChartPt(x: p.x + STRIP_HANDLE + STRIP_GAP, y: p.y), size: fs, align: "start", baseline: "middle"))
       } else {
         out.append(PyreonDrawCmd(kind: "polygon", fill: color, points: [PyreonChartPt(x: p.x, y: p.y), PyreonChartPt(x: p.x - STRIP_HANDLE / 2.0, y: p.y + STRIP_HANDLE), PyreonChartPt(x: p.x + STRIP_HANDLE / 2.0, y: p.y + STRIP_HANDLE)]))
-        out.append(PyreonDrawCmd(kind: "text", fill: s.labelColor, text: plain(v), at: PyreonChartPt(x: p.x, y: p.y + STRIP_HANDLE + STRIP_GAP), size: fs, align: "middle", baseline: "top"))
+        out.append(PyreonDrawCmd(kind: "text", fill: s.labelColor, text: formatNumber(v, fmt), at: PyreonChartPt(x: p.x, y: p.y + STRIP_HANDLE + STRIP_GAP), size: fs, align: "middle", baseline: "top"))
       }
     }
     return out
@@ -9435,7 +9643,7 @@ public func polarTicks(_ lo: Double, _ hi: Double) -> [Double] {
 
 public func polarColumnKey(_ s: PolarSeries, _ i: Int) -> String { (s.stack ?? "#\(i)") }
 
-public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: PyreonChartRect, _ options: PolarOptions? = nil) -> PolarLayout {
+public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: PyreonChartRect, _ options: PolarOptions? = nil, _ fmt: ((Double) -> String)? = nil) -> PolarLayout {
     let palette = (options?.palette ?? DEFAULT_PALETTE)
     let categoryOn = (axes.categoryOn ?? "angle")
     let n = axes.categories.count
@@ -9649,7 +9857,7 @@ public func layoutPolar(_ axes: PolarAxes, _ series: [PolarSeries], _ box: Pyreo
     }
     var ticks: [PolarTick] = []
     for v in polarTicks(domainLo, domainHi) {
-      ticks.append(PolarTick(value: v, label: "\(pyreonNumberString(v))"))
+      ticks.append(PolarTick(value: v, label: (fmt.map { fmt in fmt(v) } ?? "\(pyreonNumberString(v))")))
     }
     return PolarLayout(center: center, innerR: innerR, outerR: outerR, domain: Domain(min: domainLo, max: domainHi), categoryOn: categoryOn, sectors: sectors, lines: lines, categoryLabels: categoryLabels, ticks: ticks)
   }
@@ -12257,7 +12465,7 @@ public func parallelHighlighted(_ highlight: [Double], _ index: Double) -> Bool 
     return found
   }
 
-public func layoutParallel(_ axes: [ParallelAxis], _ rows: [[Double]], _ box: PyreonChartRect, _ options: ParallelOptions? = nil) -> ParallelLayout {
+public func layoutParallel(_ axes: [ParallelAxis], _ rows: [[Double]], _ box: PyreonChartRect, _ options: ParallelOptions? = nil, _ fmt: ((Double) -> String)? = nil) -> ParallelLayout {
     let fontSize = (options?.fontSize ?? 11.0)
     let top = box.y + fontSize * 1.8
     let bottom = box.y + box.h - fontSize * 1.4
@@ -12315,8 +12523,8 @@ public func layoutParallel(_ axes: [ParallelAxis], _ rows: [[Double]], _ box: Py
           iF = iF + 1.0
         }
       } else {
-        ticks.append(ParallelTick(y: inverse ? top : bottom, label: plain(lo)))
-        ticks.append(ParallelTick(y: inverse ? bottom : top, label: plain(hi)))
+        ticks.append(ParallelTick(y: inverse ? top : bottom, label: formatNumber(lo, fmt)))
+        ticks.append(ParallelTick(y: inverse ? bottom : top, label: formatNumber(hi, fmt)))
       }
       outAxes.append(ParallelLayoutAxis(name: axis.name, x: x, y0: top, y1: bottom, domain: Domain(min: lo, max: hi), ticks: ticks, isCategory: isCat, inverse: inverse))
       aF = aF + 1.0
@@ -12454,7 +12662,7 @@ public func niceTicks(_ lo: Double, _ hi: Double, _ count: Int) -> [Double] {
     return out
   }
 
-public func layoutSingleAxis(_ axis: SingleAxisSpec, _ points: [SingleAxisPoint], _ box: PyreonChartRect, _ options: SingleAxisOptions? = nil) -> SingleAxisLayout {
+public func layoutSingleAxis(_ axis: SingleAxisSpec, _ points: [SingleAxisPoint], _ box: PyreonChartRect, _ options: SingleAxisOptions? = nil, _ fmt: ((Double) -> String)? = nil) -> SingleAxisLayout {
     let fontSize = (options?.fontSize ?? 11.0)
     let base = (options?.radius ?? 5.0)
     let isCat = axis.type == "category"
@@ -12500,7 +12708,7 @@ public func layoutSingleAxis(_ axis: SingleAxisSpec, _ points: [SingleAxisPoint]
     } else {
       var index = 0
       for v in niceTicks(lo, hi, 6) {
-        ticks.append(SingleAxisTick(x: px(v), label: pyreonNumberString(v), index: index))
+        ticks.append(SingleAxisTick(x: px(v), label: (fmt.map { fmt in fmt(v) } ?? pyreonNumberString(v)), index: index))
         index = pyreonAdd(index, 1)
       }
     }
@@ -12561,17 +12769,17 @@ public func hitSingleAxis(_ layout: SingleAxisLayout, _ px: Double, _ py: Double
     return best
   }
 
-public func candlestickFrame(_ candles: [Ohlc], _ w: Double, _ h: Double, _ categories: [String], _ fontSize: Double, _ measure: (String, Double) -> Double) -> CandlestickFrame {
+public func candlestickFrame(_ candles: [Ohlc], _ w: Double, _ h: Double, _ categories: [String], _ fontSize: Double, _ measure: (String, Double) -> Double, _ format: ((Double) -> String)? = nil) -> CandlestickFrame {
     let ticks = valueTickTarget(w, h, fontSize, false)
     let domain = niceDomain(ohlcExtent(candles), ticks)
     let n = candles.count
-    let cfg = LayoutConfig(width: w, height: h, xDomain: Domain(min: 0.0, max: n > 1 ? Double(pyreonSub(n, 1)) : 1.0), yDomain: domain, categories: categories, fontSize: fontSize, xTickCount: 0.0, yTickCount: ticks, showXAxis: true, showYAxis: true)
+    let cfg = LayoutConfig(width: w, height: h, xDomain: Domain(min: 0.0, max: n > 1 ? Double(pyreonSub(n, 1)) : 1.0), yDomain: domain, categories: categories, fontSize: fontSize, xTickCount: 0.0, yTickCount: ticks, showXAxis: true, showYAxis: true, yFormat: format, xFormat: format)
     let layout = computeLayout(cfg, measure)
     return CandlestickFrame(candles: candles, domain: domain, layout: layout)
   }
 
-public func renderCandlestickChart(_ candles: [Ohlc], _ w: Double, _ h: Double, _ categories: [String], _ theme: ChartTheme, _ options: CandleOptions?, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] {
-    let f = candlestickFrame(candles, w, h, categories, theme.fontSize, measure)
+public func renderCandlestickChart(_ candles: [Ohlc], _ w: Double, _ h: Double, _ categories: [String], _ theme: ChartTheme, _ options: CandleOptions?, _ measure: (String, Double) -> Double, _ format: ((Double) -> String)? = nil) -> [PyreonDrawCmd] {
+    let f = candlestickFrame(candles, w, h, categories, theme.fontSize, measure, format)
     let l = f.layout
     var cmds: [PyreonDrawCmd] = []
     for tick in l.yTicks {
@@ -12596,8 +12804,8 @@ public func renderCandlestickChart(_ candles: [Ohlc], _ w: Double, _ h: Double, 
     return cmds
   }
 
-public func hitCandlestickChart(_ candles: [Ohlc], _ w: Double, _ h: Double, _ categories: [String], _ fontSize: Double, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double) -> Int {
-    let f = candlestickFrame(candles, w, h, categories, fontSize, measure)
+public func hitCandlestickChart(_ candles: [Ohlc], _ w: Double, _ h: Double, _ categories: [String], _ fontSize: Double, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double, _ format: ((Double) -> String)? = nil) -> Int {
+    let f = candlestickFrame(candles, w, h, categories, fontSize, measure, format)
     return hitCandle(candles.count, f.layout.plot, px, py)
   }
 
@@ -12772,8 +12980,8 @@ public func renderBoxplotChart(_ rows: [FiveNumber], _ width: Double, _ height: 
     return out
   }
 
-public func hitBoxplotChart(_ count: Int, _ width: Double, _ height: Double, _ categories: [String], _ fontSize: Double, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double, _ rows: [FiveNumber]) -> Int {
-    let f = boxplotFrame(rows, width, height, categories, fontSize, measure)
+public func hitBoxplotChart(_ count: Int, _ width: Double, _ height: Double, _ categories: [String], _ fontSize: Double, _ measure: (String, Double) -> Double, _ px: Double, _ py: Double, _ rows: [FiveNumber], _ format: ((Double) -> String)? = nil) -> Int {
+    let f = boxplotFrame(rows, width, height, categories, fontSize, measure, format)
     return hitBox(count, f.layout.plot, px, py)
   }
 
@@ -13348,25 +13556,25 @@ public func pieLegend(_ slices: [Slice]) -> [LegendEntry] {
     return out
   }
 
-public func treemapTip(_ cells: [TreemapCell], _ px: Double, _ py: Double) -> [String] {
+public func treemapTip(_ cells: [TreemapCell], _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitTreemapIndex(cells, px, py)
     if i < 0 {
       return []
     }
     let c = cells[i]
-    return [c.name, plain(c.value)]
+    return [c.name, formatNumber(c.value, fmt)]
   }
 
-public func sunburstTip(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ px: Double, _ py: Double) -> [String] {
+public func sunburstTip(_ arcs: [SunburstArc], _ center: PyreonChartPt, _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitSunburstIndex(arcs, center, px, py)
     if i < 0 {
       return []
     }
     let a = arcs[i]
-    return [a.name, plain(a.value)]
+    return [a.name, formatNumber(a.value, fmt)]
   }
 
-public func treeTip(_ layout: TreeLayout, _ px: Double, _ py: Double, _ symbolSize: Double? = nil) -> [String] {
+public func treeTip(_ layout: TreeLayout, _ px: Double, _ py: Double, _ symbolSize: Double? = nil, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitTreeIndex(layout, px, py, symbolSize)
     if i < 0 {
       return []
@@ -13375,7 +13583,7 @@ public func treeTip(_ layout: TreeLayout, _ px: Double, _ py: Double, _ symbolSi
     guard let value = n.value else {
       return [n.name]
     }
-    return [n.name, plain(value)]
+    return [n.name, formatNumber(value, fmt)]
   }
 
 public func riverTip(_ layout: RiverLayout, _ px: Double, _ py: Double, _ curve: String? = nil) -> [String] {
@@ -13383,20 +13591,20 @@ public func riverTip(_ layout: RiverLayout, _ px: Double, _ py: Double, _ curve:
     return i < 0 ? [] : [layout.layers[i].name]
   }
 
-public func chordTip(_ layout: ChordLayout, _ px: Double, _ py: Double) -> [String] {
+public func chordTip(_ layout: ChordLayout, _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitChordIndex(layout, px, py)
     if i < 0 {
       return []
     }
     let a = layout.arcs[i]
-    return [a.name, plain(a.total)]
+    return [a.name, formatNumber(a.total, fmt)]
   }
 
-public func sankeyTip(_ layout: SankeyLayout, _ px: Double, _ py: Double) -> [String] {
+public func sankeyTip(_ layout: SankeyLayout, _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let hit = hitSankeyIndex(layout, px, py)
     if hit.node >= 0 {
       let n = layout.nodes[hit.node]
-      return [n.name, plain(n.value)]
+      return [n.name, formatNumber(n.value, fmt)]
     }
     if hit.link < 0 {
       return []
@@ -13406,10 +13614,10 @@ public func sankeyTip(_ layout: SankeyLayout, _ px: Double, _ py: Double) -> [St
     let to = (layout.nodes.indices.contains(l.target) ? layout.nodes[l.target] : nil)
     let fromName = (from.map { from in from.name } ?? "\(l.source)")
     let toName = (to.map { to in to.name } ?? "\(l.target)")
-    return ["\(fromName) → \(toName)", plain(l.value)]
+    return ["\(fromName) → \(toName)", formatNumber(l.value, fmt)]
   }
 
-public func graphTip(_ layout: GraphLayout, _ px: Double, _ py: Double) -> [String] {
+public func graphTip(_ layout: GraphLayout, _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitGraphIndex(layout, px, py)
     if i < 0 {
       return []
@@ -13418,25 +13626,25 @@ public func graphTip(_ layout: GraphLayout, _ px: Double, _ py: Double) -> [Stri
     guard let value = n.value else {
       return [n.name]
     }
-    return [n.name, plain(value)]
+    return [n.name, formatNumber(value, fmt)]
   }
 
-public func ganttTip(_ layout: GanttLayout, _ px: Double, _ py: Double) -> [String] {
+public func ganttTip(_ layout: GanttLayout, _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitGanttIndex(layout, px, py)
     if i < 0 {
       return []
     }
     let r = layout.rows[i]
-    return [r.task.name, "\(plain(ganttDurationDays(r))) days"]
+    return [r.task.name, "\(formatNumber(ganttDurationDays(r), fmt)) days"]
   }
 
-public func polarTip(_ layout: PolarLayout, _ series: [PolarSeries], _ px: Double, _ py: Double) -> [String] {
+public func polarTip(_ layout: PolarLayout, _ series: [PolarSeries], _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let hit = hitPolarIndex(layout, px, py)
     if hit.sector >= 0 {
       let sec = layout.sectors[hit.sector]
       let s = (series.indices.contains(sec.series) ? series[sec.series] : nil)
       let name = (s.map { s in s.name } ?? "Series \(pyreonAdd(sec.series, 1))")
-      return [name, plain(sec.value)]
+      return [name, formatNumber(sec.value, fmt)]
     }
     if hit.line < 0 {
       return []
@@ -13447,7 +13655,7 @@ public func polarTip(_ layout: PolarLayout, _ series: [PolarSeries], _ px: Doubl
     return [name]
   }
 
-public func calendarTip(_ layout: CalendarLayout, _ values: [CalendarValue], _ px: Double, _ py: Double) -> [String] {
+public func calendarTip(_ layout: CalendarLayout, _ values: [CalendarValue], _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitCalendarIndex(layout, px, py)
     if i < 0 {
       return []
@@ -13455,46 +13663,46 @@ public func calendarTip(_ layout: CalendarLayout, _ values: [CalendarValue], _ p
     let date = layout.cells[i].date
     for v in values {
       if v.date == date {
-        return [date, plain(v.value)]
+        return [date, formatNumber(v.value, fmt)]
       }
     }
     return [date]
   }
 
-public func singleAxisTip(_ layout: SingleAxisLayout, _ points: [SingleAxisPoint], _ px: Double, _ py: Double) -> [String] {
+public func singleAxisTip(_ layout: SingleAxisLayout, _ points: [SingleAxisPoint], _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitSingleAxis(layout, px, py)
     if i < 0 || i >= points.count {
       return []
     }
     let point = points[i]
     let name = point.name
-    return (name.map { name in [name, plain(point.x)] } ?? [plain(point.x)])
+    return (name.map { name in [name, formatNumber(point.x, fmt)] } ?? [formatNumber(point.x, fmt)])
   }
 
-public func geoTip(_ layout: GeoLayout, _ values: [GeoValue], _ px: Double, _ py: Double) -> [String] {
+public func geoTip(_ layout: GeoLayout, _ values: [GeoValue], _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitGeoIndex(layout, px, py)
     if i < 0 {
       return []
     }
     let region = layout.regions[i]
     let v = geoValueOf(values, region.name)
-    return v == v ? [region.label, plain(v)] : [region.label]
+    return v == v ? [region.label, formatNumber(v, fmt)] : [region.label]
   }
 
-public func funnelTip(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Double, _ py: Double, _ options: FunnelOptions? = nil) -> [String] {
+public func funnelTip(_ stages: [FunnelStage], _ plot: PyreonChartRect, _ px: Double, _ py: Double, _ options: FunnelOptions? = nil, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let i = hitFunnel(stages, plot, px, py, options)
     if i < 0 {
       return []
     }
     let s = stages[i]
-    return [s.label, plain(s.value)]
+    return [s.label, formatNumber(s.value, fmt)]
   }
 
-public func pieTip(_ slices: [Slice], _ box: PyreonChartRect, _ innerRatio: Double, _ px: Double, _ py: Double) -> [String] {
+public func pieTip(_ slices: [Slice], _ box: PyreonChartRect, _ innerRatio: Double, _ px: Double, _ py: Double, _ fmt: ((Double) -> String)? = nil) -> [String] {
     let fit = fitCircle(box)
     let arcs = layoutArcs(slices)
     let i = hitArc(arcs, fit.center, fit.radius, fit.radius * innerRatio, PyreonChartPt(x: px, y: py))
-    return i < 0 ? [] : pieTipAt(slices, arcs[i].index)
+    return i < 0 ? [] : pieTipAt(slices, arcs[i].index, fmt)
   }
 
 public func pieHitWith(_ slices: [Slice], _ box: PyreonChartRect, _ innerRatio: Double, _ arcs: ArcConfig, _ px: Double, _ py: Double) -> Int {
@@ -13504,7 +13712,7 @@ public func pieHitWith(_ slices: [Slice], _ box: PyreonChartRect, _ innerRatio: 
     return i < 0 ? -1 : laid[i].index
   }
 
-public func pieTipAt(_ slices: [Slice], _ i: Int) -> [String] {
+public func pieTipAt(_ slices: [Slice], _ i: Int, _ fmt: ((Double) -> String)? = nil) -> [String] {
     if i < 0 || i >= slices.count {
       return []
     }
@@ -13514,7 +13722,7 @@ public func pieTipAt(_ slices: [Slice], _ i: Int) -> [String] {
       total += x.value
     }
     let pct = total > 0.0 ? floor(Double((s.value / total) * 100.0 + 0.5)) : 0.0
-    return [s.label, "\(plain(s.value)) (\(plain(pct))%)"]
+    return [s.label, "\(formatNumber(s.value, fmt)) (\(formatNumber(pct, fmt))%)"]
   }
 
 public func renderTooltip(_ lines: [String], _ at: PyreonChartPt, _ bounds: PyreonChartRect, _ opts: TooltipOptions, _ measure: (String, Double) -> Double) -> [PyreonDrawCmd] {
@@ -14462,24 +14670,112 @@ public func applyChartAction(_ s: ChartActionState, _ a: ChartActionInput) -> Ch
     return s
   }
 
+public func kindWord(_ kind: String, _ m: ChartMessages?) -> String {
+    guard let m else {
+      return kind
+    }
+    if kind == "bars" {
+      return (m.kindBars ?? kind)
+    }
+    if kind == "line" {
+      return (m.kindLine ?? kind)
+    }
+    if kind == "area" {
+      return (m.kindArea ?? kind)
+    }
+    if kind == "points" {
+      return (m.kindPoints ?? kind)
+    }
+    if kind == "stacked" {
+      return (m.kindStacked ?? kind)
+    }
+    if kind == "grouped" {
+      return (m.kindGrouped ?? kind)
+    }
+    return otherKindWord(kind, m)
+  }
+
+public func otherKindWord(_ kind: String, _ m: ChartMessages) -> String {
+    if kind == "waterfall" {
+      return (m.kindWaterfall ?? kind)
+    }
+    if kind == "band" {
+      return (m.kindBand ?? kind)
+    }
+    if kind == "stackedArea" {
+      return (m.kindStackedArea ?? kind)
+    }
+    if kind == "pie" {
+      return (m.kindPie ?? kind)
+    }
+    if kind == "gauge" {
+      return (m.kindGauge ?? kind)
+    }
+    if kind == "radar" {
+      return (m.kindRadar ?? kind)
+    }
+    return kind
+  }
+
+public func fillMessage(_ template: String, _ key: String, _ value: String) -> String { { (s: String, f: String, r: String) -> String in s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }(template, "{\(key)}", value) }
+
+public func describeGauge(_ title: String, _ value: String, _ max: String, _ messages: ChartMessages?) -> String {
+    let g1 = fillMessage((messages?.gauge ?? "{title}: {value} of {max}."), "title", title)
+    return fillMessage(fillMessage(g1, "value", value), "max", max)
+  }
+
+public func describeCandles(_ s: CandleSummary, _ messages: ChartMessages?, _ number: ((Double) -> String)?) -> String {
+    if s.count == 0 {
+      return fillMessage((messages?.noData ?? "{title}: no data."), "title", s.title)
+    }
+    let c1 = fillMessage(fillMessage((messages?.candlestick ?? "{title}: {count} periods, range {min} to {max}, last close {close}."), "title", s.title), "count", countText(s.count, number))
+    return fillMessage(fillMessage(fillMessage(c1, "min", s.min), "max", s.max), "close", s.close)
+  }
+
+public func describeHeatmap(_ s: HeatSummary, _ messages: ChartMessages?, _ number: ((Double) -> String)?) -> String {
+    if s.cells == 0 {
+      return fillMessage((messages?.noData ?? "{title}: no data."), "title", s.title)
+    }
+    let h1 = fillMessage(fillMessage((messages?.heatmap ?? "{title}: {columns} columns by {rows} rows, values {min} to {max}."), "title", s.title), "columns", countText(s.columns, number))
+    return fillMessage(fillMessage(fillMessage(h1, "rows", countText(s.rows, number)), "min", s.min), "max", s.max)
+  }
+
+public func tableCaption(_ title: String, _ shown: Int, _ total: Int, _ messages: ChartMessages?, _ number: ((Double) -> String)?) -> String {
+    if shown >= total {
+      return title
+    }
+    let c1 = fillMessage((messages?.truncated ?? "{title} (first {shown} of {total} rows)"), "title", title)
+    return fillMessage(fillMessage(c1, "shown", countText(shown, number)), "total", countText(total, number))
+  }
+
+public func scaleNoteText(_ yScale: String, _ xScale: String, _ messages: ChartMessages?) -> String {
+    let template = (messages?.scaleNote ?? " The {axis} axis is on a {scale} scale.")
+    let y = yScale == "" || yScale == "linear" ? "" : fillMessage(fillMessage(template, "axis", (messages?.valueAxis ?? "value")), "scale", yScale)
+    let x = xScale == "" || xScale == "linear" ? "" : fillMessage(fillMessage(template, "axis", (messages?.xAxis ?? "x")), "scale", xScale)
+    return y + x
+  }
+
 public func describeChart(_ input: A11yInput) -> String {
     let fmt = (input.format ?? groupThousands)
+    let m = input.messages
     var parts: [String] = []
-    let title = (input.title ?? "Chart")
+    let title = ((input.title ?? m?.untitled) ?? "Chart")
     if input.series.count == 0 {
-      return "\(title): no data."
+      return fillMessage((m?.noData ?? "{title}: no data."), "title", title)
     }
-    parts.append("\(title).")
     let n = input.series.count
-    parts.append(n == 1 ? "1 series" : "\(n) series")
+    let count = n == 1 ? (m?.oneSeries ?? "1 series") : fillMessage((m?.manySeries ?? "{n} series"), "n", countText(n, input.number))
     if input.categories.count > 0 {
-      parts.append("over \(input.categories.count) categories from \(input.categories[0]) to \(input.categories[pyreonSub(input.categories.count, 1)]).")
+      let o1 = fillMessage((m?.overview ?? "{title}. {series} over {count} categories from {first} to {last}."), "title", title)
+      let o2 = fillMessage(fillMessage(o1, "series", count), "count", countText(input.categories.count, input.number))
+      parts.append(fillMessage(fillMessage(o2, "first", input.categories[0]), "last", input.categories[pyreonSub(input.categories.count, 1)]))
     } else {
-      parts.append(".")
+      parts.append(fillMessage(fillMessage((m?.overviewPlain ?? "{title}. {series}."), "title", title), "series", count))
     }
+    let emptyText = (m?.empty ?? "{label}: empty.")
     for s in input.series {
       if s.values.count == 0 {
-        parts.append("\(s.label): empty.")
+        parts.append(fillMessage(emptyText, "label", s.label))
         continue
       }
       var lo = 0.0
@@ -14513,12 +14809,14 @@ public func describeChart(_ input: A11yInput) -> String {
         seen = pyreonAdd(seen, 1)
       }
       if seen == 0 {
-        parts.append("\(s.label): empty.")
+        parts.append(fillMessage(emptyText, "label", s.label))
         continue
       }
-      let dir = last > first ? "rising" : last < first ? "falling" : "flat"
-      let pct = first > 0.0 && dir != "flat" ? " \(percentChange(first, last))" : ""
-      let at = { (i: Int) in i < input.categories.count ? " at \(input.categories[i])" : "" }
+      let dir = last > first ? (m?.rising ?? "rising") : last < first ? (m?.falling ?? "falling") : (m?.flat ?? "flat")
+      let pct = first > 0.0 && last != first ? " \(percentChange(first, last, input.number, m))" : ""
+      let atText = (m?.at ?? " at {category}")
+      let at = { (i: Int) in i < input.categories.count ? fillMessage(atText, "category", input.categories[i]) : "" }
+      var sentence = ""
       let other = (s.values2 ?? [])
       if other.count > 0 {
         var olo = 0.0
@@ -14542,22 +14840,44 @@ public func describeChart(_ input: A11yInput) -> String {
           oseen = pyreonAdd(oseen, 1)
         }
         if oseen > 0 {
-          parts.append("\(s.label), \(s.kind): upper bound \(dir)\(pct) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)); " + "lower bound ranging \(fmt(olo)) to \(fmt(ohi)).")
-          continue
+          sentence = fillMessage((m?.bandTrend ?? "{label}, {kind}: upper bound {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}; lower bound ranging {low2} to {high2}."), "low2", fmt(olo))
+          sentence = fillMessage(sentence, "high2", fmt(ohi))
         }
       }
-      parts.append("\(s.label), \(s.kind): \(dir)\(pct) from \(fmt(first)) to \(fmt(last)), " + "ranging \(fmt(lo))\(at(loAt)) to \(fmt(hi))\(at(hiAt)).")
+      if sentence == "" {
+        sentence = (m?.trend ?? "{label}, {kind}: {direction}{change} from {first} to {last}, ranging {low}{lowAt} to {high}{highAt}.")
+      }
+      sentence = fillMessage(sentence, "label", s.label)
+      sentence = fillMessage(sentence, "kind", kindWord(s.kind, m))
+      sentence = fillMessage(sentence, "direction", dir)
+      sentence = fillMessage(sentence, "change", pct)
+      sentence = fillMessage(sentence, "first", fmt(first))
+      sentence = fillMessage(sentence, "last", fmt(last))
+      sentence = fillMessage(sentence, "lowAt", at(loAt))
+      sentence = fillMessage(sentence, "low", fmt(lo))
+      sentence = fillMessage(sentence, "highAt", at(hiAt))
+      sentence = fillMessage(sentence, "high", fmt(hi))
+      parts.append(sentence)
     }
-    return { (s: String, f: String, r: String) -> String in s.replacingOccurrences(of: f, with: r, options: [], range: s.range(of: f)) }(parts.joined(separator: " "), " .", ".")
+    return parts.joined(separator: " ")
   }
 
-public func percentChange(_ first: Double, _ last: Double) -> String {
+public func percentChange(_ first: Double, _ last: Double, _ number: ((Double) -> String)?, _ messages: ChartMessages?) -> String {
     let ratio = last / first
     if ratio >= 2.0 {
-      return "\(pyreonNumberString(floor(Double(ratio * 10.0 + 0.5)) / 10.0))×"
+      let r = floor(Double(ratio * 10.0 + 0.5)) / 10.0
+      return fillMessage((messages?.multiple ?? "{n}×"), "n", (number.map { number in number(r) } ?? "\(pyreonNumberString(r))"))
     }
     let p = floor(Double(abs(ratio - 1.0) * 100.0 + 0.5))
-    return "\(pyreonNumberString(p))%"
+    return fillMessage((messages?.percent ?? "{n}%"), "n", (number.map { number in number(p) } ?? "\(pyreonNumberString(p))"))
+  }
+
+public func countText(_ n: Int, _ number: ((Double) -> String)?) -> String {
+    guard let number else {
+      return "\(n)"
+    }
+    let v = Double(n) * 1.0
+    return number(v)
   }
 
 public func describeDatum(_ input: A11yInput, _ series: Int, _ index: Int) -> String {
@@ -14569,13 +14889,15 @@ public func describeDatum(_ input: A11yInput, _ series: Int, _ index: Int) -> St
       return ""
     }
     let fmt = (input.format ?? groupThousands)
+    let m = input.messages
     let v = s.values[index]
-    let value = v != v ? "no value" : fmt(v)
-    let at = index < input.categories.count ? " at \(input.categories[index])" : ""
-    return "\(s.label): \(value)\(at), \(pyreonAdd(index, 1)) of \(s.values.count)"
+    let value = v != v ? (m?.noValue ?? "no value") : fmt(v)
+    let at = index < input.categories.count ? fillMessage((m?.at ?? " at {category}"), "category", input.categories[index]) : ""
+    let d1 = fillMessage(fillMessage((m?.datum ?? "{label}: {value}{at}, {index} of {count}"), "label", s.label), "value", value)
+    return fillMessage(fillMessage(fillMessage(d1, "at", at), "index", countText(pyreonAdd(index, 1), input.number)), "count", countText(s.values.count, input.number))
   }
 
-public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _ i: Int) -> String {
+public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _ i: Int, _ template: String) -> String {
     let lo = (s.errLow ?? [])
     let hi = (s.errHigh ?? [])
     if i >= lo.count || i >= hi.count {
@@ -14586,22 +14908,23 @@ public func withError(_ fmt: (Double) -> String, _ v: Double, _ s: A11ySeries, _
     if !isFiniteNumber(l) || !isFiniteNumber(h) {
       return fmt(v)
     }
-    return "\(fmt(v)) (\(fmt(l)) to \(fmt(h)))"
+    return fillMessage(fillMessage(fillMessage(template, "value", fmt(v)), "low", fmt(l)), "high", fmt(h))
   }
 
 public func chartTable(_ input: A11yInput, _ limit: Int = -1) -> A11yTable {
-    var headers = ["Category"]
+    let m = input.messages
+    var headers = [(m?.category ?? "Category")]
     for s in input.series {
       let other = (s.values2 ?? [])
       let rs = (s.rValues ?? [])
       if other.count > 0 {
-        headers.append("\(s.label) (upper)")
-        headers.append("\(s.label) (lower)")
+        headers.append(fillMessage((m?.upper ?? "{label} (upper)"), "label", s.label))
+        headers.append(fillMessage((m?.lower ?? "{label} (lower)"), "label", s.label))
       } else {
         headers.append(s.label)
       }
       if rs.count > 0 {
-        headers.append("\(s.label) (size)")
+        headers.append(fillMessage((m?.size ?? "{label} (size)"), "label", s.label))
       }
     }
     let n = chartRowCount(input)
@@ -14625,7 +14948,8 @@ public func chartRowCount(_ input: A11yInput) -> Int {
 
 public func chartTableRow(_ input: A11yInput, _ i: Int) -> [String] {
     let fmt = (input.format ?? groupThousands)
-    var row = [i < input.categories.count ? input.categories[i] : "\(pyreonAdd(i, 1))"]
+    let errText = (input.messages?.withError ?? "{value} ({low} to {high})")
+    var row = [i < input.categories.count ? input.categories[i] : countText(pyreonAdd(i, 1), input.number)]
     for s in input.series {
       let other = (s.values2 ?? [])
       let rs = (s.rValues ?? [])
@@ -14642,7 +14966,7 @@ public func chartTableRow(_ input: A11yInput, _ i: Int) -> [String] {
         continue
       }
       let v = s.values[i]
-      row.append(isFiniteNumber(v) ? withError(fmt, v, s, i) : "")
+      row.append(isFiniteNumber(v) ? withError(fmt, v, s, i, errText) : "")
       if two {
         if i >= other.count {
           row.append("")

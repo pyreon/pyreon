@@ -1,4 +1,4 @@
-import { describeInput, scaleNote, scaleViewArg, scaleViewOf, plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, PLOT_SPEC_LITERAL_PROPS, chartSpecFieldIndex, PLOT_INDICATOR_MARKS, chartStaticFlag, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, marksAreColumns } from './hosts'
+import { CHART_MESSAGES_TYPE, describeInput, scaleNote, scaleViewArg, scaleViewOf, plotMarkColorSlots, chartTooltipFields, chartThemePalette, PLOT_MARK_KINDS, PLOT_UNLOWERED_PROPS, plotUnloweredWarning, PLOT_SPEC_LITERAL_PROPS, chartSpecFieldIndex, PLOT_INDICATOR_MARKS, chartStaticFlag, chartZoomConfig, chartToolboxConfig, chartAreaBrushConfig, marksAreColumns } from './hosts'
 import { swiftIdent, swiftStr, type ExprIR } from '@pyreon/native-compiler/plugin-api'
 import { CHART_HANDLE_TYPE, CHARTS_PLUGIN_NAME, chartHandleSeriesKey } from './names'
 import { host } from './swift-facade'
@@ -775,7 +775,13 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
   const a11ySeries = labels === undefined
     ? `${a11ySource}.map { A11ySeries(label: $0.label, values: $0.values, kind: $0.kind, values2: $0.values2, errLow: $0.errLow, errHigh: $0.errHigh, rValues: $0.rValues) }`
     : `${a11ySource}.enumerated().map { (pyreonI, pyreonS) in A11ySeries(label: pyreonI < pyreonSeriesLabels.count ? pyreonSeriesLabels[pyreonI] : pyreonS.label, values: pyreonS.values, kind: pyreonS.kind, values2: pyreonS.values2, errLow: pyreonS.errLow, errHigh: pyreonS.errHigh, rValues: pyreonS.rValues) }`
-  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}))${scaleNote(host.staticAttr(e, 'yScale'), scaleViewOf(chartAttrExpr(e, 'yView')), scaleViewOf(chartAttrExpr(e, 'xView')))}`
+  // The chart's words (`messages`): one struct, read by the description, the
+  // AXChartDescriptor, the data view and the scale note alike.
+  const messagesAttr = chartAttrExpr(e, 'messages')
+  if (messagesAttr !== undefined) lets.push(`let pyreonChartMessages: ChartMessages = ${host.exprAs(CHART_MESSAGES_TYPE, messagesAttr, indent)}`)
+  // The chart locale's plain digits for the figures the sentence says itself (a change, a count): the web's `number`.
+  const messagesArg = (messagesAttr === undefined ? '' : ', messages: pyreonChartMessages') + (locale === undefined ? '' : ', number: pyreonLocaleNumberFormatter(pyreonLocale)')
+  const describe = `describeChart(A11yInput(title: ${plotTitle ?? 'nil'}, categories: ${fullA11y ? 'pyreonA11yCats' : 'pyreonCats'}, series: ${a11ySeries}, format: ${yFormat ?? 'nil'}${messagesArg}))${scaleNote(host.staticAttr(e, 'yScale'), scaleViewOf(chartAttrExpr(e, 'yView')), scaleViewOf(chartAttrExpr(e, 'xView')), messagesAttr === undefined ? undefined : 'pyreonChartMessages')}`
   let dataViewOverlay = ''
   if (toolbox?.dataView === true) {
     // The data view: the accessible table's rows, visible, over the chart, with a close button.
@@ -784,7 +790,7 @@ function emitSwiftPlotHostCore(e: Extract<ExprIR, { kind: 'jsx-element' }>, inde
     // over the overlay merges the table and its close button into the chart's
     // one element, where VoiceOver and XCUITest cannot reach them.
     dataViewOverlay =
-      `.overlay(alignment: .topLeading) { if pyreonDataView { ZStack(alignment: .topTrailing) { ScrollView { VStack(alignment: .leading, spacing: 2) { let pyreonTable = chartTable(${input}); Text(pyreonTable.headers.joined(separator: "  ")).font(.caption); ForEach(Array(pyreonTable.rows.enumerated()), id: \\.offset) { pyreonRow in Text(pyreonRow.element.joined(separator: "  ")).font(.caption) } }.padding(8).frame(maxWidth: .infinity, alignment: .leading) }.background(Color.white).accessibilityIdentifier("pyreon-dataview"); Button("Close") { pyreonDataView = false }.padding(4).accessibilityIdentifier("pyreon-dataview-close") } } }`
+      `.overlay(alignment: .topLeading) { if pyreonDataView { ZStack(alignment: .topTrailing) { ScrollView { VStack(alignment: .leading, spacing: 2) { let pyreonTable = chartTable(${input}); Text(pyreonTable.headers.joined(separator: "  ")).font(.caption); ForEach(Array(pyreonTable.rows.enumerated()), id: \\.offset) { pyreonRow in Text(pyreonRow.element.joined(separator: "  ")).font(.caption) } }.padding(8).frame(maxWidth: .infinity, alignment: .leading) }.background(Color.white).accessibilityIdentifier("pyreon-dataview"); Button(${messagesAttr === undefined ? '"Close"' : 'pyreonChartMessages.close ?? "Close"'}) { pyreonDataView = false }.padding(4).accessibilityIdentifier("pyreon-dataview-close") } } }`
   }
   if (!navigating) return swiftFrameHost(e, lets, canvas, gesture, W, H, hasWidth, indent, describe, dataViewOverlay)
   // The navigator's drag lives on a clear overlay over the strip (above the

@@ -965,6 +965,42 @@
   background-size: calc(100% / var(--pcal-tl-days, 7)) 100%;
 }
 
+/* a row's days are its cells, side by side under the day headers. The cells are not positioned: a bar inside one (it is in
+   the cell of the day it starts on) is placed along the whole lane, so a bar that runs on crosses the next days' cells. */
+.pcal-tl-lane {
+  display: grid;
+  grid-template-columns: repeat(var(--pcal-tl-days, 7), minmax(0, 1fr));
+}
+
+.pcal-tl-cell {
+  min-inline-size: 0;
+  /* a transparent edge keeps the lane's day line visible through a tinted cell */
+  border-inline-start: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.pcal-tl-cell:focus-visible {
+  outline-offset: -2px;
+  /* above the opening-hours stripes (absolutely positioned, opaque), which would otherwise cover the inset ring */
+  z-index: 1;
+}
+
+/* opening hours, as the time grid shades them: a day with hours is tinted, and its open stretches are drawn light over the tint */
+.pcal-tl-cell[data-business] {
+  background-color: var(--pcal-closed);
+}
+
+.pcal-tl-open {
+  position: absolute;
+  inset-block: 0;
+  background: var(--pcal-bg);
+  pointer-events: none;
+}
+
+.pcal-tl-empty {
+  grid-column: 1 / -1;
+}
+
 .pcal-timeline:dir(rtl) .pcal-tl-lane {
   background-image: linear-gradient(to left, var(--pcal-border-soft) 1px, transparent 1px);
 }

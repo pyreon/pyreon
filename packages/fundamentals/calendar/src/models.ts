@@ -156,7 +156,7 @@ function openMinutes(hours: WorkingHours | BusinessCalendar | undefined, date: P
 }
 
 /** Opening hours of a day as fractions of the visible window, or `null` when none are given. */
-function businessFor(hours: WorkingHours | BusinessCalendar | undefined, date: PlainDate, window: { from: number; to: number }): { top: number; height: number }[] | null {
+export function businessFor(hours: WorkingHours | BusinessCalendar | undefined, date: PlainDate, window: { from: number; to: number }): { top: number; height: number }[] | null {
   const open = openMinutes(hours, date)
   if (open === null) return null
   const span = window.to - window.from

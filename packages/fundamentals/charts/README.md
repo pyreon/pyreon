@@ -333,6 +333,56 @@ the long description is derived from your data via `describeChart` unless you
 write your own. `chartTable` returns the same data as rows, for a visually
 hidden table beside the chart.
 
+The words of the description, the table, the keyboard announcements and the data
+view are English by default. For another language, give them as `ChartMessages`
+(every field a template with `{slots}`; unset fields stay English), either in a
+locale pack picked by `locale` or on the chart itself:
+
+```tsx
+import { registerLocale } from '@pyreon/charts'
+
+registerLocale('cs-CZ', {
+  messages: {
+    overview: '{title}. {series} v {count} kategoriích od {first} do {last}.',
+    oneSeries: '1 řada',
+    manySeries: 'řady: {n}',
+    trend: '{label}: {direction}{change} z {first} na {last}, rozsah {low}{lowAt} až {high}{highAt}.',
+    rising: 'roste', falling: 'klesá', flat: 'beze změny',
+    at: ' ({category})',
+    category: 'Kategorie',
+  },
+})
+
+<Chart data={rows} x="day" title="Prodej po dnech" locale="cs-CZ">…</Chart>
+<GaugeChart value={72} title="Rychlost" messages={{ gauge: '{title}: {value} z {max}.' }} />
+```
+
+`messages` on a chart wins over the pack field by field; `description` replaces
+the sentence outright (a string, or a function of the chart's accessible data).
+The family hosts take `messages` too (`getLocale(tag)?.messages` reads a pack),
+and so do `chartToSvg`, `pieToSvg`, `gaugeToSvg`, `radarToSvg`,
+`candlestickToSvg` and `heatmapToSvg` for their derived `<desc>`. The `messages`
+prop lowers to iOS and Android: VoiceOver and TalkBack read the same words, the
+data view's headers and close button follow it, and an untitled family chart is
+named by `messages.untitled`. Plural forms beyond one and many: word
+`manySeries` so it reads for any count.
+
+The mark kind inside the sentence (`kindBars`, `kindLine`, `kindArea`,
+`kindPoints`, … default to the kind's own name), the series a family chart
+names itself (`valueLabel`, `openLabel` / `closeLabel`, `medianLabel`,
+`seriesLabel: 'Series {n}'`, the untitled family names such as `funnelLabel`,
+the map legend's `noDataLabel`) and the sign of a change (`percent: '{n}%'`,
+`multiple: '{n}×'`) are messages too. With `locale` the figures the sentences
+write themselves (a change of `3,2×`, the counts) come in that locale's digits,
+on the web and natively; the family charts take `locale` as well, for their
+pack's words and their numbers when no `format` is given: the description and
+table, and what they draw (tooltips, the gauge's value, the candlestick and
+boxplot axes, polar / parallel / single-axis ticks, the visualMap strip), with
+the platform's number formatter on iOS and Android. Every `*ToSvg` export takes
+`locale` too (the pack's words under its own `messages`, and the locale's
+digits); the family exports' derived descriptions are messages
+(`funnelDescription`, `treemapDescription`, … `singleAxisDescription`).
+
 ### Families and coordinates
 
 Beyond bars, lines, points, pie, gauge, radar, candlestick and heatmap, `@pyreon/charts` ships twenty chart families as tree-shakeable modules: **funnel, boxplot, treemap, sunburst, tree, sankey, graph** (seeded force / circular), **calendar, parallel, polar, single axis, theme river** and **map** (GeoJSON via `registerMap`, scatter + flight paths on geo). Each is a component (`<TreemapChart>`, `<SankeyChart>`, `<MapChart>`, …), a pure `layout` / `render` / `hit` trio and a server-safe `xToSvg`. Sankey, calendar and parallel coordinates take `orient="vertical"` — the horizontal layout reflected across the diagonal, on every target. Polar takes bar, line and scatter series (`kind: 'scatter'` draws the points alone, at `symbolSize / 2`).

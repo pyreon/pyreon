@@ -65,7 +65,7 @@ export function renderBoxplotChart(rows: readonly FiveNumber[], width: Double, h
 }
 
 /** The box index under a point, against the frame the chart painted — or -1. */
-export function hitBoxplotChart(count: number, width: Double, height: Double, categories: string[], fontSize: Double, measure: MeasureText, px: Double, py: Double, rows: FiveNumber[]): number {
-  const f = boxplotFrame(rows, width, height, categories, fontSize, measure)
+export function hitBoxplotChart(count: number, width: Double, height: Double, categories: string[], fontSize: Double, measure: MeasureText, px: Double, py: Double, rows: FiveNumber[], format?: Formatter): number {
+  const f = boxplotFrame(rows, width, height, categories, fontSize, measure, format)
   return hitBox(count, f.layout.plot, px, py)
 }

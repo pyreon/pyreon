@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, shiftCmds } from './canvas-host'
+import { chartNumber } from './locale'
 import type { CanvasHostProps } from './canvas-host'
 import { fiveNumber, hitBox } from './boxplot'
 import type { BoxplotOptions, FiveNumber } from './boxplot'
@@ -31,6 +32,9 @@ interface Geometry { rows: FiveNumber[]; categories: string[]; box: Rect; plot: 
 export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
   const readData = (): readonly T[] => (typeof props.data === 'function' ? (props.data as () => readonly T[])() : props.data)
   const hitAt = (g: Geometry, px: Double, py: Double): number => hitBox(g.rows.length, g.plot, px - g.box.x, py - g.box.y)
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 240,
@@ -45,11 +49,11 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
         : data.map((d, i) => fiveNumber(props.values?.(d, i) ?? []))
       const categories = props.x !== undefined ? data.map((d, i) => props.x!(d, i)) : rows.map((_, i) => `${i + 1}`)
       // The frame the canvas and the native hosts share (`boxplot-chart.ts`); its plot rect is what the hit test runs against.
-      const plot = boxplotFrame(rows, box.w, box.h, props.x !== undefined ? categories : [], theme.fontSize, measure, props.format).layout.plot
+      const plot = boxplotFrame(rows, box.w, box.h, props.x !== undefined ? categories : [], theme.fontSize, measure, num()).layout.plot
       return { rows, categories, box, plot, fontSize: theme.fontSize, measure }
     },
     animates: true,
-    render: (g, measure, theme, progress) => shiftCmds(renderBoxplotChart(g.rows, g.box.w, g.box.h, props.x !== undefined ? g.categories : [], theme, props.box ?? {}, measure, props.format, progress), g.box.x, g.box.y),
+    render: (g, measure, theme, progress) => shiftCmds(renderBoxplotChart(g.rows, g.box.w, g.box.h, props.x !== undefined ? g.categories : [], theme, props.box ?? {}, measure, num(), progress), g.box.x, g.box.y),
     select: (g, px, py) => {
       const i = hitAt(g, px, py)
       props.onSelect?.(i)
@@ -68,16 +72,16 @@ export function BoxplotChart<T>(props: BoxplotChartProps<T>): VNode {
     tooltip: (g, px, py) => {
       const r = g.rows[hitAt(g, px, py)]
       if (r === undefined) return null
-      const fmt = props.format ?? groupThousands
+      const fmt = num() ?? groupThousands
       return [g.categories[hitAt(g, px, py)] ?? '', `max ${fmt(r.max)}`, `q3 ${fmt(r.q3)}`, `median ${fmt(r.median)}`, `q1 ${fmt(r.q1)}`, `min ${fmt(r.min)}`]
     },
-    a11y: (g) => ({
+    a11y: (g, m) => ({
       title: props.title,
       categories: g.categories,
       series: [
-        { label: 'Median', values: g.rows.map((r) => r.median), kind: 'points' },
-        { label: 'Q1', values: g.rows.map((r) => r.q1), kind: 'points' },
-        { label: 'Q3', values: g.rows.map((r) => r.q3), kind: 'points' },
+        { label: m?.medianLabel ?? 'Median', values: g.rows.map((r) => r.median), kind: 'points' },
+        { label: m?.q1Label ?? 'Q1', values: g.rows.map((r) => r.q1), kind: 'points' },
+        { label: m?.q3Label ?? 'Q3', values: g.rows.map((r) => r.q3), kind: 'points' },
       ],
       format: props.format,
     }),

@@ -3,6 +3,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import type { CanvasHostProps } from './canvas-host'
 import { chordLegend, chordTip } from './chrome'
 import { hitChordIndex, layoutChord, renderChord } from './chord'
@@ -23,6 +24,9 @@ export function ChordChart(props: ChordChartProps): VNode {
   const readNodes = (): readonly ChordNode[] => (typeof props.nodes === 'function' ? props.nodes() : props.nodes)
   const readLinks = (): readonly ChordLink[] => (typeof props.links === 'function' ? props.links() : props.links)
   const opts = (t: ChartTheme): ChordOptions => ({ palette: t.palette, labelColor: t.label, ...props.chord })
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<ChordLayout>({
     props,
     defaultHeight: 360,
@@ -41,7 +45,7 @@ export function ChordChart(props: ChordChartProps): VNode {
       props.onSelect?.(i < 0 ? null : layout.arcs[i]!)
       props.onSelectIndex?.(i)
     },
-    tooltip: (layout, px, py) => orNull(chordTip(layout, px, py)),
+    tooltip: (layout, px, py) => orNull(chordTip(layout, px, py, num())),
     item: (layout, px, py) => {
       const i = hitChordIndex(layout, px, py)
       const a = layout.arcs[i]
@@ -82,7 +86,7 @@ export function ChordChart(props: ChordChartProps): VNode {
       if (x0 === Infinity) return null
       return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
     },
-    a11y: () => {
+    a11y: (_g, m) => {
       // One row per node, valued by the total through it — which is what the
       // arc encodes, so the table and the picture say the same thing.
       const nodes = readNodes()
@@ -98,7 +102,7 @@ export function ChordChart(props: ChordChartProps): VNode {
       return {
         title: props.title,
         categories: nodes.map((n) => n.name),
-        series: [{ label: 'Total flow', values: totals, kind: 'bar' }],
+        series: [{ label: m?.totalFlowLabel ?? 'Total flow', values: totals, kind: 'bars' }],
       }
     },
   })

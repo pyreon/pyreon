@@ -2,6 +2,7 @@
 
 import type { VNode } from '@pyreon/core'
 import { canvasHost, orNull } from './canvas-host'
+import { chartNumber } from './locale'
 import { sunburstLegend, sunburstTip } from './chrome'
 import type { CanvasHostProps } from './canvas-host'
 import { hitSunburst, hitSunburstIndex, layoutSunburst, renderSunburst } from './sunburst'
@@ -24,6 +25,9 @@ interface Geometry { arcs: SunburstArc[]; center: Pt }
 
 export function SunburstChart(props: SunburstChartProps): VNode {
   const readData = (): readonly TreeNode[] => (typeof props.data === 'function' ? (props.data as () => readonly TreeNode[])() : props.data)
+  // The number format for what it draws and its tooltip: `format`, else `locale`'s digits.
+  const num = chartNumber(props)
+
   return canvasHost<Geometry>({
     props,
     defaultHeight: 300,
@@ -43,7 +47,7 @@ export function SunburstChart(props: SunburstChartProps): VNode {
       props.onSelect?.(hitSunburst(g.arcs, g.center, px, py))
       props.onSelectIndex?.(hitSunburstIndex(g.arcs, g.center, px, py))
     },
-    tooltip: (g, px, py) => orNull(sunburstTip(g.arcs, g.center, px, py)),
+    tooltip: (g, px, py) => orNull(sunburstTip(g.arcs, g.center, px, py, num())),
     item: (g, px, py) => {
       const i = hitSunburstIndex(g.arcs, g.center, px, py)
       const a = g.arcs[i]
@@ -55,12 +59,12 @@ export function SunburstChart(props: SunburstChartProps): VNode {
       props.onSelect?.(leaf)
       props.onSelectIndex?.(g.arcs.indexOf(leaf))
     },
-    a11y: (g) => {
+    a11y: (g, m) => {
       const leaves = g.arcs.filter((a) => a.leaf)
       return {
         title: props.title,
         categories: leaves.map((a) => a.name),
-        series: [{ label: props.title ?? 'Sunburst', values: leaves.map((a) => a.value), kind: 'bars' }],
+        series: [{ label: props.title ?? m?.sunburstLabel ?? 'Sunburst', values: leaves.map((a) => a.value), kind: 'bars' }],
       }
     },
   })
