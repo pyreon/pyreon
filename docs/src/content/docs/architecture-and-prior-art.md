@@ -55,24 +55,28 @@ every project.
 
 ## Performance, stated honestly
 
-**Restated against the benchmark record as re-measured on 2026-11-25** (row
-board, core scenarios and keyed list re-measured on `dfbdecfc7`, two runs each). The
-authoritative record is `BENCHMARKS.md` at the repo root; the
+**Restated against the benchmark record as re-measured on 2026-11-26** (row
+board, core scenarios and keyed list re-measured on `28d24b6ed` with fixtures
+where every framework builds the same DOM, two runs each). The authoritative
+record is `BENCHMARKS.md` at the repo root; the
 [benchmarks page](/docs/benchmarks) summarises it.
 
 On the krausest-style synthetic row-list benchmark (Chromium via Playwright,
-10 frameworks), compiled Pyreon **wins none of the nine per-op rows outright**;
-it wins a batch-timed select (1.49–1.50× over Octane) and loses a batch-timed
-clear cycle (Octane 1.02×), both in both runs. It is **statistically tied** with
-the Vue 3.6 Vapor release candidate, [Octane](https://octanejs.dev) and Vue 3
-on create 1,000, replace, partial update, remove, create 10,000 and append;
-clear rows and swap split between the two runs. Against hand-written Vanilla,
-Pyreon costs 0.98–1.09× on most ops.
+10 frameworks), compiled Pyreon **wins none of the nine per-op rows outright**
+in the published record; it wins a batch-timed select (1.78–1.85× over Octane,
+both runs). It is **statistically tied** with the Vue 3.6 Vapor release
+candidate, [Octane](https://octanejs.dev) and Vue 3 on create 1,000, replace,
+partial update, remove and append; clear rows, swap and create 10,000 split
+between runs, and a batch-timed clear cycle lost 1.02× to Octane in one session
+and tied in two. The latest session measured two-run wins on partial update,
+clear rows and append, but every framework ran those operations faster that
+night for an unexplained reason, so they are held back until a second session
+agrees. Against hand-written Vanilla, Pyreon costs 0.96–1.08× on most ops.
 Important caveats, stated as the project's record:
 
 - It is **not** "fastest on all benchmarks." A mounted 2,047-component tree
-  retains 1.72× Solid 1.9's heap (below Solid 2.0's; mounting it splits with
-  Solid 1.9); Preact Signals creates signals about 5× faster and leads deep
+  retains 1.72× Solid 1.9's heap (below Solid 2.0's; mounting it ties Solid
+  1.9); Preact Signals creates signals about 5× faster and leads deep
   unobserved computed chains; and the same app ships 18.5KB gzipped against
   Solid's 7.7KB.
 - The row-board margins are small. Every interval resamples whole page loads,
@@ -80,7 +84,7 @@ Important caveats, stated as the project's record:
 - Create, replace, remove and append are dominated by browser layout every
   framework pays identically, so small gaps there are mostly not framework
   JavaScript. After the suite Pyreon's retained heap is level with Preact's
-  (3.15–3.16 vs 3.15 MB, no confidence interval); neither is called the
+  (3.16 vs 3.15 MB, no confidence interval); neither is called the
   lightest.
 - These are author-judged benchmarks, run on one machine in Chromium only,
   and no independent third-party run exists yet — treat cross-framework

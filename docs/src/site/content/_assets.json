@@ -76,7 +76,7 @@
     "/benchmarks"
    ],
    "slot": "row-board",
-   "alt": "Row board, append 1k → 10k: Vanilla 11.97 ms, Pyreon 13.1 ms, Octane 0.19 13.45 ms, Solid 1.9 13.88 ms, Solid 2.0 14.09 ms, React 19 15.43 ms, Preact 17.11 ms, Svelte 5 19.63 ms, Vue 3.6 Vapor (RC) 62.08 ms, Vue 3 63.46 ms. Verdict: tie, tie with Octane in both runs.",
+   "alt": "Row board, append 1k → 10k: Vanilla 12.26 ms, Pyreon 13.11 ms, Octane 0.19 13.47 ms, Solid 2.0 14.09 ms, Solid 1.9 14.1 ms, React 19 15.51 ms, Preact 16.67 ms, Svelte 5 19.47 ms, Vue 3.6 Vapor (RC) 63.19 ms, Vue 3 64.14 ms. Verdict: tie, published as a tie (2026-11-25, both runs) · this session led Octane 1.02–1.03× in both runs, held back.",
    "theme": "both",
    "poster": {
     "dark": "benchmarks/row-board-append-1k-10k.poster-dark.png",
@@ -92,7 +92,7 @@
     "/benchmarks"
    ],
    "slot": "row-board",
-   "alt": "Row board, clear rows: Vanilla 0.09 ms, Pyreon 0.125 ms, Octane 0.19 0.135 ms, Vue 3.6 Vapor (RC) 0.14 ms, Vue 3 0.245 ms, Preact 0.255 ms, Solid 2.0 0.3 ms, Svelte 5 0.335 ms, Solid 1.9 0.51 ms, React 19 0.635 ms. Verdict: split, tie in run 1, a 1.12× win in run 2: not claimed · batch-timed, Octane 1.02× ahead (both runs).",
+   "alt": "Row board, clear rows: Vanilla 0.065 ms, Pyreon 0.095 ms, Vue 3.6 Vapor (RC) 0.115 ms, Octane 0.19 0.115 ms, Vue 3 0.19 ms, Preact 0.24 ms, Solid 2.0 0.255 ms, Svelte 5 0.3 ms, Solid 1.9 0.44 ms, React 19 0.61 ms. Verdict: split, published as a split (2026-11-25: a tie, then 1.12×) · this session led Octane 1.16–1.21× in both runs, held back · batch-timed cycle: 1.02× loss to Octane on 2026-11-25, tie on 2026-11-24 and 2026-11-26.",
    "theme": "both",
    "poster": {
     "dark": "benchmarks/row-board-clear-rows.poster-dark.png",
@@ -108,7 +108,7 @@
     "/benchmarks"
    ],
    "slot": "row-board",
-   "alt": "Row board, create 1,000 rows: Vanilla 6.66 ms, Pyreon 7.24 ms, Octane 0.19 7.27 ms, Vue 3 7.27 ms, Vue 3.6 Vapor (RC) 7.38 ms, Solid 2.0 7.95 ms, Solid 1.9 8.04 ms, Svelte 5 8.11 ms, React 19 9.22 ms, Preact 10.61 ms. Verdict: tie, tie with Octane, Vue 3 and Vapor in both runs.",
+   "alt": "Row board, create 1,000 rows: Vanilla 6.84 ms, Pyreon 7.4 ms, Vue 3 7.42 ms, Octane 0.19 7.46 ms, Vue 3.6 Vapor (RC) 7.5 ms, Solid 2.0 8.07 ms, Solid 1.9 8.09 ms, Svelte 5 8.23 ms, React 19 9.44 ms, Preact 10.7 ms. Verdict: tie, tie with Vue 3, Octane and Vapor in both runs.",
    "theme": "both",
    "poster": {
     "dark": "benchmarks/row-board-create-1-000-rows.poster-dark.png",
@@ -124,7 +124,7 @@
     "/benchmarks"
    ],
    "slot": "row-board",
-   "alt": "Row board, create 10,000 rows: Vanilla 66.84 ms, Pyreon 72.96 ms, Vue 3.6 Vapor (RC) 73.67 ms, Vue 3 74.19 ms, Octane 0.19 75.13 ms, Solid 1.9 78.86 ms, Solid 2.0 79.43 ms, Svelte 5 87.52 ms, React 19 195.7 ms, Preact 286.52 ms. Verdict: tie, tie with Vapor, Vue 3 and Octane in both runs · 2.7× faster than React 19, 3.9× than Preact (run 1 figures).",
+   "alt": "Row board, create 10,000 rows: Vanilla 68.75 ms, Pyreon 74.33 ms, Vue 3 75.94 ms, Vue 3.6 Vapor (RC) 76.31 ms, Octane 0.19 76.41 ms, Solid 1.9 80.45 ms, Solid 2.0 82.08 ms, Svelte 5 89.92 ms, React 19 198.63 ms, Preact 288.14 ms. Verdict: split, a win in run 1, a tie in run 2, not claimed · 2.7× faster than React 19, 3.9× than Preact (run 1 figures).",
    "theme": "both",
    "poster": {
     "dark": "benchmarks/row-board-create-10-000-rows.poster-dark.png",
@@ -140,7 +140,7 @@
     "/benchmarks"
    ],
    "slot": "row-board",
-   "alt": "Row board, partial update: Pyreon 0.67 ms, Vue 3.6 Vapor (RC) 0.675 ms, Vanilla 0.685 ms, Octane 0.19 0.745 ms, Svelte 5 0.8 ms, React 19 0.865 ms, Preact 0.925 ms, Vue 3 1.02 ms, Solid 1.9 1.28 ms, Solid 2.0 1.33 ms. Verdict: tie, tie with Vapor and Octane in both runs.",
+   "alt": "Row board, partial update: Pyreon 0.505 ms, Vanilla 0.525 ms, Vue 3.6 Vapor (RC) 0.535 ms, Octane 0.19 0.54 ms, Svelte 5 0.625 ms, React 19 0.75 ms, Preact 0.82 ms, Vue 3 0.84 ms, Solid 2.0 1.05 ms, Solid 1.9 1.08 ms. Verdict: tie, published as a tie (2026-11-25, both runs) · this session Pyreon led Vapor 1.06–1.07× in both runs, held back: every arm ran this op faster than the day before.",
    "theme": "both",
    "poster": {
     "dark": "benchmarks/row-board-partial-update.poster-dark.png",
@@ -156,7 +156,7 @@
     "/benchmarks"
    ],
    "slot": "row-board",
-   "alt": "Row board, remove row: Vanilla 5.61 ms, Pyreon 5.62 ms, Octane 0.19 5.64 ms, Vue 3.6 Vapor (RC) 5.66 ms, Solid 2.0 5.69 ms, Solid 1.9 5.79 ms, Preact 5.86 ms, Vue 3 5.89 ms, React 19 5.95 ms, Svelte 5 6.4 ms. Verdict: tie, tie with Octane, Vapor and Solid 2.0 in both runs.",
+   "alt": "Row board, remove row: Vanilla 5.75 ms, Octane 0.19 5.76 ms, Pyreon 5.78 ms, Vue 3.6 Vapor (RC) 5.78 ms, Solid 2.0 5.81 ms, Solid 1.9 5.84 ms, Vue 3 6.01 ms, Preact 6.03 ms, React 19 6.08 ms, Svelte 5 6.5 ms. Verdict: tie, tie with Octane, Vapor, both Solids and Vue 3 in both runs.",
    "theme": "both",
    "poster": {
     "dark": "benchmarks/row-board-remove-row.poster-dark.png",
@@ -172,7 +172,7 @@
     "/benchmarks"
    ],
    "slot": "row-board",
-   "alt": "Row board, replace all rows: Vanilla 6.64 ms, Octane 0.19 7.12 ms, Vue 3.6 Vapor (RC) 7.15 ms, Pyreon 7.17 ms, Vue 3 7.27 ms, Solid 2.0 7.91 ms, Svelte 5 8 ms, Solid 1.9 8.04 ms, React 19 9.02 ms, Preact 10.56 ms. Verdict: tie, tie with Octane, Vapor and Vue 3 in both runs.",
+   "alt": "Row board, replace all rows: Vanilla 6.84 ms, Pyreon 7.28 ms, Octane 0.19 7.31 ms, Vue 3.6 Vapor (RC) 7.4 ms, Vue 3 7.44 ms, Solid 2.0 7.95 ms, Solid 1.9 8.09 ms, Svelte 5 8.16 ms, React 19 9.26 ms, Preact 10.53 ms. Verdict: tie, tie with Octane, Vapor and Vue 3 in both runs.",
    "theme": "both",
    "poster": {
     "dark": "benchmarks/row-board-replace-all-rows.poster-dark.png",
@@ -188,7 +188,7 @@
     "/benchmarks"
    ],
    "slot": "row-board",
-   "alt": "Row board, select row: Vanilla 0.005 ms, Pyreon 0.01 ms, Vue 3.6 Vapor (RC) 0.02 ms, Octane 0.19 0.025 ms, Solid 1.9 0.03 ms, Solid 2.0 0.07 ms, React 19 0.25 ms, Preact 0.28 ms, Svelte 5 0.34 ms, Vue 3 0.37 ms. Verdict: info, below clock resolution here; batch-timed on the same board, Pyreon is 1.49–1.50× faster than Octane (both runs).",
+   "alt": "Row board, select row: Vanilla 0.005 ms, Pyreon 0.005 ms, Vue 3.6 Vapor (RC) 0.015 ms, Octane 0.19 0.015 ms, Solid 1.9 0.015 ms, Solid 2.0 0.035 ms, React 19 0.185 ms, Preact 0.2 ms, Svelte 5 0.255 ms, Vue 3 0.28 ms. Verdict: info, below clock resolution here; batch-timed on the same board, Pyreon is 1.78–1.85× faster than Octane (both runs).",
    "theme": "both",
    "poster": {
     "dark": "benchmarks/row-board-select-row.poster-dark.png",
@@ -204,7 +204,7 @@
     "/benchmarks"
    ],
    "slot": "row-board",
-   "alt": "Row board, swap rows: Vue 3.6 Vapor (RC) 0.755 ms, Vanilla 0.8 ms, Octane 0.19 0.8 ms, Pyreon 0.81 ms, Solid 2.0 0.81 ms, Solid 1.9 0.9 ms, Preact 0.94 ms, Vue 3 1.06 ms, Svelte 5 1.5 ms, React 19 5.95 ms. Verdict: split, Vapor 1.07× ahead in run 1, a tie in run 2, so not claimed either way.",
+   "alt": "Row board, swap rows: Vanilla 0.455 ms, Pyreon 0.48 ms, Vue 3.6 Vapor (RC) 0.49 ms, Octane 0.19 0.5 ms, Solid 2.0 0.51 ms, Solid 1.9 0.625 ms, Preact 0.695 ms, Vue 3 0.73 ms, Svelte 5 1.18 ms, React 19 5.89 ms. Verdict: split, published as a split (2026-11-25: Vapor 1.07× ahead in one run) · this session tied in both runs, held back.",
    "theme": "both",
    "poster": {
     "dark": "benchmarks/row-board-swap-rows.poster-dark.png",
@@ -1495,7 +1495,7 @@
     "/compare/react"
    ],
    "slot": "measured-chart",
-   "alt": "Pyreon vs React, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 18.5 KB, React 69.6 KB (Pyreon ahead); Create 10,000 rows: Pyreon 73.0 ms, React 195.7 ms (2.7× slower) (Pyreon ahead); Swap two rows in 1,000: Pyreon 810 µs, React 5.95 ms (Pyreon ahead); Remove a row: Pyreon 5.62 ms, React 5.95 ms (1.06× slower in both runs) (Pyreon ahead); Mount a deep tree (2,047 components): Pyreon 3.08 / 3.10 ms, React 3.50 / 3.46 ms (1.12–1.13× slower in both runs) (Pyreon ahead); TodoMVC shape: toggle 1,000 / clear 1,000: Pyreon 4.60 ms / 320 µs, React 11.41 ms / 1.00 ms (2.48× / 3.14×; add-100 varies 1.14–1.99× day to day; one run) (Pyreon ahead); Server rendering, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, React 10.30 / 76.52 / 714.4 µs (5.7–6.6× slower, one run) (Pyreon ahead); Hydration: 1,000-row table / 320-component page: Pyreon 6.07 ms / 4.02 ms, React 6.52 ms / 4.15 ms; both adopt every server node (page: one run) (Pyreon ahead); Retained heap after the row suite: Pyreon 3.16 MB (3.15 in one pass), React 3.56 MB (one value per pass, the same in all ten passes) (Pyreon ahead).",
+   "alt": "Pyreon vs React, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 18.5 KB, React 69.6 KB (Pyreon ahead); Create 10,000 rows: Pyreon 74.3 ms, React 198.6 ms (2.7× slower) (Pyreon ahead); Swap two rows in 1,000: Pyreon 480 µs, React 5.89 ms (Pyreon ahead); Remove a row: Pyreon 5.78 ms, React 6.08 ms (1.05–1.06× slower in both runs) (Pyreon ahead); Mount a deep tree (2,047 components): Pyreon 3.51 / 3.50 ms, React 3.97 / 3.98 ms (1.13–1.14× slower in both runs) (Pyreon ahead); TodoMVC shape: toggle 1,000 / clear 1,000: Pyreon 4.60 ms / 320 µs, React 11.41 ms / 1.00 ms (2.48× / 3.14×; add-100 varies 1.14–1.99× day to day; one run) (Pyreon ahead); Server rendering, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, React 10.30 / 76.52 / 714.4 µs (5.7–6.6× slower, one run) (Pyreon ahead); Hydration: 1,000-row table / 320-component page: Pyreon 6.07 ms / 4.02 ms, React 6.52 ms / 4.15 ms; both adopt every server node (page: one run) (Pyreon ahead); Retained heap after the row suite: Pyreon 3.16 MB (the same in all ten passes), React 3.56 MB (one value per pass, the same in all ten passes) (Pyreon ahead).",
    "theme": "both",
    "poster": {
     "dark": "compare/react.poster-dark.png",
@@ -1511,7 +1511,7 @@
     "/compare/solid"
    ],
    "slot": "measured-chart",
-   "alt": "Pyreon vs Solid, the measured rows from the page's table: Clear 1,000 rows: Pyreon 125 µs, Solid 510 µs (Solid 2.0: 300 µs) (Pyreon ahead); Create 10,000 rows: Pyreon 72.96 ms, Solid 78.86 ms (Solid 2.0: 79.43 ms) (Pyreon ahead); 12-field form, four timed operations: Pyreon Fastest on all four (keystroke 60 µs), Solid Solid modular-forms: keystroke 100 µs (one run) (Pyreon ahead); Effect list: update 500: Pyreon 840 / 843 µs, Solid Solid 2.0 865 / 858 µs, a tie in both runs; Solid 1.9 953 / 923 µs, Pyreon 1.10–1.13× faster in both runs (tie); Mount a deep tree (2,047 components): Pyreon 3.08 / 3.10 ms, Solid Solid 1.9 3.00 / 2.96 ms: a tie in run 1, Solid 1.9 1.05× ahead in run 2, so not claimed either way; Solid 2.0 3.35 / 3.32 ms (Pyreon 1.07–1.09×) (tie); Bundle, same keyed-table app (gzip): Pyreon 18.5 KB, Solid 7.7 KB: the smallest framework in the record (Solid ahead); Memory of that mounted tree: Pyreon 355.1 / 355.2 KB retained, Solid 207.0 / 206.2 KB in Solid 1.9 (1.72× lighter); Solid 2.0 retains 411.3 KB, more than Pyreon (no confidence interval) (Solid ahead); Form memory: Pyreon 2.42 MB retained, Solid 2.33 MB retained (Solid modular-forms is lighter) (Solid ahead).",
+   "alt": "Pyreon vs Solid, the measured rows from the page's table: Clear 1,000 rows: Pyreon 95 µs, Solid 440 µs (Solid 2.0: 255 µs) (Pyreon ahead); Create 10,000 rows: Pyreon 74.33 ms, Solid 80.45 ms (Solid 2.0: 82.08 ms) (Pyreon ahead); 12-field form, four timed operations: Pyreon Fastest on all four (keystroke 60 µs), Solid Solid modular-forms: keystroke 100 µs (one run) (Pyreon ahead); Effect list: update 500: Pyreon 790 / 780 µs, Solid Solid 2.0 810 / 822.5 µs, a tie in both runs; Solid 1.9 875 / 895 µs, Pyreon 1.11–1.15× faster in both runs (tie); Mount a deep tree (2,047 components): Pyreon 3.51 / 3.50 ms, Solid Solid 1.9 3.48 / 3.53 ms: a tie in both runs, with every framework building the same DOM; Solid 2.0 3.88 / 3.87 ms (Pyreon 1.10–1.11×) (tie); Bundle, same keyed-table app (gzip): Pyreon 18.5 KB, Solid 7.7 KB: the smallest framework in the record (Solid ahead); Memory of that mounted tree: Pyreon 355.7 / 355.7 KB retained, Solid 207.2 / 206.8 KB in Solid 1.9 (1.72× lighter); Solid 2.0 retains 409.8 KB, more than Pyreon (no confidence interval) (Solid ahead); Form memory: Pyreon 2.42 MB retained, Solid 2.33 MB retained (Solid modular-forms is lighter) (Solid ahead).",
    "theme": "both",
    "poster": {
     "dark": "compare/solid.poster-dark.png",
@@ -1527,7 +1527,7 @@
     "/compare/svelte"
    ],
    "slot": "measured-chart",
-   "alt": "Pyreon vs Svelte, the measured rows from the page's table: Mount a deep tree (2,047 components): Pyreon 3.08 ms, Svelte 10.92 ms (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Svelte 2.18 / 18.08 / 160.5 µs (one run) (Pyreon ahead); Create 10,000 rows: Pyreon 72.96 ms, Svelte 87.52 ms (Pyreon ahead); Swap two rows in 1,000: Pyreon 810 µs, Svelte 1.50 ms (Pyreon ahead); Memo wall: passthrough: Pyreon 408 / 406 µs, Svelte 436 / 439 µs (Svelte is the fastest rival); Pyreon 1.07–1.08× in both runs (Pyreon ahead); 12-field form, keystroke (blur mode): Pyreon 60 µs, Svelte 700 µs (Felte, one run) (Pyreon ahead); dbmon tick (every value changes): Pyreon 1.71 / 1.70 ms, Svelte 1.75 / 1.71 ms: a three-way tie with Octane (tie); Bundle, same keyed-table app (gzip): Pyreon 18.5 KB, Svelte 16.1 KB: Svelte is 2.4 KB smaller (Svelte ahead).",
+   "alt": "Pyreon vs Svelte, the measured rows from the page's table: Mount a deep tree (2,047 components): Pyreon 3.51 ms, Svelte 10.87 ms (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Svelte 2.18 / 18.08 / 160.5 µs (one run) (Pyreon ahead); Create 10,000 rows: Pyreon 74.33 ms, Svelte 89.92 ms (Pyreon ahead); Swap two rows in 1,000: Pyreon 480 µs, Svelte 1.18 ms (Pyreon ahead); Memo wall: passthrough: Pyreon 403 / 402 µs, Svelte 449 / 448 µs (Svelte and Solid 2.0 are the fastest rivals); Pyreon 1.11× in both runs (Pyreon ahead); 12-field form, keystroke (blur mode): Pyreon 60 µs, Svelte 700 µs (Felte, one run) (Pyreon ahead); dbmon tick (every value changes): Pyreon 1.71 / 1.70 ms, Svelte 1.75 / 1.71 ms: a three-way tie with Octane (tie); Bundle, same keyed-table app (gzip): Pyreon 18.5 KB, Svelte 16.1 KB: Svelte is 2.4 KB smaller (Svelte ahead).",
    "theme": "both",
    "poster": {
     "dark": "compare/svelte.poster-dark.png",
@@ -1543,7 +1543,7 @@
     "/compare/vue"
    ],
    "slot": "measured-chart",
-   "alt": "Pyreon vs Vue, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 18.5 KB, Vue 27.7 KB (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Vue 3.03 / 15.66 / 124.9 µs (one run) (Pyreon ahead); Memo wall: blocked update: Pyreon 12.4 / 12.5 µs, Vue 15.8 / 15.8 µs (Pyreon 1.26–1.28×; Solid 2.0, the fastest rival, ties Pyreon) (Pyreon ahead); Hydration, 320-component page: Pyreon 4.02 ms, Vue 4.47 ms; both adopt all 2,206 server nodes (one run) (Pyreon ahead); Row board vs Vue 3: partial update / clear rows: Pyreon 670 µs / 125 µs, Vue 1.02 ms / 245 µs (Pyreon ahead); 12-field form, keystroke with validation: Pyreon 460 µs, Vue 2,260 µs (vee-validate, one run) (Pyreon ahead); Hydration, 1,000-row keyed table: Pyreon 6.07 / 6.04 ms total; framework walk tied, Vue 6.02 / 5.99 ms: Vue has the faster median in both runs, 1.01× in run 2 (Vue ahead).",
+   "alt": "Pyreon vs Vue, the measured rows from the page's table: Bundle, same keyed-table app (gzip): Pyreon 18.5 KB, Vue 27.7 KB (Pyreon ahead); Compiled SSR, 10 / 100 / 1,000 rows: Pyreon 1.80 / 11.64 / 109.9 µs, Vue 3.03 / 15.66 / 124.9 µs (one run) (Pyreon ahead); Memo wall: blocked update: Pyreon 12.5 / 12.5 µs, Vue 15.9 / 15.8 µs (Pyreon 1.26–1.27×; against Solid 2.0, the fastest rival, the runs split) (Pyreon ahead); Hydration, 320-component page: Pyreon 4.02 ms, Vue 4.47 ms; both adopt all 2,206 server nodes (one run) (Pyreon ahead); Row board vs Vue 3: partial update / clear rows: Pyreon 505 µs / 95 µs, Vue 840 µs / 190 µs (Pyreon ahead); 12-field form, keystroke with validation: Pyreon 460 µs, Vue 2,260 µs (vee-validate, one run) (Pyreon ahead); Hydration, 1,000-row keyed table: Pyreon 6.07 / 6.04 ms total; framework walk tied, Vue 6.02 / 5.99 ms: Vue has the faster median in both runs, 1.01× in run 2 (Vue ahead).",
    "theme": "both",
    "poster": {
     "dark": "compare/vue.poster-dark.png",
@@ -2186,7 +2186,7 @@
     "/"
    ],
    "slot": "proof-band",
-   "alt": "2.7× faster than React 19 creating 10,000 rows. Pyreon: 73 ms; React 19: 195.7 ms. real Chromium, row board, synthetic, author-run, Apple M3 Max, record of 2026-11-25.",
+   "alt": "2.7× faster than React 19 creating 10,000 rows. Pyreon: 74.3 ms; React 19: 198.6 ms. real Chromium, row board, synthetic, author-run, Apple M3 Max, record of 2026-11-26.",
    "theme": "both",
    "poster": {
     "dark": "home/proof-rows-10k.poster-dark.png",
@@ -3637,7 +3637,7 @@
     "/compare/svelte"
    ],
    "slot": "og",
-   "alt": "Pyreon vs Svelte: 2,047 components. Mounted 3.5× faster than Svelte 5. 3.5× faster to mount a 2,047-component tree: 3.08 ms against 10.92 ms",
+   "alt": "Pyreon vs Svelte: 2,047 components. Mounted 3.1× faster than Svelte 5. 3.1× faster to mount a 2,047-component tree: 3.51 ms against 10.87 ms",
    "theme": "dark",
    "width": 1200,
    "height": 630
@@ -10488,7 +10488,7 @@
     "/why/performance"
    ],
    "slot": "diagram",
-   "alt": "Create 10,000 rows in real Chromium: Vanilla 66.84 ms, Pyreon 72.96 ms, Vue 3.6 Vapor (RC) 73.67 ms, Vue 3 74.19 ms, Octane 0.19 75.13 ms, Solid 1.9 78.86 ms, Solid 2.0 79.43 ms, Svelte 5 87.52 ms, React 19 195.7 ms, Preact 286.52 ms. Pyreon is 2.7× faster than React 19 and level with the fastest frameworks.",
+   "alt": "Create 10,000 rows in real Chromium: Vanilla 68.75 ms, Pyreon 74.33 ms, Vue 3 75.94 ms, Vue 3.6 Vapor (RC) 76.31 ms, Octane 0.19 76.41 ms, Solid 1.9 80.45 ms, Solid 2.0 82.08 ms, Svelte 5 89.92 ms, React 19 198.63 ms, Preact 288.14 ms. Pyreon is 2.7× faster than React 19; against the fastest frameworks the two runs split, so no win is claimed.",
    "theme": "both",
    "poster": {
     "dark": "why/performance.poster-dark.png",

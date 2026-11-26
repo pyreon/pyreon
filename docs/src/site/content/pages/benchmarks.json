@@ -1,5 +1,5 @@
 {
-  "record": "BENCHMARKS.md 2026-11-25",
+  "record": "BENCHMARKS.md 2026-11-26",
   "frameworks": [
     "Vanilla",
     "Pyreon",
@@ -14,118 +14,118 @@
   ],
   "rowBoard": {
     "create 1,000 rows": [
-      6.66,
-      7.24,
-      7.38,
-      7.27,
-      7.27,
-      8.04,
-      7.95,
-      8.11,
-      9.22,
-      10.61
+      6.84,
+      7.4,
+      7.5,
+      7.46,
+      7.42,
+      8.09,
+      8.07,
+      8.23,
+      9.44,
+      10.7
     ],
     "replace all rows": [
-      6.64,
-      7.17,
-      7.15,
-      7.12,
-      7.27,
-      8.04,
-      7.91,
-      8,
-      9.02,
-      10.56
+      6.84,
+      7.28,
+      7.4,
+      7.31,
+      7.44,
+      8.09,
+      7.95,
+      8.16,
+      9.26,
+      10.53
     ],
     "partial update": [
-      0.685,
-      0.67,
-      0.675,
-      0.745,
-      1.02,
-      1.28,
-      1.33,
-      0.8,
-      0.865,
-      0.925
+      0.525,
+      0.505,
+      0.535,
+      0.54,
+      0.84,
+      1.08,
+      1.05,
+      0.625,
+      0.75,
+      0.82
     ],
     "select row": [
       0.005,
-      0.01,
-      0.02,
-      0.025,
-      0.37,
-      0.03,
-      0.07,
-      0.34,
-      0.25,
-      0.28
+      0.005,
+      0.015,
+      0.015,
+      0.28,
+      0.015,
+      0.035,
+      0.255,
+      0.185,
+      0.2
     ],
     "swap rows": [
-      0.8,
-      0.81,
-      0.755,
-      0.8,
-      1.06,
-      0.9,
-      0.81,
-      1.5,
-      5.95,
-      0.94
+      0.455,
+      0.48,
+      0.49,
+      0.5,
+      0.73,
+      0.625,
+      0.51,
+      1.18,
+      5.89,
+      0.695
     ],
     "remove row": [
-      5.61,
-      5.62,
-      5.66,
-      5.64,
-      5.89,
-      5.79,
-      5.69,
-      6.4,
-      5.95,
-      5.86
+      5.75,
+      5.78,
+      5.78,
+      5.76,
+      6.01,
+      5.84,
+      5.81,
+      6.5,
+      6.08,
+      6.03
     ],
     "clear rows": [
-      0.09,
-      0.125,
-      0.14,
-      0.135,
-      0.245,
-      0.51,
+      0.065,
+      0.095,
+      0.115,
+      0.115,
+      0.19,
+      0.44,
+      0.255,
       0.3,
-      0.335,
-      0.635,
-      0.255
+      0.61,
+      0.24
     ],
     "create 10,000 rows": [
-      66.84,
-      72.96,
-      73.67,
-      75.13,
-      74.19,
-      78.86,
-      79.43,
-      87.52,
-      195.7,
-      286.52
+      68.75,
+      74.33,
+      76.31,
+      76.41,
+      75.94,
+      80.45,
+      82.08,
+      89.92,
+      198.63,
+      288.14
     ],
     "append 1k → 10k": [
-      11.97,
-      13.1,
-      62.08,
-      13.45,
-      63.46,
-      13.88,
+      12.26,
+      13.11,
+      63.19,
+      13.47,
+      64.14,
+      14.1,
       14.09,
-      19.63,
-      15.43,
-      17.11
+      19.47,
+      15.51,
+      16.67
     ]
   },
   "rowVerdicts": {
     "create 1,000 rows": [
       "tie",
-      "tie with Octane, Vue 3 and Vapor in both runs"
+      "tie with Vue 3, Octane and Vapor in both runs"
     ],
     "replace all rows": [
       "tie",
@@ -133,31 +133,31 @@
     ],
     "partial update": [
       "tie",
-      "tie with Vapor and Octane in both runs"
+      "published as a tie (2026-11-25, both runs) · this session Pyreon led Vapor 1.06–1.07× in both runs, held back: every arm ran this op faster than the day before"
     ],
     "select row": [
       "info",
-      "below clock resolution here; batch-timed on the same board, Pyreon is 1.49–1.50× faster than Octane (both runs)"
+      "below clock resolution here; batch-timed on the same board, Pyreon is 1.78–1.85× faster than Octane (both runs)"
     ],
     "swap rows": [
       "split",
-      "Vapor 1.07× ahead in run 1, a tie in run 2, so not claimed either way"
+      "published as a split (2026-11-25: Vapor 1.07× ahead in one run) · this session tied in both runs, held back"
     ],
     "remove row": [
       "tie",
-      "tie with Octane, Vapor and Solid 2.0 in both runs"
+      "tie with Octane, Vapor, both Solids and Vue 3 in both runs"
     ],
     "clear rows": [
       "split",
-      "tie in run 1, a 1.12× win in run 2: not claimed · batch-timed, Octane 1.02× ahead (both runs)"
+      "published as a split (2026-11-25: a tie, then 1.12×) · this session led Octane 1.16–1.21× in both runs, held back · batch-timed cycle: 1.02× loss to Octane on 2026-11-25, tie on 2026-11-24 and 2026-11-26"
     ],
     "create 10,000 rows": [
-      "tie",
-      "tie with Vapor, Vue 3 and Octane in both runs · 2.7× faster than React 19, 3.9× than Preact (run 1 figures)"
+      "split",
+      "a win in run 1, a tie in run 2, not claimed · 2.7× faster than React 19, 3.9× than Preact (run 1 figures)"
     ],
     "append 1k → 10k": [
       "tie",
-      "tie with Octane in both runs"
+      "published as a tie (2026-11-25, both runs) · this session led Octane 1.02–1.03× in both runs, held back"
     ]
   },
   "scenarios": [
@@ -170,59 +170,59 @@
     },
     {
       "op": "mount deep tree (2,047 components)",
-      "pyreon": "3.08 ms",
-      "rival": "Solid 1.9 3.00",
-      "verdict": "split",
-      "label": "a tie in run 1, Solid 1.9 1.05× ahead in run 2, so not claimed · Solid 2.0 1.07–1.09× and React 1.12–1.13× slower"
+      "pyreon": "3.51 ms",
+      "rival": "Solid 1.9 3.48",
+      "verdict": "tie",
+      "label": "tie in both runs on equal DOMs · Solid 2.0 1.10–1.11× and React 1.13–1.14× slower"
     },
     {
       "op": "context → 1,024 consumers",
-      "pyreon": "1.71 ms",
-      "rival": "Solid 1.9 1.82",
-      "verdict": "tie",
-      "label": "tie with both Solids (both runs)"
+      "pyreon": "1.54 ms",
+      "rival": "Solid 2.0 1.59",
+      "verdict": "win",
+      "label": "1.03–1.07× (both runs; first run with a non-empty leaf for every arm) · Solid 1.9 1.07–1.08× slower"
     },
     {
       "op": "effect list: update 500",
-      "pyreon": "840 µs",
-      "rival": "Solid 2.0 865",
+      "pyreon": "790 µs",
+      "rival": "Solid 2.0 810",
       "verdict": "tie",
-      "label": "tie (both runs) · Solid 1.9 1.10–1.13× slower"
+      "label": "tie (both runs) · Solid 1.9 1.11–1.15× slower"
     },
     {
       "op": "effect list: dispose 500",
-      "pyreon": "45 µs",
-      "rival": "Solid 2.0 40",
+      "pyreon": "40 µs",
+      "rival": "Solid 2.0 35",
       "verdict": "info",
-      "label": "no verdict: Pyreon and both Solids read 37.5–55 µs, below 10 clock quanta"
+      "label": "no verdict: Pyreon and both Solids read 35–45 µs, below 10 clock quanta"
     },
     {
       "op": "memo wall: blocked",
-      "pyreon": "12.4 µs",
+      "pyreon": "12.5 µs",
       "rival": "Solid 2.0 12.7",
-      "verdict": "tie",
-      "label": "tie with Solid 2.0 (both runs); Vue 1.26–1.28× slower"
+      "verdict": "split",
+      "label": "a tie in run 1, Pyreon 1.03× in run 2, so not claimed · Vue 1.26–1.27× slower"
     },
     {
       "op": "memo wall: passthrough",
-      "pyreon": "408 µs",
-      "rival": "Svelte 436",
+      "pyreon": "403 µs",
+      "rival": "Svelte 449",
       "verdict": "win",
-      "label": "1.07–1.08× (both runs)"
+      "label": "1.11× (both runs)"
     },
     {
       "op": "retained heap, one mounted deep tree",
-      "pyreon": "355.1 KB",
-      "rival": "Solid 1.9 207.0",
+      "pyreon": "355.7 KB",
+      "rival": "Solid 1.9 207.2",
       "verdict": "loss",
-      "label": "Solid 1.9 1.72× lighter; Pyreon below Solid 2.0's 411.3 KB (both runs, no CI)"
+      "label": "Solid 1.9 1.72× lighter; Pyreon below Solid 2.0's 409.8 KB (both runs, no CI)"
     },
     {
       "op": "keyed list: clear 1,000 rows (<For>)",
-      "pyreon": "280 µs",
-      "rival": "Vue 3 320",
+      "pyreon": "240 µs",
+      "rival": "Vue 3 283",
       "verdict": "win",
-      "label": "1.14–1.15× (both runs); the plain .map() arm wins too, 1.19–1.20×"
+      "label": "1.18–1.19× (both runs); the plain .map() arm wins too, 1.09–1.10×"
     },
     {
       "op": "app page hydration (2,206 nodes)",
@@ -561,19 +561,19 @@
   "losses": [
     [
       "Memory per component",
-      "A mounted 2,047-component tree retains 355 KB in Pyreon against 206–207 KB in Solid 1.9, 1.72× (both runs, no CI); Pyreon is below Solid 2.0's 411 KB. On the row board Pyreon and Preact are level (3.15–3.16 vs 3.15 MB), not lighter."
+      "A mounted 2,047-component tree retains 356 KB in Pyreon against 207 KB in Solid 1.9, 1.72× (both runs, no CI); Pyreon is below Solid 2.0's 410 KB. On the row board Pyreon and Preact are level (3.16 vs 3.15 MB), not lighter."
     ],
     [
       "A keyed list with conditional cells",
-      "A plain .map() of JSX rows loses create (1.07–1.08×) and replace (1.03–1.04×). With <For> both split between runs: a 1.02–1.03× loss in run 1, a tie in run 2. Clearing 1,000 rows is a win with either."
+      "Create and replace lose in both runs: with <For> 1.03–1.04× and 1.02–1.03×, with a plain .map() of JSX rows 1.07–1.08× and 1.03×. Clearing 1,000 rows is a win with either."
     ],
     [
       "Most of the row board is a tie",
-      "Create 1,000, replace, partial update, remove, create 10,000 and append tie Vue 3.6 Vapor, Octane and Vue 3. Clear rows and swap split between runs; swap was a 1.07× loss to Vapor in one. The batch-timed clear cycle is a 1.02× loss to Octane in both runs. The batch-timed select is our one outright win."
+      "Create 1,000, replace, partial update, remove and append tie Vue 3.6 Vapor, Octane and Vue 3. Clear rows, swap and create 10,000 split between runs; swap was a 1.07× loss to Vapor in one run. The batch-timed clear cycle lost 1.02× to Octane in one session and tied in two. The batch-timed select is our one outright win."
     ],
     [
-      "Deep-tree mount, one run of two",
-      "A tie with Solid 1.9 in run 1; Solid 1.9 1.05× ahead in run 2, so a split, not claimed. It tied in both runs on 2026-11-24. Solid 2.0 and React are slower in both runs."
+      "Deep-tree mount is a tie, not a win",
+      "On fixtures where every framework builds the same DOM it ties Solid 1.9 in both runs (2026-11-26); the day before, on the old fixture, it split. Solid 2.0 and React are slower in both runs."
     ],
     [
       "Swap at 100 and 1,000 rows",
@@ -623,31 +623,31 @@
   "withdrawn": [
     [
       "\"Solid mounts a deep component tree 1.15–1.18× faster\"",
-      "Gone since #4199 (static component props folded at compile time), bisected. On 2026-11-25 the mount splits with Solid 1.9: a tie in run 1, Solid 1.9 1.05× in run 2. Its memory is still a loss."
+      "Gone since #4199 (static component props folded at compile time), bisected. On 2026-11-26, with every framework building the same DOM, the mount ties Solid 1.9 in both runs. Its memory is still a loss."
     ],
     [
       "\"Pyreon ties Preact as the lightest framework\"",
-      "Not claimed. After the row board Pyreon reads 3.15–3.16 MB and Preact 3.15 MB (2026-11-25): level at 0.01 MB, with no confidence interval."
+      "Not claimed. After the row board Pyreon reads 3.16 MB and Preact 3.15 MB (2026-11-26): level at 0.01 MB, with no confidence interval."
     ],
     [
       "\"Solid wins effect-list dispose by one clock quantum\"",
-      "Every close arm reads 35–50 µs, under 10 clock quanta, so it gets no verdict."
+      "Every close arm reads 35–55 µs, under 10 clock quanta, so it gets no verdict."
     ],
     [
       "\"~4.9× partial update lead over Solid\"",
-      "A table-layout harness bug inflated it. Re-measured at about 2.1×; today Pyreon is 1.90–1.98× faster than Solid 1.9 and 2.0 on partial update."
+      "A table-layout harness bug inflated it. Re-measured at about 2.1×; today Pyreon is 2.08–2.13× faster than Solid 1.9 and 2.0 on partial update."
     ],
     [
       "\"Pyreon wins clear rows outright, 1.12×\"",
-      "Published on 2026-11-24 from two winning runs. On 2026-11-25 run 1 tied Octane and run 2 won 1.12×, so it is a split and not claimed."
+      "Published on 2026-11-24 from two winning runs. On 2026-11-25 run 1 tied Octane and run 2 won 1.12×, so it is a split and not claimed. The 2026-11-26 session won both runs, but every arm ran clear faster that night for an unexplained reason, so it stays a split until a second session agrees."
     ],
     [
       "\"Pyreon outright on create 1,000 / replace all / create 10,000\"",
-      "Create 1,000, replace all and create 10,000 tie in both runs."
+      "Create 1,000 and replace all tie in both runs; create 10,000 won one run and tied the other on 2026-11-26."
     ],
     [
       "\"Append 1k → 10k: Pyreon wins 1.02×\"",
-      "Page-load-aware intervals turned it into a split, and the 2026-11-24 and 2026-11-25 runs tie in both. Not claimed."
+      "Page-load-aware intervals turned it into a split, and the 2026-11-24 and 2026-11-25 runs tie in both. The 2026-11-26 session won both runs (1.02–1.03×) on a shifted baseline, held back. Not claimed."
     ],
     [
       "\"Vue 3.6 Vapor outright on replace all (1.02×) and swap rows (1.08×)\"",
@@ -687,7 +687,7 @@
     ],
     [
       "Any figure older than 2026-11-05",
-      "This record supersedes every earlier run. Sections a later run did not re-measure keep their figures and their date: row board and core scenarios 2026-11-25, bundle 2026-11-24, the rest 2026-11-05."
+      "This record supersedes every earlier run. Sections a later run did not re-measure keep their figures and their date: row board and core scenarios 2026-11-26 (with four row-board verdicts held at their 2026-11-25 values), bundle 2026-11-24, the rest 2026-11-05."
     ]
   ],
   "competitors": [
@@ -776,8 +776,8 @@
     {
       "stat": "2.7×",
       "label": "faster than React 19 creating 10,000 rows",
-      "condition": "72.96 vs 195.70 ms, real Chromium, row board run twice (figures from run 1)",
-      "source": "BENCHMARKS.md 2026-11-25 §1, create 10,000 row"
+      "condition": "74.33 vs 198.63 ms, real Chromium, row board run twice (figures from run 1)",
+      "source": "BENCHMARKS.md 2026-11-26 §1, create 10,000 row"
     },
     {
       "stat": "3.8×",
@@ -798,7 +798,7 @@
       "source": "BENCHMARKS.md 2026-11-05 §2, charts vs ECharts 6"
     }
   ],
-  "caveat": "Synthetic, author-run, one machine (Apple M3 Max), Chromium only. Row board and core scenarios re-measured 2026-11-25, bundle 2026-11-24; other sections 2026-11-05. Reproduce: pyreon.dev/docs/benchmarks",
+  "caveat": "Synthetic, author-run, one machine (Apple M3 Max), Chromium only. Row board and core scenarios re-measured 2026-11-26 (three row-board wins held back), bundle 2026-11-24; other sections 2026-11-05. Reproduce: pyreon.dev/docs/benchmarks",
   "lossesSection": {
     "title": "Every loss, in one list.",
     "intro": "Wins lead this page. Everything else is here too: every loss from §13 of the record, in one list. We publish where we lose, so you can trust where we win."
@@ -866,7 +866,7 @@
     "hero": {
       "eyebrow": "Benchmarks · record of {date} · {count} competitor libraries",
       "title": "Every result, on the table.",
-      "lede": "Real Chromium, production builds, medians with 95% confidence intervals and a correctness check before anything is timed. The row board and the core scenarios run twice, and a win has to win both runs. Re-measured 2026-11-25 with Solid 2.0 stable and Vue's Vapor release candidate on the board beside Solid 1.9 and Vue 3, and published as measured, including what got worse; the bundle is from 2026-11-24 and sections not re-run keep their 2026-11-05 figures. Every number on every Pyreon page comes from here.",
+      "lede": "Real Chromium, production builds, medians with 95% confidence intervals and a correctness check before anything is timed. The row board and the core scenarios run twice, and a win has to win both runs. Re-measured 2026-11-26 on fixtures where every framework builds the same DOM, with Solid 2.0 stable and Vue's Vapor release candidate beside Solid 1.9 and Vue 3. That session ran the row board's small operations faster for every framework than the day before, so the wins it alone measured are held back. Published as measured, including what got worse; the bundle is from 2026-11-24 and sections not re-run keep their 2026-11-05 figures. Every number on every Pyreon page comes from here.",
       "statsLabel": "Headline results",
       "jumpsLabel": "On this page"
     },
@@ -888,7 +888,7 @@
     "method": {
       "label": "method",
       "title": "How we measure.",
-      "text": "Synthetic benchmarks can't predict your app. They can be run fairly. Apple M3 Max, Chromium 159 (2026-11-24 and 2026-11-25) and 156 (2026-11-05), Node 26 (V8) and Bun 1.4 (JavaScriptCore).",
+      "text": "Synthetic benchmarks can't predict your app. They can be run fairly. Apple M3 Max, Chromium 159 (2026-11-24 to 2026-11-26) and 156 (2026-11-05), Node 26 (V8) and Bun 1.4 (JavaScriptCore).",
       "guide": {
         "text": "The suites and how to run them are documented in the",
         "link": {
@@ -908,7 +908,7 @@
         "op": "Operation",
         "verdict": "Verdict"
       },
-      "run": "Run 1 medians, 2026-11-25; real Chromium; the full board ranks each operation fastest first",
+      "run": "Run 1 medians, 2026-11-26; real Chromium; the full board ranks each operation fastest first",
       "initial": "create 10,000 rows",
       "fastestFirst": "{op}, fastest first: {list}",
       "live": {

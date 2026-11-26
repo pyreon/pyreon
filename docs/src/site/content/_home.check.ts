@@ -124,7 +124,7 @@ export const checked = {
     {
      "stat": "2.7×",
      "label": "faster than React 19 creating 10,000 rows",
-     "detail": "73.0 ms vs 195.7 ms",
+     "detail": "74.3 ms vs 198.6 ms",
      "condition": "real Chromium, row board",
      "source": "record §1"
     },
@@ -136,7 +136,7 @@ export const checked = {
      "source": "record §5 bench:ssr"
     }
    ],
-   "caveat": "synthetic · author-run · M3 Max · rows 2026-11-25, bundle 2026-11-24, SSR 2026-11-05",
+   "caveat": "synthetic · author-run · M3 Max · rows 2026-11-26, bundle 2026-11-24, SSR 2026-11-05",
    "link": {
     "label": "Every result, including where we lose",
     "href": "/benchmarks"
@@ -185,20 +185,20 @@ export const checked = {
     {
      "op": "Select a row, batch-timed",
      "rival": "vs Octane",
-     "result": "1.49–1.50× faster, both runs",
+     "result": "1.78–1.85× faster, both runs",
      "verdict": "win"
     },
     {
-     "op": "Create 1,000 or 10,000, replace, partial update, remove, append",
+     "op": "Create 1,000, replace, partial update, remove, append",
      "rival": "vs Vue Vapor, Octane, Vue 3",
-     "result": "level with the fastest; clear rows and swap split",
+     "result": "level with the fastest; create 10,000, clear rows and swap split",
      "verdict": "tie"
     },
     {
      "op": "Clear rows, batch-timed",
      "rival": "vs Octane",
-     "result": "Octane 1.02× faster, both runs",
-     "verdict": "loss"
+     "result": "Octane 1.02× faster in one session, a tie in two",
+     "verdict": "split"
     }
    ],
    "caveat": "synthetic · author-run · two runs · M3 Max · real Chromium, nine other frameworks, 95% intervals",
@@ -783,15 +783,15 @@ export const checked = {
   },
   {
    "claim": "2.7× / 3.9× at create 10,000",
-   "path": "BENCHMARKS.md 2026-11-25 §1 row board (run 1 figures, two runs)"
+   "path": "BENCHMARKS.md 2026-11-26 §1 row board (run 1 figures, two runs)"
   },
   {
    "claim": "SSR 6.5× / 5.7× vs React 19",
    "path": "record §5 bench:ssr, one run; facts.md"
   },
   {
-   "claim": "batch select 1.49–1.50×, six ops tie, clear rows and swap split, batch clear cycle Octane 1.02×",
-   "path": "BENCHMARKS.md 2026-11-25 §1"
+   "claim": "batch select 1.78–1.85×, five ops tie (partial update and append held back from wins), create 10,000, clear rows and swap split, batch clear cycle Octane 1.02× on 2026-11-25 and a tie on 2026-11-24 and 2026-11-26",
+   "path": "BENCHMARKS.md 2026-11-26 §0, §1"
   },
   {
    "claim": "charts 2.5–8.7× vs ECharts 6",

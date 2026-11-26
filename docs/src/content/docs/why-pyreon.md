@@ -25,34 +25,34 @@ No VDOM, no reconciliation, no `useMemo` to stop re-renders you didn't want. The
 
 ## Is it fast? Honestly.
 
-**This section summarises the benchmark record as re-measured on 2026-11-25** (row board, core scenarios and keyed list re-measured on `dfbdecfc7`, two runs each, Apple M3 Max, Chromium 159; author-written suites, one machine, Chromium only). The complete, authoritative record is [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md) at the repo root; the [benchmarks page](/docs/benchmarks) summarises it with every number and caveat.
+**This section summarises the benchmark record as re-measured on 2026-11-26** (row board, core scenarios and keyed list re-measured on `28d24b6ed` with fixtures where every framework builds the same DOM, two runs each, Apple M3 Max, Chromium 159; author-written suites, one machine, Chromium only). The complete, authoritative record is [`BENCHMARKS.md`](https://github.com/pyreon/pyreon/blob/main/BENCHMARKS.md) at the repo root; the [benchmarks page](/docs/benchmarks) summarises it with every number and caveat.
 
 On the krausest-style synthetic row-list suite (real Chromium via Playwright, production builds, 10 frameworks) Pyreon is **not alone at the front**. Read the numbers, not a headline. Wall-clock, lower is better, first of two runs:
 
-| Operation | **Pyreon** | Vue 3.6 Vapor (RC) | Octane 0.19 | Vue 3 | Solid 1.9 | Solid 2.0 | Svelte 5 | React 19 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Create 1,000 rows | 7.24 | 🤝 7.38 | 🤝 7.27 | 🤝 7.27 | 8.04 | 7.95 | 8.11 | 9.22 |
-| Create 10,000 rows | 72.96 | 🤝 73.67 | 🤝 75.13 | 🤝 74.19 | 78.86 | 79.43 | 87.52 | 195.70 |
-| Partial update (every 10th) | 670µs | 🤝 675µs | 🤝 745µs | 1.02 | 1.28 | 1.33 | 800µs | 865µs |
-| Swap rows | 810µs | 755µs | 🤝 800µs | 1.06 | 🤝 900µs | 🤝 810µs | 1.50 | 5.95 |
-| Remove row | 5.62 | 🤝 5.66 | 🤝 5.64 | 5.89 | 5.79 | 🤝 5.69 | 6.40 | 5.95 |
-| Clear rows | 125µs | 140µs | 🤝 135µs | 245µs | 510µs | 300µs | 335µs | 635µs |
-| Append 1k→10k rows | 13.10 | 62.08 | 🤝 13.45 | 63.46 | 13.88 | 14.09 | 19.63 | 15.43 |
+| Operation | **Pyreon** | Vue 3.6 Vapor (RC) | Octane 0.19 | Vue 3 | Solid 1.9 | Solid 2.0 | Svelte 5 | React 19 | Published verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Create 1,000 rows | 7.40 | 7.50 | 7.46 | 7.42 | 8.09 | 8.07 | 8.23 | 9.44 | tie |
+| Create 10,000 rows | 74.33 | 76.31 | 76.41 | 75.94 | 80.45 | 82.08 | 89.92 | 198.63 | split, not claimed |
+| Partial update (every 10th) | 505µs | 535µs | 540µs | 840µs | 1.08 | 1.05 | 625µs | 750µs | tie (held back) |
+| Swap rows | 480µs | 490µs | 500µs | 730µs | 625µs | 510µs | 1.18 | 5.89 | split (held back) |
+| Remove row | 5.78 | 5.78 | 5.76 | 6.01 | 5.84 | 5.81 | 6.50 | 6.08 | tie |
+| Clear rows | 95µs | 115µs | 115µs | 190µs | 440µs | 255µs | 300µs | 610µs | split (held back) |
+| Append 1k→10k rows | 13.11 | 63.19 | 13.47 | 64.14 | 14.10 | 14.09 | 19.47 | 15.51 | tie (held back) |
 
-(ms unless noted. `🤝` = statistical tie with Pyreon in that run, cluster-bootstrap CI95 overlaps. No cell is Pyreon outright in both runs.)
+(ms unless noted. The verdict compares Pyreon with the fastest rival across both runs; no row is a published Pyreon win.) In this session every framework, hand-written Vanilla included, ran partial update, swap and clear much faster than the day before, for a reason not yet found. Pyreon's intervals cleared every rival's on partial update, clear rows and append in both runs, but because the session's baseline moved, those rows keep the previous session's verdict until a second session agrees.
 
 The honest read:
 
-- **Pyreon wins one row-board result outright: the batch-timed select row** (1.49–1.50× over Octane, both runs). It **ties** the Vue 3.6 Vapor release candidate, Octane and Vue 3 on create 1,000, replace, partial update, remove, create 10,000 and append. Clear rows and swap split between the two runs (clear was a tie with Octane in run 1 and a 1.12× win in run 2; swap a 1.07× loss to Vapor in run 1), so neither is claimed. The batch-timed clear cycle is a **1.02× loss to Octane** in both runs.
+- **Pyreon wins one row-board result outright: the batch-timed select row** (1.78–1.85× over Octane, both runs). It **ties** the Vue 3.6 Vapor release candidate, Octane and Vue 3 on create 1,000, replace, partial update, remove and append. Clear rows, swap and create 10,000 split between runs, so none is claimed. The batch-timed clear cycle lost 1.02× to Octane in both runs of one session and tied in the other two; it is not claimed either way.
 - **Against Solid 1.9 and Solid 2.0** Pyreon is faster on create, replace, partial update, clear, create 10,000 and append in both runs.
 - **The margins are small.** Every interval here resamples whole page loads, because samples from one page load are not independent.
 - **Most of these ops are layout-bound.** Create, replace, remove and append are dominated by browser layout that every framework pays identically.
-- **Memory:** after the suite Pyreon (3.15–3.16MB) and Preact (3.15MB) are level, 0.00–0.01MB apart with no confidence interval, so neither is called the lightest.
+- **Memory:** after the suite Pyreon (3.16MB) and Preact (3.15MB) are level, 0.01MB apart with no confidence interval, so neither is called the lightest.
 
 ### Where Pyreon does *not* win
 
-- **Memory per component.** A mounted 2,047-component tree retains 355KB in Pyreon against 206–207KB in Solid 1.9 (1.72×); it is below Solid 2.0's 411KB. Mounting that tree splits with Solid 1.9 (a tie in one run, Solid 1.9 1.05× ahead in the other), and is faster than Solid 2.0 and React in both.
-- **A keyed list with conditional cells** (the `maplist` scenario): a plain `.map()` of JSX rows loses create (1.07–1.08×) and replace (1.03–1.04×); with `<For>` both split between runs. Clearing 1,000 rows is a win with either (1.14–1.20× over Vue 3).
+- **Memory per component.** A mounted 2,047-component tree retains 356KB in Pyreon against 207KB in Solid 1.9 (1.72×); it is below Solid 2.0's 410KB. Mounting that tree ties Solid 1.9 in both runs (not a win) and is faster than Solid 2.0 and React in both.
+- **A keyed list with conditional cells** (the `maplist` scenario): create and replace lose in both runs, with `<For>` (1.02–1.04×) and with a plain `.map()` of JSX rows (1.03–1.08×). Clearing 1,000 rows is a win with either (1.09–1.19× over Vue 3).
 - **dbmon-style updates**, where every cell changes every tick, are a three-way tie with Octane and Svelte.
 - **Signal creation** is about 5× slower than Preact Signals, and Preact also leads deep unobserved computed chains. Pyreon wins the computed diamond, effect propagation and batching on both V8 and JavaScriptCore.
 - **Bundle size**: the same keyed-table app is 18.5KB gzipped in Pyreon against Solid's 7.7KB and Preact's 10.1KB.

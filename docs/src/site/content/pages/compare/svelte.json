@@ -5,15 +5,15 @@
   "rivalMeasured": "svelte 5.57.3",
   "hook": {
     "eyebrow": "Pyreon vs Svelte",
-    "title": "2,047 components. Mounted 3.5× faster than Svelte 5.",
+    "title": "2,047 components. Mounted 3.1× faster than Svelte 5.",
     "lede": "Svelte compiles components into direct DOM updates. So does Pyreon, from plain TSX instead of a `.svelte` file, and its server rendering came out ahead of Svelte 5 at 10, 100 and 1,000 rows. Miss writing `count++`? Plain Mode lets you."
   },
   "proof": [
     {
-      "stat": "3.5×",
-      "label": "faster to mount a 2,047-component tree: 3.08 ms against 10.92 ms",
-      "condition": "real Chromium, run 1 table of a two-run re-measurement (2026-11-25; 3.6× in run 2)",
-      "source": "BENCHMARKS.md 2026-11-25 §2a"
+      "stat": "3.1×",
+      "label": "faster to mount a 2,047-component tree: 3.51 ms against 10.87 ms",
+      "condition": "real Chromium, run 1 table of a two-run re-measurement (2026-11-26, every framework building the same DOM; 3.1× in run 2)",
+      "source": "BENCHMARKS.md 2026-11-26 §2a"
     },
     {
       "stat": "1.55×",
@@ -22,10 +22,10 @@
       "source": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243"
     },
     {
-      "stat": "1.8×",
-      "label": "faster swapping two rows in 1,000: 810 µs against 1.50 ms",
-      "condition": "real Chromium, run 1 table (1.8× in run 2 too)",
-      "source": "BENCHMARKS.md 2026-11-25 §1 (run 1 table)"
+      "stat": "2.5×",
+      "label": "faster swapping two rows in 1,000: 480 µs against 1.18 ms",
+      "condition": "real Chromium, run 1 table of the 2026-11-26 session (2.6× in run 2; 1.8× the day before, when every framework ran swap slower)",
+      "source": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
     }
   ],
   "table": {
@@ -34,10 +34,10 @@
     "rows": [
       {
         "topic": "Mount a deep tree (2,047 components)",
-        "pyreon": "3.08 ms",
-        "rival": "10.92 ms",
+        "pyreon": "3.51 ms",
+        "rival": "10.87 ms",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-25 §2a (run 1)"
+        "source": "BENCHMARKS.md 2026-11-26 §2a (run 1)"
       },
       {
         "topic": "Compiled SSR, 10 / 100 / 1,000 rows",
@@ -48,24 +48,24 @@
       },
       {
         "topic": "Create 10,000 rows",
-        "pyreon": "72.96 ms",
-        "rival": "87.52 ms",
+        "pyreon": "74.33 ms",
+        "rival": "89.92 ms",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-25 §1 (run 1 table)"
+        "source": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
       },
       {
         "topic": "Swap two rows in 1,000",
-        "pyreon": "810 µs",
-        "rival": "1.50 ms",
+        "pyreon": "480 µs",
+        "rival": "1.18 ms",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-25 §1 (run 1 table)"
+        "source": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
       },
       {
         "topic": "Memo wall: passthrough",
-        "pyreon": "408 / 406 µs",
-        "rival": "436 / 439 µs (Svelte is the fastest rival); Pyreon 1.07–1.08× in both runs",
+        "pyreon": "403 / 402 µs",
+        "rival": "449 / 448 µs (Svelte and Solid 2.0 are the fastest rivals); Pyreon 1.11× in both runs",
         "verdict": "pyreon",
-        "source": "BENCHMARKS.md 2026-11-25 §2a"
+        "source": "BENCHMARKS.md 2026-11-26 §2a"
       },
       {
         "topic": "12-field form, keystroke (blur mode)",
@@ -163,20 +163,20 @@
   },
   "sources": [
     {
-      "claim": "Deep tree Svelte 10.92 ms vs Pyreon 3.08 ms (run 1)",
-      "path": "BENCHMARKS.md 2026-11-25 §2a"
+      "claim": "Deep tree Svelte 10.87 ms vs Pyreon 3.51 ms (run 1; 10.98 vs 3.50 in run 2)",
+      "path": "BENCHMARKS.md 2026-11-26 §2a"
     },
     {
       "claim": "Compiled SSR vs Svelte 5: 2.18 / 18.08 / 160.5 vs 1.80 / 11.64 / 109.9 µs, one run",
       "path": "00-brief/BENCHMARKS-2026-11-05.md §5, lines 241–243"
     },
     {
-      "claim": "Create 10,000 87.52 ms, swap 1.50 ms for Svelte (run 1)",
-      "path": "BENCHMARKS.md 2026-11-25 §1 (run 1 table)"
+      "claim": "Create 10,000 89.92 ms, swap 1.18 ms for Svelte vs Pyreon 74.33 ms / 480 µs (run 1)",
+      "path": "BENCHMARKS.md 2026-11-26 §1 (run 1 table)"
     },
     {
-      "claim": "Memo passthrough 408 / 406 vs Svelte 436 / 439 µs, 1.07–1.08× both runs",
-      "path": "BENCHMARKS.md 2026-11-25 §2a"
+      "claim": "Memo passthrough 403 / 402 vs Svelte 449 / 448 µs, 1.11× both runs",
+      "path": "BENCHMARKS.md 2026-11-26 §2a"
     },
     {
       "claim": "dbmon three-way tie including Svelte",
