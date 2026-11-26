@@ -105,6 +105,25 @@ export function App() {
     }
   })
 
+  it('the label / dismissLabel props are warned by name; nonce / injectStyles are web-only and silent', () => {
+    const src = `
+import { Stack } from '@pyreon/primitives'
+import { Toaster } from '@pyreon/toast'
+export function App() {
+  return <Stack><Toaster label="Oznámení" dismissLabel="Zavřít" nonce="n" injectStyles={false} gap={8} /></Stack>
+}
+`
+    for (const target of ['swift', 'kotlin'] as const) {
+      const r = transform(src, { target })
+      const text = r.warnings.map((w) => String((w as { message?: string }).message ?? w)).join('\n')
+      expect(text, target).toContain('<Toaster label> has no native lowering')
+      expect(text, target).toContain('<Toaster dismissLabel> has no native lowering')
+      expect(text, target).not.toContain('nonce')
+      expect(text, target).not.toContain('injectStyles')
+      expect(r.code).toContain(target === 'swift' ? 'PyreonToaster(gap: 8)' : 'PyreonToaster(gap = 8.0)')
+    }
+  })
+
   const NOT_DISMISSIBLE = `
 import { Stack, Press, Text } from '@pyreon/primitives'
 import { toast, Toaster } from '@pyreon/toast'

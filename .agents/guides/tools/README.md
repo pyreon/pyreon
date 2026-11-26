@@ -87,7 +87,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 - A layered graph, not one barrel: `index.ts` (production), `dev.ts` (fixtures/factories, node-safe), `endpoints/index.ts` + `queries/index.ts` per layer, per-tag files.
 - An emitted `package.json` declares `sideEffects`, so the graph tree-shakes regardless of the consuming app's config.
 - Dev isolation is structural: `index.ts` never names `./faker`, `./mocks` or `./components`. The entry-point tests run with and without the marker; the no-marker half catches regressions. `/* @__PURE__ */` per declaration does not fix this.
-- Plugins: `types`, `schemas`, `client`, `queries`, `mocks`, `faker` (`createX(overrides?)`; spec constraints win over realism), `components`, `atlas`, `docs` (Markdown for the generated client, including native reach).
+- Plugins: `types`, `schemas`, `client`, `queries`, `mocks`, `faker` (`createX(overrides?)`; spec constraints win over realism), `components`, `atlas`, `docs` (Markdown for the generated client, including native reach), `mcp`, `swift` / `kotlin` (plain `Codable` / `@Serializable` model files in `swift/Models.swift` and `kotlin/Models.kt`, configured by `nativeModels`; `emit/native-models.ts` lowers once into shared declarations, then prints per language, so the two platforms cannot disagree about a shape. Proven by compiling and running a decode program with real `swiftc` / `kotlinc` + the serialization plugin, and never passed to the `format` hook).
 
 ### `target: 'multiplatform'`
 
@@ -158,6 +158,7 @@ A new tool or command that reports "clean" for source text must do the same.
 ## `pyreon doctor`
 
 - `doc-claims/unscoped-runner-command` scans docs pages, every README, and the string, template-literal and JSX text (`stringLiteralText`, a TypeScript-parser walk: comments, code and regex literals blanked — a hand-rolled scanner misread regex literals) of `packages/*/*/src` outside tests/fixtures/`.d.ts`. A command that is right as written (it only runs inside a project that installs the package) goes in `RUNNER_COMMAND_ALLOWANCES` as file → bins + reason — never a blanket skip.
+- `doc-claims/unknown-document-format` scans docs pages, every README and every `packages/*/*/src/manifest.ts` for a plain `render(x, '<format>')` call whose format is neither a literal of `@pyreon/document`'s `OutputFormat` (read from `types.ts`) nor registered with `registerRenderer('<format>', …)` in the same file (#4307: `'markdown'` instead of `'md'`). Placeholders like `'<format>'` and method calls (`engine.render(…)`) are not read.
 - 15 gates: react-patterns, pyreon-patterns, lint, distribution, doc-claims, islands-audit, ssg-audit, content-audit, native-audit (needs the optional peer `@pyreon/native-compiler`; skips with an install hint when absent), audit-tests, check-dedup, audit-leak-classes, dependency-fabric, plus the slow audit-types and bundle-budgets. Sources: `packages/tools/cli/src/doctor/gates/`.
 - `doctor --only islands-audit` audits the nearest package manifest, including flat apps and author `src/lib`; pass the workspace root explicitly to compare packages and examples across the repo.
 - Flags: `--full`, `--fix`, `--json`, `--gha`, `--ci`, `--only`, `--skip`, `--roots`, `--format`, `--audit-min-risk`. Anything else is a usage error (an ignored selector would widen the run to every gate).

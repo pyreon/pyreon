@@ -77,7 +77,10 @@ The part no DOM-only testing library can do — assert on **fire counts** and **
 ```ts
 import { expectSignal, expectEffect } from '@pyreon/testing'
 
-expectSignal(total).toHaveRecomputedTimes(1)                    // recomputed once — no thrash
+const total = computed(() => qty() * price())
+total()                                                         // materialize (the first computation counts)
+qty.set(2)
+expectSignal(total).toHaveRecomputedTimes(2)                    // first computation + one recompute, no thrash
 expectEffect(logEffect).toReRunWhen(() => qty.set(3))
 expectEffect(logEffect).notToReRunWhen(() => theme.set('dark')) // fine-grained: NOT re-run by an unrelated write
 ```

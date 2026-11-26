@@ -79,6 +79,8 @@ export function DiffEditor(props: DiffEditorProps): VNodeChild {
         languageCompartment.of(langExt),
         themeCompartment.of(resolveTheme(props.theme ?? 'light')),
         readOnlyCompartment.of(readOnlyExt(readOnly)),
+        // CSP: CodeMirror's injected `<style>` carries the page's nonce.
+        ...(props.nonce ? [EditorView.cspNonce.of(props.nonce)] : []),
       ]
 
       const originalText = readText(props.original)

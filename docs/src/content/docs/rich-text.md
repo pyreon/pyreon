@@ -63,6 +63,7 @@ const editor = createRichTextEditor({
   content: '<p>Initial content</p>',  // HTML string OR ProseMirror JSON
   editable: true,                     // false → read-only
   ariaLabel: 'Post body',             // accessible name for the textbox
+  placeholder: 'Write something…',    // shown while the document is empty
   starterKit: true,                   // bold/italic/headings/lists/… (default)
   extensions: [],                     // extra TipTap extensions, appended
   autofocus: false,
@@ -265,6 +266,23 @@ The content area is rendered as a `role="textbox"` `aria-multiline="true"` regio
 
 ```tsx
 createRichTextEditor({ ariaLabel: 'Comment body' })
+```
+
+## Content Security Policy
+
+On mount the editor injects two `<style>` elements: TipTap's base editor CSS (`<style data-tiptap-style>`) and, with a `placeholder`, the default placeholder rule (`<style data-pyreon-rich-text-placeholder>`). A policy without `'unsafe-inline'` in `style-src` refuses both. Pass the request's nonce, or turn injection off and import the same rules as a file (which `style-src 'self'` allows):
+
+```ts
+// @check
+import { createRichTextEditor } from '@pyreon/rich-text'
+
+declare const cspNonce: string
+
+// 1. Keep the injection, allowed by nonce (style-src 'self' 'nonce-…'):
+const a = createRichTextEditor({ placeholder: 'Write…', nonce: cspNonce })
+
+// 2. Load the rules as a file — `import '@pyreon/rich-text/styles.css'` — and inject nothing:
+const b = createRichTextEditor({ placeholder: 'Write…', injectStyles: false })
 ```
 
 ## Collaboration with `@pyreon/sync`

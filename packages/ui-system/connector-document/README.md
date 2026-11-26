@@ -31,7 +31,7 @@ const vnode = (
 const docTree = extractDocumentTree(vnode)
 const pdf = await render(docTree, 'pdf')      // Buffer
 const docx = await render(docTree, 'docx')    // Buffer
-const md = await render(docTree, 'markdown')  // string
+const md = await render(docTree, 'md')        // string
 ```
 
 In practice, you'll usually call `extractDocNode` from `@pyreon/document-primitives` — a one-step alias that wraps a template function in an extraction-friendly shape — rather than `extractDocumentTree` directly. Use `extractDocumentTree` when you already have a vnode in hand (a captured render result, a test fixture).

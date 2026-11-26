@@ -27,6 +27,11 @@ export interface ToastOptions {
   icon?: VNodeChild
   /** Whether the toast shows a dismiss button. Default: true. */
   dismissible?: boolean
+  /**
+   * Accessible name of this toast's dismiss button. Overrides the Toaster's
+   * `dismissLabel` for this one toast. Default: the Toaster's `dismissLabel`.
+   */
+  dismissLabel?: string
   /** Optional action button. */
   action?: ToastAction
   /** Called when the toast is dismissed (manually or by timeout). */
@@ -62,6 +67,30 @@ export interface ToasterProps {
   offset?: number
   /** Default auto-dismiss duration in ms for toasts that don't set their own. Default: 4000. Set 0 for persistent-by-default. */
   duration?: number
+  /**
+   * Accessible name of the toast region (the `<section>` landmark). Pass an
+   * accessor to follow a locale signal. Default: `"Notifications"`.
+   */
+  label?: string | (() => string)
+  /**
+   * Accessible name of every toast's dismiss button (a toast's own
+   * `dismissLabel` option wins). Pass an accessor to follow a locale signal.
+   * Default: `"Dismiss"`.
+   */
+  dismissLabel?: string | (() => string)
+  /**
+   * CSP nonce for the `<style data-pyreon-toast>` element the Toaster injects,
+   * so a `style-src 'nonce-…'` policy accepts it. Ignored when
+   * `injectStyles` is `false`.
+   */
+  nonce?: string
+  /**
+   * Whether the Toaster injects its stylesheet as a `<style>` element.
+   * Default: `true`. Set `false` under a CSP without `'unsafe-inline'` (and no
+   * nonce) and load the same rules as a file instead:
+   * `import '@pyreon/toast/styles.css'`.
+   */
+  injectStyles?: boolean
 }
 
 export interface ToastPromiseOptions<T> {
@@ -82,6 +111,7 @@ export interface Toast {
   description: string | VNodeChild | undefined
   icon: VNodeChild | undefined
   dismissible: boolean
+  dismissLabel: string | undefined
   action: ToastAction | undefined
   onDismiss: (() => void) | undefined
   state: ToastState

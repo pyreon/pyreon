@@ -1116,7 +1116,9 @@ fun PyreonGesture(
 // produces.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier, domStorage: Boolean = true) {}
+fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier, domStorage: Boolean = true, onDownload: ((PyreonWebViewDownload) -> Unit)? = null, saveDownloads: Boolean = true) {}
+
+data class PyreonWebViewDownload(val url: String, val filename: String, val mimeType: String)
 
 // PyreonJson — mirror of @pyreon/native-runtime-kotlin's PyreonJson.kt.
 // Stub so the kotlinc validate gate resolves \`PyreonJson.encode(signal)\`

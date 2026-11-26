@@ -25,6 +25,15 @@ export type LatheFormatter = (code: string, path: string) => string | Promise<st
 const BOOKKEEPING = new Set([OUTPUT_MANIFEST, 'api-surface.json'])
 
 /**
+ * Swift and Kotlin (the `swift` / `kotlin` model plugins) are not passed
+ * either: a project's formatter is a JS-ecosystem one (prettier, biome) that
+ * cannot parse them -- prettier THROWS on an unknown extension, so adding the
+ * plugin would fail every run. They are emitted in their language's
+ * conventional layout instead.
+ */
+const NOT_FORMATTED = /\.(swift|kt)$/
+
+/**
  * Format `files` with `format`, preserving order. Without a formatter the
  * input is returned as-is.
  *
@@ -44,7 +53,7 @@ export async function formatFiles(
   if (!format) return [...files]
   return Promise.all(
     files.map(async (file) => {
-      if (BOOKKEEPING.has(file.path)) return file
+      if (BOOKKEEPING.has(file.path) || NOT_FORMATTED.test(file.path)) return file
       let out: unknown
       try {
         out = await format(file.contents, file.path)
