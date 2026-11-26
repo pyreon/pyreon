@@ -12,6 +12,7 @@ import {
   type ClientName,
   type ResponseValidation,
 } from "../emit/client-runtime";
+import { isKotlinPackage } from "../emit/native-identifiers";
 import { ALL_VALIDATORS, type ValidatorName } from "../emit/validator";
 import type { LatheNaming, LatheOperationSettings } from "./customize";
 import type { LatheFormatter } from "./format";
@@ -32,7 +33,9 @@ export type PluginName =
   | "components"
   | "atlas"
   | "docs"
-  | "mcp";
+  | "mcp"
+  | "swift"
+  | "kotlin";
 
 export const ALL_PLUGINS: readonly PluginName[] = [
   "types",
@@ -45,6 +48,8 @@ export const ALL_PLUGINS: readonly PluginName[] = [
   "atlas",
   "docs",
   "mcp",
+  "swift",
+  "kotlin",
 ];
 
 export const DEFAULT_PLUGINS: readonly PluginName[] = [
@@ -88,6 +93,9 @@ export const PLUGIN_REQUIRES: Readonly<
   docs: [],
   // Each tool's `call` runs the generated endpoint.
   mcp: ["client"],
+  // Plain Swift / Kotlin model files: no TypeScript, no imports either way.
+  swift: [],
+  kotlin: [],
 };
 
 /**
@@ -106,6 +114,7 @@ export function expandPlugins(selected: readonly PluginName[]): PluginName[] {
     out.push(name);
   };
   for (const name of selected) visit(name);
+
   return out;
 }
 
@@ -422,8 +431,9 @@ export interface LatheSection {
    * Format every generated source file before it is written AND before
    * `lathe check` compares — so committed, formatted output is not reported
    * stale. Receives the file's path so a formatter can pick its parser.
-   * Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`) is
-   * never passed. Must be deterministic, like everything else here.
+   * Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`) and
+   * the `swift` / `kotlin` model files are never passed. Must be
+   * deterministic, like everything else here.
    *
    * @example
    * ```ts
@@ -444,6 +454,42 @@ export interface LatheSection {
    * @default false
    */
   strictNative?: boolean;
+  /**
+   * Options for the `swift` and `kotlin` plugins, which write the spec's models
+   * as plain native types -- `swift/Models.swift` (`Codable` structs) and
+   * `kotlin/Models.kt` (kotlinx.serialization `@Serializable` data classes) --
+   * for an iOS / Android app with its own networking. No Pyreon runtime is
+   * involved; point Xcode / Gradle at those files.
+   *
+   * @example
+   * ```ts
+   * export default defineConfig({
+   *   lathe: {
+   *     input: './openapi.yaml',
+   *     plugins: ['schemas', 'client', 'queries', 'swift', 'kotlin'],
+   *     nativeModels: { kotlinPackage: 'com.example.api', swiftAccess: 'public' },
+   *   },
+   * })
+   * ```
+   */
+  nativeModels?: NativeModelsConfig;
+}
+
+/** See `LatheSection.nativeModels`. */
+export interface NativeModelsConfig {
+  /**
+   * The Kotlin `package` of `kotlin/Models.kt`.
+   *
+   * @default 'api'
+   */
+  kotlinPackage?: string;
+  /**
+   * The access level of every Swift declaration. `public` when the file lives
+   * in a Swift package or framework other code imports.
+   *
+   * @default 'internal'
+   */
+  swiftAccess?: "internal" | "public";
 }
 
 /** How `format: int64` is generated — see `LatheSection.int64`. */
@@ -515,6 +561,7 @@ export interface ResolvedConfig {
   remoteHeaders?: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined
   refRoot?: string | undefined
   refOrigins?: readonly string[] | undefined
+  nativeModels: { kotlinPackage: string; swiftAccess: "internal" | "public" }
 }
 
 /**
@@ -530,6 +577,7 @@ export function resolveProjects(
   if (!projects || projects.length === 0) return [resolveConfig(section)];
 
   const seen = new Set<string>();
+
   return projects.map((p, i) => {
     if (!p.name) {
       throw new Error(
@@ -548,6 +596,7 @@ export function resolveProjects(
     // `exactOptionalPropertyTypes` treats `{ projects: undefined }` and an
     // absent key as different types, and only the absent key is legal here.
     const { projects: _drop, ...base } = { ...section, ...p };
+
     return { ...resolveConfig(base), name: p.name };
   });
 }
@@ -670,6 +719,19 @@ export function resolveConfig(
         `Use \`target: 'web'\` with ${client}, or \`client: 'pyreon'\` to reach iOS and Android.`,
     );
   }
+  const kotlinPackage = section?.nativeModels?.kotlinPackage ?? "api";
+  if (!isKotlinPackage(kotlinPackage)) {
+    throw new Error(
+      `[Pyreon] lathe: \`nativeModels.kotlinPackage\` \`${kotlinPackage}\` is not a Kotlin package name. Use dot-separated identifiers, e.g. \`com.example.api\`.`,
+    );
+  }
+  const swiftAccess = section?.nativeModels?.swiftAccess ?? "internal";
+  if (swiftAccess !== "internal" && swiftAccess !== "public") {
+    throw new Error(
+      `[Pyreon] lathe: unknown \`nativeModels.swiftAccess\` \`${String(swiftAccess)}\`. Known: internal, public.`,
+    );
+  }
+
   return {
     name: "",
     requestedPlugins: plugins,
@@ -695,6 +757,7 @@ export function resolveConfig(
     remoteHeaders: section?.remoteHeaders,
     refRoot: section?.refRoot,
     refOrigins,
+    nativeModels: { kotlinPackage, swiftAccess },
   }
 }
 
@@ -714,5 +777,6 @@ export function validRefOrigin(entry: string): string {
   if (!url || !/^https?:$/.test(url.protocol) || url.origin !== entry.replace(/\/$/, '')) {
     throw new Error(`[Pyreon] lathe: refOrigins entry \`${entry}\` is not an origin. Use \`https://host[:port]\`, or \`*\` for any public origin.`)
   }
+
   return url.origin
 }

@@ -33,6 +33,7 @@ import { docsImportBase, emitDocs } from "../emit/docs";
 import { emitFaker } from "../emit/faker";
 import { emitMcpTools } from "../emit/mcp";
 import { emitMocks } from "../emit/mock";
+import { emitKotlinModels, emitSwiftModels } from "../emit/native-models";
 import { emitPackageMarker } from "../emit/package-marker";
 import { isStreamOnly, streamHookName, streamName } from "../emit/stream";
 import { emitSchemas, emitTypes } from "../emit/schema";
@@ -207,6 +208,10 @@ function* pipeline(
   // Previews come BEFORE scenarios: the scenario keys are these component
   // names, so emitting scenarios without them is a plausible-looking no-op.
   if (has("components")) push(emitComponents(doc));
+  // Plain native model files. Not TypeScript, so not built with the TS banner
+  // or the import manager; ordinary output otherwise (manifest, `check`, prune).
+  if (has("swift")) files.push(emitSwiftModels(doc, config.nativeModels));
+  if (has("kotlin")) files.push(emitKotlinModels(doc, config.nativeModels));
   if (has("atlas")) {
     push(emitAtlasScenarios(doc, { faker: has("faker") }));
     push(emitAtlasWrapper(doc));

@@ -432,7 +432,7 @@ const right = signal('// after')
 right.set('// after (edited)') // the right pane re-renders
 ```
 
-`DiffEditorProps`: `original`, `modified` (required), plus optional `language`, `theme`, `inline` (default `false`), `readOnly` (default `true`), `style`, `class`. It mounts two CodeMirror instances and tears them down on unmount.
+`DiffEditorProps`: `original`, `modified` (required), plus optional `language`, `theme`, `inline` (default `false`), `readOnly` (default `true`), `nonce` (CSP), `style`, `class`. It mounts two CodeMirror instances and tears them down on unmount.
 
 ## Tabbed Editor
 
@@ -658,6 +658,7 @@ Returns an `EditorInstance`. See [Configuration](#configuration) for the full `c
 | `tabSize`               | `number`              | `2`         | Indent width in spaces                       |
 | `lineWrapping`          | `boolean`             | `false`     | Soft-wrap long lines                         |
 | `ariaLabel`             | `string`              | `'Code editor'` | Accessible name of the editing textbox   |
+| `nonce`                 | `string`              | —           | CSP nonce for the `<style>` CodeMirror injects |
 | `placeholder`           | `string`              | —           | Placeholder shown when empty                 |
 | `minimap`               | `boolean`             | `false`     | Canvas code-overview sidebar                 |
 | `extensions`            | `Extension[]`         | `[]`        | Extra raw CodeMirror extensions              |
@@ -711,12 +712,26 @@ Returns a CodeMirror `Extension` — the canvas code-overview minimap. Equivalen
 | Component        | Props                                                                                  | Description                          |
 | ---------------- | -------------------------------------------------------------------------------------- | ------------------------------------ |
 | `<CodeEditor>`   | `instance: EditorInstance`, `style?`, `class?`                                         | Single-file editor                   |
-| `<DiffEditor>`   | `original`, `modified` (`string \| Signal<string>`), `language?`, `theme?`, `inline?`, `readOnly?`, `style?`, `class?` | Side-by-side / inline diff           |
+| `<DiffEditor>`   | `original`, `modified` (`string \| Signal<string>`), `language?`, `theme?`, `inline?`, `readOnly?`, `nonce?`, `style?`, `class?` | Side-by-side / inline diff           |
 | `<TabbedEditor>` | `instance: TabbedEditorInstance`, `style?`, `class?`                                   | Tab bar over one editor (see [note](#tabbed-editor)) |
 
 ### Exported types
 
 `EditorConfig`, `EditorInstance`, `EditorLanguage`, `EditorTheme`, `GutterMarker`, `LanguageLoader`, `CodeEditorProps`, `DiffEditorProps`, `Tab`, `TabbedEditorConfig`, `TabbedEditorInstance`, `TabbedEditorProps`, plus `BindEditorToSignalOptions`, `EditorBinding`, and `SignalLike` from the binding module.
+
+## Content Security Policy
+
+CodeMirror writes its theme and layout CSS into a `<style>` element in the document `<head>`. Under a policy whose `style-src` has no `'unsafe-inline'` (for example `style-src 'self' 'nonce-r4nd0m'`), the browser refuses that element: the editor renders unstyled and a violation is reported on every page that mounts one. Pass the page's nonce:
+
+```ts
+const editor = createEditor({ value: '', language: 'typescript', nonce: cspNonce })
+```
+
+```tsx
+<DiffEditor original={before} modified={after} nonce={cspNonce} />
+```
+
+`nonce` sets CodeMirror's `EditorView.cspNonce`, so the `<style>` it creates carries the nonce and is accepted. There is no static stylesheet to load instead: CodeMirror generates its class names (`ͼ1`, `ͼ2`, …) at runtime, per theme and extension. A real-Chromium test runs under the policy with and without the nonce (`src/tests/csp*.browser.test.tsx`).
 
 ## Multiplatform
 

@@ -899,6 +899,7 @@ lathe generate --plugins schemas          # just s.* schemas + types
 lathe generate --plugins schemas,mocks    # ...and deterministic fixtures
 lathe generate --plugins docs             # just the Markdown reference
 lathe generate --plugins mcp              # client + every operation as an MCP tool
+lathe generate --plugins swift,kotlin     # plain native model types, nothing else
 ```
 
 | plugin | emits | needs |
@@ -913,6 +914,8 @@ lathe generate --plugins mcp              # client + every operation as an MCP t
 | `atlas` | workbench scenarios + wrapper | `components`, `mocks` |
 | `docs` | Markdown reference pages | — |
 | `mcp` | every operation as an MCP tool definition (`mcp.ts`) — name, description, JSON Schema input, a `call` running the generated endpoint | `client` |
+| `swift` | plain Swift `Codable` model types (`swift/Models.swift`) — see below | — |
+| `kotlin` | plain Kotlin `@Serializable` model types (`kotlin/Models.kt`) — see below | — |
 
 The **needs** column is import edges in the emitted code, not preferences —
 `queries/*.ts` imports `endpoints/*.ts`, `components.tsx` imports the hooks. A
@@ -937,6 +940,123 @@ a project that wants browsable data components without a workbench selects
 `target: 'multiplatform'` is additive on top of whichever of these you picked —
 it adds the native LAYOUT for `client`/`queries`, so asking for `schemas` alone
 gets you schemas alone on both targets.
+
+### Plain Swift and Kotlin models
+
+For an iOS or Android app that already has its own networking and views, the
+`swift` and `kotlin` plugins write the spec's models as plain native types:
+Swift `Codable` types in `swift/Models.swift` and kotlinx.serialization
+`@Serializable` types in `kotlin/Models.kt`, under the output directory. They
+use no Pyreon runtime. Point Xcode at the Swift file and Gradle at the Kotlin
+one (`sourceSets.main.kotlin.srcDir(...)`). The files are ordinary output:
+`lathe check` reports them stale, and the next run prunes one you stop
+generating.
+
+```ts
+lathe: {
+  input: './openapi.yaml',
+  plugins: ['schemas', 'client', 'queries', 'swift', 'kotlin'],
+  nativeModels: { kotlinPackage: 'com.example.api', swiftAccess: 'public' },
+}
+```
+
+```bash
+lathe generate --plugins swift,kotlin     # only the native models
+```
+
+The Kotlin package defaults to `api`, and Swift declarations default to
+`internal` access. `swiftAccess: 'public'` is for a file that lives in a Swift
+package or framework that other code imports. Each Swift type gets an explicit
+memberwise `init`.
+
+```swift
+struct Note: Codable {
+    var id: String
+    var title: String
+    var body: String?
+
+    init(id: String, title: String, body: String? = nil) { … }
+}
+```
+
+```kotlin
+@Serializable
+data class Note(
+    val id: String,
+    val title: String,
+    val body: String? = null,
+)
+```
+
+| spec | Swift | Kotlin |
+| --- | --- | --- |
+| object | `struct` (a `final class` when it contains itself other than through an array or map) | `@Serializable data class` |
+| optional property | `T? = nil` | `T? = null` |
+| required, nullable | `T?`, no default in the `init`; written as `null`, and the key must be present to decode | `T?`, no default (same wire behaviour) |
+| `snake_case` / keyword / symbol key | camelCase property + `CodingKeys` | camelCase property + `@SerialName` |
+| string enum | `enum X: String, Codable, CaseIterable` | `@Serializable enum class` with `@SerialName` entries |
+| integer enum | `enum X: Int, Codable` | `typealias X = Long`, with the allowed values in its KDoc |
+| one-value enum / `const` (a discriminator tag) | `String`, with the value in its doc comment | `String`, with the value in its KDoc |
+| `integer` / `int64` | `Int` (64-bit) / `Int64` under `int64: 'bigint'` | `Long` |
+| `number` / `boolean` | `Double` / `Bool` | `Double` / `Boolean` |
+| `format: date-time` | `Date` | `String` (ISO 8601) |
+| `format: date`, other formats | `String` | `String` |
+| array / `additionalProperties` map | `[T]` / `[String: T]` | `List<T>` / `Map<String, T>` |
+| untyped (`{}`, free-form object) | `JSONValue` (emitted) | `JsonElement` |
+| `allOf` | the merged object | the merged object |
+| `oneOf` / `anyOf` | `indirect enum` with one case per member | `sealed interface` + a `KSerializer` |
+| `readOnly` / `writeOnly` | separate `<Name>` and `<Name>Input` types | the same |
+
+Inline objects, enums and unions become named top-level types, named
+`<Parent><Property>` (`Pet.status` becomes `PetStatus`). A model is renamed
+with a `Model` suffix when its name is a type the generated file itself writes
+(`Hashable`, `CodingKeys`, `TagKey`, `Json`, `Suppress`, …). That set is
+derived from the printers' own output, so it cannot fall behind them. The same
+applies to a type an app module routinely uses (`Data`, `URL`, `View`,
+`Result`, `List`), which a model in the same module would shadow.
+
+Property and case names are camelCase. A name that is a Swift or Kotlin
+keyword gets a `_` suffix (`nil_`, `fallthrough_`, `class_`). A key with no
+letters or digits is spelled out (`$` becomes `dollar`, and an enum value `+`
+becomes `plus` / `PLUS`). The wire name is always kept through `CodingKeys` /
+`@SerialName`.
+
+A union with a `discriminator` is **tagged**: it decodes by the tag and
+rejects an unknown tag. The tag values come from each member's discriminator
+property when that is an enum or `const`. Otherwise they follow OpenAPI's
+mapping rule: the `mapping` keys that name a member, or else the member's
+component name. So Petstore's `petType: string` dispatches `"Dog"` to `Dog`, and
+never guesses by shape. A union without a usable discriminator is
+**untagged**: the first member that decodes wins, in spec order, with integers
+tried before numbers (so `1` is not read as `1.0`). A discriminator that cannot
+be used, such as one where two members claim one tag, is named in a comment on
+the type.
+
+**Decoding.** Decode with the `LatheJSON.decoder` and `LatheJSON.encoder`
+emitted into the Swift file. They read RFC 3339 date-times with and without
+fractional seconds, which Foundation's `.iso8601` strategy does not. In
+Kotlin, use the emitted `LatheJson`. It ignores unknown keys, as Swift's
+`Codable` does, so a server that adds a field does not break the app. Kotlin
+needs `kotlinx-serialization-json` and the serialization compiler plugin, and
+nothing else.
+
+**Not mapped, by design:**
+
+- An object with both declared properties and `additionalProperties` keeps only
+  the declared properties, and a comment on the type says so.
+- An enum that mixes value types (`['a', 1, true]`) is typed as the JSON value
+  type.
+- kotlinx.serialization encodes an enum by its name, so an integer-valued enum
+  stays a `Long` in Kotlin.
+- `date-time` is a `String` in Kotlin to avoid a dependency. Parse it with
+  `kotlinx-datetime` or `java.time` if you need an instant.
+- Only models are emitted (`components.schemas`, plus the request/response
+  splits Lathe derives). Inline operation types and webhook payloads are not.
+- Each project writes one `JSONValue` and one `LatheJSON` / `LatheJson`. Two
+  Lathe projects that compile into the same Swift module or Kotlin package
+  collide, so give each its own module or package.
+- The project `format` hook does not see these files (a JS formatter cannot
+  parse them). They are emitted in each language's conventional layout.
 
 ### Your own plugins
 

@@ -321,6 +321,8 @@ is a normal thing to want.
 | `atlas` | workbench scenarios + wrapper | `components`, `mocks` |
 | `docs` | Markdown reference pages | — |
 | `mcp` | every operation as an MCP tool definition (`mcp.ts`) | `client` |
+| `swift` | plain Swift `Codable` model types (`swift/Models.swift`) | — |
+| `kotlin` | plain Kotlin `@Serializable` model types (`kotlin/Models.kt`) | — |
 
 The **needs** column is import edges in the emitted code, not preferences. A
 selection is expanded to cover them rather than refused, and the report says
@@ -343,6 +345,123 @@ resolved from the working directory, or a package, resolved through
 would be. Its default export is a plugin, an array of plugins, or a function
 returning one. A name that is neither a built-in nor loadable is a usage error
 with a did-you-mean (`querys` → `queries`).
+
+### Plain Swift and Kotlin models
+
+For an iOS or Android app that already has its own networking and views, the
+`swift` and `kotlin` plugins write the spec's models as plain native types:
+Swift `Codable` types in `swift/Models.swift` and kotlinx.serialization
+`@Serializable` types in `kotlin/Models.kt`, under the output directory. They
+use no Pyreon runtime. Point Xcode at the Swift file and Gradle at the Kotlin
+one (`sourceSets.main.kotlin.srcDir(...)`). The files are ordinary output:
+`lathe check` reports them stale, and the next run prunes one you stop
+generating.
+
+```ts
+lathe: {
+  input: './openapi.yaml',
+  plugins: ['schemas', 'client', 'queries', 'swift', 'kotlin'],
+  nativeModels: { kotlinPackage: 'com.example.api', swiftAccess: 'public' },
+}
+```
+
+```bash
+lathe generate --plugins swift,kotlin     # only the native models
+```
+
+The Kotlin package defaults to `api`, and Swift declarations default to
+`internal` access. `swiftAccess: 'public'` is for a file that lives in a Swift
+package or framework that other code imports. Each Swift type gets an explicit
+memberwise `init`.
+
+```swift
+struct Note: Codable {
+    var id: String
+    var title: String
+    var body: String?
+
+    init(id: String, title: String, body: String? = nil) { … }
+}
+```
+
+```kotlin
+@Serializable
+data class Note(
+    val id: String,
+    val title: String,
+    val body: String? = null,
+)
+```
+
+| spec | Swift | Kotlin |
+| --- | --- | --- |
+| object | `struct` (a `final class` when it contains itself other than through an array or map) | `@Serializable data class` |
+| optional property | `T? = nil` | `T? = null` |
+| required, nullable | `T?`, no default in the `init`; written as `null`, and the key must be present to decode | `T?`, no default (same wire behaviour) |
+| `snake_case` / keyword / symbol key | camelCase property + `CodingKeys` | camelCase property + `@SerialName` |
+| string enum | `enum X: String, Codable, CaseIterable` | `@Serializable enum class` with `@SerialName` entries |
+| integer enum | `enum X: Int, Codable` | `typealias X = Long`, with the allowed values in its KDoc |
+| one-value enum / `const` (a discriminator tag) | `String`, with the value in its doc comment | `String`, with the value in its KDoc |
+| `integer` / `int64` | `Int` (64-bit) / `Int64` under `int64: 'bigint'` | `Long` |
+| `number` / `boolean` | `Double` / `Bool` | `Double` / `Boolean` |
+| `format: date-time` | `Date` | `String` (ISO 8601) |
+| `format: date`, other formats | `String` | `String` |
+| array / `additionalProperties` map | `[T]` / `[String: T]` | `List<T>` / `Map<String, T>` |
+| untyped (`{}`, free-form object) | `JSONValue` (emitted) | `JsonElement` |
+| `allOf` | the merged object | the merged object |
+| `oneOf` / `anyOf` | `indirect enum` with one case per member | `sealed interface` + a `KSerializer` |
+| `readOnly` / `writeOnly` | separate `<Name>` and `<Name>Input` types | the same |
+
+Inline objects, enums and unions become named top-level types, named
+`<Parent><Property>` (`Pet.status` becomes `PetStatus`). A model is renamed
+with a `Model` suffix when its name is a type the generated file itself writes
+(`Hashable`, `CodingKeys`, `TagKey`, `Json`, `Suppress`, …). That set is
+derived from the printers' own output, so it cannot fall behind them. The same
+applies to a type an app module routinely uses (`Data`, `URL`, `View`,
+`Result`, `List`), which a model in the same module would shadow.
+
+Property and case names are camelCase. A name that is a Swift or Kotlin
+keyword gets a `_` suffix (`nil_`, `fallthrough_`, `class_`). A key with no
+letters or digits is spelled out (`$` becomes `dollar`, and an enum value `+`
+becomes `plus` / `PLUS`). The wire name is always kept through `CodingKeys` /
+`@SerialName`.
+
+A union with a `discriminator` is **tagged**: it decodes by the tag and
+rejects an unknown tag. The tag values come from each member's discriminator
+property when that is an enum or `const`. Otherwise they follow OpenAPI's
+mapping rule: the `mapping` keys that name a member, or else the member's
+component name. So Petstore's `petType: string` dispatches `"Dog"` to `Dog`, and
+never guesses by shape. A union without a usable discriminator is
+**untagged**: the first member that decodes wins, in spec order, with integers
+tried before numbers (so `1` is not read as `1.0`). A discriminator that cannot
+be used, such as one where two members claim one tag, is named in a comment on
+the type.
+
+**Decoding.** Decode with the `LatheJSON.decoder` and `LatheJSON.encoder`
+emitted into the Swift file. They read RFC 3339 date-times with and without
+fractional seconds, which Foundation's `.iso8601` strategy does not. In
+Kotlin, use the emitted `LatheJson`. It ignores unknown keys, as Swift's
+`Codable` does, so a server that adds a field does not break the app. Kotlin
+needs `kotlinx-serialization-json` and the serialization compiler plugin, and
+nothing else.
+
+**Not mapped, by design:**
+
+- An object with both declared properties and `additionalProperties` keeps only
+  the declared properties, and a comment on the type says so.
+- An enum that mixes value types (`['a', 1, true]`) is typed as the JSON value
+  type.
+- kotlinx.serialization encodes an enum by its name, so an integer-valued enum
+  stays a `Long` in Kotlin.
+- `date-time` is a `String` in Kotlin to avoid a dependency. Parse it with
+  `kotlinx-datetime` or `java.time` if you need an instant.
+- Only models are emitted (`components.schemas`, plus the request/response
+  splits Lathe derives). Inline operation types and webhook payloads are not.
+- Each project writes one `JSONValue` and one `LatheJSON` / `LatheJson`. Two
+  Lathe projects that compile into the same Swift module or Kotlin package
+  collide, so give each its own module or package.
+- The project `format` hook does not see these files (a JS formatter cannot
+  parse them). They are emitted in each language's conventional layout.
 
 ### Writing your own plugin
 
@@ -1314,13 +1433,16 @@ Paths passed on the command line are relative to the working directory.
 | `filters` | `LatheFilters` | — | Generate a SUBSET of the spec. `include` keeps operations some matcher selects, then `exclude` drops any a matcher selects; models only the dropped operations used are dropped too (`models: 'all'` keeps them). A matcher that selects nothing is an error — it is almost always a typo. |
 | `patches` | `({ op: "add"; path: string; value: unknown; } \| { op: "replace"; path: string; value: unknown; } \| { op: "remove"; path: string; })[]` | — | Corrections applied to the spec BEFORE it is read — RFC 6902 `add` / `replace` / `remove` at an RFC 6901 pointer. A note's `at` (`#/paths/…`) can be pasted in as the path. A patch whose target no longer exists FAILS the run: the spec changed under it and it needs another look. |
 | `naming` | `LatheNaming` | — | Rename what Lathe generates. Each function receives Lathe's own choice as `default`, so returning it keeps it. Results are checked: an invalid name or two things mapped to one name is an error naming both. |
-| `format` | `(code: string, path: string) => string \| Promise<string>` | — | Format every generated source file before it is written AND before `lathe check` compares — so committed, formatted output is not reported stale. Receives the file's path so a formatter can pick its parser. Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`) is never passed. Must be deterministic, like everything else here. |
+| `format` | `(code: string, path: string) => string \| Promise<string>` | — | Format every generated source file before it is written AND before `lathe check` compares — so committed, formatted output is not reported stale. Receives the file's path so a formatter can pick its parser. Lathe's own bookkeeping (`lathe-manifest.json`, `api-surface.json`) and the `swift` / `kotlin` model files are never passed. Must be deterministic, like everything else here. |
 | `strictNative` | `boolean` | `false` | Fail the run when a generated native module does not lower. |
+| `nativeModels` | `NativeModelsConfig` | — | Options for the `swift` and `kotlin` plugins, which write the spec's models as plain native types -- `swift/Models.swift` (`Codable` structs) and `kotlin/Models.kt` (kotlinx.serialization `@Serializable` data classes) -- for an iOS / Android app with its own networking. No Pyreon runtime is involved; point Xcode / Gradle at those files. |
 | `projects` | `{ name, input, …any key above }[]` | — | Several specs in one run, each with its own output and target. |
 {/* gen:lathe-config:end */}
 
-An unknown `plugins`, `client`, `validator`, `target` or `int64` value is refused by
-name, with the known values listed.
+An unknown `plugins`, `client`, `validator`, `target`, `int64` or
+`nativeModels.swiftAccess` value is refused by name, with the known values
+listed, and a `nativeModels.kotlinPackage` that is not a Kotlin package name is
+refused.
 
 ## Command line
 

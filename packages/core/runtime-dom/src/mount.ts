@@ -59,6 +59,7 @@ import { setupDelegation } from './delegate'
 import { guardTeardown, releaseRef } from './teardown'
 import { _adoptParkedText, _parkedPending } from './parked-text'
 import { _adoptingCompiledBind, reportFirstText } from './hydration-debug'
+import { textChanged, textValue, type TextValue } from './text-value'
 import { _devInspectable, registerComponent, unregisterComponent } from './devtools'
 import { _takePendingForAdoption, detachNode, mountFor, mountKeyedList, mountReactive } from './nodes'
 import type { FirstRun } from './nodes'
@@ -1143,14 +1144,15 @@ export function isPolyTextish(v: unknown): boolean {
  * The text write every poly text binding performs for a textish `v` — the ONE
  * implementation shared by the swap core and the lazy text-only phase of
  * `bindPolymorphicText` / `mountAccessorChild`, so the two cannot drift.
- * `written` is the string the binding last wrote (`null` before the first
+ * `written` is the value the binding last wrote, RAW (`null` before the first
  * write, which reads the node once so adopted SSR text that already matches
- * is left untouched). Returns the new `written`.
+ * is left untouched). A number goes to the DOM unconverted (see
+ * `text-value.ts`). Returns the new `written`.
  */
-export function writePolyText(text: Text, v: VNodeChild, written: string | null): string {
+export function writePolyText(text: Text, v: VNodeChild, written: TextValue | null): TextValue {
   // An array of strings writes ONE text node holding their concatenation, the
   // characters SSR renders, so an adopted server text node is kept as-is.
-  const next = typeof v === 'string' ? v : _childText(v)
+  const next = textValue(v)
   if (written === null) {
     written = text.data
     // Dev: inside a compiled template's ADOPTION bind this is server
@@ -1159,7 +1161,7 @@ export function writePolyText(text: Text, v: VNodeChild, written: string | null)
     if (process.env.NODE_ENV !== 'production' && _adoptingCompiledBind)
       reportFirstText(text, v, next, 'reactive')
   }
-  if (next !== written) text.data = next
+  if (textChanged(next, written)) text.data = next as string
 
   return next
 }
@@ -1173,11 +1175,11 @@ export function createPolyTextCore(
   let marker: Comment | null = null
   let mode: 'text' | 'sub' = 'text'
   let subCleanup: Cleanup = noop
-  // The string this core last wrote to `text`. Comparing against it instead of
-  // reading `text.data` back saves a DOM read per update; `null` until the
+  // The value this core last wrote to `text`, raw. Comparing against it instead
+  // of reading `text.data` back saves a DOM read per update; `null` until the
   // first text write, which reads the node once (an adopted SSR node whose
   // text already matches is left untouched).
-  let written: string | null = null
+  let written: TextValue | null = null
   // Bumped by every `apply`. A subtree mount can synchronously re-run the
   // binding that called `apply` (a ref or a nested boundary writing a signal
   // the accessor read), so a NESTED `apply` can land while this one's mount is
@@ -1273,7 +1275,7 @@ export function bindPolymorphicText(
   // through the same `writePolyText` the core uses.
   const ownerAtSetup = getContextOwner()
   let core: PolyTextCore | null = null
-  let written: string | null = null
+  let written: TextValue | null = null
   const dispose = _renderBind(() => {
     const v = child()
     if (core === null) {
@@ -1401,7 +1403,7 @@ function mountAccessorChild(
   // Built lazily, on the first non-text value (see `bindPolymorphicText`).
   let core: PolyTextCore | null = null
   let text: Text | null = null
-  let written: string | null = null
+  let written: TextValue | null = null
   let handoff: Cleanup | null = null
   let firstRunError: unknown = FIRST_RUN_OK
   // Holds the slot's position while the value is UNDECIDED (`isUndecidedChild`):
@@ -1460,10 +1462,10 @@ function mountAccessorChild(
       // (`() => loading() ? 'Loading…' : <Table/>`), so the binding upgrades
       // to a full subtree mount on the first non-text value (and back). An
       // unconditional `text.data = String(v)` rendered "[object Object]" for
-      // the VNode arm.
+      // the VNode arm. A number goes to the DOM unconverted (`text-value.ts`).
       if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
-        written = typeof v === 'boolean' ? '' : String(v)
-        text = document.createTextNode(written)
+        written = typeof v === 'boolean' ? '' : v
+        text = document.createTextNode(written as string)
         into.insertBefore(text, at)
         _releaseRun(run)
         dropPlaceholder()
