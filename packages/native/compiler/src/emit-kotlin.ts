@@ -35,6 +35,8 @@ import {
   lowerWebViewBackNavigation,
   lowerWebViewDomStorage,
   lowerWebViewReloadKey,
+  lowerWebViewSaveDownloads,
+  WEBVIEW_DOWNLOAD_PARAM_TYPE,
   webViewErrorParamType,
   type WebViewOptionEmit,
 } from './webview-options'
@@ -8152,6 +8154,15 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
   }
   const domStorage = lowerWebViewDomStorage(e, readStaticAttrKotlin, 'kotlin')
   if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
+  // Downloads — `onDownload={(d) => …}` receives the runtime's
+  // `PyreonWebViewDownload`; `saveDownloads={false}` turns the built-in save off.
+  const onDl = e.attrs.find((a) => a.kind === 'event' && a.name === 'download')
+  const onDlArg =
+    onDl?.kind === 'event'
+      ? `onDownload = ${emitKotlinMessageHandler(onDl.handler, WEBVIEW_DOWNLOAD_PARAM_TYPE)}`
+      : undefined
+  const saveDownloads = lowerWebViewSaveDownloads(e, readStaticAttrKotlin, 'kotlin')
+  if (saveDownloads.warning !== undefined) _emitWarnings.push(saveDownloads.warning)
   const args = [content, dataArg, onMsgArg].filter((a) => a !== undefined).join(', ')
   // Whether it grows decides the `backNavigation` default. The modifier arg
   // below reports the warning, so this read discards it.
@@ -8168,9 +8179,12 @@ function emitKotlinWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string 
     quote: kotlinStr,
     target: 'kotlin',
   }
-  // `domStorage` and the rest ride after `modifier` (their position in the runtime signature).
+  // `domStorage`, the download options and the rest ride after `modifier`
+  // (their position in the runtime signature).
   const trailing = [
     domStorage.arg,
+    onDlArg,
+    saveDownloads.arg,
     onLoad?.kind === 'event' ? `onLoad = ${emitKotlinAction(onLoad.handler, 0)}` : undefined,
     onError?.kind === 'event'
       ? `onError = ${emitKotlinMessageHandler(onError.handler, webViewErrorParamType(onError.handler.kind === 'arrow' ? onError.handler.paramTypes?.[0] : undefined))}`

@@ -55,6 +55,7 @@ const App = () => <CodeEditor instance={editor} style="height: 400px" />
 | `placeholder` | — | Hint text when empty |
 | `minimap` | `false` | Canvas code-overview sidebar |
 | `ariaLabel` | `'Code editor'` | Accessible name for the content textbox |
+| `nonce` | — | CSP nonce for the `<style>` CodeMirror injects (see [Content Security Policy](#content-security-policy)) |
 | `onError` | — | Mount-failure handler (throwing extension / failed grammar import) |
 
 Add custom keybindings imperatively on the instance: `editor.addKeybinding('Ctrl-s', () => save())`.
@@ -114,7 +115,7 @@ Single-pane editor mounting the `EditorInstance` view.
 />
 ```
 
-`original` / `modified` also accept `Signal<string>` — the diff updates reactively. Pass `inline` for a **unified** view: one editor showing the modified document with the original rendered as deleted-chunk widgets (via `@codemirror/merge`'s `unifiedMergeView`); when `readOnly={false}` each chunk gets accept/reject controls.
+`original` / `modified` also accept `Signal<string>` — the diff updates reactively. Pass `nonce` under a strict CSP (see [Content Security Policy](#content-security-policy)). Pass `inline` for a **unified** view: one editor showing the modified document with the original rendered as deleted-chunk widgets (via `@codemirror/merge`'s `unifiedMergeView`); when `readOnly={false}` each chunk gets accept/reject controls.
 
 ```tsx
 ;<DiffEditor original={before} modified={after} inline style="height: 300px" />
@@ -202,6 +203,20 @@ import { dracula } from '@uiw/codemirror-theme-dracula'
 
 createEditor({ value: code, theme: dracula })
 ```
+
+## Content Security Policy
+
+CodeMirror writes its theme and layout CSS into a `<style>` element in the document `<head>`. Under a policy whose `style-src` has no `'unsafe-inline'` (for example `style-src 'self' 'nonce-r4nd0m'`), the browser refuses that element: the editor renders unstyled and a violation is reported on every page that mounts one. Pass the page's nonce:
+
+```ts
+const editor = createEditor({ value: '', language: 'typescript', nonce: cspNonce })
+```
+
+```tsx
+<DiffEditor original={before} modified={after} nonce={cspNonce} />
+```
+
+`nonce` sets CodeMirror's `EditorView.cspNonce`, so the `<style>` it creates carries the nonce and is accepted. There is no static stylesheet to load instead: CodeMirror generates its class names (`ͼ1`, `ͼ2`, …) at runtime, per theme and extension. A real-Chromium test runs under the policy with and without the nonce (`src/tests/csp*.browser.test.tsx`).
 
 ## Performance — runtime wrapper overhead vs @uiw/react-codemirror
 

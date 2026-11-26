@@ -24,6 +24,8 @@ import {
   lowerWebViewBackNavigation,
   lowerWebViewDomStorage,
   lowerWebViewReloadKey,
+  lowerWebViewSaveDownloads,
+  WEBVIEW_DOWNLOAD_PARAM_TYPE,
   webViewErrorParamType,
   type WebViewOptionEmit,
 } from './webview-options'
@@ -9882,8 +9884,16 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
   const domStorage = lowerWebViewDomStorage(e, readStaticAttr, 'swift')
   if (domStorage.warning !== undefined) _emitWarnings.push(domStorage.warning)
   const growArg = swiftWebViewGrowArg(e)
-  // Load outcome + retry + back navigation (#4827, #4829). Swift labels are
-  // positional: this order is the runtime initializer's.
+  // Downloads — `onDownload={(d) => …}` receives the runtime's
+  // `PyreonWebViewDownload`; `saveDownloads={false}` turns the built-in save off.
+  const onDl = e.attrs.find((a) => a.kind === 'event' && a.name === 'download')
+  const onDlArg =
+    onDl?.kind === 'event'
+      ? `onDownload: ${emitSwiftMessageHandler(onDl.handler, WEBVIEW_DOWNLOAD_PARAM_TYPE)}`
+      : undefined
+  const saveDownloads = lowerWebViewSaveDownloads(e, readStaticAttr, 'swift')
+  if (saveDownloads.warning !== undefined) _emitWarnings.push(saveDownloads.warning)
+  // Load outcome + retry + back navigation (#4827, #4829).
   const onLoad = e.attrs.find((a) => a.kind === 'event' && a.name === 'load')
   const onLoadArg = onLoad?.kind === 'event' ? `onLoad: ${emitSwiftAction(onLoad.handler, 0)}` : undefined
   const onError = e.attrs.find((a) => a.kind === 'event' && a.name === 'error')
@@ -9898,12 +9908,15 @@ function emitSwiftWebView(e: Extract<ExprIR, { kind: 'jsx-element' }>): string {
     quote: swiftStr,
     target: 'swift',
   }
+  // Swift labels are positional: this order is the runtime initializer's.
   const args = [
     content,
     dataArg,
     onMsgArg,
     domStorage.arg,
     growArg,
+    onDlArg,
+    saveDownloads.arg,
     onLoadArg,
     onErrorArg,
     lowerWebViewReloadKey(e, options),

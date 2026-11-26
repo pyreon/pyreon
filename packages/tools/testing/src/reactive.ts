@@ -44,7 +44,10 @@ export interface SignalAssertions {
  * Assert on a signal's or computed's fire count.
  *
  * @example
- *   expectSignal(total).toHaveRecomputedTimes(1)  // recomputed once, no thrash
+ *   const total = computed(() => qty() * price())
+ *   total()      // materialize (the first computation counts)
+ *   qty.set(2)
+ *   expectSignal(total).toHaveRecomputedTimes(2)  // first computation + one recompute, no thrash
  */
 export function expectSignal(target: unknown): SignalAssertions {
   const id = nodeIdOf(target, 'expectSignal')

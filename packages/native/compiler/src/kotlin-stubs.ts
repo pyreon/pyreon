@@ -1117,7 +1117,9 @@ fun PyreonGesture(
 // produces.
 @Composable
 @Suppress("UNUSED_PARAMETER")
-fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier, domStorage: Boolean = true, onLoad: (() -> Unit)? = null, onError: ((PyreonWebViewError) -> Unit)? = null, reloadKey: String? = null, backNavigation: Boolean = false) {}
+fun PyreonWebView(html: String? = null, src: String? = null, data: String? = null, onMessage: ((String) -> Unit)? = null, modifier: Modifier = Modifier, domStorage: Boolean = true, onDownload: ((PyreonWebViewDownload) -> Unit)? = null, saveDownloads: Boolean = true, onLoad: (() -> Unit)? = null, onError: ((PyreonWebViewError) -> Unit)? = null, reloadKey: String? = null, backNavigation: Boolean = false) {}
+
+data class PyreonWebViewDownload(val url: String, val filename: String, val mimeType: String)
 data class PyreonWebViewError(val kind: String, val code: Int, val description: String, val url: String)
 typealias WebViewError = PyreonWebViewError
 

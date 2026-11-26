@@ -15,8 +15,8 @@
 - A new `html`, `src` or `reloadKey` starts a new history (Android clears it when the new page commits; iOS creates a new WKWebView), so Back never returns to a page the app replaced. `onLoad` runs once per document on both platforms (not for an in-page `#hash` or `pushState` navigation), and iOS no longer reports WebKit 204 (a media URL handed to the player) as an error.
 - `WebViewError` is declared in both native runtimes (an alias of `PyreonWebViewError`), so a named handler annotated with it compiles.
 
-`@pyreon/native-runtime-kotlin`: content that `<Tabs>` and `<Split>` keep composed while hidden no longer receives system Back. A hidden tab's web view, or its split view's handler, used to take Back from the visible tab's route stack.
+`@pyreon/native-runtime-kotlin`: content that `<Tabs>` and `<Split>` keep composed while hidden no longer receives system Back. A hidden tab's web view, or its split view's handler, used to take Back from the visible tab's route stack. The hidden content gets both a detached `OnBackPressedDispatcher` and a disabled child `NavigationEventDispatcher`, because since activity-compose 1.12 `BackHandler` registers with the navigation-event dispatcher.
 
 Behaviour change: a `<WebView grow>` now takes Android Back and the iOS edge swipe for its page history by default. Pass `backNavigation={false}` to keep the old behaviour.
 
-`PyreonWebView` (Swift and Kotlin) gains the `onLoad`, `onError`, `reloadKey` and `backNavigation` parameters, all optional, and the `PyreonWebViewError` type.
+`PyreonWebView` (Swift and Kotlin) gains the `onLoad`, `onError`, `reloadKey` and `backNavigation` parameters, all optional and after `onDownload` / `saveDownloads`, and the `PyreonWebViewError` type. On iOS a main-frame response with a status of 400 or more is reported as `kind: 'http'` and is never treated as a download.

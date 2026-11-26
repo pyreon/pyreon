@@ -316,7 +316,7 @@ The first `render(doc, 'pdf')` triggers the dynamic import of pdfmake (and its b
 :::note
 **Approximate chunk sizes** of the lazy-loaded vendor libraries: PDF ~3 MB (pdfmake + bundled fonts), XLSX ~1.1 MB (exceljs), DOCX ~700 KB (docx), PPTX ~400 KB (pptxgenjs). The string/JSON renderers (HTML, Markdown, text, CSV, SVG, email, and all chat/KB targets) are small and built-in.
 
-The vendored architecture means `npm install @pyreon/document` pulls every renderer (~14 MB in `lib/`), but **consumer-side bundlers tree-shake to only the renderers an app actually invokes** — an app that never calls `render(doc, 'pptx')` never ships pptxgenjs to its users. On the server, the dynamic `import()` only loads the chunk on first use of that format.
+The four engines are **optional peer dependencies** (`pdfmake`, `docx`, `exceljs`, `pptxgenjs`): `npm install @pyreon/document` installs none of them (the package's own `lib/` is under 1 MB), you install the ones for the formats you render, and rendering a heavy format without its peer fails with a message naming the package to install. Each renderer is also its own lazy chunk in **your** bundle — an app that never calls `render(doc, 'pptx')` never ships pptxgenjs to its users. On the server, the dynamic `import()` only loads the chunk on first use of that format.
 :::
 
 ## Primitives

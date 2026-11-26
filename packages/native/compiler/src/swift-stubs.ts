@@ -1186,8 +1186,14 @@ public func pyreonSchemaValue<T: Encodable>(_ value: T) -> Any { value }
 // Swift labels are positional, so a stub that reorders them accepts a call
 // the real runtime rejects.
 public enum PyreonWebViewGrow { case vertical, horizontal, both }
+public struct PyreonWebViewDownload: Sendable, Equatable {
+  public let url: String
+  public let filename: String
+  public let mimeType: String
+  public init(url: String, filename: String, mimeType: String) { self.url = url; self.filename = filename; self.mimeType = mimeType }
+}
 public struct PyreonWebView: View {
-  public init(html: String? = nil, src: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true, grow: PyreonWebViewGrow? = nil, onLoad: (() -> Void)? = nil, onError: ((PyreonWebViewError) -> Void)? = nil, reloadKey: String? = nil, backNavigation: Bool = false) {}
+  public init(html: String? = nil, src: String? = nil, data: String? = nil, onMessage: ((String) -> Void)? = nil, domStorage: Bool = true, grow: PyreonWebViewGrow? = nil, onDownload: ((PyreonWebViewDownload) -> Void)? = nil, saveDownloads: Bool = true, onLoad: (() -> Void)? = nil, onError: ((PyreonWebViewError) -> Void)? = nil, reloadKey: String? = nil, backNavigation: Bool = false) {}
   public typealias Body = Never
 }
 public struct PyreonWebViewError: Equatable, Sendable {

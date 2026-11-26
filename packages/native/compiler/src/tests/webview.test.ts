@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
+import { transform as transformWithPlugins } from './first-party-plugins'
 import { isKotlincAvailable, isSwiftcAvailable, validateKotlin, validateSwiftWithStubs } from '../validate'
 
 const APP = (body: string) =>
@@ -114,6 +115,69 @@ describe('<WebView domStorage> (issue #3839)', () => {
   }, 180_000)
   it.skipIf(!isKotlincAvailable())('kotlin: the opt-out compiles against the stub gate', () => {
     const r = validateKotlin(emit('domStorage={false} padding={8}', 'kotlin').code)
+    expect(r.skipped).not.toBe(true)
+    expect(r.ok, r.error).toBe(true)
+  }, 180_000)
+})
+
+describe('<WebView onDownload saveDownloads> (issue #4828)', () => {
+  const SRC = (attrs: string) => `import { signal } from '@pyreon/reactivity'
+import { Stack, Text, WebView } from '@pyreon/primitives'
+export function App() {
+  const last = signal('none')
+  return (
+    <Stack>
+      <WebView src="page.html" grow ${attrs} />
+      <Text>{last()}</Text>
+    </Stack>
+  )
+}`
+  // Through the first-party plugins: `signal` is lowered by the reactivity plugin.
+  // A `grow` view also gets the `backNavigation` default, last in both calls.
+  const HANDLER = 'onDownload={(d) => last.set(d.filename + ":" + d.mimeType)}'
+
+  it('lowers the handler with the runtime download type, after grow (Swift init order)', () => {
+    const out = transformWithPlugins(SRC(HANDLER), { target: 'swift' }).code
+    expect(out).toMatch(/PyreonWebView\(src: "page\.html", grow: \.vertical, onDownload: \{ d in .*d\.filename.*d\.mimeType.* \}, backNavigation: true\)/)
+  })
+  it('kotlin: the handler rides after modifier', () => {
+    const out = transformWithPlugins(SRC(HANDLER), { target: 'kotlin' }).code
+    expect(out).toMatch(/PyreonWebView\(src = "page\.html", modifier = .*, onDownload = \{ d -> .*d\.filename.*d\.mimeType.* \}, backNavigation = true\)/)
+  })
+  it('a string method on a download field gets the string lowering', () => {
+    const src = SRC('onDownload={(d) => last.set(d.filename.toUpperCase())}')
+    expect(transformWithPlugins(src, { target: 'swift' }).code).toContain('d.filename.uppercased()')
+    expect(transformWithPlugins(src, { target: 'kotlin' }).code).toContain('d.filename.uppercase()')
+  })
+  it('saveDownloads={false} is emitted; true or absent is the default and emits nothing', () => {
+    expect(transformWithPlugins(SRC('saveDownloads={false}'), { target: 'swift' }).code).toContain(
+      'PyreonWebView(src: "page.html", grow: .vertical, saveDownloads: false, backNavigation: true)',
+    )
+    expect(transformWithPlugins(SRC('saveDownloads={false}'), { target: 'kotlin' }).code).toMatch(
+      /PyreonWebView\(src = "page\.html", modifier = [^\n]*, saveDownloads = false, backNavigation = true\)/,
+    )
+    for (const t of ['swift', 'kotlin'] as const) {
+      expect(transformWithPlugins(SRC('saveDownloads={true}'), { target: t }).code).toBe(transformWithPlugins(SRC(''), { target: t }).code)
+      expect(transformWithPlugins(SRC(''), { target: t }).code).not.toContain('saveDownloads')
+      expect(transformWithPlugins(SRC(''), { target: t }).code).not.toContain('onDownload')
+    }
+  })
+  it('a dynamic saveDownloads warns by name and keeps the default', () => {
+    for (const t of ['swift', 'kotlin'] as const) {
+      const r = transformWithPlugins(SRC('saveDownloads={last() === "x"}'), { target: t })
+      expect(r.code).not.toContain('saveDownloads')
+      expect(r.warnings.join('\n')).toContain('saveDownloads')
+    }
+  })
+
+  const BOTH = `${HANDLER} saveDownloads={false} data-testid="dl"`
+  it.skipIf(!isSwiftcAvailable())('swift: compiles against the stub gate', () => {
+    const r = validateSwiftWithStubs(transformWithPlugins(SRC(BOTH), { target: 'swift' }).code)
+    expect(r.skipped).not.toBe(true)
+    expect(r.ok, r.error).toBe(true)
+  }, 180_000)
+  it.skipIf(!isKotlincAvailable())('kotlin: compiles against the stub gate', () => {
+    const r = validateKotlin(transformWithPlugins(SRC(BOTH), { target: 'kotlin' }).code)
     expect(r.skipped).not.toBe(true)
     expect(r.ok, r.error).toBe(true)
   }, 180_000)

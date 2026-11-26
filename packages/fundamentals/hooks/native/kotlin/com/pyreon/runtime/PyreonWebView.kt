@@ -116,6 +116,42 @@
 //   `allowContentAccess` all false), and a bundled `src` with a `..` segment,
 //   a scheme or a backslash is refused.
 //
+// ## Downloads (`onDownload` / `saveDownloads`)
+//
+// An Android WebView with no `DownloadListener` drops every download: an
+// `<a download>` link, a `Content-Disposition: attachment` response and a type
+// it cannot display all do nothing. The host's listener (decisions in
+// PyreonWebChromePolicy.kt, run by the JVM test) applies the SAME rule as the
+// iOS host (`pyreonWebViewDownloadVerdict`):
+//
+// - Only the MAIN frame on the allowed origin, after a USER gesture there, one
+//   download per gesture, one download at a time. The listener is told neither
+//   the frame nor the gesture, so the main-frame shim
+//   (`pyreonWebViewDownloadShim`, closing over the bridge token a sub-frame
+//   cannot read) reports each link the user activates, and the listener must
+//   match one (`pyreonWebViewTakeIntent`): exactly for `blob:` / `data:` (an ad
+//   iframe's blob URL can never equal a main-frame link), the newest within 5 s
+//   for `http(s)` (redirects). Anything else is refused with a
+//   `[Pyreon] <WebView>` log and `onDownload` is not called.
+// - The name: the link's `download` attribute (from the shim — the listener
+//   does not get it), then `Content-Disposition`, then the URL, cleaned to one
+//   safe component of at most 255 UTF-8 bytes.
+// - `saveDownloads = false`: reported to `onDownload` and left to the app.
+// - Otherwise saved, and reported only once that can happen: an `http(s)` URL
+//   when `DownloadManager` has queued it (public Downloads from API 29, the
+//   app's own Downloads directory before that without WRITE_EXTERNAL_STORAGE;
+//   a notification either way). The page's cookies go only to its own exact
+//   origin: the host follows redirects itself first, because `DownloadManager`
+//   repeats a request's headers on every redirect. A `blob:` / `data:` URL
+//   exists only inside the page: the shim starts reading a `blob:` link AT THE
+//   CLICK (the common snippet revokes it right after `a.click()`), the page
+//   streams it over the bridge in 1 MB chunks into a cache file (memory stays
+//   at one chunk; 256 MB cap), and the system "save as" picker
+//   (`ACTION_CREATE_DOCUMENT`) lets the user choose where it goes. A read that
+//   fails is not reported.
+//   Nothing is written where the user can see it without the user choosing it
+//   (the picker) or the system showing it (the DownloadManager notification).
+//
 // ## Policy posture (Play Store / App Store)
 //
 // Intended for HYBRID apps — a substantial native Compose shell with this
@@ -190,10 +226,13 @@ object PyreonWebViewRendering {
  * optional JSON string pushed into the page as `window.__pyreonData`
  * (live-updates without reloading; see the file header). [domStorage]
  * (default `true`) enables `WebSettings.domStorageEnabled` so `localStorage` /
- * `sessionStorage` work in the hosted page; `false` opts out. [onLoad] /
- * [onError] report the main frame's load outcome, a changed [reloadKey] loads
- * the page again, and [backNavigation] sends system Back into the page's
- * history (see the file header).
+ * `sessionStorage` work in the hosted page; `false` opts out. [onDownload] is
+ * called for each download the page starts, which the host then saves for the
+ * user unless [saveDownloads] is `false` (read once at creation; see
+ * "Downloads" in the file header). [onLoad] / [onError] report the main
+ * frame's load outcome, a changed [reloadKey] loads the page again, and
+ * [backNavigation] sends system Back into the page's history (see the file
+ * header).
  */
 @Composable
 fun PyreonWebView(
@@ -203,6 +242,8 @@ fun PyreonWebView(
     onMessage: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
     domStorage: Boolean = true,
+    onDownload: ((PyreonWebViewDownload) -> Unit)? = null,
+    saveDownloads: Boolean = true,
     onLoad: (() -> Unit)? = null,
     onError: ((PyreonWebViewError) -> Unit)? = null,
     reloadKey: String? = null,
@@ -244,8 +285,10 @@ fun PyreonWebView(
                 PyreonWebViewGroups.leave(state)
                 // After a renderer loss the replacement may already be in `state`.
                 if (state.webView?.get() === view) state.webView = null
-                // A pending file chooser / permission / dialog must still be answered.
+                // A pending file chooser / permission / dialog / save must still be answered.
                 chrome.release()
+                // Page downloads still streaming are discarded with the view.
+                state.releaseDownloads()
             },
             factory = { context ->
                 pyreonNewWebView(context, pyreonHostClient(state, chrome)).apply {
@@ -282,7 +325,10 @@ fun PyreonWebView(
                     // Reverse bridge — the page's `window.pyreonPostMessage(s)`
                     // routes through `window.__pyreonNative.postMessage(s)`
                     // (this JS interface) to the native `onMessage` callback.
-                    addJavascriptInterface(PyreonJsBridge(state), "__pyreonNative")
+                    addJavascriptInterface(PyreonJsBridge(state, chrome), "__pyreonNative")
+                    setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+                        pyreonWebViewDownloadStart(this, state, chrome, saveDownloads, url, userAgent, contentDisposition, mimeType)
+                    }
                 }
             },
             update = { webView ->
@@ -292,6 +338,7 @@ fun PyreonWebView(
                 webView.settings.domStorageEnabled = domStorage
                 state.latestData = data
                 state.onMessage = onMessage
+                state.onDownload = onDownload
                 state.onLoad = onLoad
                 state.onError = onError
                 val key = pyreonWebViewLoadKey(html, src, reloadKey)
@@ -389,6 +436,7 @@ private fun pyreonHostClient(state: PyreonWebViewState, chrome: PyreonWebChrome)
             // scripts can call it — only on the allowed origin.
             if (pyreonWebViewMayDeliver(url, state.allowedOrigin)) {
                 view.evaluateJavascript(state.bridgeShim(), null)
+                view.evaluateJavascript(pyreonWebViewDownloadShim(state.bridgeToken), null)
             }
         }
 
@@ -403,6 +451,7 @@ private fun pyreonHostClient(state: PyreonWebViewState, chrome: PyreonWebChrome)
             if (isLoad) state.onLoad?.invoke()
             if (!pyreonWebViewMayDeliver(view.url, state.allowedOrigin)) return
             view.evaluateJavascript(state.bridgeShim(), null)
+            view.evaluateJavascript(pyreonWebViewDownloadShim(state.bridgeToken), null)
             pushPyreonData(view, state.latestData)
         }
 
@@ -563,6 +612,25 @@ private class PyreonWebViewState {
     var clearHistoryOnCommit: Boolean = false
     /** Whether the page has history to go back to (drives the `BackHandler`). */
     val canGoBack = mutableStateOf(false)
+    var onDownload: ((PyreonWebViewDownload) -> Unit)? = null
+    /** `blob:` / `data:` downloads streaming in from the page, by id. Written on
+     *  the JavaBridge thread, hence concurrent. At most one exists at a time (the
+     *  download rule); each is removed when the page finishes or fails, and
+     *  [releaseDownloads] discards what is left with the host. */
+    val pageDownloads = java.util.concurrent.ConcurrentHashMap<String, PyreonPageDownload>()
+    private val nextDownloadId = java.util.concurrent.atomic.AtomicInteger()
+    fun newDownloadId(): String = nextDownloadId.incrementAndGet().toString()
+    /** Links the user activated in the main frame (bounded; main thread only). */
+    val downloadIntents = ArrayList<PyreonDownloadIntent>()
+    /** Set while an allowed download is in flight or waiting for the user (main thread). */
+    var downloadBusySinceMs: Long? = null
+
+    fun releaseDownloads() {
+        for (download in pageDownloads.values) download.discard()
+        pageDownloads.clear()
+        downloadIntents.clear()
+        downloadBusySinceMs = null
+    }
     /** The hosted WebView — a sibling relay evaluates into it. */
     var webView: WeakReference<WebView>? = null
     /** The host group this page joined (null = none). */
@@ -659,8 +727,59 @@ private object PyreonWebViewGroups {
  * so the callback is marshalled to the main thread before touching Compose
  * state.
  */
-private class PyreonJsBridge(private val state: PyreonWebViewState) {
+private class PyreonJsBridge(private val state: PyreonWebViewState, private val chrome: PyreonWebChrome) {
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** The shim: the user activated a link in the main frame (see [pyreonWebViewTakeIntent]). */
+    @JavascriptInterface
+    fun downloadIntent(token: String?, href: String?, name: String?) {
+        if (!pyreonWebViewTokenMatches(state.bridgeToken, token) || href == null) return
+        val at = SystemClock.uptimeMillis()
+        mainHandler.post {
+            if (state.mainFrameAllowed()) pyreonWebViewRecordIntent(state.downloadIntents, PyreonDownloadIntent(href, name, at))
+        }
+    }
+
+    /**
+     * One base64 chunk of a page download ([pyreonWebViewDownloadFetchScript]),
+     * written straight to its cache file here on the JavaBridge thread. False
+     * stops the page's transfer.
+     */
+    @JavascriptInterface
+    fun downloadChunk(token: String?, id: String?, base64: String?): Boolean {
+        if (!pyreonWebViewTokenMatches(state.bridgeToken, token) || id == null || base64 == null) return false
+        val download = state.pageDownloads[id] ?: return false
+        val bytes = try {
+            android.util.Base64.decode(base64, android.util.Base64.DEFAULT)
+        } catch (e: IllegalArgumentException) {
+            download.fail("not base64")
+            return false
+        }
+        return download.append(bytes)
+    }
+
+    /** The page finished a download's transfer (error null) or gave up (error set). */
+    @JavascriptInterface
+    fun downloadDone(token: String?, id: String?, mimeType: String?, error: String?) {
+        if (!pyreonWebViewTokenMatches(state.bridgeToken, token) || id == null) return
+        mainHandler.post {
+            val download = state.pageDownloads.remove(id) ?: return@post
+            val complete = download.finish()
+            // Re-checked: the main frame may have left the origin meanwhile.
+            if (!complete || error != null || !state.mainFrameAllowed()) {
+                download.discard()
+                state.downloadBusySinceMs = null
+                android.util.Log.w(
+                    "PyreonWebView",
+                    "[Pyreon] <WebView>: the page could not hand over the download \"${download.info.filename}\" (${error ?: download.failure ?: "the page left its origin"}), so it was not saved or reported.",
+                )
+                return@post
+            }
+            val info = if (download.info.mimeType.isEmpty() && !mimeType.isNullOrEmpty()) download.info.copy(mimeType = mimeType) else download.info
+            state.onDownload?.invoke(info)
+            chrome.saveDownloadFile(info, download.file) { state.downloadBusySinceMs = null }
+        }
+    }
 
     @JavascriptInterface
     fun postMessage(token: String?, message: String?) {
@@ -675,6 +794,139 @@ private class PyreonJsBridge(private val state: PyreonWebViewState) {
             // Reserved host-group traffic is consumed and never forwarded.
             if (!PyreonWebViewGroups.handle(message, state)) state.onMessage?.invoke(message)
         }
+    }
+}
+
+/**
+ * A `blob:` / `data:` download streaming in from the page: chunks go straight
+ * to [file] (a cache file), so memory stays at one chunk. Thread-safe: chunks
+ * arrive on the JavaBridge thread, the end on the main thread.
+ */
+internal class PyreonPageDownload(val info: PyreonWebViewDownload, val file: java.io.File) {
+    private val out = java.io.FileOutputStream(file)
+    private var bytes = 0L
+    /** Why the transfer failed, once it has. */
+    @Volatile
+    var failure: String? = null
+        private set
+
+    @Synchronized
+    fun fail(reason: String) {
+        if (failure == null) failure = reason
+    }
+
+    @Synchronized
+    fun append(chunk: ByteArray): Boolean {
+        if (failure != null) return false
+        if (bytes + chunk.size > PYREON_WEBVIEW_PAGE_DOWNLOAD_MAX_BYTES) {
+            failure = "larger than $PYREON_WEBVIEW_PAGE_DOWNLOAD_MAX_BYTES bytes"
+            return false
+        }
+        return try {
+            out.write(chunk)
+            bytes += chunk.size
+            true
+        } catch (e: java.io.IOException) {
+            failure = "the cache file cannot be written: ${e.message}"
+            false
+        }
+    }
+
+    /** Close the file; true when every chunk was written. */
+    @Synchronized
+    fun finish(): Boolean {
+        try {
+            out.close()
+        } catch (e: java.io.IOException) {
+            fail("the cache file cannot be closed: ${e.message}")
+        }
+        return failure == null
+    }
+
+    @Synchronized
+    fun discard() {
+        try {
+            out.close()
+        } catch (_: java.io.IOException) {
+        }
+        file.delete()
+    }
+}
+
+/**
+ * The host's `DownloadListener` (see "Downloads" in the file header): apply the
+ * download rule, name the file, then report it, or save it and report it once
+ * saving can happen.
+ */
+private fun pyreonWebViewDownloadStart(
+    view: WebView,
+    state: PyreonWebViewState,
+    chrome: PyreonWebChrome,
+    save: Boolean,
+    url: String,
+    userAgent: String?,
+    contentDisposition: String?,
+    mimeType: String?,
+) {
+    val route = pyreonWebViewDownloadRoute(url)
+    if (route == PyreonDownloadRoute.UNSUPPORTED) {
+        android.util.Log.w("PyreonWebView", "[Pyreon] <WebView>: ignored a download of \"$url\" (only http(s), blob: and data: URLs are downloaded).")
+        return
+    }
+    val now = SystemClock.uptimeMillis()
+    // The user's activation of this link in the main frame; each allows one download.
+    val intent = pyreonWebViewTakeIntent(state.downloadIntents, url, route, now)
+    val onOrigin = state.mainFrameAllowed()
+    val verdict = pyreonWebViewDownloadVerdict(
+        fromMainFrame = onOrigin,
+        onAllowedOrigin = onOrigin,
+        activationAgeMs = intent?.let { now - it.atMs },
+        busy = pyreonWebViewDownloadBusy(state.downloadBusySinceMs, now),
+    )
+    if (verdict != PyreonWebViewDownloadVerdict.ALLOW) {
+        val why = when (verdict) {
+            PyreonWebViewDownloadVerdict.NOT_MAIN_FRAME -> "the main frame is not on the page the app loaded"
+            PyreonWebViewDownloadVerdict.NO_ACTIVATION -> "no tap in the page's main frame on this link came before it (each tap allows a single download, and a sub-frame's downloads are never allowed)"
+            PyreonWebViewDownloadVerdict.BUSY -> "another download is still in progress or waiting for the user"
+            PyreonWebViewDownloadVerdict.ALLOW -> ""
+        }
+        android.util.Log.w("PyreonWebView", "[Pyreon] <WebView>: refused a download of \"$url\": $why.")
+        return
+    }
+    val download = PyreonWebViewDownload(
+        url = url,
+        filename = pyreonWebViewDownloadFilename(
+            intent?.name,
+            pyreonContentDispositionFilename(contentDisposition),
+            pyreonWebViewDownloadURLName(url),
+        ),
+        mimeType = mimeType.orEmpty(),
+    )
+    if (!save) {
+        state.onDownload?.invoke(download)
+        return
+    }
+    state.downloadBusySinceMs = now
+    when (route) {
+        PyreonDownloadRoute.SYSTEM -> chrome.systemDownload(download, userAgent, state.allowedOrigin) { queued ->
+            state.downloadBusySinceMs = null
+            if (queued) state.onDownload?.invoke(download)
+        }
+        PyreonDownloadRoute.PAGE -> {
+            val pending = try {
+                val dir = java.io.File(view.context.cacheDir, "pyreon-downloads").apply { mkdirs() }
+                PyreonPageDownload(download, java.io.File.createTempFile("download-", ".part", dir))
+            } catch (e: java.io.IOException) {
+                state.downloadBusySinceMs = null
+                android.util.Log.w("PyreonWebView", "[Pyreon] <WebView>: cannot stage the download \"${download.filename}\": ${e.message}")
+                return
+            }
+            val id = state.newDownloadId()
+            state.pageDownloads[id] = pending
+            // The token goes only into the main frame of the allowed origin (checked above).
+            view.evaluateJavascript(pyreonWebViewDownloadFetchScript(url, state.bridgeToken, id), null)
+        }
+        PyreonDownloadRoute.UNSUPPORTED -> {}
     }
 }
 

@@ -1,0 +1,575 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Native Models",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.example.test/v1"
+    }
+  ],
+  "paths": {
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "responses": {
+          "200": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PetPage"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPet",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Pet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "ok",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Pet"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Pet": {
+        "description": "A pet.\nTwo lines, and a */ terminator.",
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "kind",
+          "created_at",
+          "nickname"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "readOnly": true
+          },
+          "name": {
+            "type": "string",
+            "description": "The pet's name."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "in_progress",
+              "sold-out",
+              "default"
+            ]
+          },
+          "priority": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              -3
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/Kind"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "birthday": {
+            "type": "string",
+            "format": "date"
+          },
+          "nickname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "weight": {
+            "type": "number"
+          },
+          "vaccinated": {
+            "type": "boolean"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "extra": {},
+          "owner": {
+            "type": "object",
+            "required": [
+              "email"
+            ],
+            "properties": {
+              "email": {
+                "type": "string",
+                "format": "email"
+              },
+              "class": {
+                "type": "string"
+              }
+            }
+          },
+          "class": {
+            "type": "string",
+            "description": "A keyword property."
+          },
+          "2fa-enabled": {
+            "type": "boolean"
+          },
+          "price$": {
+            "type": "string"
+          },
+          "shape": {
+            "$ref": "#/components/schemas/Shape"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/Contact"
+          },
+          "secret": {
+            "type": "string",
+            "writeOnly": true
+          }
+        }
+      },
+      "Kind": {
+        "type": "string",
+        "enum": [
+          "dog",
+          "cat"
+        ]
+      },
+      "Level": {
+        "type": "integer",
+        "enum": [
+          10,
+          20
+        ]
+      },
+      "PetPage": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Pet"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Circle": {
+        "type": "object",
+        "required": [
+          "shape_type",
+          "radius"
+        ],
+        "properties": {
+          "shape_type": {
+            "const": "circle"
+          },
+          "radius": {
+            "type": "number"
+          }
+        }
+      },
+      "Square": {
+        "type": "object",
+        "required": [
+          "shape_type",
+          "side"
+        ],
+        "properties": {
+          "shape_type": {
+            "const": "square"
+          },
+          "side": {
+            "type": "number"
+          }
+        }
+      },
+      "Shape": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Circle"
+          },
+          {
+            "$ref": "#/components/schemas/Square"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "shape_type"
+        }
+      },
+      "Contact": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "$ref": "#/components/schemas/Address"
+          }
+        ]
+      },
+      "Address": {
+        "type": "object",
+        "required": [
+          "street"
+        ],
+        "properties": {
+          "street": {
+            "type": "string"
+          }
+        }
+      },
+      "Base": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "Dog": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Base"
+          },
+          {
+            "type": "object",
+            "required": [
+              "barks"
+            ],
+            "properties": {
+              "barks": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      },
+      "Node": {
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "next": {
+            "$ref": "#/components/schemas/Node"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Node"
+            }
+          }
+        }
+      },
+      "Ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "Labels": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "Empty": {
+        "type": "object",
+        "properties": {}
+      },
+      "List": {
+        "type": "object",
+        "required": [
+          "size"
+        ],
+        "properties": {
+          "size": {
+            "type": "integer"
+          }
+        }
+      },
+      "Mixed": {
+        "enum": [
+          "a",
+          1,
+          true
+        ]
+      },
+      "Point": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "x"
+          ],
+          "properties": {
+            "x": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "Keywords": {
+        "type": "object",
+        "required": [
+          "nil",
+          "fallthrough"
+        ],
+        "properties": {
+          "nil": {
+            "type": "string"
+          },
+          "fallthrough": {
+            "type": "boolean"
+          },
+          "$": {
+            "type": "string"
+          },
+          "+": {
+            "type": "string"
+          },
+          "self": {
+            "type": "string"
+          },
+          "Type": {
+            "type": "string"
+          },
+          "_": {
+            "type": "string"
+          },
+          "rethrows": {
+            "type": "string"
+          },
+          "sign": {
+            "type": "string",
+            "enum": [
+              "+",
+              "-"
+            ]
+          },
+          "word": {
+            "type": "string",
+            "enum": [
+              "rawValue",
+              "allCases",
+              "init",
+              "nil",
+              "fallthrough"
+            ]
+          }
+        }
+      },
+      "Nullables": {
+        "type": "object",
+        "required": [
+          "a"
+        ],
+        "properties": {
+          "a": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "b": {
+            "type": "string"
+          }
+        }
+      },
+      "TagKey": {
+        "type": "object",
+        "required": [
+          "v"
+        ],
+        "properties": {
+          "v": {
+            "type": "string"
+          }
+        }
+      },
+      "Hashable": {
+        "type": "object",
+        "required": [
+          "v"
+        ],
+        "properties": {
+          "v": {
+            "type": "string"
+          }
+        }
+      },
+      "Suppress": {
+        "type": "object",
+        "required": [
+          "v"
+        ],
+        "properties": {
+          "v": {
+            "type": "string"
+          }
+        }
+      },
+      "CaseIterable": {
+        "type": "object",
+        "required": [
+          "v"
+        ],
+        "properties": {
+          "v": {
+            "type": "string"
+          }
+        }
+      },
+      "UsesReserved": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TagKey"
+          },
+          {
+            "$ref": "#/components/schemas/Hashable"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "v"
+        }
+      },
+      "PetBase": {
+        "type": "object",
+        "required": [
+          "petType"
+        ],
+        "properties": {
+          "petType": {
+            "type": "string"
+          }
+        }
+      },
+      "Cat": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PetBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "DogPet": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PetBase"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "bark": {
+                "type": "boolean"
+              }
+            }
+          }
+        ]
+      },
+      "AnyPet": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Cat"
+          },
+          {
+            "$ref": "#/components/schemas/DogPet"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "petType"
+        }
+      },
+      "MappedPet": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Cat"
+          },
+          {
+            "$ref": "#/components/schemas/DogPet"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "petType",
+          "mapping": {
+            "kitty": "#/components/schemas/Cat",
+            "dog": "DogPet",
+            "puppy": "#/components/schemas/DogPet"
+          }
+        }
+      }
+    }
+  }
+}
