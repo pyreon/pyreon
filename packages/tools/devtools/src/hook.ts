@@ -1,5 +1,6 @@
 import { serialize } from './serialize'
 import type {
+  BoundReactiveNodeLike,
   ComponentDetail,
   ComponentRead,
   ConsoleEntry,
@@ -78,6 +79,27 @@ export function compactGraph(graph: ReactiveGraph): ReactiveGraph {
 
 function compactCause(cause: UpdateCause | null): UpdateCause | null {
   return cause ? { ...cause, target: compactLoc(cause.target), chain: cause.chain.map(compactLoc) } : null
+}
+
+/**
+ * The most recent of `reads` to fire. `lastFire` alone ties whenever two
+ * fires land in the same clock tick (100 µs without cross-origin isolation),
+ * which is every synchronous cascade; the fire buffer is in true order, so the
+ * newest buffered fire of a read decides, and `lastFire` is the fallback for
+ * one whose fire has left the buffer.
+ */
+function latestFired(reads: ComponentRead[], fires: ReactiveFire[]): ComponentRead | null {
+  const byId = new Map(reads.map((r) => [r.id, r]))
+  for (let i = fires.length - 1; i >= 0; i--) {
+    const read = byId.get((fires[i] as ReactiveFire).id)
+    if (read !== undefined) return read
+  }
+  let latest: ComponentRead | null = null
+  for (const r of reads) {
+    if (r.lastFire !== null && (latest === null || r.lastFire > (latest.lastFire ?? 0))) latest = r
+  }
+
+  return latest
 }
 
 export function createHook(devtools: PyreonDevtools, opts: HookOptions): Hook {
@@ -172,6 +194,13 @@ export function createHook(devtools: PyreonDevtools, opts: HookOptions): Hook {
   }
 
   // ── Component inspector ──────────────────────────────────────────────
+  // Props come from the framework's bounded preview (strings only, read
+  // untracked); reads and owned nodes are graph ids joined with one graph
+  // snapshot, so nothing here keeps a page object past the call.
+  const readProps = (id: string): Record<string, string> | null =>
+    // A page on a framework from before the props preview has no method.
+    'getComponentProps' in devtools ? devtools.getComponentProps(id) : null
+
   const inspect = (id: string): ComponentDetail | null => {
     const entry = devtools.getAllComponents().find((e) => e.id === id)
     if (!entry) return null
@@ -180,19 +209,21 @@ export function createHook(devtools: PyreonDevtools, opts: HookOptions): Hook {
     const detail: ComponentDetail = {
       id,
       hasElement: el !== null,
+      props: readProps(id),
       reads: [],
+      owned: [],
       cause: null,
       now: now(),
     }
-    if (!el || !reactive?.nodesForElement) return detail
-    const bound = reactive.nodesForElement(el)
-    if (bound.length === 0) return detail
+    if (!reactive) return detail
+    const bound = el && reactive.nodesForElement ? reactive.nodesForElement(el) : []
+    const owned = reactive.nodesForComponent ? reactive.nodesForComponent(id) : []
+    if (bound.length === 0 && owned.length === 0) return detail
     const graph = reactive.getGraph()
     const byId = new Map(graph.nodes.map((n) => [n.id, n]))
-    let latest: ComponentRead | null = null
-    for (const b of bound) {
+    const toRead = (b: BoundReactiveNodeLike): ComponentRead => {
       const n = byId.get(b.id)
-      const read: ComponentRead = {
+      return {
         id: b.id,
         name: b.name,
         kind: b.kind,
@@ -201,25 +232,17 @@ export function createHook(devtools: PyreonDevtools, opts: HookOptions): Hook {
         lastFire: n?.lastFire ?? null,
         ...(n?.loc ? { loc: { ...n.loc, file: fileBase(n.loc.file) } } : {}),
       }
-      detail.reads.push(read)
-      if (read.lastFire !== null && (latest === null || read.lastFire > (latest.lastFire ?? 0))) {
-        latest = read
-      }
     }
-    // The most recent read to fire. `lastFire` alone ties whenever two
-    // fires land in the same clock tick (100 µs without cross-origin
-    // isolation), which is every synchronous cascade; the fire buffer is
-    // in true order, so the newest buffered fire of a read decides.
-    const readIds = new Set(detail.reads.map((r) => r.id))
-    const fires = reactive.getFires()
-    for (let i = fires.length - 1; i >= 0; i--) {
-      const fid = (fires[i] as ReactiveFire).id
-      if (readIds.has(fid)) {
-        latest = detail.reads.find((r) => r.id === fid) ?? latest
-        break
-      }
-    }
+    detail.reads = bound.map(toRead)
+    detail.owned = owned.map(toRead)
+    // "Why did this update?" explains the most recent fire among what the
+    // component shows and what it owns. Preferring reads whenever any of them
+    // had fired was wrong: a computed rendered as text fires once at mount, so
+    // a later write to an owned signal was never the answer.
+    const pool = detail.reads.concat(detail.owned.filter((o) => !detail.reads.some((r) => r.id === o.id)))
+    const latest = latestFired(pool, reactive.getFires())
     if (latest) detail.cause = compactCause(reactive.getUpdateCause(latest.id))
+
     return detail
   }
 

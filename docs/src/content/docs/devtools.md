@@ -42,7 +42,7 @@ Four isolated execution contexts cooperate: a **page hook** (reads `__PYREON_DEV
 
 The panel uses the pyreon.dev tokens in both themes; inside Chrome DevTools it follows the DevTools theme. Below 760 px the component tree sits above the inspector. Everything it shows is read from the running page; nothing is sampled or simulated.
 
-- **Components**: the mounted tree, rebuilt from `parentId` (the framework registers post-order, so a parent's own `childIds` is empty). Filter by name, move with the arrow keys, click or press Enter to outline the component on the page. The inspector shows the owner path and the **reactive reads**: the signals and computeds rendered as text inside the component (from `reactive.nodesForElement`). **Why did this update?** is the causal chain (`getUpdateCause`) behind the most recent of those reads, root first, with the source line: `draft signal changed (Composer.tsx:18) → Composer.tsx:31 computed recomputed`.
+- **Components**: the mounted tree, rebuilt from `parentId` (the framework registers post-order, so a parent's own `childIds` is empty). Filter by name, move with the arrow keys, click or press Enter to outline the component on the page. The inspector shows the owner path, the component's **props** (from `getComponentProps`), what it **owns** (the signals, computeds and effects it created in setup and `onMount`, from `reactive.nodesForComponent`) and the **reactive reads**: the signals and computeds rendered as text inside the component (from `reactive.nodesForElement`). **Why did this update?** is the causal chain (`getUpdateCause`) behind the most recent fire among those reads and the nodes it owns, root first, with the source line: `draft signal changed (Composer.tsx:18) → Composer.tsx:31 computed recomputed`.
 - **Graph**: the dependency graph, signals → computeds → effects. *Selected* shows the chain around the selected signal, the selected component's reads, or the last write; *Everything* shows the most active 120 nodes and says how many it left out. Nodes that fired in the last write are outlined in ember.
 - **Signals**: signals and computeds with their value, subscribers, writes and last write, newest first. Virtualised, so 10,000 rows stay smooth. Selecting a row scopes the Graph to it.
 - **Effects**: one lane per effect that ran in the last 10 seconds, with what it reads.
@@ -53,8 +53,7 @@ Computeds and effects carry no runtime name, so the panel names them by where th
 
 ### Limits
 
-- The reactive reads come from text bindings only: text a compiled template binds directly to one signal or computed. Attribute, class and style bindings, and text expressions that read more than one signal, are not correlated to their signals, so neither the inspector nor `nodesForElement` lists them.
-- The hook exposes a component's props (`getComponentProps(id)`) and the signals, computeds and effects it owns (`reactive.nodesForComponent(id)`), but the panel's inspector does not show them yet ([#4446](https://github.com/pyreon/pyreon/issues/4446)).
+- The reactive reads come from text bindings only: text a compiled template binds directly to one signal or computed. Attribute, class and style bindings, and text expressions that read more than one signal, are not correlated to their signals, so neither the inspector nor `nodesForElement` lists them. Correlating them needs a compiler-emitted owner tag on each binding ([#4446](https://github.com/pyreon/pyreon/issues/4446)).
 - The Console only sees what is logged after the panel opens.
 
 ## Programmatic API

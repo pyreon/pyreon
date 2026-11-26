@@ -8,7 +8,7 @@ Chrome DevTools extension for Pyreon: the component tree with "why did this upda
 
 Six tabs, all fed by the running page (nothing sampled or simulated):
 
-- **Components**: the mounted tree, rebuilt from `parentId` (the framework registers post-order, so a parent's own `childIds` is empty). Filter, arrow-key navigation (`role="tree"`), Enter outlines the component on the page, newly mounted rows pulse. The inspector shows the owner path, the signals and computeds rendered as text inside the component (`reactive.nodesForElement`), and **Why did this update?**: the `getUpdateCause` chain behind the most recent of them, with source lines.
+- **Components**: the mounted tree, rebuilt from `parentId` (the framework registers post-order, so a parent's own `childIds` is empty). Filter, arrow-key navigation (`role="tree"`), Enter outlines the component on the page, newly mounted rows pulse. The inspector shows the owner path, the component's **props** (`getComponentProps`, a bounded preview read on request), what it **owns** (the signals, computeds and effects it created in setup and `onMount`, from `reactive.nodesForComponent`), the signals and computeds rendered as text inside it (`reactive.nodesForElement`), and **Why did this update?**: the `getUpdateCause` chain behind the most recent fire among those reads and its owned nodes, with source lines. *Selected* in the Graph tab scopes to the component's reads and owned nodes.
 - **Graph**: signals → computeds → effects. *Selected* scopes to the selected signal, the selected component's reads or the last write; *Everything* draws the 120 most active nodes and says how many it left out.
 - **Signals**: value, subscribers, writes, last write; filterable and virtualised.
 - **Effects**: a fire lane per effect that ran in the last 10 s, with what it reads.
@@ -16,7 +16,7 @@ Six tabs, all fed by the running page (nothing sampled or simulated):
 - **Console**: `[Pyreon]` warnings and errors logged while the panel is open, and an input that evaluates in the page.
 - **Element picker**: the toolbar button drives the framework's overlay (`Ctrl+Shift+P`).
 
-Computeds and effects have no runtime name, so they are shown by where they were created (`Composer.tsx:31`). Components mounted by `hydrateRoot` are registered like mounted ones, so SSR, SSG, island and Zero apps show the same tree. Limits: the reactive reads come from text bindings only (text a compiled template binds directly to one signal or computed); attribute, class and style bindings and text that reads more than one signal are not correlated to their signals (`runtime-dom/src/binding-registry.ts`). The hook exposes props (`getComponentProps(id)`) and owned signals, computeds and effects (`reactive.nodesForComponent(id)`), but the inspector does not show them yet (#4446).
+`@pyreon/vite-plugin` names `const x = signal(…)`, `computed(…)` and `effect(…)` after their binding; any other computed or effect is shown by where it was created (`Composer.tsx:31`). Components mounted by `hydrateRoot` are registered like mounted ones, so SSR, SSG, island and Zero apps show the same tree. Limits: the reactive reads come from text bindings only (text a compiled template binds directly to one signal or computed); attribute, class and style bindings and text that reads more than one signal are not correlated to their signals (`runtime-dom/src/binding-registry.ts`). Correlating those needs a compiler-emitted owner tag on the binding in both compiler backends (#4446).
 
 ## Development install
 
@@ -89,7 +89,7 @@ Implements the pyreon.dev design canvas `Devtools.html`: the app-shell patterns 
 ## Tests
 
 - `bun run test`: unit tests (happy-dom) for the data shaping, the page hook against the real `mount()`, and the theme tokens.
-- `bun run test:browser`: `src/tests/panel.browser.test.tsx` in real Chromium. A real Pyreon app (compiled by the real `@pyreon/vite-plugin`) runs in the same page as the panel UI and the page hook, joined by a transport that JSON-serialises like extension messaging. It covers the tree, keyboard use, the inspector's cause chain, every tab, 4.5:1 text contrast and overflow in both themes at 1100 px and 700 px, and the 10,000-signal case. `VITE_DEVTOOLS_SHOTS=1` also writes a screenshot of every tab to `verification-screenshots/`. The extension itself cannot be loaded into the vitest browser; `bun run verify` covers that.
+- `bun run test:browser`: `src/tests/panel.browser.test.tsx` in real Chromium. A real Pyreon app (compiled by the real `@pyreon/vite-plugin`) runs in the same page as the panel UI and the page hook, joined by a transport that JSON-serialises like extension messaging. It covers the tree, keyboard use, the inspector's props, owned nodes and cause chain, every tab, 4.5:1 text contrast and overflow in both themes at 1100 px and 700 px, and the 10,000-signal case. `VITE_DEVTOOLS_SHOTS=1` also writes a screenshot of every tab to `verification-screenshots/`. The extension itself cannot be loaded into the vitest browser; `bun run verify` covers that.
 
 ## Verification
 

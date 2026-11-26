@@ -6,7 +6,7 @@
  * plain array.
  */
 import { h } from '@pyreon/core'
-import { computed, signal } from '@pyreon/reactivity'
+import { computed, effect, signal } from '@pyreon/reactivity'
 import { __resetReactiveDevtoolsForTesting } from '@pyreon/reactivity/internal'
 import { _bindText, mount } from '@pyreon/runtime-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -31,6 +31,7 @@ function start(extra: Partial<Parameters<typeof createHook>[1]> = {}): Hook {
     host: 'localhost:5173',
     ...extra,
   })
+
   return hook
 }
 
@@ -57,9 +58,11 @@ afterEach(() => {
 function App() {
   return h('main', null, h(Header, null), h(Composer, null))
 }
+
 function Header() {
   return h('header', null, 'Inbox')
 }
+
 function Composer() {
   return h('p', { class: 'composer' })
 }
@@ -68,6 +71,7 @@ function mountApp(): HTMLElement {
   const container = document.createElement('div')
   document.body.appendChild(container)
   disposeApp = mount(h(App, null), container)
+
   return container
 }
 
@@ -157,10 +161,147 @@ describe('createHook', () => {
     h1.handle({ type: 'get-all' })
     const header = last('all-result').entries.find((e) => e.name === 'Header')!
     h1.handle({ type: 'inspect', id: header.id })
-    expect(last('component-detail').detail).toMatchObject({ hasElement: true, reads: [], cause: null })
+    expect(last('component-detail').detail).toMatchObject({ hasElement: true, props: {}, reads: [], owned: [], cause: null })
     const before = sent.length
     h1.handle({ type: 'inspect', id: 'no-such-id' })
     expect(sent).toHaveLength(before)
+  })
+
+  it('inspect reports the props preview and the nodes the component owns, with the cause from its own effect (#4446)', () => {
+    const external = signal(0, { name: 'external' })
+    keepAlive.push(external)
+    function Counter(props: { label: string; step: number }) {
+      const count = signal(props.step, { name: 'count' })
+      const doubled = computed(() => count() * 2, { name: 'doubled' })
+      // An effect that reads a signal from outside: the component renders it
+      // nowhere as text, so only the owned list explains this update.
+      effect(() => {
+        external()
+        doubled()
+      })
+
+      return h('section', { class: 'counter' }, props.label)
+    }
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const h1 = start()
+    h1.handle({ type: 'reactive-activate' })
+    disposeApp = mount(h(Counter, { label: 'Clicks', step: 3 }), container)
+    external.set(1)
+    h1.handle({ type: 'get-all' })
+    const counter = last('all-result').entries.find((e) => e.name === 'Counter')!
+    h1.handle({ type: 'inspect', id: counter.id })
+    const { detail } = last('component-detail')
+    expect(detail.props).toEqual({ label: '"Clicks"', step: '3' })
+    expect(detail.reads).toEqual([])
+    expect(detail.owned.map((r) => [r.name, r.kind])).toEqual([
+      ['count', 'signal'],
+      ['doubled', 'derived'],
+      [expect.stringMatching(/^effect/), 'effect'],
+    ])
+    expect(detail.owned[0]).toMatchObject({ value: '3' })
+    expect(detail.owned[2]!.fires).toBeGreaterThanOrEqual(1)
+    // No text binding fired, so the cause comes from the owned effect, and
+    // it names the outside write.
+    expect(detail.cause?.target.kind).toBe('effect')
+    expect(detail.cause?.chain.map((l) => l.name)).toEqual(['external'])
+    // Plain data only.
+    expect(JSON.parse(JSON.stringify(detail))).toEqual(detail)
+  })
+
+  it('inspect explains a later write to an owned signal, not the mount fire of a text read', () => {
+    const external = signal('a', { name: 'external' })
+    const shown = computed(() => external().toUpperCase(), { name: 'shown' })
+    keepAlive.push(external, shown)
+    let touched: ReturnType<typeof signal<boolean>> | null = null
+    function Field() {
+      touched = signal(false, { name: 'touched' })
+
+      return h('p', { class: 'field' })
+    }
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const h1 = start()
+    h1.handle({ type: 'reactive-activate' })
+    disposeApp = mount(h(Field, null), container)
+    // The computed is evaluated (and so fires) when it is bound, at mount.
+    const text = document.createTextNode('')
+    ;(container.querySelector('p.field') as HTMLElement).append(text)
+    _bindText(shown as unknown as TextSource, text)
+    touched!.set(true)
+    h1.handle({ type: 'get-all' })
+    const field = last('all-result').entries.find((e) => e.name === 'Field')!
+    h1.handle({ type: 'inspect', id: field.id })
+    const { detail } = last('component-detail')
+    expect(detail.reads.map((r) => r.name)).toEqual(['shown'])
+    expect(detail.reads[0]!.lastFire).not.toBeNull()
+    expect(detail.owned.map((r) => r.name)).toEqual(['touched'])
+    expect(detail.cause?.target.name).toBe('touched')
+  })
+
+  it('inspect falls back to lastFire once the fires have left the buffer, and passes a missing cause through as null', () => {
+    const external = signal('a', { name: 'external' })
+    const shown = computed(() => external().toUpperCase(), { name: 'shown' })
+    keepAlive.push(external, shown)
+    let touched: ReturnType<typeof signal<boolean>> | null = null
+    let idle: ReturnType<typeof signal<number>> | null = null
+    function Field() {
+      touched = signal(false, { name: 'touched' })
+      idle = signal(0, { name: 'idle' })
+
+      return h('p', { class: 'field' })
+    }
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    // The fire buffer is empty (every fire has been evicted) and the bridge
+    // has no cause for the chosen node.
+    const real = devtools()
+    const asked: number[] = []
+    const reactive = {
+      ...real.reactive!,
+      getFires: () => [],
+      getUpdateCause: (id: number) => {
+        asked.push(id)
+
+        return null
+      },
+    }
+    const h1 = createHook({ ...real, reactive }, { emit: (m) => sent.push(structuredClone(m)), host: 'x' })
+    hook = h1
+    sent = []
+    h1.handle({ type: 'reactive-activate' })
+    disposeApp = mount(h(Field, null), container)
+    const text = document.createTextNode('')
+    ;(container.querySelector('p.field') as HTMLElement).append(text)
+    _bindText(shown as unknown as TextSource, text)
+    touched!.set(true)
+    keepAlive.push(idle)
+    h1.handle({ type: 'get-all' })
+    const field = last('all-result').entries.find((e) => e.name === 'Field')!
+    h1.handle({ type: 'inspect', id: field.id })
+    const { detail } = last('component-detail')
+    // `idle` never fired, so it is never the answer.
+    const pool = [...detail.reads, ...detail.owned]
+    expect(pool.find((r) => r.name === 'idle')?.lastFire).toBeNull()
+    let expected = pool[0]!
+    for (const r of pool) if (r.lastFire !== null && (expected.lastFire === null || r.lastFire > expected.lastFire)) expected = r
+    expect(asked).toEqual([expected.id])
+    expect(expected.name).not.toBe('idle')
+    expect(detail.cause).toBeNull()
+  })
+
+  it('inspect without the reactive bridge still reports props', () => {
+    mountApp()
+    // A framework without the reactive bridge (older runtime-dom).
+    const noBridge: PyreonDevtools = { ...devtools() }
+    delete noBridge.reactive
+    const h1 = createHook(noBridge, { emit: (m) => sent.push(structuredClone(m)), host: 'x' })
+    hook = h1
+    sent = []
+    h1.handle({ type: 'get-all' })
+    const header = last('all-result').entries.find((e) => e.name === 'Header')!
+    h1.handle({ type: 'inspect', id: header.id })
+    expect(last('component-detail').detail).toMatchObject({ props: {}, reads: [], owned: [], cause: null })
   })
 
   it('reactive-poll returns the page clock with the graph, or fires only', () => {
