@@ -239,6 +239,57 @@ describe('createHook', () => {
     expect(detail.cause?.target.name).toBe('touched')
   })
 
+  it('inspect falls back to lastFire once the fires have left the buffer, and passes a missing cause through as null', () => {
+    const external = signal('a', { name: 'external' })
+    const shown = computed(() => external().toUpperCase(), { name: 'shown' })
+    keepAlive.push(external, shown)
+    let touched: ReturnType<typeof signal<boolean>> | null = null
+    let idle: ReturnType<typeof signal<number>> | null = null
+    function Field() {
+      touched = signal(false, { name: 'touched' })
+      idle = signal(0, { name: 'idle' })
+
+      return h('p', { class: 'field' })
+    }
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    // The fire buffer is empty (every fire has been evicted) and the bridge
+    // has no cause for the chosen node.
+    const real = devtools()
+    const asked: number[] = []
+    const reactive = {
+      ...real.reactive!,
+      getFires: () => [],
+      getUpdateCause: (id: number) => {
+        asked.push(id)
+
+        return null
+      },
+    }
+    const h1 = createHook({ ...real, reactive }, { emit: (m) => sent.push(structuredClone(m)), host: 'x' })
+    hook = h1
+    sent = []
+    h1.handle({ type: 'reactive-activate' })
+    disposeApp = mount(h(Field, null), container)
+    const text = document.createTextNode('')
+    ;(container.querySelector('p.field') as HTMLElement).append(text)
+    _bindText(shown as unknown as TextSource, text)
+    touched!.set(true)
+    keepAlive.push(idle)
+    h1.handle({ type: 'get-all' })
+    const field = last('all-result').entries.find((e) => e.name === 'Field')!
+    h1.handle({ type: 'inspect', id: field.id })
+    const { detail } = last('component-detail')
+    // `idle` never fired, so it is never the answer.
+    const pool = [...detail.reads, ...detail.owned]
+    expect(pool.find((r) => r.name === 'idle')?.lastFire).toBeNull()
+    let expected = pool[0]!
+    for (const r of pool) if (r.lastFire !== null && (expected.lastFire === null || r.lastFire > expected.lastFire)) expected = r
+    expect(asked).toEqual([expected.id])
+    expect(expected.name).not.toBe('idle')
+    expect(detail.cause).toBeNull()
+  })
+
   it('inspect without the reactive bridge still reports props', () => {
     mountApp()
     // A framework without the reactive bridge (older runtime-dom).

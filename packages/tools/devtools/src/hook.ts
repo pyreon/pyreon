@@ -89,10 +89,10 @@ function compactCause(cause: UpdateCause | null): UpdateCause | null {
  * one whose fire has left the buffer.
  */
 function latestFired(reads: ComponentRead[], fires: ReactiveFire[]): ComponentRead | null {
-  const ids = new Set(reads.map((r) => r.id))
+  const byId = new Map(reads.map((r) => [r.id, r]))
   for (let i = fires.length - 1; i >= 0; i--) {
-    const fid = (fires[i] as ReactiveFire).id
-    if (ids.has(fid)) return reads.find((r) => r.id === fid) ?? null
+    const read = byId.get((fires[i] as ReactiveFire).id)
+    if (read !== undefined) return read
   }
   let latest: ComponentRead | null = null
   for (const r of reads) {
