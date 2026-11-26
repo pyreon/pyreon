@@ -177,7 +177,7 @@ const LARGE_100 = generateLarge(100)
 
 // ─── Transform configs ──────────────────────────────────────────────────────
 
-const BABEL_OPTS: babel.TransformOptions = {
+const BABEL_OPTS: babel.InputOptions = {
   plugins: [[babelJsx, { runtime: 'automatic', importSource: '@pyreon/core' }]],
   parserOpts: { plugins: ['jsx', 'typescript'] },
   filename: 'bench.tsx',

@@ -19,6 +19,7 @@ import {
   type SelfWorkflow,
 } from '../../../../../scripts/native-surface-touched'
 import { laneChanged, laneSurface, normalize } from '../../../../../scripts/native-workflow-surface'
+import { computeAffectedFlags, discoverWorkspaces } from '../../../../../scripts/affected'
 
 const REPO = resolve(__dirname, '../../../../..')
 const read = (rel: string): string => readFileSync(resolve(REPO, rel), 'utf8')
@@ -360,6 +361,51 @@ describe('the workflows are wired to the decision (a skipped job still reports s
     expect(validateText).toContain('elif [ -s "$FILES" ]; then\n            GRAPH_MAC=\'\'')
     expect(validateText).toContain('--macos-jobs=validate-swift-typecheck')
     expect(validateText).toMatch(/echo "macos=true" >> "\$GITHUB_OUTPUT"\n\s+echo "graph-macos=true"/)
+  })
+  it('a lathe-only change starts the macOS job for the Lathe step alone', () => {
+    // Lathe's swiftc / real-SDK tests run nowhere else (the Linux test cells
+    // have no Swift toolchain). The path classifier and the native-compiler
+    // graph both say no for a lathe-only change; `lathe` says yes.
+    const changed = ['packages/tools/lathe/src/index.ts']
+    const workspaces = discoverWorkspaces(REPO)
+    expect(classifyMacosLane(changed, noFs, same(VALIDATE, validateText), MAC_JOBS).run).toBe(false)
+    expect(computeAffectedFlags({ changed, workspaces, category: 'native/compiler', root: REPO })).toBe('')
+    expect(computeAffectedFlags({ changed, workspaces, category: 'tools/lathe', root: REPO })).toContain(
+      '@pyreon/lathe',
+    )
+    // A change that reaches lathe only through a dependency selects it too.
+    expect(
+      computeAffectedFlags({
+        changed: ['packages/native/compiler/src/index.ts'],
+        workspaces,
+        category: 'tools/lathe',
+        root: REPO,
+      }),
+    ).toContain('@pyreon/lathe')
+    // The workflow computes and reads that output.
+    expect(validateText).toContain('lathe: ${{ steps.diff.outputs.lathe }}')
+    expect(validateText).toContain('bun scripts/affected.ts --files-from-stdin --category=tools/lathe < "$FILES_MAC"')
+    expect(validateText).toMatch(/echo "graph-macos=true" >> "\$GITHUB_OUTPUT"\n\s+echo "lathe=true"/)
+    expect(macJob()).toContain("|| needs.decide.outputs.lathe != 'false'))")
+    const jobStart = validateText.indexOf('\n  validate-swift-typecheck:\n')
+    const job = validateText.slice(jobStart)
+    const step = (name: string): string => {
+      const at = job.indexOf(`      - name: ${name}`)
+      expect(at, `step ${name}`).toBeGreaterThan(-1)
+      return job.slice(at, job.indexOf('\n      - name:', at + 1))
+    }
+    const nativeOnly = "if: needs.decide.outputs.macos != 'false' || needs.decide.outputs['graph-macos'] != 'false'"
+    for (const name of [
+      'Run native-compiler tests',
+      'Native coverage',
+      'Scaffold + example iOS projects',
+      'Co-located native sources',
+    ]) {
+      expect(step(name)).toContain(nativeOnly)
+    }
+    const lathe = step('Lathe — Swift tests')
+    expect(lathe).toContain("if: needs.decide.outputs.lathe != 'false' || needs.decide.outputs.macos != 'false'")
+    expect(lathe).toContain("git grep -l -E 'isSwiftcAvailable|isSwiftUIAvailable'")
   })
   it('the Linux validate job keeps the old whole-file rule', () => {
     expect(validateText).toContain("needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true'")

@@ -41,6 +41,11 @@
  * Usage: bun scripts/bench/core/head.ts [--repeat N]
  */
 
+// Type-only imports are erased, so they may precede the guard.
+import type { VNode } from '../../../packages/core/core/src/index'
+import type { HeadEntry, HeadTag } from '../../../packages/core/head/src/context'
+import type { ResolvableHead } from 'unhead/types'
+
 // ─── NODE_ENV self-re-exec guard (MUST precede every value import) ────────────
 // Value imports below are DYNAMIC so they evaluate ONLY in the prod-env child.
 if (process.env.NODE_ENV !== 'production') {
@@ -50,9 +55,6 @@ if (process.env.NODE_ENV !== 'production') {
   })
   process.exit(child.exitCode ?? 0)
 }
-
-import type { VNode } from '../../../packages/core/core/src/index'
-import type { HeadEntry, HeadTag } from '../../../packages/core/head/src/context'
 
 const { createHead } = await import('unhead/server')
 const { h } = await import('../../../packages/core/core/src/index')
@@ -67,7 +69,7 @@ const REPEATS = repeatArg !== -1 ? Number(process.argv[repeatArg + 1] ?? 7) : 7
 const TITLE = 'Benchmark Page'
 const TITLE_TEMPLATE = '%s | Pyreon App'
 const TITLED = `${TITLE} | Pyreon App`
-const HTML_ATTRS = { lang: 'en', dir: 'ltr' }
+const HTML_ATTRS = { lang: 'en', dir: 'ltr' } as const
 const BODY_ATTRS = { class: 'dark' }
 const contentFor = (i: number) => `Content for meta tag ${i} with <special> & "chars"`
 
@@ -88,8 +90,8 @@ function makePyreonEntry(tagCount: number): HeadEntry {
 }
 
 /** The SAME title template + html/body attrs Pyreon receives — see header. */
-function makeUnheadInput(count: number) {
-  const meta: Record<string, string>[] = []
+function makeUnheadInput(count: number): ResolvableHead {
+  const meta: NonNullable<ResolvableHead['meta']> = []
   for (let i = 0; i < count; i++) {
     meta.push({ name: `description-${i}`, content: contentFor(i) })
   }

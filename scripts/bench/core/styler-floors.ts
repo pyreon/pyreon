@@ -64,10 +64,10 @@ import * as stylex from '@stylexjs/stylex'
 import { clsx } from 'clsx'
 import { css as gooberCss, extractCss as gooberExtract } from 'goober'
 import { twMerge } from 'tailwind-merge'
-import { normalizeCSS, resolve } from '../../../packages/ui-system/styler/src/resolve'
+import { normalizeCSS, resolve, type StyledProps } from '../../../packages/ui-system/styler/src/resolve'
 import { createSheet } from '../../../packages/ui-system/styler/src/sheet'
 import { runRivalBench, type Arm } from '../rivals-harness'
-// @ts-expect-error — generated JS, no declaration file
+// Typed by the sibling stylex.compiled.d.ts.
 import { styles as sx } from './styler-floors/stylex.compiled.js'
 
 type Id = 'pyreon' | 'emotion' | 'goober' | 'vanilla-extract' | 'stylex' | 'tailwind'
@@ -107,8 +107,10 @@ function build(id: Id): Render {
   switch (id) {
     case 'pyreon': {
       const s = createSheet()
-      const fc = (p: { c: string }) => p.c
-      const fb = (p: { b: string }) => p.b
+      // `resolve` types a function interpolation's props as unknown values;
+      // narrow instead of casting (a typeof check, nothing measurable).
+      const fc = (p: StyledProps): string => (typeof p.c === 'string' ? p.c : '')
+      const fb = (p: StyledProps): string => (typeof p.b === 'string' ? p.b : '')
       return {
         static: () => ({ className: s.insert(normalizeCSS(resolve(WARM, [], {}))) }),
         dyn: (c, b) => ({ className: s.insert(normalizeCSS(resolve(DYN, [fc, fb], { c, b }))) }),

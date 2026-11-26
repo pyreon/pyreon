@@ -49,10 +49,11 @@ async function main() {
 
     // Mount the overlay. perfHarness.overlay() returns an OverlayHandle.
     await page.evaluate(() => {
-      const w = window as {
-        __pyreon_perf__: { overlay: () => unknown }
+      const perf: unknown = Reflect.get(window, '__pyreon_perf__')
+      if (typeof perf !== 'object' || perf === null || !('overlay' in perf) || typeof perf.overlay !== 'function') {
+        throw new Error('[Pyreon] window.__pyreon_perf__.overlay() is missing — main.tsx must call install() in dev')
       }
-      w.__pyreon_perf__.overlay()
+      perf.overlay()
     })
 
     // Host + shadow root attached?

@@ -162,13 +162,16 @@ function benchMedian(
   const samples: BenchResult[] = []
   for (let i = 0; i < runs; i++) samples.push(bench(label, fn, durationMs, warmupIters))
   samples.sort((a, b) => a.opsPerSec - b.opsPerSec)
+  const lo = samples[0]
   const mid = samples[Math.floor(runs / 2)]
+  const hi = samples[runs - 1]
+  if (!lo || !mid || !hi) throw new Error(`[Pyreon] benchMedian(${label}): runs must be at least 1, got ${runs}`)
   return {
     label,
     opsPerSec: mid.opsPerSec,
     avgNs: mid.avgNs,
-    lo: samples[0].opsPerSec,
-    hi: samples[runs - 1].opsPerSec,
+    lo: lo.opsPerSec,
+    hi: hi.opsPerSec,
   }
 }
 

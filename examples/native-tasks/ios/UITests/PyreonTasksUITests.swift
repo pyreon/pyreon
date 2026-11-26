@@ -439,8 +439,7 @@ final class PyreonTasksUITests: XCTestCase {
         // first BECAUSE that fails the min-length validator and must NOT
         // navigate -- copying only that half is why the first run of this
         // helper reported "Toolkit button missing": login had never succeeded.
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
 
         let submit = app.buttons["login-submit"].firstMatch
@@ -477,8 +476,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -522,8 +520,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -546,8 +543,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -592,8 +588,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -676,8 +671,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -736,8 +730,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -751,8 +744,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let draft = app.textFields["req-draft"].firstMatch
         XCTAssertTrue(draft.waitToExist(timeout: 10), "draft field missing")
-        draft.tap()
-        draft.typeText("Grace Hopper")
+        draft.tapAndType("Grace Hopper", in: app, expecting: "Grace Hopper")
         dismissKeyboard(app)
         tapAfterScrolling(app.buttons["req-mutate"].firstMatch, in: app)
 
@@ -800,8 +792,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -841,8 +832,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -881,16 +871,14 @@ final class PyreonTasksUITests: XCTestCase {
         )
 
         // Control -> program, newline included.
-        notes.tap()
-        notes.typeText("\ndelta")
+        notes.tapAndType("\ndelta", in: app)
         let length = app.staticTexts["fields-notes-length"].firstMatch
         XCTAssertTrue(waitForLabel(length, "22", timeout: 10), "typed text did not reach the signal (length '\(length.label)', echo '\(echo.label)')")
         XCTAssertTrue(echo.label.contains("\ndelta"), "Return did not insert a newline: '\(echo.label)'")
 
         // A SINGLE-line field stays one line however long its text — the
         // contract the Android lowering had to state explicitly.
-        single.tap()
-        single.typeText(String(repeating: "word ", count: 30))
+        single.tapAndType(String(repeating: "word ", count: 30), in: app)
         XCTAssertEqual(single.frame.height, oneRow, "long text wrapped the single-line field")
     }
 
@@ -902,8 +890,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -911,8 +898,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         let draft = app.textFields["req-draft"].firstMatch
         XCTAssertTrue(draft.waitToExist(timeout: 15), "draft field missing")
-        draft.tap()
-        draft.typeText("Ada L")
+        draft.tapAndType("Ada L", in: app, expecting: "Ada L")
         dismissKeyboard(app)
 
         tapAfterScrolling(app.buttons["req-upload"].firstMatch, in: app)
@@ -1060,8 +1046,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30))
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         let gallery = app.buttons["tasks-gallery"].firstMatch
@@ -1091,6 +1076,7 @@ final class PyreonTasksUITests: XCTestCase {
         let edits = app.staticTexts["gal-code-edits"].firstMatch
         let editsBefore = Int(edits.label) ?? 0
         codeView.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.waitForKeyboard(timeout: 10), "tapping CodeMirror raised no keyboard, so typed keys would go nowhere")
         app.typeText("QQ")
         XCTAssertTrue(waitForLabelContaining(codeValue, "QQ", timeout: 15), "typing in CodeMirror never reached the native signal (value label: \(codeValue.label))")
         XCTAssertGreaterThan(Int(edits.label) ?? 0, editsBefore, "the edit counter did not move")
@@ -1125,8 +1111,7 @@ final class PyreonTasksUITests: XCTestCase {
         app.launchFresh()
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30))
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         let gallery = app.buttons["tasks-gallery"].firstMatch
@@ -1184,8 +1169,7 @@ final class PyreonTasksUITests: XCTestCase {
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing on login page")
         // `.roundedBorder` draws a ~34pt box; a bare field is only its ~22pt line.
         XCTAssertGreaterThanOrEqual(username.frame.height, 30, "login field has no box: \(username.frame)")
-        username.tap()
-        username.typeText("ada")
+        username.tapAndType("ada", in: app, expecting: "ada")
         dismissKeyboard(app)
         let submit = app.buttons["login-submit"].firstMatch
         XCTAssertGreaterThanOrEqual(submit.frame.height, 30, "Continue has no button chrome: \(submit.frame)")
@@ -1232,8 +1216,7 @@ final class PyreonTasksUITests: XCTestCase {
             username.waitToExist(timeout: 30),
             "Username field missing on login page"
         )
-        username.tap()
-        username.typeText("ab")
+        username.tapAndType("ab", in: app, expecting: "ab")
         dismissKeyboard(app)
 
         let submit = app.buttons["login-submit"].firstMatch
@@ -1257,8 +1240,7 @@ final class PyreonTasksUITests: XCTestCase {
 
         // Phase 1b: typing more characters fixes the field — setValue
         // re-validates after an error, so the message clears live.
-        username.tap()
-        username.typeText("cde")
+        username.tapAndType("cde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         submit.tap()
 
@@ -1281,8 +1263,7 @@ final class PyreonTasksUITests: XCTestCase {
         // the keyed list.
         let titleField = app.textFields["new-task-title"].firstMatch
         XCTAssertTrue(titleField.exists, "New-task field missing on tasks page")
-        titleField.tap()
-        titleField.typeText("Verify on the simulator")
+        titleField.tapAndType("Verify on the simulator", in: app, expecting: "Verify on the simulator")
         dismissKeyboard(app)
 
         let add = app.buttons["new-task-add"].firstMatch
@@ -2248,7 +2229,7 @@ final class PyreonTasksUITests: XCTestCase {
         let schemaName = app.textFields["toolkit-schema-name"].firstMatch
         XCTAssertTrue(schemaName.exists, "Schema form field missing on toolkit page")
         tapAfterScrolling(schemaName, in: app)
-        schemaName.typeText("ab")
+        schemaName.typeWhenFocused("ab", in: app, expecting: "ab")
         dismissKeyboard(app)
         tapAfterScrolling(app.buttons["toolkit-schema-submit"].firstMatch, in: app)
         XCTAssertEqual(
@@ -2353,8 +2334,7 @@ final class PyreonTasksUITests: XCTestCase {
     private func navigateToWebHost(_ app: XCUIApplication) {
         let username = app.textFields["login-username"].firstMatch
         XCTAssertTrue(username.waitToExist(timeout: 30), "Username field missing")
-        username.tap()
-        username.typeText("abcde")
+        username.tapAndType("abcde", in: app, expecting: "abcde")
         dismissKeyboard(app)
         app.buttons["login-submit"].firstMatch.tap()
         XCTAssertTrue(app.otherElements["tasks-page"].firstMatch.waitToExist(timeout: 20), "Tasks page did not render after login")
@@ -2421,8 +2401,7 @@ final class PyreonTasksUITests: XCTestCase {
         let field = alert.textFields.firstMatch
         XCTAssertTrue(field.exists, "prompt has a text field")
         XCTAssertEqual(field.value as? String, "guest", "prompt carries the page's default text")
-        field.tap()
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "pyreon")
+        field.tapAndType(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8) + "pyreon", in: app, expecting: "pyreon")
         alert.buttons["OK"].tap()
         XCTAssertTrue(waitForLabel(result, "prompt:pyreon", timeout: 10), "prompt() OK (label: \(result.label))")
 
