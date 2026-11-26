@@ -1,3 +1,5 @@
+import { DETECT_PYREON_EXPRESSION } from './hook'
+
 // Detect whether the inspected page has Pyreon loaded
 let panelCreated = false
 
@@ -8,7 +10,7 @@ function createPanel(): void {
 }
 
 chrome.devtools.inspectedWindow.eval(
-  '!!(window.__PYREON_DEVTOOLS__)',
+  DETECT_PYREON_EXPRESSION,
   (result, _exceptionInfo) => {
     if (result) {
       createPanel()
@@ -25,7 +27,7 @@ function retryDetection() {
   retries++
 
   chrome.devtools.inspectedWindow.eval(
-    '!!(window.__PYREON_DEVTOOLS__)',
+    DETECT_PYREON_EXPRESSION,
     (result, _exceptionInfo) => {
       if (result) {
         createPanel()

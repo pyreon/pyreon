@@ -1779,12 +1779,12 @@ import { mount } from '@pyreon/runtime-dom'
 const router = createRouter({ routes })
 
 // Hydrate loader data so initial render uses server-fetched data
-hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
+hydrateLoaderData(router, window.__PYREON_LOADER_DATA__)
 
 mount(<App />, document.getElementById('app')!)
 ```
 
-`serializeLoaderData` uses route path patterns as keys (stable across server and client). `hydrateLoaderData` populates the router's internal `_loaderData` map so the initial render uses server-fetched data without re-running loaders.
+`serializeLoaderData` uses route path patterns as keys (stable across server and client). `hydrateLoaderData` populates the router's internal `_loaderData` map so the initial render uses server-fetched data without re-running loaders. Pass the global as it is: `hydrateLoaderData` applies only an object literal and returns `false` otherwise, so run the loaders then (`router.replace(location.pathname)`). On a page whose inline script was not written, markup with `id="__PYREON_LOADER_DATA__"` makes the global that element (named access on Window), which `?? {}` does not catch.
 
 ### Server loaders + single-fetch
 
@@ -2823,7 +2823,7 @@ router.push({ name: 'user', params: { id: '42' } })
 
 <APICard name="serializeLoaderData" type="function" signature={"serializeLoaderData(router: Router): Record<string, unknown>"} description="SSR: serialize the router's loader data for embedding in HTML." />
 
-<APICard name="hydrateLoaderData" type="function" signature={"hydrateLoaderData(router: Router, data: Record<string, unknown>): void"} description="Client: hydrate serialized loader data into the router so the initial render uses server-fetched data." />
+<APICard name="hydrateLoaderData" type="function" signature={"hydrateLoaderData(router: Router, data: unknown): boolean"} description="Client: hydrate serialized loader data into the router so the initial render uses server-fetched data. Applies only a plain record and returns whether it did." />
 
 <APICard name="redirect" type="function" signature="redirect(url: string, status?: RedirectStatus): never" description="Throw inside a loader to redirect the navigation before the layout renders. Default status 307." />
 

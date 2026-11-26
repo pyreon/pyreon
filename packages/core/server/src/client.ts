@@ -146,6 +146,29 @@ export function islandsOnlyPages(start: () => () => void): IslandsOnlyPages {
 export const ISLANDS_ONLY_SELECTOR = 'meta[name="pyreon-hydrate"][content="islands"]'
 
 /**
+ * Whether `value` is what an inline `<script>window.X={…}</script>` evaluates
+ * to: an object literal (prototype `Object.prototype`).
+ *
+ * Truthiness and `typeof === 'object'` are not enough: in a browser, markup
+ * with `id="X"` (or `<iframe name="X">`, `<form name>`, `<embed name>`,
+ * `<object name>`, `<img name>`) makes the global `X` resolve to that element
+ * or frame whenever no script assigned it (named access on Window). A
+ * null-prototype object is refused too: a CROSS-ORIGIN frame's WindowProxy
+ * reports prototype `null`, and reading any key of it throws SecurityError.
+ * `hydrateLoaderData` (router) and `hydrateStores` (store) apply the same rule.
+ */
+function isObjectLiteral(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false
+  try {
+    return Object.getPrototypeOf(value) === Object.prototype
+  } catch {
+    // A Proxy's `getPrototypeOf` trap can throw; whatever it is, it is not
+    // a literal.
+    return false
+  }
+}
+
+/**
  * Hydrate a server-rendered Pyreon app on the client.
  *
  * Handles:
@@ -189,23 +212,22 @@ export function startClient(options: StartClientOptions): () => void {
   const router = createRouter({ routes, mode: 'history' })
   if (islandsOnly) router.beforeEach(islandsOnly.guard)
 
-  // Hydrate loader data from SSR (avoids re-fetching on initial render)
+  // Hydrate loader data from SSR (avoids re-fetching on initial render). Only
+  // an object literal is server data: on a page whose inline script was not
+  // written, markup with `id="__PYREON_LOADER_DATA__"` makes the global an
+  // element (named access on Window).
   const loaderData = (window as unknown as Record<string, unknown>).__PYREON_LOADER_DATA__
-  if (loaderData && typeof loaderData === 'object') {
-    hydrateLoaderData(router as never, loaderData as Record<string, unknown>)
-  }
+  if (isObjectLiteral(loaderData)) hydrateLoaderData(router as never, loaderData)
 
   // Seed @pyreon/store stores from the SSR snapshot before mount (decoupled
-  // bridge set by @pyreon/store on import; one null check when unused). Makes
-  // cross-island shared state hydrate once with server values.
-  const hydrateStores = (
-    globalThis as { __PYREON_HYDRATE_STORES__?: (d: Record<string, Record<string, unknown>>) => void }
-  ).__PYREON_HYDRATE_STORES__
-  if (hydrateStores) {
+  // bridge set by @pyreon/store on import). Makes cross-island shared state
+  // hydrate once with server values. `typeof` and an object literal, not
+  // truthiness: without @pyreon/store loaded, markup with that `id` makes the
+  // bridge an element, and the same goes for the state.
+  const hydrateStores = (globalThis as { __PYREON_HYDRATE_STORES__?: unknown }).__PYREON_HYDRATE_STORES__
+  if (typeof hydrateStores === 'function') {
     const storeState = (window as unknown as Record<string, unknown>).__PYREON_STORE_STATE__
-    if (storeState && typeof storeState === 'object') {
-      hydrateStores(storeState as Record<string, Record<string, unknown>>)
-    }
+    if (isObjectLiteral(storeState)) hydrateStores(storeState)
   }
 
   // Build app tree

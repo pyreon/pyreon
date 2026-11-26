@@ -20,6 +20,7 @@
 // exactly once (boot-time one-shot); a later `resetStore` + re-create starts
 // from the store's own `setup()` initial values, not stale boot state.
 
+import { isObjectLiteral } from './plain-object'
 import { getRegistry } from './registry'
 
 // Minimal structural type — avoids a circular import of `StoreApi` from
@@ -104,26 +105,33 @@ export function dehydrateStores(
  * (no flash of default state). Stores that already exist are patched in place;
  * stores not yet created are seeded on their first use.
  *
+ * Pass the global as it is. Anything that is not an object literal is
+ * ignored: no script was written, or (on such a page) markup with
+ * `id="__PYREON_STORE_STATE__"` (or a frame with that `name`) makes the global
+ * an element or a WindowProxy through named access on Window.
+ *
  * @example
  * // client entry, before mount:
- * hydrateStores(window.__PYREON_STORE_STATE__ ?? {})
+ * hydrateStores(window.__PYREON_STORE_STATE__)
  */
-export function hydrateStores(data: Record<string, Record<string, unknown>>): void {
-  if (data === null || typeof data !== 'object') return
+export function hydrateStores(data: unknown): void {
+  if (!isObjectLiteral(data)) return
+  // Each entry is one store's `.state` snapshot, as `dehydrateStores` wrote it.
+  const snapshot = data as Record<string, Record<string, unknown>>
   // Merge into any existing stash so repeated calls are idempotent.
-  _hydrationData = _hydrationData ? { ..._hydrationData, ...data } : { ...data }
+  _hydrationData = _hydrationData ? { ..._hydrationData, ...snapshot } : { ...snapshot }
 
   // Seed any already-created stores NOW, and drop them from the stash so a
   // later resetStore + re-create doesn't re-hydrate stale boot state.
   const registry = getRegistry()
-  for (const id of Object.keys(data)) {
+  for (const id of Object.keys(snapshot)) {
     const existing = registry.get(id) as HydratableStore | undefined
     if (existing) {
       if (_ssrExcluded.has(existing)) {
         delete _hydrationData[id]
         continue
       }
-      existing.patch(data[id] as Record<string, unknown>)
+      existing.patch(snapshot[id] as Record<string, unknown>)
       delete _hydrationData[id]
     }
   }

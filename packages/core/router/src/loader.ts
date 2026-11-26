@@ -188,6 +188,7 @@ export function serializeLoaderData(router: RouterInstance): Record<string, unkn
       result[record.path] = data
     }
   }
+
   return result
 }
 
@@ -343,6 +344,7 @@ export function jsonToScriptExpression(json: string): string {
       copied = i
     }
   }
+
   return out + json.slice(copied)
 }
 
@@ -392,23 +394,48 @@ function throwOnCycle(data: unknown): void {
 }
 
 /**
+ * Whether `value` is what an inline `<script>window.X={…}</script>` evaluates
+ * to: an object literal (prototype `Object.prototype`). Anything else is not
+ * server data.
+ *
+ * Truthiness and `typeof === 'object'` are not enough: in a browser, markup
+ * with `id="X"` (or `<iframe name="X">`, `<form name>`, `<embed name>`,
+ * `<object name>`, `<img name>`) makes the global `X` resolve to that element
+ * or frame whenever no script assigned it (named access on Window). A
+ * null-prototype object is refused too: a CROSS-ORIGIN frame's WindowProxy
+ * reports prototype `null`, and reading any key of it throws SecurityError.
+ */
+function isObjectLiteral(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') return false
+  try {
+    return Object.getPrototypeOf(value) === Object.prototype
+  } catch {
+    // A Proxy's `getPrototypeOf` trap can throw; whatever it is, it is not
+    // a literal.
+    return false
+  }
+}
+
+/**
  * Hydrate loader data from a serialized object (e.g. `window.__PYREON_LOADER_DATA__`).
  * Populates the router's internal `_loaderData` map so the initial render uses
  * server-fetched data without re-running loaders on the client.
  *
- * Call this before `mount()`, after `createRouter()`.
+ * Call this before `mount()`, after `createRouter()`. Pass the global as it
+ * is: anything that is not an object literal (no script was written, or page
+ * markup with that `id` shadows the global with an element) is ignored, and
+ * the call returns `false` so the caller runs the loaders instead.
+ *
+ * @returns `true` when `serialized` was a loader-data record and was applied.
  *
  * @example — client entry:
  * import { hydrateLoaderData } from "@pyreon/router"
  * const router = createRouter({ routes })
- * hydrateLoaderData(router, window.__PYREON_LOADER_DATA__ ?? {})
+ * hydrateLoaderData(router, window.__PYREON_LOADER_DATA__)
  * mount(h(App, null), document.getElementById("app")!)
  */
-export function hydrateLoaderData(
-  router: RouterInstance,
-  serialized: Record<string, unknown>,
-): void {
-  if (!serialized || typeof serialized !== 'object') return
+export function hydrateLoaderData(router: RouterInstance, serialized: unknown): boolean {
+  if (!isObjectLiteral(serialized)) return false
   // Server rendered the loader-not-found chain → enter the same state BEFORE
   // resolving, so the walk below (and the first render) uses that chain.
   const notFound = serialized[LOADER_NOT_FOUND_KEY] === true && router._loaderNotFound !== undefined
@@ -430,4 +457,6 @@ export function hydrateLoaderData(
       setLoaderData(router, record, route, serialized[record.path])
     }
   }
+
+  return true
 }

@@ -1599,14 +1599,14 @@ Serialize the current registry's store state for SSR transfer.
 
 Seed stores from a server snapshot. Call on the client once, before the app mounts. Stores that already exist are patched in place; stores not yet created are seeded on first use. `ssr: false` stores ignore the data.
 
-- **`data`** (`Record<string, Record<string, unknown>>`) -- the object produced by `dehydrateStores()` on the server.
+- **`data`** (`unknown`) -- the object produced by `dehydrateStores()` on the server. Pass the global as it is: anything that is not an object literal is ignored, including the element (or, for `<iframe name>`, the WindowProxy) a browser returns for `window.__PYREON_STORE_STATE__` when page markup has that `id` and no inline script was written (named access on Window).
 
 ```ts
 // server, after render
 const state = dehydrateStores()
 
 // client entry, before mount
-hydrateStores(window.__PYREON_STORE_STATE__ ?? {})
+hydrateStores(window.__PYREON_STORE_STATE__)
 ```
 
 ### `@pyreon/store/devtools`

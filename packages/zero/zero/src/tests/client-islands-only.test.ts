@@ -141,6 +141,23 @@ describe('startClientLazy on an islands-only page', () => {
     }
   })
 
+  // Window named access (#4765): without @pyreon/store on the page, markup with
+  // `id="__PYREON_HYDRATE_STORES__"` makes the bridge an element (happy-dom has
+  // no named access, so it is assigned). It used to be called because it was
+  // truthy, and the islands runtime threw before hydrating any island.
+  it('a bridge shadowed by page markup is not called, and the islands still hydrate', async () => {
+    serverPage(`${ISLAND}<div id="__PYREON_HYDRATE_STORES__"></div>`)
+    g.__PYREON_HYDRATE_STORES__ = document.getElementById('__PYREON_HYDRATE_STORES__')
+    g.__PYREON_STORE_STATE__ = { cart: { items: 2 } }
+    const cleanup = startClientLazy({ routes: routesLoader(), islands: registry({ n: 0 }) })
+    try {
+      const island = document.querySelector('pyreon-island')!
+      await vi.waitFor(() => expect(island.hasAttribute('data-island-hydrated')).toBe(true))
+    } finally {
+      cleanup()
+    }
+  })
+
   it('wraps the island in islandRoot when one is given', async () => {
     serverPage(ISLAND)
     let rootLoads = 0

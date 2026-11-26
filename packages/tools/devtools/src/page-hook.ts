@@ -1,4 +1,4 @@
-import { createHook } from './hook'
+import { createHook, isPyreonDevtools } from './hook'
 import { createPageWire, isContentWireMessage } from './messages'
 import type { PyreonDevtools } from './types'
 
@@ -31,8 +31,8 @@ function setup(devtools: PyreonDevtools): void {
 
 // Try to detect Pyreon immediately, then poll if not found
 function tryDetect(): boolean {
-  const devtools = window.__PYREON_DEVTOOLS__
-  if (devtools) {
+  const devtools: unknown = window.__PYREON_DEVTOOLS__
+  if (isPyreonDevtools(devtools)) {
     setup(devtools)
     return true
   }
