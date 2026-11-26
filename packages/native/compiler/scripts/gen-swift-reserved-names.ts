@@ -92,12 +92,11 @@ export function renderReservedSwiftNames(names: readonly string[]): string {
   const rows: string[] = []
   let row = ''
   for (const n of names) {
-    const item = `'${n}',`
-    if (row.length + item.length + 1 > 116) {
+    if (row.length + n.length + 1 > 116) {
       rows.push(row)
       row = ''
     }
-    row += row === '' ? item : ` ${item}`
+    row += row === '' ? n : ` ${n}`
   }
   if (row !== '') rows.push(row)
 
@@ -108,10 +107,16 @@ export function renderReservedSwiftNames(names: readonly string[]): string {
 // names shadows it in the runtime sources an iOS app compiles into its own target, or in the generated file itself,
 // so the Swift emit renames it (\`swift-reserved-rename.ts\`). Freshness: \`tests/swift-reserved-names.test.ts\`.
 
+// One whitespace-separated string rather than an array literal: about 1030
+// names, and the quotes and commas of an array cost bundle bytes for nothing.
 /** Names a top-level type in generated Swift must not take. */
-export const SWIFT_RESERVED_NAMES: ReadonlySet<string> = new Set([
-${rows.map((r) => `  ${r}`).join('\n')}
-])
+export const SWIFT_RESERVED_NAMES: ReadonlySet<string> = new Set(
+  \`
+${rows.join('\n')}
+\`
+    .trim()
+    .split(/\\s+/),
+)
 `
 }
 
