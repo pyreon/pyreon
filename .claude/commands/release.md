@@ -4,11 +4,11 @@ How a release happens:
 
 1. Merged PRs carry `.changeset/*.md` files (all packages share one version — the fixed group in `.changeset/config.json`).
 2. `.github/workflows/release.yml` runs on changeset activity on `main` and keeps a "chore: version packages" PR up to date.
-3. The user merges that PR. The same workflow then builds and publishes (`bun run release` = `scripts/build-batched.ts` + `scripts/publish.ts`), tags, and `release-native.yml` publishes the native compiler binaries.
+3. The user merges that PR. The same workflow then builds and publishes (`bun run release` = `scripts/build-batched.ts` + `scripts/publish.ts`), tags, and `release-native.yml` publishes the native compiler binaries. `post-publish-smoke.yml` then installs the published packages from npm in a clean directory and builds, serves and hydrates the scaffolds.
 
 Steps for this command:
 
 1. Show pending changesets (`ls .changeset/*.md`) and the open version PR (`gh pr list --search "chore: version packages"`).
-2. If $ARGUMENTS is a version, compare it with npm: `bun scripts/check-published-state.ts`.
+2. If $ARGUMENTS is a version, compare it with npm: `bun scripts/check-published-state.ts`, then prove the published scaffolds work from npm: `bun scripts/post-publish-smoke.ts --expect-version <version>` (the `Post-Publish Smoke` workflow runs the same after each release; `--tag rc` for a release candidate).
 3. Report anything lagging and the fix from `.agents/guides/ci/README.md` ("Release").
 4. Do not merge the version PR — the user does.

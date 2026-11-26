@@ -168,6 +168,7 @@ function addToast(message: string | VNodeChild, options: ToastOptions = {}): str
     description: options.description,
     icon: options.icon,
     dismissible: options.dismissible ?? true,
+    dismissLabel: options.dismissLabel,
     action: options.action,
     onDismiss: options.onDismiss,
     state: 'entering',

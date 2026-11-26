@@ -10,4 +10,6 @@
   - The store owns the leave timing, so it works headless.
 - Rows are keyed `<For by={id}>` and read live fields through the `_toastMap` computed.
 - Portal'd buttons need a scoped delegation root: a per-instance host appended to `body` with `setupDelegation(host)`.
+- CSP: the stylesheet is injected once as `<style data-pyreon-toast>`; `nonce` sets the element's nonce before insertion, `injectStyles={false}` skips it, and `styles.css` (package root, exported as `@pyreon/toast/styles.css`) carries the same rules — locked equal to `toastStyles` by `csp-and-labels.test.tsx`. Locked in real Chromium by `csp.browser.test.tsx`.
+- Accessible names: `label` (region) and `dismissLabel` (every dismiss button) are `string | () => string`, read inside JSX accessors so a locale signal relabels in place; a toast's own `dismissLabel` option wins. Natively both are warned by name (no lowering yet).
 - Out of scope: swipe-to-dismiss, collapsed stacking, per-toast position.

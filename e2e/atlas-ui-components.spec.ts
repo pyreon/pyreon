@@ -208,6 +208,31 @@ test.describe('atlas build — shell layout', () => {
     await expect(page.getByRole('button', { name: 'Accordion', exact: true })).toHaveCount(1)
   })
 
+  test('a catalog longer than the sidebar scrolls; its rows keep their height and never overlap', async ({ page }) => {
+    // Regression: the catalog list is a fixed-height scrolling flex column. A
+    // row that was a bare button (a component with no parts) shrank to its
+    // 13px line of text once 108 rows overflowed it — names stacked on top of
+    // each other — while the wrapped rows of components with parts kept 28px.
+    await page.setViewportSize({ width: 1280, height: 720 })
+    await page.goto('/calendar/')
+    await expect(page.getByTestId('canvas-name')).toHaveText('Calendar')
+    const rows = await page.locator('[data-testid^="component-"]').evaluateAll((els) =>
+      els
+        .filter((el) => el.getClientRects().length > 0)
+        .map((el) => {
+          const r = el.getBoundingClientRect()
+
+          return { id: el.getAttribute('data-testid')!, top: r.top, bottom: r.bottom, height: r.height }
+        }),
+    )
+    expect(rows.length).toBeGreaterThan(30)
+    const short = rows.filter((r) => r.height < 27.5).map((r) => `${r.id} ${r.height}px`)
+    expect(short, 'rows shorter than their declared height').toEqual([])
+    const sorted = [...rows].sort((a, b) => a.top - b.top)
+    const overlapping = sorted.slice(1).filter((r, i) => r.top < sorted[i]!.bottom - 0.5).map((r) => r.id)
+    expect(overlapping, 'rows that overlap the row above').toEqual([])
+  })
+
   test('on a phone the shell is one row, the catalog a drawer, the panels under the canvas', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.goto('/button/')

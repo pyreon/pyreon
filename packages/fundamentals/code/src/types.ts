@@ -84,6 +84,17 @@ export interface EditorConfig {
   placeholder?: string
   /** Enable minimap — default: false */
   minimap?: boolean
+  /**
+   * Content Security Policy nonce for the stylesheet CodeMirror injects.
+   *
+   * CodeMirror writes its theme and layout CSS into a `<style>` element in the
+   * document `<head>` (generated class names, so there is no static file to
+   * load instead). Under `style-src` without `'unsafe-inline'` that element is
+   * refused and the editor renders unstyled, unless it carries the page's
+   * nonce: pass the same value as the `'nonce-…'` source in the policy. Sets
+   * CodeMirror's `EditorView.cspNonce`.
+   */
+  nonce?: string | undefined
   /** Additional CodeMirror extensions */
   extensions?: Extension[]
   /** Called when value changes */
@@ -226,6 +237,17 @@ export interface DiffEditorProps {
   readOnly?: boolean
   style?: string
   class?: string
+  /**
+   * Content Security Policy nonce for the stylesheet CodeMirror injects.
+   *
+   * CodeMirror writes its theme and layout CSS into a `<style>` element in the
+   * document `<head>` (generated class names, so there is no static file to
+   * load instead). Under `style-src` without `'unsafe-inline'` that element is
+   * refused and the diff view renders unstyled, unless it carries the page's
+   * nonce: pass the same value as the `'nonce-…'` source in the policy. Sets
+   * CodeMirror's `EditorView.cspNonce`.
+   */
+  nonce?: string | undefined
   /**
    * Called if building the diff view fails (a failed language-grammar import or
    * a throwing extension). Without this, the failure surfaces only as an
