@@ -127,6 +127,9 @@ jobs:
       # SwiftUI SDK, and no other macOS job runs them. A lathe-only change starts
       # the macOS job for that step alone; the native-compiler steps skip.
       lathe: ${{ steps.diff.outputs.lathe }}
+      # `lathe-models` starts the Linux `validate` job for lathe's swift / kotlin
+      # model toolchain test: one of its native-model inputs changed.
+      lathe-models: ${{ steps.lathe.outputs.run }}
     steps:
       # The changed set (scripts/diff-base.ts) and the classifier's base-side
       # manifest reads both use the merge commit's first parent, so the
@@ -236,6 +239,32 @@ jobs:
             echo "lathe=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # `@pyreon/lathe`'s swift / kotlin model emitter is not in the native
+      # compiler's dependency graph (lathe depends on the compiler, not the
+      # reverse), so neither check above selects it -- yet its real-toolchain
+      # test runs only in the validate job below. Its own inputs select the job.
+      # Kept out of `native-surface-touched.ts` on purpose: that classifier also
+      # drives the device lanes, which these files cannot affect.
+      - name: Lathe native-model sources touched?
+        id: lathe
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ] && [ "$EVENT" != "merge_group" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CHANGED=$(bun scripts/diff-base.ts --files)
+          # A here-string, not `printf | grep -q`: under pipefail an early grep
+          # exit can SIGPIPE the producer and read as "no match".
+          if grep -Eq '^packages/tools/lathe/src/(emit/native-models\.ts|core/(ir|naming)\.ts|input/openapi\.ts|tests/(native-models|helpers/native-toolchain|fixtures/native-models))' <<< "$CHANGED"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "lathe native-model sources changed — the validate job runs their toolchain test"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   validate:
     name: Validate emitted Swift + Kotlin
     needs: decide
@@ -246,13 +275,15 @@ jobs:
     # cache could never converge — see ci.yml's test-cell comment), so it
     # must fire on every PR the dependency graph says can change the emit, not
     # just on native-surface paths. The macOS job below uses the same rule.
+    # `|| lathe-models`: lathe's swift / kotlin model test runs only here (see
+    # the decide step that sets it).
     #
     # Light PR CI (`vars.PR_CI_MODE == 'light'`, see .agents/guides/ci/README.md):
     # on a PULL REQUEST this Linux lane is skipped; the merge queue and push to
     # main still run it (same `decide` rules on the group's diff). The macOS
     # typecheck and the device lanes are NOT skipped: they do not run in the
     # queue, so the PR is their only coverage.
-    if: (github.event_name != 'pull_request' || vars.PR_CI_MODE != 'light') && ((success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true')) || (failure() && needs.decide.result != 'success'))
+    if: (github.event_name != 'pull_request' || vars.PR_CI_MODE != 'light') && ((success() && (needs.decide.outputs.run == 'true' || needs.decide.outputs.graph == 'true' || needs.decide.outputs['lathe-models'] == 'true')) || (failure() && needs.decide.result != 'success'))
     # PINNED, not `ubuntu-latest`: GitHub moved `ubuntu-latest` to Ubuntu 26.04, and
     # the Swift tarball below is the ubuntu24.04 build (swift.org has no 26.04 build
     # we pin), so the job fails on a new-image runner, whatever the PR changes.
@@ -656,6 +687,36 @@ jobs:
         # the other cells provide (no npm install, no adapter, no deploy).
         # Seconds, not minutes; the real device build stays in native-device.
         run: bun scripts/scaffold-native-smoke.ts
+
+      - name: Lathe swift / kotlin model files compile and decode (real swiftc + kotlinc + kotlinx.serialization)
+        # `@pyreon/lathe`'s `swift` / `kotlin` plugins emit plain Codable /
+        # @Serializable models. Their test compiles AND runs a decode/round-trip
+        # program with the real toolchains, and self-skips without them -- which
+        # is every other runner, so without this step it ran nowhere.
+        # PYREON_REQUIRE_NATIVE_VALIDATE=1 turns each skip into a failure.
+        # kotlinx.serialization's compiler plugin ships inside the kotlinc zip
+        # (kotlinc/lib); its runtime jars are pinned here by sha256.
+        env:
+          PYREON_REQUIRE_NATIVE_VALIDATE: '1'
+          KOTLINX_SERIALIZATION_VERSION: '1.13.0'
+          KOTLINX_CORE_SHA256: 'db2eb98f585a408970ce726af9dfbaccbdfe5df498ccd9dba9918d208974302d'
+          KOTLINX_JSON_SHA256: '389b0dd9b4b952db889c160a2478b1cbe54680804f5315756108389dbe9df251'
+        run: |
+          set -euo pipefail
+          DIR="$HOME/.cache/pyreon-dl/kotlinx-serialization-${KOTLINX_SERIALIZATION_VERSION}"
+          mkdir -p "$DIR"
+          CP=""
+          for pair in "core:${KOTLINX_CORE_SHA256}" "json:${KOTLINX_JSON_SHA256}"; do
+            NAME="kotlinx-serialization-${pair%%:*}-jvm"
+            JAR="$DIR/${NAME}-${KOTLINX_SERIALIZATION_VERSION}.jar"
+            [ -f "$JAR" ] || curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 -o "$JAR" \
+              "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/${NAME}/${KOTLINX_SERIALIZATION_VERSION}/${NAME}-${KOTLINX_SERIALIZATION_VERSION}.jar"
+            echo "${pair#*:}  ${JAR}" | sha256sum -c -
+            CP="${CP:+$CP:}$JAR"
+          done
+          export PYREON_KOTLINX_SERIALIZATION_CLASSPATH="$CP"
+          cd packages/tools/lathe
+          bun x vitest run src/tests/native-models-toolchain.test.ts
 
       - name: iOS counter end-to-end smoke
         # End-to-end gate for the CLI build pipeline: walk src/, emit

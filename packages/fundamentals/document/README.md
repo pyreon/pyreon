@@ -174,7 +174,7 @@ These load only when their format is invoked, so apps that never render a heavy 
 - **`download()` is browser-only** — calling it in Node throws.
 - **Tables with mismatched column / row widths** silently truncate or pad — validate upstream.
 - **Relative `<Image>` sources** need `options.baseUrl` to resolve under PDF / DOCX renderers (they fetch the image bytes server-side).
-- **PDF requires external font URLs** for non-default typefaces — pass via `options.fonts`. The default font is Roboto, served by pdfmake's CDN at build time of the vendored chunk.
+- **PDF requires external font URLs** for non-default typefaces — pass via `options.fonts`. The default font is Roboto, from the installed `pdfmake` peer's `vfs_fonts`.
 - **The chat-platform renderers** (`slack` / `teams` / `discord` / `telegram` / `notion` / `confluence` / `whatsapp` / `google-chat`) produce platform-specific payload strings — they are NOT generic markdown. Test against the real platform's preview before relying on a render.
 
 ## Documentation

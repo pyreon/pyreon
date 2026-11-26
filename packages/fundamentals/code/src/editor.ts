@@ -187,6 +187,7 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
     placeholder: placeholderText,
     minimap: enableMinimap = false,
     ariaLabel: configAriaLabel = 'Code editor',
+    nonce,
     extensions: userExtensions = [],
     onChange,
     onError,
@@ -354,6 +355,9 @@ export function createEditor(config: EditorConfig = {}): EditorInstance {
       // "edit text, multiline" without it. User `extensions` are pushed AFTER
       // this, so a consumer-supplied contentAttributes aria-label still wins.
       EditorView.contentAttributes.of({ 'aria-label': configAriaLabel }),
+
+      // CSP: CodeMirror's injected `<style>` carries the page's nonce (#4825 class).
+      ...(nonce ? [EditorView.cspNonce.of(nonce)] : []),
 
       // Keymaps
       keymap.of([

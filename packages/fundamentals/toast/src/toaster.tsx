@@ -16,14 +16,30 @@ import type { Toast, ToasterProps, ToastPosition } from './types'
 
 // ─── Style injection ─────────────────────────────────────────────────────────
 
-function injectStyles(): void {
+/**
+ * Inject the stylesheet once, as `<style data-pyreon-toast>`.
+ *
+ * An inline `<style>` element is refused by a Content Security Policy without
+ * `'unsafe-inline'` in `style-src`. Two ways through, both on `<Toaster>`:
+ * `nonce` (set on the element BEFORE it is inserted — CSP checks the nonce at
+ * insertion), or `injectStyles={false}` plus `import '@pyreon/toast/styles.css'`,
+ * which carries the same rules as a file (`style-src 'self'` allows it).
+ */
+function injectStyles(nonce: string | undefined): void {
   if (typeof document === 'undefined') return
   if (document.querySelector('style[data-pyreon-toast]')) return
 
   const style = document.createElement('style')
   style.setAttribute('data-pyreon-toast', '')
+  if (nonce) style.setAttribute('nonce', nonce)
   style.textContent = toastStyles
   document.head.appendChild(style)
+}
+
+/** Resolve a `string | () => string` label prop, falling back when absent. */
+function readLabel(value: string | (() => string) | undefined, fallback: string): string {
+  const v = typeof value === 'function' ? value() : value
+  return v ?? fallback
 }
 
 // ─── Position helpers ────────────────────────────────────────────────────────
@@ -106,7 +122,7 @@ function Toaster(props?: ToasterProps): VNodeChild {
     )
   }
 
-  injectStyles()
+  if (props?.injectStyles !== false) injectStyles(props?.nonce)
 
   // Teardown goes through `onUnmount`, NOT `@pyreon/reactivity`'s
   // `onCleanup`: the latter only registers inside an effect run, so at a root
@@ -220,14 +236,16 @@ function Toaster(props?: ToasterProps): VNodeChild {
       <section
         class="pyreon-toast-container"
         style={containerStyle}
-        aria-label="Notifications"
+        aria-label={() => readLabel(props?.label, 'Notifications')}
         onMouseEnter={() => _pauseAll('hover')}
         onMouseLeave={() => _resumeAll('hover')}
         onFocusIn={() => _pauseAll('focus')}
         onFocusOut={() => _resumeAll('focus')}
       >
         <For each={visibleIds} by={(id: string) => id}>
-          {(id: string) => <ToastItem id={id} />}
+          {(id: string) => (
+            <ToastItem id={id} dismissLabel={() => readLabel(props?.dismissLabel, 'Dismiss')} />
+          )}
         </For>
       </section>
     </Portal>
@@ -236,7 +254,7 @@ function Toaster(props?: ToasterProps): VNodeChild {
 
 // ─── Toast item ─────────────────────────────────────────────────────────────
 
-function ToastItem(props: { id: string }): VNodeChild {
+function ToastItem(props: { id: string; dismissLabel: () => string }): VNodeChild {
   const id = props.id
 
   // `action` / `dismissible` / `icon` are IMMUTABLE per toast — `toast.update`
@@ -248,6 +266,10 @@ function ToastItem(props: { id: string }): VNodeChild {
   const action = initial?.action
   const dismissible = initial?.dismissible ?? true
   const icon = initial?.icon
+  // A toast's own `dismissLabel` wins; otherwise the Toaster's (an accessor,
+  // so a locale signal behind it relabels every open toast in place).
+  const ownDismissLabel = initial?.dismissLabel
+  const dismissLabel = props.dismissLabel
 
   // `message` / `type` / `state` / `description` DO change (update, promise
   // transition, entering→visible). Read them LIVE via the map inside reactive
@@ -316,7 +338,7 @@ function ToastItem(props: { id: string }): VNodeChild {
           type="button"
           class="pyreon-toast__dismiss"
           onClick={() => toast.dismiss(id)}
-          aria-label="Dismiss"
+          aria-label={() => ownDismissLabel ?? dismissLabel()}
         >
           ×
         </button>

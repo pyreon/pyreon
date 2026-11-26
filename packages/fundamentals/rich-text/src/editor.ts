@@ -1,6 +1,7 @@
 import { computed, signal, wrapSignal } from '@pyreon/reactivity'
 import type { AnyExtension, Editor, JSONContent } from '@tiptap/core'
 import { htmlToJson, jsonToHtml } from './html'
+import { placeholderStyles } from './styles'
 import type { RichTextConfig, RichTextEditor } from './types'
 
 const EMPTY_DOC: JSONContent = { type: 'doc', content: [] }
@@ -98,6 +99,7 @@ type PluginProps = NonNullable<
 async function placeholderExtension(
   Extension: typeof import('@tiptap/core').Extension,
   text: string,
+  style: { inject: boolean; nonce: string | undefined },
 ): Promise<AnyExtension> {
   const [{ Plugin }, { Decoration, DecorationSet }] = await Promise.all([
     import('@tiptap/pm/state'),
@@ -128,12 +130,15 @@ async function placeholderExtension(
           } as unknown as PluginProps,
           view(editorView) {
             const d = editorView.dom.ownerDocument
-            if (!d.querySelector('style[data-pyreon-rich-text-placeholder]')) {
-              const style = d.createElement('style')
-              style.setAttribute('data-pyreon-rich-text-placeholder', '')
-              style.textContent =
-                '.ProseMirror .is-editor-empty:first-child::before{content:attr(data-placeholder);float:left;height:0;pointer-events:none;color:#9ca3af}'
-              d.head.appendChild(style)
+            // An inline <style> is refused under a CSP without 'unsafe-inline':
+            // the nonce is set BEFORE insertion (CSP checks it then), or the app
+            // turns injection off and loads `@pyreon/rich-text/styles.css`.
+            if (style.inject && !d.querySelector('style[data-pyreon-rich-text-placeholder]')) {
+              const el = d.createElement('style')
+              el.setAttribute('data-pyreon-rich-text-placeholder', '')
+              if (style.nonce) el.setAttribute('nonce', style.nonce)
+              el.textContent = placeholderStyles
+              d.head.appendChild(el)
             }
             return {}
           },
@@ -169,6 +174,8 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
     content = '',
     readOnly,
     placeholder,
+    injectStyles = true,
+    nonce,
     ariaLabel = 'Rich text editor',
     starterKit = true,
     extensions: userExtensions = [],
@@ -371,7 +378,9 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
         const { StarterKit } = await import('@tiptap/starter-kit')
         exts.push(StarterKit)
       }
-      if (placeholder) exts.push(await placeholderExtension(Extension, placeholder))
+      if (placeholder) {
+        exts.push(await placeholderExtension(Extension, placeholder, { inject: injectStyles, nonce }))
+      }
       exts.push(...userExtensions)
 
       // Superseded while loading (disposed / re-mounted) — abort cleanly.
@@ -385,6 +394,11 @@ export function createRichTextEditor(config: RichTextConfig = {}): RichTextEdito
         // honor a pre-mount `editable.set(false)` (config default otherwise).
         editable: baseEditable.peek(),
         autofocus,
+        // TipTap injects its own base CSS as <style data-tiptap-style>: the
+        // same CSP switch covers it (nonce, or off + `styles.css`, which
+        // carries TipTap's rules too).
+        injectCSS: injectStyles,
+        ...(nonce ? { injectNonce: nonce } : {}),
         // a11y: the contenteditable content area is a labeled multiline textbox.
         editorProps: {
           attributes: {

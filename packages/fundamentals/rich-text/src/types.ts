@@ -24,6 +24,20 @@ export interface RichTextConfig {
    */
   placeholder?: string
   /**
+   * Whether the editor injects its stylesheets as `<style>` elements — TipTap's
+   * base editor CSS (`<style data-tiptap-style>`) and the default placeholder
+   * rule (default `true`). Set `false` under a CSP without `'unsafe-inline'`
+   * (and no `nonce`) and load the same rules as a file instead:
+   * `import '@pyreon/rich-text/styles.css'`.
+   */
+  injectStyles?: boolean
+  /**
+   * CSP nonce for the injected `<style>` elements (TipTap's base CSS and the
+   * placeholder rule), so a `style-src 'nonce-…'` policy accepts them.
+   * Ignored when `injectStyles` is `false`.
+   */
+  nonce?: string
+  /**
    * Accessible name for the editor. The content area is a `role="textbox"`,
    * which has no name unless one is supplied — a screen reader otherwise
    * announces just "edit text, multiline". Defaults to `"Rich text editor"`.

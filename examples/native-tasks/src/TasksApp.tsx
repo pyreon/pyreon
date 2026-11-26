@@ -2211,9 +2211,12 @@ function SelectScreen() {
 // NATIVE Text rather than inside the WebView. The page root is a plain <Stack>
 // (no <Scroll>) and the WebView carries `grow`, so it takes the screen height
 // left over by the header and footer on every target — the sizing case.
+// `onDownload` reports the page's "Download CSV" export (#4828); the host then
+// saves it (the share sheet on iOS, the "save as" picker on Android).
 function WebHostScreen() {
   const navigate = useNavigate()
   let webResult = state('ready')
+  let webDownload = state('none')
   return (
     <Stack gap={2} padding={4} data-testid="webhost-page">
       <Text data-testid="webhost-title">Hosted web flow</Text>
@@ -2221,9 +2224,11 @@ function WebHostScreen() {
         src="webhost-chrome.html"
         grow
         onMessage={(m) => { webResult = m }}
+        onDownload={(d) => { webDownload = `${d.filename}|${d.mimeType}` }}
         data-testid="webhost-view"
       />
       <Text data-testid="webhost-result">{webResult}</Text>
+      <Text data-testid="webhost-download">{webDownload}</Text>
       <Button onPress={() => navigate('/tasks')} data-testid="webhost-back">
         Back to tasks
         </Button>

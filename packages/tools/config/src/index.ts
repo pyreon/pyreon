@@ -187,6 +187,12 @@ export interface LatheSection {
   refRoot?: string
   /** Other origins a remote document's `$ref` may reach (default: its own origin only; `'*'` = any public origin). */
   refOrigins?: readonly string[]
+  /**
+   * Options for the `swift` / `kotlin` plugins (plain `Codable` structs and
+   * `@Serializable` data classes): the Kotlin `package` (default `api`) and the
+   * Swift access level (default `internal`).
+   */
+  nativeModels?: { kotlinPackage?: string; swiftAccess?: "internal" | "public" }
 }
 
 /** One entry of {@link LatheSection.projects}. */
@@ -311,7 +317,9 @@ export type LathePluginName =
   | "components"
   | "atlas"
   | "docs"
-  | "mcp";
+  | "mcp"
+  | "swift"
+  | "kotlin";
 
 /**
  * The whole-ecosystem config.

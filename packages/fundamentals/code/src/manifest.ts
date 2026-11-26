@@ -76,6 +76,7 @@ tabbed.openTab({ id: 'readme', name: 'README.md', language: 'markdown', value: '
     'bindEditorToSignal — two-way binding with built-in loop prevention',
     '19 language grammars via loadLanguage (lazy-loaded)',
     'Canvas-based minimapExtension for code overview',
+    'Strict-CSP ready: `nonce` on `createEditor` / `<DiffEditor>` sets CodeMirror’s `EditorView.cspNonce`, so its injected `<style>` is accepted under `style-src` without `unsafe-inline`',
     'Built on CodeMirror 6 — measured core about 131 KB gz (BENCHMARKS.md), at parity with @uiw/react-codemirror',
   ],
   api: [

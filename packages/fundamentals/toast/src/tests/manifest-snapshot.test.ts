@@ -68,6 +68,8 @@ describe('gen-docs — toast snapshot', () => {
       >
       > **Peer dep**: \`@pyreon/runtime-dom\` is required because \`<Toaster />\` JSX emits \`_tpl()\` calls — declare it in consumer app dependencies.
       >
+      > **Content Security Policy**: \`<Toaster />\` injects its stylesheet once as \`<style data-pyreon-toast>\`, which a policy without \`'unsafe-inline'\` in \`style-src\` refuses (a console error on every page, and no base layout). Pass \`nonce\` to have the element carry the request's nonce, or set \`injectStyles={false}\` and \`import '@pyreon/toast/styles.css'\` — the same rules as a file, which \`style-src 'self'\` allows. Inline \`style\` props are applied through CSSOM and are not affected.
+      >
       > **When the countdown is suspended**: The auto-dismiss timer suspends while the pointer is over the stack, while keyboard focus is inside it, and while the tab is hidden — a four-second toast is four seconds of ATTENTION, not of wall clock, so one raised just before the user switches tabs is still there when they come back. The three are INDEPENDENT holds: releasing one (a \`mouseleave\`) does not restart the clock while another (focus still inside) is outstanding. Built into \`<Toaster />\` with no configuration needed.
       "
     `)

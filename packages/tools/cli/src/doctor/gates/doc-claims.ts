@@ -23,7 +23,9 @@ import type { Finding, GateResult } from '../types'
 import { type ClaimSpec, SITE_LINT_CATEGORY_CLAIMS, SITE_HOOK_CLAIMS, SITE_LINT_RULE_CLAIMS, SITE_MCP_TOOL_CLAIMS } from './doc-claims-site'
 import { derivedClaimFindings, findUnknownPlaceholders, SITE_COUNT_CHECKS } from './doc-claims-site-counts'
 import { findUnscopedRunnerCommands } from './doc-claims-runner-commands'
+import { documentFormatIds, findUnknownDocumentFormats } from './doc-claims-document-formats'
 
+export { documentFormatIds, findUnknownDocumentFormats } from './doc-claims-document-formats'
 export {
   findUnscopedRunnerCommands,
   pyreonBins,
@@ -189,17 +191,7 @@ const countReactDetectorCodes = (repoRoot: string): number => {
 // `@pyreon/document`'s `OutputFormat` union is the single source of truth
 // for "how many output formats" — every renderer is keyed by one of its
 // literals. READMEs repeat the count in prose; gate them all.
-const countDocumentFormats = (repoRoot: string): number => {
-  const file = join(repoRoot, 'packages/fundamentals/document/src/types.ts')
-  if (!existsSync(file)) return 0
-  const src = readFileSync(file, 'utf8')
-  const m = src.match(
-    /export type OutputFormat\s*=\s*([\s\S]*?)(?:\n\n|\nexport |\ntype )/,
-  )
-  if (!m?.[1]) return 0
-
-  return (m[1].match(/'[a-z0-9-]+'/gi) ?? []).length
-}
+const countDocumentFormats = (repoRoot: string): number => documentFormatIds(repoRoot).size
 
 // Published-package count — every non-`"private": true` package.json under
 // `packages/<category>/`. Scans ALL category dirs (robust to a future 6th)
@@ -966,6 +958,7 @@ export const runDocClaimsGate = async (
   }
 
   findings.push(...findUnscopedRunnerCommands(opts.cwd))
+  findings.push(...findUnknownDocumentFormats(opts.cwd))
 
   return {
     gate: 'doc-claims',
