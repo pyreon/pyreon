@@ -1,5 +1,15 @@
 # @pyreon/test-utils
 
+## 0.50.5
+
+### Patch Changes
+
+- Updated dependencies [[`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`6522f8d`](https://github.com/pyreon/pyreon/commit/6522f8d1442f80cbc313e385c5df8a20daf78bdc), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`3894bcf`](https://github.com/pyreon/pyreon/commit/3894bcfd6c00c7a43b572a66edc2b916cacaba29), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`daba200`](https://github.com/pyreon/pyreon/commit/daba200aa50a3548b71ffbbb421539d3c9d4517d), [`c397d94`](https://github.com/pyreon/pyreon/commit/c397d9404ad080322d7136b8067890254e093d52), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`95e806f`](https://github.com/pyreon/pyreon/commit/95e806fcb3ba59f0cfd02f48e279052ab689338b), [`1389a05`](https://github.com/pyreon/pyreon/commit/1389a05d67fa4870503874e4b1feeb34ce8d7136), [`f4c955e`](https://github.com/pyreon/pyreon/commit/f4c955ea66eea292e8bb8ac612bdec71fded46e8), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d)]:
+  - @pyreon/runtime-dom@0.55.0
+  - @pyreon/core@0.55.0
+  - @pyreon/rocketstyle@0.55.0
+  - @pyreon/ui-core@0.55.0
+
 ## 0.50.4
 
 ### Patch Changes

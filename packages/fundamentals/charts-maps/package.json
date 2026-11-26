@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/charts-maps",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "description": "Boundary data for @pyreon/charts maps: world and US-state TopoJSON, one lazy module per map, with the projection and join keys each one is meant for",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/charts-maps#readme",

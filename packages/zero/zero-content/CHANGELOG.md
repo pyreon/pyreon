@@ -1,5 +1,74 @@
 # @pyreon/zero-content
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: exports documented as internal or "exported for tests" (without a `_` prefix) left the public entries. Each now carries a JSDoc `@internal` tag and lives on the package's `./internal` subpath (`./internal-server` for zero's and zero-content's Node-only helpers), which carries no semver promise. `check-stability-tier` now fails any `@internal`-tagged declaration reachable from a public entry. These are clean breaks: there are no aliases, and no codemod rewrites them.
+
+  - `@pyreon/zero` → `@pyreon/zero/internal`: from `./actions`: `ACTION_QUERY_PARAM`, `ENHANCED_ACTION_HEADER`, `ACTION_REDIRECT_HEADER`, `formActionSearch`, `resolveActionOptions`, `checkActionOrigin`, `readActionPayload`, `runActionHandler`; `toRfc822` (from `.`, `./seo`, `./server`); `matchLocale`, `validateLocale` (from `./i18n-routing`); `islandsOnlyNavigation` (from `./client`); `buildHydrationReport` (from `./dev-overlay`).
+  - `@pyreon/zero` → `@pyreon/zero/internal-server`: `renderOgSvgFromLoaded` (`./server`), `ROUTE_MIDDLEWARE_RAN` (`./pipeline`), `generateAiPluginManifest`, `generateOpenApiSpec` (`./ai`), `compareApiRoutePatterns` (`./api-routes`), `matchGlob` (`./cache`), `isCompressible` (`./compression`), `createIcoFromPngs` (`./favicon`), `buildFontFace`, `emitFontDescriptorModule`, `fontFormat`, `fontMimeType`, `hashFontFilename`, `inferFontMeta`, `parseFontQueryOverrides` (`./font-import-plugin`), `generatePlaceholder`, `parseJpegDimensions`, `parseWebPDimensions`, `processImage`, `resolvePlaceholder`, `resolveQuality` (`./image-plugin`), `buildTextOverlaySvg`, `renderOgImage` (`./og-image`), `clusterPathsByLocale`, `formatLoc`, `isExcluded`, `resolveHreflangI18n`, `stripLocalePrefix` (`./seo`).
+  - `@pyreon/zero/i18n-routing`: `LocaleCtx` removed (nothing provided or read it).
+  - `@pyreon/zero-content` → `/internal`: `buildBreadcrumbs`, `humanize`, `buildSrcdoc`, `deriveApiId`, `filterHeadings`, `groupEntries`, `groupsFromConfig`, `renderInstallRows`; from `./blog`: `normalizeBlogFrontmatter`, `validateBlogFrontmatter`, `pageFromParam`, `resolveBlogConfig`.
+  - `@pyreon/zero-content` → `/internal-server`: `isBrandedComponentsRegistry`, `joinUrl`; from `./plugin`: `buildPageSearchEntry`, `collectionSlugFor`, `collectUnpublishedFiles`, `emitSeoOutputs`, `findCollectionForFileImpl`, `hasMarkdownInContentDir`, `isMarkdownId`, `isRelativePath`, `makeInternalLinkResolver`, `resolvePublishNow`, `selectPublishedEntries`, `reportPath`.
+  - `@pyreon/lint/cli` → `@pyreon/lint/internal`: `formatRuleList`, `parseRuleOptionsOverride`, `formatInitResult`, `parsePresetList`; `@pyreon/lint/lint-worker` → `@pyreon/lint/internal`: `lintSlice`.
+  - `@pyreon/storybook/preset` → `@pyreon/storybook/internal`: `previewPathFor`.
+  - `@pyreon/styler` → `@pyreon/styler/internal`: `setStyleExtraction`.
+  - `@pyreon/ui-core` → `@pyreon/ui-core/internal`: `getThemeEngine`, `setThemeEngine` (unistyle and rocketstyle import them from there).
+  - `@pyreon/validate` → `@pyreon/validate/internal`: `installServerCheck`, `getServerCheck`; `uninstallServerCheck` left the main entry and stays on `@pyreon/validate/server`.
+  - `@pyreon/vite-plugin` → `@pyreon/vite-plugin/internal`: `buildLpihClientScript`, `registerLpihMiddleware`, `resolveLpihCachePath`, `writeLpihCacheFile`, `isPyreonPackageFile`, `plainMarkerLocalNames`.
+
+  Kept public because they are documented user API (their stale `@internal` wording was removed): zero's `useNoOptimize`, `inferFontMimeType`, `generateLlmsTxt`, `generateLlmsFullTxt`, `buildCspHeader`; zero-content's `getOrCreateSharedSignal`, `resolvePrevNext`, `resolvePageLayout`; reactivity's `LPIH_DEFAULT_FILENAME`; runtime-dom's `nodesForElement`; server's `getRegisteredServerIslands`, `provideRequestLocals`; ui-core's `context` / `Provider`; validate's format-validator hooks; validation's `wrapStandardSchema`.
+
+  Upgrade: manual — import each listed name from its package's ./internal (or ./internal-server) subpath; no codemod covers this set
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: the `_`-prefixed internal exports of `@pyreon/zero` and `@pyreon/zero-content` are no longer exported from their public entries. They moved to new internal subpaths, which carry no semver promise (see "What counts as public API" on the stability page). Application code should not import them; tests that call one of the test-reset helpers change the import specifier.
+
+  Client-safe internals moved to `@pyreon/zero/internal`:
+
+  - from `@pyreon/zero`: `_registerI18nConfig`
+  - from `@pyreon/zero/i18n-routing`: `_registerI18nConfig`, `_setLocaleStoreReader`
+  - from `@pyreon/zero/theme`: `_resetInitThemeForTests`
+  - from `@pyreon/zero/rate-limit`: `_resetRateLimitWarning`
+  - from `@pyreon/zero/actions`: `_actionDeclaringRoute`, `_actionStub`, `_defineActionWithId`, `_getAction`, `_isKnownAction`, `_registerActionModules`, `_registerActionRoutes`, `_resetActions`, `_resetSubmissions`, `_resolveAction`, `_setActionSnapshotReader`
+
+  Node-only internals moved to `@pyreon/zero/internal-server`:
+
+  - from `@pyreon/zero/server`: `_resetVercelRevalidateHandlerCache`
+
+  Client-safe internals moved to `@pyreon/zero-content/internal`:
+
+  - from `@pyreon/zero-content`: `_exampleCount`, `_exampleKeys`, `_getRegistry`, `_hasSharedSignal`, `_listCollections`, `_resetExampleRegistry`, `_resetRegistryForTesting`, `_resetSearchForTesting`, `_setRegistry`, `_sharedSignalCount`
+
+  Node-only internals moved to `@pyreon/zero-content/internal-server`:
+
+  - from `@pyreon/zero-content/plugin`: `_resetCompileCacheForTesting`, `_setResolvedRootForPaths`
+
+  Code generated by zero's Vite plugin (the `defineAction` rewrite, the route-middleware and routes modules) and by the zero-content plugin (`virtual:zero-content/collections`) now imports these helpers from the internal subpaths. The plugins and runtimes ship in the same package, so no app change is needed for generated code.
+
+  Upgrade: codemod internal-exports-subpath
+
+### Patch Changes
+
+- [#4857](https://github.com/pyreon/pyreon/pull/4857) [`09cb92f`](https://github.com/pyreon/pyreon/commit/09cb92f87dfd93aa900c729fa37c3dbb03501d9e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Breaking (router): View Transitions are now opt-in.** A navigation no longer runs inside `document.startViewTransition()` unless you ask for it: `createRouter({ routes, viewTransition: true })` for the whole router, or `meta: { viewTransition: true }` on a route (meta merges down the matched chain, so a layout route covers its children). `meta.viewTransition: false` still opts one route out of a router that has them on. Reduced motion and `mode: 'memory'` still skip them.
+
+  Why: a transition costs every navigation that runs one. The DOM swap waits for the browser to capture the old page on the next frame, and the page is not hit-testable while the cross-fade runs (250 ms by default), so a click in that window reaches the transition overlay instead of the page. On the catalogue app (`examples/real-bench/app`, Chromium) each route change took 14–17 ms from click to the new DOM with transitions on and 0.2–1.6 ms with them off, where Solid's router takes 0.3–0.8 ms. The default path also no longer calls `matchMedia` on every navigation.
+
+  To keep the previous behaviour, pass `viewTransition: true` to `createRouter`. In a zero app, `export const meta = { viewTransition: true }` from the root `_layout.tsx`.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- [#4766](https://github.com/pyreon/pyreon/pull/4766) [`2c01201`](https://github.com/pyreon/pyreon/commit/2c0120190e33ff79c9d43e097240c10621660cdb) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The `llms.txt` files Zero writes now follow the llmstxt.org shape for every app and pass Lighthouse's Agentic Browsing `llms-txt` audit (an H1 and at least one Markdown link). `aiPlugin` puts a blank line between the `# name` title and the `> description` summary; lists dynamic routes and API endpoints as prose before the first `##` section (they are not fetchable URLs, and `##` sections are link lists) instead of `## Dynamic Pages` / `## API Endpoints` sections of bare bullets; and ends the file with an `## Optional` link to the `llms-full.txt` it also writes, so an app with no static page still has a link. `llmsExtra` is appended as written. Zero Content's `seo.llms` no longer writes a bare `# Title` file when no collection has a published entry; it writes nothing and warns, since a missing `llms.txt` is "not applicable" to the audit while one without links fails it.
+- Updated dependencies [[`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`6522f8d`](https://github.com/pyreon/pyreon/commit/6522f8d1442f80cbc313e385c5df8a20daf78bdc), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`3894bcf`](https://github.com/pyreon/pyreon/commit/3894bcfd6c00c7a43b572a66edc2b916cacaba29), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`daba200`](https://github.com/pyreon/pyreon/commit/daba200aa50a3548b71ffbbb421539d3c9d4517d), [`c397d94`](https://github.com/pyreon/pyreon/commit/c397d9404ad080322d7136b8067890254e093d52), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`95e806f`](https://github.com/pyreon/pyreon/commit/95e806fcb3ba59f0cfd02f48e279052ab689338b), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`09cb92f`](https://github.com/pyreon/pyreon/commit/09cb92f87dfd93aa900c729fa37c3dbb03501d9e), [`1389a05`](https://github.com/pyreon/pyreon/commit/1389a05d67fa4870503874e4b1feeb34ce8d7136), [`5c4ac80`](https://github.com/pyreon/pyreon/commit/5c4ac804f25a6d5824edc53d8cb0c7be20b01d97), [`f4c955e`](https://github.com/pyreon/pyreon/commit/f4c955ea66eea292e8bb8ac612bdec71fded46e8), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`2c01201`](https://github.com/pyreon/pyreon/commit/2c0120190e33ff79c9d43e097240c10621660cdb), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af)]:
+  - @pyreon/zero@0.55.0
+  - @pyreon/runtime-dom@0.55.0
+  - @pyreon/core@0.55.0
+  - @pyreon/reactivity@0.55.0
+  - @pyreon/head@0.55.0
+  - @pyreon/router@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

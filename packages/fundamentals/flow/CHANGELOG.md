@@ -1,5 +1,28 @@
 # @pyreon/flow
 
+## 0.55.0
+
+### Patch Changes
+
+- [#4874](https://github.com/pyreon/pyreon/pull/4874) [`11b766d`](https://github.com/pyreon/pyreon/commit/11b766dc2f86e2a64d302618b562462998ec71aa) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Docs drift fixes ([#4307](https://github.com/pyreon/pyreon/issues/4307)), plus a new `pyreon doctor` doc-claims check.
+
+  - cli: the doc-claims gate reports `doc-claims/unknown-document-format`: a `render(x, '<format>')` example in a docs page, README or package manifest whose format `@pyreon/document` does not register (neither an `OutputFormat` literal nor registered with `registerRenderer` in the same example).
+  - connector-document: the README and manifest quick start render Markdown with `'md'` (`'markdown'` rejects with "No renderer registered").
+  - document: the docs no longer describe the renderers as vendored into a ~14 MB `lib/`. Since 0.52 the four engines are optional peers, and the default PDF font comes from the installed `pdfmake`.
+  - testing: the `expectSignal` JSDoc example and the testing guide count the first computation (`toHaveRecomputedTimes(2)` after one write).
+  - flow / meta: the layout engine is built in. The docs no longer say elkjs lazy-loads, or that "ELK" ignores options.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`6522f8d`](https://github.com/pyreon/pyreon/commit/6522f8d1442f80cbc313e385c5df8a20daf78bdc), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`3894bcf`](https://github.com/pyreon/pyreon/commit/3894bcfd6c00c7a43b572a66edc2b916cacaba29), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`daba200`](https://github.com/pyreon/pyreon/commit/daba200aa50a3548b71ffbbb421539d3c9d4517d), [`c397d94`](https://github.com/pyreon/pyreon/commit/c397d9404ad080322d7136b8067890254e093d52), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`95e806f`](https://github.com/pyreon/pyreon/commit/95e806fcb3ba59f0cfd02f48e279052ab689338b), [`1389a05`](https://github.com/pyreon/pyreon/commit/1389a05d67fa4870503874e4b1feeb34ce8d7136), [`f4c955e`](https://github.com/pyreon/pyreon/commit/f4c955ea66eea292e8bb8ac612bdec71fded46e8), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39)]:
+  - @pyreon/runtime-dom@0.55.0
+  - @pyreon/core@0.55.0
+  - @pyreon/reactivity@0.55.0
+  - @pyreon/native-compiler@0.55.0
+  - @pyreon/primitives@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

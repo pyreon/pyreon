@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/command",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "description": "A command palette for Pyreon: a fuzzy matcher, a registry of commands with shortcuts, recents and async sources",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/command#readme",

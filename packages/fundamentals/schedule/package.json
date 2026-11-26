@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/schedule",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "description": "Recurrence, business time and availability as plain data for Pyreon: RFC 5545 rules, DST-correct wall-clock expansion, working hours, free slots",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/schedule#readme",

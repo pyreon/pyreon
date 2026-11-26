@@ -1,5 +1,30 @@
 # @pyreon/feature
 
+## 0.55.0
+
+### Patch Changes
+
+- [#4789](https://github.com/pyreon/pyreon/pull/4789) [`9c3818b`](https://github.com/pyreon/pyreon/commit/9c3818b0f8963ffc287e254e2463680f30284631) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh. `@pyreon/compiler` depends on `@jridgewell/sourcemap-codec` ^1.6.0, `@pyreon/table` and `@pyreon/feature` on `@tanstack/table-core` ^9.3.1, and `@pyreon/mcp` on `zod` ^4.6.7.
+
+  New `create-zero` apps install `@tanstack/query-core` ^5.107.1, `@tanstack/virtual-core` ^3.19.11, `zod` ^4.6.7, `vite` ^8.3.7, `oxlint` ^1.93.0 and `oxfmt` ^0.78.0. The `@tanstack/table*` range it would write moved from the v8 line to ^9.3.1, which is the major `@pyreon/table` is built on. New `create-multiplatform` apps install `oxlint` ^1.93.0, `oxfmt` ^0.78.0, `typescript` ^6.0.3 and `vite` ^8.3.7.
+
+- [#4844](https://github.com/pyreon/pyreon/pull/4844) [`0ce0db7`](https://github.com/pyreon/pyreon/commit/0ce0db79430645ce8ab7f5a7422e924dc9bdd787) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `useById` / `useUpdate` / `useDelete` add the id at the end of the `api` URL's PATH, before any query string or fragment it carries (`/api/users?tenant=t1` → `/api/users/7?tenant=t1`). The id used to be appended after the whole string (`/api/users?tenant=t1/:id`), so it landed in the query and the request went to the list URL. The native lowering builds the same URL, and its refusal of a `:param` in `api` now reads only the URL's path, so a port, `user:password@` or a colon in the query no longer refuses the native hooks.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2), [`9c3818b`](https://github.com/pyreon/pyreon/commit/9c3818b0f8963ffc287e254e2463680f30284631), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e), [`7270be8`](https://github.com/pyreon/pyreon/commit/7270be81c1c2db7bb27c74f4f9c1016eb9fc0382), [`0ce0db7`](https://github.com/pyreon/pyreon/commit/0ce0db79430645ce8ab7f5a7422e924dc9bdd787), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`7270be8`](https://github.com/pyreon/pyreon/commit/7270be81c1c2db7bb27c74f4f9c1016eb9fc0382), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e), [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39)]:
+  - @pyreon/core@0.55.0
+  - @pyreon/reactivity@0.55.0
+  - @pyreon/native-compiler@0.55.0
+  - @pyreon/table@0.55.0
+  - @pyreon/form@0.55.0
+  - @pyreon/http@0.55.0
+  - @pyreon/store@0.55.0
+  - @pyreon/validation@0.55.0
+  - @pyreon/query@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

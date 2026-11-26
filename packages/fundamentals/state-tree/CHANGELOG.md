@@ -1,5 +1,49 @@
 # @pyreon/state-tree
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: `_`-prefixed test and internal helpers are no longer exported from the public entries. Each of these packages now has an `./internal` subpath that holds them. `./internal` is not public API and carries no semver promise (see "What counts as public API" on the stability page).
+
+  Moved exports, with their new specifier:
+
+  - `@pyreon/primitives`: `_resetNativeModules` → `@pyreon/primitives/internal`
+  - `@pyreon/solid-compat`: `_STORE_SIGNAL_CACHE` → `@pyreon/solid-compat/internal`
+  - `@pyreon/vite-plugin`: `_collectImportedNames`, `_compatAliasTable`, `_computeLineStarts`, `_extractBalancedArgs`, `_getCompatTarget`, `_handleSsrRequest`, `_isPyreonWorkspaceFile`, `_isTruthyEnv`, `_isUnaliasedFrameworkImport`, `_maskComments`, `_maskCommentsAndStrings`, `_maskStringsAndComments`, `_offsetToLineCol`, `_reactiveCalleeStarts`, `_requestUrlFromTarget`, `_skipStringLiteral`, `_unaliasedImportWarning` → `@pyreon/vite-plugin/internal`
+  - `@pyreon/lint`: `_workerEntry` → `@pyreon/lint/internal` (the parallel driver still finds its worker through the `./lint-worker` export)
+  - `@pyreon/store`: `__clearStoreHydrationForTesting` → `@pyreon/store/internal`
+  - `@pyreon/store/devtools`: `_notifyChange` → `@pyreon/store/internal`
+  - `@pyreon/i18n/devtools`: `_resetDevtools` → `@pyreon/i18n/internal`
+  - `@pyreon/state-tree/devtools`: `_resetDevtools` → `@pyreon/state-tree/internal`
+  - `@pyreon/command`: `_resetDefaultCommands` → `@pyreon/command/internal`
+  - `@pyreon/http/server`: `_resetRequestSource` → `@pyreon/http/internal`
+  - `@pyreon/http/json`: `_setSourceTextSupport` → `@pyreon/http/internal`
+  - `@pyreon/storage`: `_resetDBCache`, `_resetRegistry`, `_resetStorageListener` → `@pyreon/storage/internal`
+  - `@pyreon/document`: `_resetRenderers` → `@pyreon/document/internal`
+  - `@pyreon/hotkeys`: `_resetHotkeys` → `@pyreon/hotkeys/internal`
+  - `@pyreon/toast`: `_reset`, `_toasts` → `@pyreon/toast/internal`. App code that read `_toasts()` uses the new public `toast.list()` (a reactive, read-only view of the live queue); the codemod does not rewrite `_toasts`, so the type checker points at each use. In tests, use `clearToasts`, `getToasts`, `expectToast` and `findToast` from `@pyreon/testing/toast`.
+  - `@pyreon/ambient/testing`: `_fireAll`, `_tickerStats` → `@pyreon/ambient/internal`
+
+  `@pyreon/ambient/testing` stays the supported test kit, and its two documented hooks lose the underscore: `_resetClockState` → `resetClockState` and `_resetLocaleState` → `resetLocaleState`, both still from `@pyreon/ambient/testing`. This is a clean rename with no alias: rename the imports and calls by hand (the codemod does not).
+
+  `@pyreon/testing/toast` now reads the toast store through `@pyreon/toast/internal`; its own API is unchanged. `@pyreon/format` follows the ambient rename internally; its API is unchanged.
+
+  `@pyreon/toast` gains `toast.list()`, a reactive read of the live toast queue (`readonly Readonly<Toast>[]`, oldest first), documented in the README and manifest.
+
+  Upgrade: codemod internal-exports-subpath
+
+### Patch Changes
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e), [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39)]:
+  - @pyreon/reactivity@0.55.0
+  - @pyreon/native-compiler@0.55.0
+  - @pyreon/validation@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

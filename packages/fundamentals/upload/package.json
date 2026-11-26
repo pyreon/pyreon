@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/upload",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "description": "File selection, validation, preview and upload with progress as signals for Pyreon: a queue with retry and pause, XHR progress, drop and picker state",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/upload#readme",

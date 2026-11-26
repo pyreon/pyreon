@@ -1,5 +1,74 @@
 # @pyreon/atlas
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4846](https://github.com/pyreon/pyreon/pull/4846) [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `atlas dev` and `atlas build` now run the workbench as a `@pyreon/zero` app that ships inside the package (`app/`: `/` and `/:component` file routes under one layout that renders `<Workbench>`). `atlas dev` serves it with zero's dev mode; `atlas build` builds it with zero's SSG pass and writes the client shell at `/` and at one path per component (plus a `404.html` shell), so a component URL is still a real page on a plain file server. The dev server and the built site are now one app with one plugin chain instead of a dev HTML shell and a separately generated build entry.
+
+  zero's router owns the component URL. The workbench reads the selection from the route and navigates with `router.replace`; it no longer guesses a base from `location.pathname`, which wrote `/sub/old-name/button/` for a renamed component's old link (a blank page on reload). A stale id or a path with extra segments now lands on the default component. The trailing slash is kept (`/button/`, the directory a static host serves). A host that embeds `<Workbench>` keeps `?c=`; the app passes the new `route` prop (`WorkbenchRoute`).
+
+  The project's own `vite.config.*` applies to the workbench: its plugins (minus its own `pyreon()` / `zero()`), `resolve`, `css`, `define` and `envPrefix`; a Tailwind v4 CSS root gets the project as an `@source` (Tailwind scans from Vite's root, which is the workbench app). The project's `public/` is served by `atlas dev` and copied by `atlas build`, and its PostCSS config applies, as its `.env` files already did. Atlas's Vite cache lives in the project (`node_modules/.cache/atlas-vite`), and a build writes nothing into the installed package. A component edit in `atlas dev` is an in-place update: the preview re-mounts with the new module and every control value kept. A previewed component gets an empty router of its own: `useRoute()` / `useRouter()` inside it no longer see the workbench's, and its plain links no longer trigger the router's reload warning. `atlas dev` no longer writes `.pyreon/context.json` into the installed package.
+
+  Breaking:
+
+  - `atlas dev` and `atlas build` need `@pyreon/zero` installed next to `vite` and `@pyreon/vite-plugin` (all optional peers; `atlas scan` needs none): `bun add -d vite @pyreon/vite-plugin @pyreon/zero`.
+  - `atlas build --base` must be absolute (`/` or `/my-repo/`). A relative base used to build a site that worked only at its root; it is now refused before any work.
+  - The `__ATLAS_ROUTES__` global is gone: a host that wants path URLs passes `route` to `<Workbench>`.
+  - `@pyreon/atlas/dev` no longer exports `devHtml` or `ENTRY_ID` (the page is the app's `index.html`; its head lines come from `atlasDevPlugin`'s `transformIndexHtml`). It exports `SHELL_ID` (`virtual:atlas/shell`, the site title).
+  - The `pyreon` named export of `@pyreon/vite-plugin` is no longer accepted as an alias for its default export (the package has never exported one).
+
+  Fixed on the way: `atlas build` now applies the project's `resolve.alias` (as `atlas dev` already did), so a `~/…` import in a component no longer fails the build; and the canvas and docs preview no longer pass raw CSS strings to the `css` prop (a dev warning on every page).
+
+### Patch Changes
+
+- [#4877](https://github.com/pyreon/pyreon/pull/4877) [`f42d1f2`](https://github.com/pyreon/pyreon/commit/f42d1f29c2476dd036e639d5bb084d58ce0a1c2d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The catalog sidebar's rows keep their height when the catalog is longer than the sidebar. The list is a scrolling flex column, and a row with no parts (a bare button) shrank to its line of text, so on `@pyreon/ui-components` (108 components) 52 names were drawn 13px apart and overlapped. The list's rows no longer shrink; the list scrolls instead.
+
+- [#4810](https://github.com/pyreon/pyreon/pull/4810) [`42c6de7`](https://github.com/pyreon/pyreon/commit/42c6de7a0b9374db0f94bf04b54f36ae04ea8c95) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Piped command output is no longer cut off. `pyreon doctor --ci --json | jq` received only the first 64 KiB of the report, because the CLI called `process.exit()` right after printing, and a write to a pipe is asynchronous. The same happened to `pyreon check --json`, `pyreon lint`, `pyreon-lint --format json`, `zero doctor --ci --json`, `pyreon-native` and `atlas` (when a slow reader was still draining after 500 ms). Every command now exits only after stdout and stderr have flushed, and keeps its exit code. Reports (`--json`, doctor, check, plain, lint) are written with `process.stdout.write` and backpressure instead of `console.log`, so they also arrive whole when a bin is run with Bun (`bun <bin>`), whose `console.log` dropped what a full pipe would not take.
+
+  `zero doctor` no longer runs the audit twice. `@pyreon/cli`'s library entry also ran the `pyreon` CLI when it was imported, so `zero doctor` printed two reports and `zero doctor --json` printed two JSON documents. The `pyreon` bin is now `bin/pyreon.js`, and importing `@pyreon/cli` runs nothing.
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: the core packages' `_`-prefixed internals and `@pyreon/core`'s compat-layer plumbing are no longer exported from the public entries. They moved to subpaths that carry no semver promise (see "What counts as public API" on the stability page). The compiler-emitted helpers (`_rp`, `_pp`, `_tpl`, `_bind`, `_ssr*`, …) are the compiler ABI and stay where they were.
+
+  - `@pyreon/core` → `@pyreon/core/internal`: `_IslandIds`, `_childText`, `_copyProp`, `_devMarkOwnerAlias`, `_isStructuralChild`, `_isVNodeLike`, `_mergePropsExcept`, `_mergePropsOmit`, `_nextIslandIdPrefix`, `_pickProps`, `_requestIdFrame`, `_resetAsyncWarning`, `_resetIdCounter`, `_runHooked`, `_setSuspenseHydrating`, `_takeHooks`, and the non-`_` internals `dispatchToErrorBoundary`, `propagateError`, `runWithHooks`, `setContextStackProvider`, `getContextStackLength`, `removeContextFrame`, `REACTIVE_PROP`, `isSafeImageDataUri` (no codemod rewrites these; move the import by hand). `pushContext` / `popContext` stay public: the core and runtime-server docs present them as the SSR / test escape hatch for seeding context outside component setup.
+  - `@pyreon/core` → `@pyreon/core/compat` (new subpath for the compat layers): `isNativeCompat`, `NATIVE_COMPAT_MARKER`, `mapCompatDomProps`, `shallowEqualProps`, `_compatProps`. `nativeCompat()` stays public on `@pyreon/core`.
+  - `@pyreon/reactivity` → `@pyreon/reactivity/internal`: `__resetReactiveDevtoolsForTesting`, `_abortOwnerFrame`, `_captureRun`, `_claimContextOwner`, `_closeOwnerFrame`, `_currentScope`, `_devOwner`, `_enterCleanupFrame`, `_exitCleanupFrame`, `_frameReads`, `_hasSubscribers`, `_noopDispose`, `_openOwnerFrame`, `_rdCloseBindingFrame`, `_rdDropBinding`, `_rdLabelBinding`, `_rdLabelDirect`, `_rdLabelSubscribers`, `_rdNodeId`, `_rdNoteTarget`, `_rdOpenBindingFrame`, `_rdPreview`, `_rdRegistrySize`, `_rdScopeNodes`, `_releaseRun`, `_renderBind`, `_replayReads`, `_resetSentinel`, `_resumeSoleSubscriber`, `_resumeSubscriber`, `_sampleReads`, `_setRequestOwnerReader`, `_suspendSoleSubscriber`, `_suspendSubscriber`, `_swapPendingOwner` (the `CleanupFrameToken`, `RunCapture` and `SoleSubscriberToken` types are also exported there)
+  - `@pyreon/runtime-dom` → `@pyreon/runtime-dom/internal`: `_declareRootDecoration`
+  - `@pyreon/runtime-server` → `@pyreon/runtime-server/internal`: `_setStreamFlushBytes`
+  - `@pyreon/server` → `@pyreon/server/internal`: `_resetServerIslands`
+
+  The compat layers, `@pyreon/elements`, `@pyreon/rocketstyle`, `@pyreon/styler`, `@pyreon/kinetic` and `@pyreon/atlas` now import these from the new subpaths; their own APIs are unchanged.
+
+  Upgrade: codemod internal-exports-subpath
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`28d24b6`](https://github.com/pyreon/pyreon/commit/28d24b6ed9799c693cd9b329cf0bd9cc93b5c952), [`db608bf`](https://github.com/pyreon/pyreon/commit/db608bfe7acf6bf34f1bf822859d32e6d249f874), [`03f914c`](https://github.com/pyreon/pyreon/commit/03f914c94984f933c3994754a20d133779f78c78), [`5e90897`](https://github.com/pyreon/pyreon/commit/5e90897abe9804227391e75442d55d97fb4c257f), [`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`d3bfe2f`](https://github.com/pyreon/pyreon/commit/d3bfe2f1e6be85202da5c6e8a8774626c9ac2906), [`9c3818b`](https://github.com/pyreon/pyreon/commit/9c3818b0f8963ffc287e254e2463680f30284631), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`0ce0db7`](https://github.com/pyreon/pyreon/commit/0ce0db79430645ce8ab7f5a7422e924dc9bdd787), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`6522f8d`](https://github.com/pyreon/pyreon/commit/6522f8d1442f80cbc313e385c5df8a20daf78bdc), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`3894bcf`](https://github.com/pyreon/pyreon/commit/3894bcfd6c00c7a43b572a66edc2b916cacaba29), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`c5dab5e`](https://github.com/pyreon/pyreon/commit/c5dab5e4f4e9aa5e9c3154300f07151286d1a104), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`8d91fc7`](https://github.com/pyreon/pyreon/commit/8d91fc76afc8f128c6d5345dbc934ded524b9e7a), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`daba200`](https://github.com/pyreon/pyreon/commit/daba200aa50a3548b71ffbbb421539d3c9d4517d), [`c397d94`](https://github.com/pyreon/pyreon/commit/c397d9404ad080322d7136b8067890254e093d52), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`95e806f`](https://github.com/pyreon/pyreon/commit/95e806fcb3ba59f0cfd02f48e279052ab689338b), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`09cb92f`](https://github.com/pyreon/pyreon/commit/09cb92f87dfd93aa900c729fa37c3dbb03501d9e), [`1389a05`](https://github.com/pyreon/pyreon/commit/1389a05d67fa4870503874e4b1feeb34ce8d7136), [`5c4ac80`](https://github.com/pyreon/pyreon/commit/5c4ac804f25a6d5824edc53d8cb0c7be20b01d97), [`2c01201`](https://github.com/pyreon/pyreon/commit/2c0120190e33ff79c9d43e097240c10621660cdb), [`f4c955e`](https://github.com/pyreon/pyreon/commit/f4c955ea66eea292e8bb8ac612bdec71fded46e8), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39), [`ca334d6`](https://github.com/pyreon/pyreon/commit/ca334d6862e42aa9dc9d115e9829340bb6ba322b), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`2c01201`](https://github.com/pyreon/pyreon/commit/2c0120190e33ff79c9d43e097240c10621660cdb), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af)]:
+  - @pyreon/zero@0.55.0
+  - @pyreon/code@0.55.0
+  - @pyreon/compiler@0.55.0
+  - @pyreon/runtime-dom@0.55.0
+  - @pyreon/core@0.55.0
+  - @pyreon/reactivity@0.55.0
+  - @pyreon/runtime-server@0.55.0
+  - @pyreon/server@0.55.0
+  - @pyreon/elements@0.55.0
+  - @pyreon/rocketstyle@0.55.0
+  - @pyreon/styler@0.55.0
+  - @pyreon/feature@0.55.0
+  - @pyreon/hooks@0.55.0
+  - @pyreon/vite-plugin@0.55.0
+  - @pyreon/store@0.55.0
+  - @pyreon/ui-core@0.55.0
+  - @pyreon/unistyle@0.55.0
+  - @pyreon/validation@0.55.0
+  - @pyreon/config@0.55.0
+  - @pyreon/head@0.55.0
+  - @pyreon/router@0.55.0
+  - @pyreon/permissions@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

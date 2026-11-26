@@ -1,5 +1,17 @@
 # @pyreon/config
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4876](https://github.com/pyreon/pyreon/pull/4876) [`c5dab5e`](https://github.com/pyreon/pyreon/commit/c5dab5e4f4e9aa5e9c3154300f07151286d1a104) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lathe can now write the spec's models as plain native types. The new `swift` and `kotlin` plugins write `swift/Models.swift` (`Codable` structs, enums and unions) and `kotlin/Models.kt` (kotlinx.serialization `@Serializable` data classes). This is for iOS and Android apps that have their own networking and want the same contract types as the web client. `nativeModels: { kotlinPackage, swiftAccess }` sets the Kotlin package (default `api`) and the Swift access level (default `internal`). The files are covered by `lathe check` and by pruning. The project `format` hook does not receive them. `@pyreon/config`'s `LatheSection` accepts the new plugin names and the `nativeModels` key. A union with a `discriminator` dispatches on the tag. When the tag property is a plain string, the values come from OpenAPI's `mapping` or the member's component name, which the IR union now keeps as `declared`.
+
+### Patch Changes
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
 ## 0.54.0
 
 ### Patch Changes

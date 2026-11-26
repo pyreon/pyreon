@@ -1,5 +1,24 @@
 # @pyreon/document-primitives
 
+## 0.55.0
+
+### Patch Changes
+
+- [#4751](https://github.com/pyreon/pyreon/pull/4751) [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Docs drift fixes. lint: the VS Code `pyreonLint.preset` setting now lists every preset (`best-practices`, `readable` and `readable-strict` were missing) and actually reaches the language server, which uses it for files with no `.pyreonlintrc.json` (a project's own config still wins); before, the setting was never sent. mcp: the missing-catalog message says `bunx @pyreon/atlas scan` (an unscoped `bunx atlas` runs an unrelated npm package). loom: the cycles view says what the detector checks (declared `dependencies` + `peerDependencies`), not "runtime imports". code: the size note matches the measured figure (about 131 KB gz, at parity with `@uiw/react-codemirror`). document-primitives / connector-document: `DocHeading` takes `level="h1"`…`"h6"`.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`11b766d`](https://github.com/pyreon/pyreon/commit/11b766dc2f86e2a64d302618b562462998ec71aa), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d)]:
+  - @pyreon/core@0.55.0
+  - @pyreon/elements@0.55.0
+  - @pyreon/rocketstyle@0.55.0
+  - @pyreon/connector-document@0.55.0
+  - @pyreon/document@0.55.0
+  - @pyreon/ui-core@0.55.0
+  - @pyreon/unistyle@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

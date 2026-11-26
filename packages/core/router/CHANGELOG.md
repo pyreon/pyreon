@@ -1,5 +1,60 @@
 # @pyreon/router
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4817](https://github.com/pyreon/pyreon/pull/4817) [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A navigation that changes only the query or the hash no longer remounts the route component ([#4814](https://github.com/pyreon/pyreon/issues/4814)). `<RouterView>` decides whether to remount by the matched route records, their params and the route's loader key, not by the full URL. This holds for `push`, `replace`, Back/Forward, nested layouts and tab stacks. A search box written to the URL with `router.replace`, `useSearchParams().set` or `@pyreon/url-state` keeps its focus and local state on every keystroke.
+
+  - The page's `params`, `query` and `meta` props are live. The page being replaced keeps its own params until it unmounts.
+  - The page still remounts when its params or its loader key (`loaderKey`, else path + params) change.
+  - **`useLoaderData()` returns an accessor `() => T`**, like `useRoute()` / `useMiddlewareData()`. Loader data that changes under the same key (`revalidate()`, `staleWhileRevalidate`, `gcTime: 0`, a server loader) arrives in place, and the page is never remounted for it. The page being replaced never sees the next page's data, and a consumer re-runs only when the data itself changes.
+  - A route error boundary showing its `errorComponent` is remounted on any navigation, so it recovers. The error page receives live `params` / `query` plus `error` and `reset`; `reset()` recovers in place.
+  - `<RouterLink>` takes `scroll` and `viewTransition` props, forwarded as `NavigateOptions`.
+  - New `NavigateOptions` for `push` / `replace`: `{ scroll?: boolean, viewTransition?: boolean }`. A `replace()` that changes only the query (same route, params and hash) defaults both to `false`. Every other navigation defaults to `true`. With `scroll: false` the `scrollBehavior` option is not consulted. `useSearchParams` / `useTypedSearchParams` setters pass `{ scroll: false, viewTransition: false }`.
+
+  **Migration.**
+
+  `useLoaderData()` now returns an accessor. Call it where the value is used:
+
+  ```tsx
+  // before
+  const data = useLoaderData<Post>()
+  return <h1>{data.title}</h1>
+  // after
+  const data = useLoaderData<Post>()
+  return <h1>{data().title}</h1>
+  ```
+
+  Destructuring (`const { title } = useLoaderData()`) and reading `data()` once into a body `const` no longer follow the data. Use `{data().title}` in JSX, `<For each={() => data().items}>`, `<Show when={() => data().post}>`, `useHead(() => ({ title: data().title }))`, or an `effect` / `computed`. An early `if (!data) return …` in the body becomes a returned accessor: `return () => (data() ? <Page /> : null)`. On native (PMTC) the accessor shape lowers to the same Swift/Kotlin reads; a destructure is no longer lowered and warns.
+
+  A page no longer re-runs its body on a query- or hash-only navigation. Code that read the query ONCE in the body (`const page = props.query.page`, or an `onMount` fetch keyed on the query) stops updating. Read the query inside an accessor, `effect` or `computed` instead: `() => props.query.page`, `useRoute()().query`, or `useSearchParams()`. Alternatively, make a query-dependent route `loader` declare a `loaderKey` that includes the query, which remounts the page per key.
+
+- [#4857](https://github.com/pyreon/pyreon/pull/4857) [`09cb92f`](https://github.com/pyreon/pyreon/commit/09cb92f87dfd93aa900c729fa37c3dbb03501d9e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - **Breaking (router): View Transitions are now opt-in.** A navigation no longer runs inside `document.startViewTransition()` unless you ask for it: `createRouter({ routes, viewTransition: true })` for the whole router, or `meta: { viewTransition: true }` on a route (meta merges down the matched chain, so a layout route covers its children). `meta.viewTransition: false` still opts one route out of a router that has them on. Reduced motion and `mode: 'memory'` still skip them.
+
+  Why: a transition costs every navigation that runs one. The DOM swap waits for the browser to capture the old page on the next frame, and the page is not hit-testable while the cross-fade runs (250 ms by default), so a click in that window reaches the transition overlay instead of the page. On the catalogue app (`examples/real-bench/app`, Chromium) each route change took 14–17 ms from click to the new DOM with transitions on and 0.2–1.6 ms with them off, where Solid's router takes 0.3–0.8 ms. The default path also no longer calls `matchMedia` on every navigation.
+
+  To keep the previous behaviour, pass `viewTransition: true` to `createRouter`. In a zero app, `export const meta = { viewTransition: true }` from the root `_layout.tsx`.
+
+### Patch Changes
+
+- [#4846](https://github.com/pyreon/pyreon/pull/4846) [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The dev warning for a plain internal `<a href>` now honours `data-allow-reload` on an ancestor as well as on the anchor, so a host can mark a region whose links are not the router's (embedded CMS markup, a component workbench's preview).
+
+- [#4846](https://github.com/pyreon/pyreon/pull/4846) [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A memory router no longer claims the global route-HMR hook (`globalThis.__pyreon_hmr_swap__`). Its routes are not the page's (a component workbench's preview, an embedded widget), and creating one after the page's router took route-component HMR away from the page: every edit fell back to a full reload.
+
+- [#4846](https://github.com/pyreon/pyreon/pull/4846) [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A navigation that changes only the query or the hash no longer runs a View Transition. Query writes are state bookkeeping (`@pyreon/url-state` through `setUrlRouter`, filters, Atlas syncing its controls), often per keystroke; each one snapshotted and cross-faded the whole document, and in a same-origin iframe it crashed the Chromium renderer.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`6522f8d`](https://github.com/pyreon/pyreon/commit/6522f8d1442f80cbc313e385c5df8a20daf78bdc), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`3894bcf`](https://github.com/pyreon/pyreon/commit/3894bcfd6c00c7a43b572a66edc2b916cacaba29), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`daba200`](https://github.com/pyreon/pyreon/commit/daba200aa50a3548b71ffbbb421539d3c9d4517d), [`c397d94`](https://github.com/pyreon/pyreon/commit/c397d9404ad080322d7136b8067890254e093d52), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`95e806f`](https://github.com/pyreon/pyreon/commit/95e806fcb3ba59f0cfd02f48e279052ab689338b), [`1389a05`](https://github.com/pyreon/pyreon/commit/1389a05d67fa4870503874e4b1feeb34ce8d7136), [`f4c955e`](https://github.com/pyreon/pyreon/commit/f4c955ea66eea292e8bb8ac612bdec71fded46e8), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39)]:
+  - @pyreon/runtime-dom@0.55.0
+  - @pyreon/core@0.55.0
+  - @pyreon/reactivity@0.55.0
+  - @pyreon/native-compiler@0.55.0
+  - @pyreon/sized-map@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes
