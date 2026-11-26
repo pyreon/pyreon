@@ -1,7 +1,9 @@
 // Holes under a projection that wraps longitude (Equal Earth, Natural Earth, Albers): the way a file writes a hole's
 // longitudes (a whole turn away, or wrapped at the antimeridian) cannot move the hole. `geoShapes` shifts each inner
-// ring to its outer ring (`alignHole`), and the projection also wraps every vertex relative to the central meridian,
-// so this contract holds through either step alone: it locks the result, not `alignHole` by itself.
+// ring to its outer ring (`alignHole`), and the projection also wraps every vertex relative to the central meridian.
+// The per-vertex wrap alone covers a whole-turn shift and a vertex short of the seam, but not a vertex ON the seam:
+// relative longitude +180 and -180 are both kept as they are, at opposite edges of the map, so only `alignHole` (which
+// unwraps the hole and puts it beside its outer ring) keeps such a vertex on the hole's side. The last test locks that.
 // Plus the map ramp accessor.
 import { describe, expect, it } from 'vitest'
 import { GEO_RAMP_DARK, GEO_RAMP_LIGHT, mapRamp } from './geo'
@@ -69,6 +71,29 @@ describe('geoShapes — a hole is projected with its outer ring under a wrapping
     expect(ring[ring.length - 1]!.y).toBeCloseTo(ring[0]!.y, 9)
     // The hole host is a ring that exists (the outer ring is cut into pieces at the seam).
     expect(a.holeHost![0]).toBeLessThan(a.rings.length)
+  })
+
+  it('a hole vertex ON the antimeridian, written as -180 beside 178, stays on the hole side of the map', () => {
+    const outer = square(170, 0, 20)
+    const wrapped = [
+      [178, 5],
+      [-180, 5],
+      [-180, 10],
+      [178, 10],
+      [178, 5],
+    ]
+    const continuous = [
+      [178, 5],
+      [180, 5],
+      [180, 10],
+      [178, 10],
+      [178, 5],
+    ]
+    const a = geoShapes(country(outer, wrapped), 'equalEarth')[0]!.holes![0]!
+    const b = geoShapes(country(outer, continuous), 'equalEarth')[0]!.holes![0]!
+    close(a, b)
+    // Every vertex on the east edge: no vertex jumps to the west edge (x < 0) and stretches the hole across the map.
+    expect(a.every((p) => p.x > 0)).toBe(true)
   })
 })
 

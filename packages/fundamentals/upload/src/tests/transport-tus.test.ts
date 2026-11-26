@@ -139,18 +139,55 @@ describe('tusTransport: answers that break the protocol', () => {
     }
   })
 
-  it('an offset conflict (409) is a server error that is not retried', async () => {
+  it('an offset conflict (409) re-reads the offset with HEAD and continues from it', async () => {
     const tus = tusServer()
-
-    serve(tus.handler)
+    const s = serve(tus.handler)
     // The server moved on (another tab sent bytes): the transport's PATCH at the old offset conflicts.
     const answer = FakeXhr.onSend!
 
     FakeXhr.onSend = (x) => {
-      if (x.method === 'PATCH') tus.uploads.get('f1')!.offset = 3
+      if (x.method === 'PATCH' && x.header('upload-offset') === '0') tus.uploads.get('f1')!.offset = 3
       answer(x)
     }
-    expect(await failure(tusTransport({ endpoint: ENDPOINT }).upload(tf(5), ctxOf()))).toMatchObject({ kind: 'server', status: 409, retryable: false })
+    const ctx = ctxOf()
+
+    expect(await tusTransport({ endpoint: ENDPOINT }).upload(tf(5), ctx)).toEqual({ url: 'http://up.test/files/f1', size: 5 })
+    expect(s.log).toEqual(['POST /files', 'PATCH /files/f1', 'HEAD /files/f1', 'PATCH /files/f1'])
+    expect(xhr.requests.filter((r) => r.method === 'PATCH').map((r) => r.header('upload-offset'))).toEqual(['0', '3'])
+    expect(tus.uploads.get('f1')).toMatchObject({ offset: 5, length: 5 })
+    expect(ctx.seen.at(-1)).toBe(5)
+  })
+
+  it('offset conflicts that keep coming fail for good after three re-reads; an upload gone after a conflict is retryable', async () => {
+    const tus = tusServer()
+    const s = serve(tus.handler)
+    const answer = FakeXhr.onSend!
+
+    FakeXhr.onSend = (x) => {
+      if (x.method === 'PATCH') tus.uploads.get('f1')!.offset = Number(x.header('upload-offset')) + 1
+      answer(x)
+    }
+    const e = await failure(tusTransport({ endpoint: ENDPOINT }).upload(tf(100), ctxOf()))
+
+    expect(e).toMatchObject({ kind: 'server', status: 409, retryable: false })
+    expect(e.message).toMatch(/^\[Pyreon\] tusTransport: the server answered 409 \(offset conflict\) to 4 PATCH requests in a row/)
+    expect(s.log.filter((l) => l.startsWith('HEAD'))).toHaveLength(3)
+
+
+    const gone = tusServer()
+
+    serve(gone.handler)
+    const send = FakeXhr.onSend!
+
+    FakeXhr.onSend = (x) => {
+      if (x.method === 'PATCH') gone.uploads.get('f1')!.offset = 2
+      if (x.method === 'HEAD') gone.uploads.delete('f1')
+      send(x)
+    }
+    const lost = await failure(tusTransport({ endpoint: ENDPOINT }).upload(tf(5), ctxOf()))
+
+    expect(lost).toMatchObject({ kind: 'server', status: 409, retryable: true })
+    expect(lost.message).toMatch(/^\[Pyreon\] tusTransport: after an offset conflict \(409\) the server no longer has this upload/)
   })
 
   it('a server without tus (412) is not retried; a 5xx on creation is', async () => {

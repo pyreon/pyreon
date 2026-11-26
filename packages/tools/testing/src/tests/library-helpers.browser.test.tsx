@@ -146,6 +146,7 @@ describe('@pyreon/testing/router — navigation settle (real browser)', () => {
     const { container, navigate, router, unmount } = await renderWithRouter(null, {
       routes,
       route: '/',
+      mode: 'hash',
     })
     expect(container.textContent).toContain('Home Page')
     expectRouter(router).toBeAt('/')

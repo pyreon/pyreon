@@ -434,7 +434,7 @@ gridMove('2026-11-18', { key: 'ArrowRight' }, { rtl: true })   // => '2026-11-17
 (cursor, key, options) => SlotCursor | null
 ```
 
-Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in right-to-left), Home and End to the first and last slot, PageUp and PageDown by a week of columns. It stays inside the grid.
+Where a key moves the focused slot of a time grid: Up and Down by a slot, Left and Right by a day (swapped in right-to-left), Home and End to the first and last slot, PageUp and PageDown by a week of columns (seven slots in a one-day view). It stays inside the grid.
 
 **Example**
 

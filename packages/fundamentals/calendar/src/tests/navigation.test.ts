@@ -52,6 +52,14 @@ describe('slotMove', () => {
     expect(slotMove(at(600, '2026-11-16'), { key: 'ArrowLeft' }, o)).toEqual(at(600, '2026-11-16'))
     expect(slotMove(at(600), { key: 'ArrowRight' }, { ...o, rtl: true })).toEqual(at(600, '2026-11-16'))
   })
+
+  it('pages seven slots down and up the day in a one-day view, kept inside the grid', () => {
+    const day = { ...o, dates: ['2026-11-17'] as const }
+    expect(slotMove(at(600), { key: 'PageDown' }, day)).toEqual(at(810))
+    expect(slotMove(at(600), { key: 'PageUp' }, day)).toEqual(at(480))
+    expect(slotMove(at(900), { key: 'PageUp' }, day)).toEqual(at(690))
+    expect(slotMove(at(900), { key: 'PageDown' }, day)).toEqual(at(1050))
+  })
 })
 
 describe('opening hours', () => {

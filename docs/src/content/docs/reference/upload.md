@@ -679,7 +679,7 @@ typeof s3Transport({ presign: async () => ({ url: 'https://bucket.invalid/key' }
 (options: { endpoint, chunkSize?, metadata?, headers?, withCredentials?, timeout? }) => Transport
 ```
 
-The tus 1.0 resumable upload protocol with the creation and termination extensions: `POST` to create (with `Upload-Length` and `Upload-Metadata`), `PATCH` at the right `Upload-Offset`, `HEAD` to ask the offset on a resume, `DELETE` when the file is cancelled or removed. The upload URL is saved after creation, so a retry, a pause or a reload continues where the server is; a 404 or 410 for a saved URL, or a different length, starts a new upload. Retries are the queue's, not the transport's.
+The tus 1.0 resumable upload protocol with the creation and termination extensions: `POST` to create (with `Upload-Length` and `Upload-Metadata`), `PATCH` at the right `Upload-Offset`, `HEAD` to ask the offset on a resume, `DELETE` when the file is cancelled or removed. The upload URL is saved after creation, so a retry, a pause or a reload continues where the server is; a 404 or 410 for a saved URL, or a different length, starts a new upload. A `PATCH` answered 409 (offset conflict) re-reads the offset with `HEAD` and continues from it, up to three conflicts in a row. Retries are the queue's, not the transport's.
 
 **Example**
 

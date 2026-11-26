@@ -37,7 +37,7 @@ describe('content() closeBundle — search-index outDir resolution', () => {
   // Set up a consumer project with a `docs` (pages) collection + one page,
   // drive configResolved with an ABSOLUTE build.outDir, and populate the
   // per-collection search entries by transforming the page.
-  async function setup(absOutDir: string) {
+  async function setup(absOutDir: string, extra: Parameters<typeof content>[0] = {}) {
     await fs.mkdir(path.join(tmpDir, 'src', 'content', 'docs'), {
       recursive: true,
     })
@@ -60,7 +60,7 @@ describe('content() closeBundle — search-index outDir resolution', () => {
     await fs.mkdir(absOutDir, { recursive: true })
     await fs.mkdir(path.join(tmpDir, absOutDir), { recursive: true })
 
-    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false })
+    const plugin = content({ highlight: false, mdxDir: tmpDir, compileJsx: false, ...extra })
     const configResolved = plugin.configResolved as (
       this: unknown,
       config: unknown,
@@ -137,5 +137,26 @@ describe('content() closeBundle — search-index outDir resolution', () => {
     // Never inside the server bundle's own directory, never at a doubled path.
     expect(existsSync(path.join(absOutDir, 'search-index.json'))).toBe(false)
     expect(existsSync(path.join(path.join(tmpDir, absOutDir), 'search-index.json'))).toBe(false)
+  })
+
+  it('searchChunkWarnBytes / searchChunkErrorBytes reach the index builder: a tiny bound warns, then fails the build', async () => {
+    const dist = path.join(tmpDir, 'dist')
+    const warned = await setup(dist, { searchChunkWarnBytes: 1 })
+    const ctx = { warn: vi.fn(), error: vi.fn() }
+    await (warned.closeBundle as (this: typeof ctx) => Promise<void>).call(ctx)
+    expect(ctx.error).not.toHaveBeenCalled()
+    expect(ctx.warn).toHaveBeenCalledWith(expect.stringMatching(/search index for collection "docs" is .* \(over searchChunkWarnBytes=1 B\)/))
+
+    const failed = await setup(dist, { searchChunkErrorBytes: 1 })
+    const ctx2 = { warn: vi.fn(), error: vi.fn() }
+    await (failed.closeBundle as (this: typeof ctx2) => Promise<void>).call(ctx2)
+    expect(ctx2.error).toHaveBeenCalledWith(expect.stringMatching(/exceeds searchChunkErrorBytes=1 B/))
+
+    // The defaults (300 KiB / 1 MiB) let this one-page index through silently.
+    const plain = await setup(dist)
+    const ctx3 = { warn: vi.fn(), error: vi.fn() }
+    await (plain.closeBundle as (this: typeof ctx3) => Promise<void>).call(ctx3)
+    expect(ctx3.warn).not.toHaveBeenCalled()
+    expect(ctx3.error).not.toHaveBeenCalled()
   })
 })

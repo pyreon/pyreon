@@ -123,7 +123,7 @@ OpenAPI 3.x in; `@pyreon/validate` schemas, `@pyreon/http` endpoints, `@pyreon/q
 - Subpaths gated on optional peers, not re-exported from the main entry:
   - `/form` — `renderForm`, `fillForm` / `submitForm` by accessible label through real events, `expectForm`;
   - `/ui` — `renderWithTheme` + reactive `setMode`, `expectComputedStyle` (real-browser territory);
-  - `/router` — `renderWithRouter` is async and settles the initial route via `router.preload`, so `useLoaderData` is populated on first render; `navigate()` resolves post-commit; `expectRouter.toBeAt` matches a pattern or a concrete path;
+  - `/router` — `renderWithRouter` is async and settles the initial route via `router.preload`; its router defaults to `mode: 'memory'` (no `location` writes between tests), so `useLoaderData` is populated on first render; `navigate()` resolves post-commit; `expectRouter.toBeAt` matches a pattern or a concrete path;
   - `/store` — `installStoreReset` / `withFreshStore`;
   - `/i18n` — `renderWithI18n` + `setLocale`;
   - `/toast` — `expectToast` / `findToast` / `clearToasts` (store-level, string messages only);

@@ -291,6 +291,6 @@ describe('buildSearchIndex', () => {
         outDir: tmpDir,
         chunkErrorBytes: 1024,
       }),
-    ).rejects.toThrow('exceeds chunkErrorBytes')
+    ).rejects.toThrow('exceeds searchChunkErrorBytes')
   })
 })

@@ -92,9 +92,20 @@ export interface SlotMoveOptions {
   rtl?: boolean
 }
 
+/** The steps PageUp and PageDown move a time grid: a week of columns, or that many slots in a one-day view. */
+const PAGE = 7
+
+/** PageUp (`-1`) or PageDown (`1`): to `paged` (the column a week away), or, with one column, `PAGE` slots along the day. */
+function slotPage(cursor: SlotCursor, options: SlotMoveOptions, direction: 1 | -1, clamp: (m: number) => number, paged: PlainDate): SlotCursor {
+  if (options.dates.length > 1) return { date: paged, minute: cursor.minute }
+
+  return { date: cursor.date, minute: clamp(cursor.minute + direction * PAGE * options.slot) }
+}
+
 /**
  * Where a key moves the focused slot of a time grid: Up and Down a slot, Left and Right a day (swapped in right-to-left text),
- * Home and End the first and last slot of the day, PageUp and PageDown a week of columns (a page of slots in a one-day view).
+ * Home and End the first and last slot of the day, PageUp and PageDown a week of columns. A one-day view has no columns to
+ * page through, so there PageUp and PageDown move the same seven steps down the day: seven slots, kept inside the grid.
  * It stays inside the grid. Returns `null` for a key that does not move.
  *
  * @example slotMove({ date: '2026-11-18', minute: 540 }, { key: 'ArrowDown' }, { from: 0, to: 1440, slot: 30, dates: ['2026-11-18'] }) // => { date: '2026-11-18', minute: 570 }
@@ -124,9 +135,9 @@ export function slotMove(cursor: SlotCursor, input: KeyInput, options: SlotMoveO
     case 'End':
       return { date: cursor.date, minute: last }
     case 'PageUp':
-      return { date: at(index - Math.min(7, options.dates.length)), minute: cursor.minute }
+      return slotPage(cursor, options, -1, clamp, at(index - Math.min(PAGE, options.dates.length)))
     case 'PageDown':
-      return { date: at(index + Math.min(7, options.dates.length)), minute: cursor.minute }
+      return slotPage(cursor, options, 1, clamp, at(index + Math.min(PAGE, options.dates.length)))
     default:
       return null
   }

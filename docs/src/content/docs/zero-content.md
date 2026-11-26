@@ -91,6 +91,8 @@ That's it. Add `<root>/.pyreon/**` to your `tsconfig.json` `include` so the auto
 | `mdxDir`         | `string`                          | `<root>/src/mdx`         | Override the convention-scan directory.                                                      |
 | `compileJsx`     | `boolean`                         | `true`                   | Run the final esbuild JSX → `h()` pass. Tests set this `false` to assert on raw emit output. |
 | `searchBodyMax`  | `number`                          | `1500`                   | Max characters of body text indexed per page for search. `Infinity` disables truncation.    |
+| `searchChunkWarnBytes`  | `number`                   | `307200` (300 KiB)       | One collection's search index over this many bytes logs a build warning.                    |
+| `searchChunkErrorBytes` | `number`                   | `1048576` (1 MiB)        | One collection's search index over this many bytes fails the build. `Infinity` turns it off. |
 | `seo`            | `SeoEmitOptions`                  | none                     | Emit `sitemap.xml` / `rss.xml` / `llms.txt` at build close. See [SEO outputs](#seo-outputs). |
 
 ## Markdown syntax

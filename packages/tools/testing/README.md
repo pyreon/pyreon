@@ -93,7 +93,7 @@ Seven subpaths kill the provider/setup boilerplate for code built on Pyreon's li
 | --- | --- | --- |
 | `/form` | `renderForm` (headless `useForm` harness: `fill`/`submit`), `fillForm`/`submitForm` (rendered forms, by accessible label), `expectForm` (`toBeValid`/`toHaveFieldError`/`toBeDirty`/`toHaveValues`, …) | `@pyreon/form` |
 | `/ui` | `renderWithTheme` (PyreonUI wrap + reactive `setMode`), `expectComputedStyle` (normalized computed-style assertion), `normalizeCssValue` | `@pyreon/ui-core` |
-| `/router` | `renderWithRouter` (async — initial route SETTLED: lazy components + loaders pre-resolved; `navigate()` resolves after commit), `expectRouter` (`toBeAt('/posts/:id')` — pattern or concrete path) | `@pyreon/router` |
+| `/router` | `renderWithRouter` (async — initial route SETTLED: lazy components + loaders pre-resolved; `navigate()` resolves after commit; a `'memory'` router by default, so tests never touch `location` — pass `mode: 'hash'` or `'history'` for code that reads the URL), `expectRouter` (`toBeAt('/posts/:id')` — pattern or concrete path) | `@pyreon/router` |
 | `/store` | `installStoreReset` (afterEach `resetAllStores`), `withFreshStore` (scoped fresh singleton), re-exported `resetStore`/`resetAllStores` | `@pyreon/store` |
 | `/i18n` | `renderWithI18n` (I18nProvider wrap + reactive `setLocale` + bound `t()`) | `@pyreon/i18n` |
 | `/toast` | `expectToast`/`findToast`/`getToasts`/`clearToasts` (store-level — headless or with a mounted `<Toaster>`) | `@pyreon/toast` |
