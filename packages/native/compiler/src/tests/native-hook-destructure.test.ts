@@ -99,15 +99,15 @@ function App() {
   it('a second destructure in the same component gets a fresh container name', () => {
     const src = `import { Stack, Text } from '@pyreon/primitives'
 type Quote = { text: string }
-type User = { name: string }
+type Member = { name: string }
 function App() {
   const { isPending: aPending } = useFetch<Quote>('https://api/a')
-  const { isPending: bPending } = useFetch<User>('https://api/b')
+  const { isPending: bPending } = useFetch<Member>('https://api/b')
   return (<Stack><Text>{aPending}</Text><Text>{bPending}</Text></Stack>)
 }`
     const sw = transform(src, { target: 'swift' }).code
     expect(sw).toContain('@State private var __pyHook0 = PyreonFetch<Quote>()')
-    expect(sw).toContain('@State private var __pyHook1 = PyreonFetch<User>()')
+    expect(sw).toContain('@State private var __pyHook1 = PyreonFetch<Member>()')
     expect(sw).toContain('__pyHook0.isPending')
     expect(sw).toContain('__pyHook1.isPending')
   })

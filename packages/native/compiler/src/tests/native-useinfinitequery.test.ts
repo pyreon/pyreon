@@ -1,4 +1,4 @@
-// `useInfiniteQuery<Page>(() => ({ queryKey, queryFn, initialPageParam, getNextPageParam }))` — lowered to
+// `useInfiniteQuery<Screen>(() => ({ queryKey, queryFn, initialPageParam, getNextPageParam }))` — lowered to
 // PyreonInfiniteQuery on both targets (see @pyreon/query/native). The harness wires the next-parameter reader and
 // the per-page fetch, then starts the first page; reads are plain fields (Swift) / `.value` (Kotlin).
 
@@ -10,9 +10,9 @@ const SRC = `
 import { Stack, Text, Button } from '@pyreon/primitives'
 import { useInfiniteQuery } from '@pyreon/query'
 interface Item { id: number; title: string }
-interface Page { items: Item[]; nextCursor: string | undefined }
+interface Screen { items: Item[]; nextCursor: string | undefined }
 export function Feed() {
-  const feed = useInfiniteQuery<Page>(() => ({
+  const feed = useInfiniteQuery<Screen>(() => ({
     queryKey: ['feed'],
     queryFn: ({ pageParam }) => fetch(\`https://api.example.com/feed?cursor=\${pageParam}\`).then(r => r.json()),
     initialPageParam: '0',
@@ -35,7 +35,7 @@ describe('useInfiniteQuery native lowering', () => {
   it('lowers to a container, wires both closures and starts the first page (Swift)', () => {
     const r = swiftOf(SRC)
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('PyreonInfiniteQuery<Page>(queryKey: "feed", initialParam: "0")')
+    expect(r.code).toContain('PyreonInfiniteQuery<Screen>(queryKey: "feed", initialParam: "0")')
     expect(r.code).toContain('getNextParam = { last in pyreonPageParam(last.nextCursor) }')
     expect(r.code).toContain('requestPage = { pageParam in')
     expect(r.code).toContain('feed.start()')
@@ -46,7 +46,7 @@ describe('useInfiniteQuery native lowering', () => {
   it('lowers to a remembered container with MutableState reads (Kotlin)', () => {
     const r = kotlinOf(SRC)
     expect(r.warnings).toEqual([])
-    expect(r.code).toContain('remember { PyreonInfiniteQuery<Page>(queryKey = "feed", initialParam = "0") }')
+    expect(r.code).toContain('remember { PyreonInfiniteQuery<Screen>(queryKey = "feed", initialParam = "0") }')
     expect(r.code).toContain('feed.hasNextPage.value')
     expect(r.code).toContain('feed.start()')
   })

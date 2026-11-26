@@ -24,7 +24,8 @@ export function App() { return (<Element>Hi</Element>) }`
 export function App() { return (<Element>Hi</Element>) }`
     // No Stack lowering — the tag renders as the user's own Element view.
     expect(swift(src)).not.toContain('VStack')
-    expect(swift(src)).toContain('Element {')
+    // `Element` is a name the Swift runtime spells bare, so the user's view is emitted `Element_` (swift-reserved-rename.ts).
+    expect(swift(src)).toContain('Element_ {')
     expect(kotlin(src)).not.toContain('Column')
     expect(kotlin(src)).toContain('Element {')
   })

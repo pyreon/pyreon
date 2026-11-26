@@ -24,15 +24,15 @@ import { transform } from '../index'
  */
 const SRC = `
   type Double = number
-  type Box = { x: Double; y: Double }
+  type Crate = { x: Double; y: Double }
 
-  function structFirst(b: Box, k: Double): Double { return b.x * k }
-  function structSecond(k: Double, b: Box): Double { return b.x * k }
+  function structFirst(b: Crate, k: Double): Double { return b.x * k }
+  function structSecond(k: Double, b: Crate): Double { return b.x * k }
   function scalarsOnly(a: Double, b: Double): Double { return a * b }
-  function arrayFirst(vs: Double[], b: Box): Double { return vs.length * b.x }
+  function arrayFirst(vs: Double[], b: Crate): Double { return vs.length * b.x }
 
   export function P() {
-    const b: Box = { x: 40.0, y: 8.0 }
+    const b: Crate = { x: 40.0, y: 8.0 }
     const t = structFirst(b, 2.0) + structSecond(2.0, b) + scalarsOnly(1.0, 2.0) + arrayFirst([1.0], b)
     return <Stack><Text>{String(t)}</Text></Stack>
   }
@@ -43,7 +43,7 @@ describe('a helper is classified by its return, not its parameter order', () => 
     const out = transform(SRC, { target: 'swift' }).code
 
     it('emits a struct-first helper as a function', () => {
-      expect(out).toContain('func structFirst(_ b: Box, _ k: Double) -> Double')
+      expect(out).toContain('func structFirst(_ b: Crate, _ k: Double) -> Double')
     })
 
     /**
@@ -56,9 +56,9 @@ describe('a helper is classified by its return, not its parameter order', () => 
     })
 
     it('leaves the orderings that already worked unchanged', () => {
-      expect(out).toContain('func structSecond(_ k: Double, _ b: Box) -> Double')
+      expect(out).toContain('func structSecond(_ k: Double, _ b: Crate) -> Double')
       expect(out).toContain('func scalarsOnly(_ a: Double, _ b: Double) -> Double')
-      expect(out).toContain('func arrayFirst(_ vs: [Double], _ b: Box) -> Double')
+      expect(out).toContain('func arrayFirst(_ vs: [Double], _ b: Crate) -> Double')
     })
   })
 
@@ -66,7 +66,7 @@ describe('a helper is classified by its return, not its parameter order', () => 
     const out = transform(SRC, { target: 'kotlin' }).code
 
     it('emits a struct-first helper as a function with its OWN parameters', () => {
-      expect(out).toContain('fun structFirst(b: Box, k: Double): Double')
+      expect(out).toContain('fun structFirst(b: Crate, k: Double): Double')
     })
 
     /** The Kotlin failure took its parameters from the struct's fields. */
@@ -137,8 +137,8 @@ describe('a helper is classified by its return, not its parameter order', () => 
   it('treats the camelCase twin as a helper', () => {
     const src = `
       type Double = number
-      type Box = { x: Double; y: Double }
-      function boxWidth(b: Box, k: Double): Double { return b.x * k }
+      type Crate = { x: Double; y: Double }
+      function boxWidth(b: Crate, k: Double): Double { return b.x * k }
       export function P() { return <Stack><Text>{String(boxWidth({ x: 1.0, y: 2.0 }, 2.0))}</Text></Stack> }
     `
     expect(transform(src, { target: 'swift' }).code).toContain('func boxWidth(')

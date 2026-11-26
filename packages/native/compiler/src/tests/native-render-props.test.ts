@@ -2,10 +2,10 @@
 //
 // A view-typed prop was lowered as a VALUE on both targets:
 //
-//   Swift   `let children: (User?) -> Void`, and the call site interpolated
+//   Swift   `let children: (Member?) -> Void`, and the call site interpolated
 //           the callback into `Text(verbatim: "\({ user in … })")` — a
 //           closure's debug description on screen, or a type error.
-//   Kotlin  `children: (User?) -> Unit` — not `@Composable`, so the lambda
+//   Kotlin  `children: (Member?) -> Unit` — not `@Composable`, so the lambda
 //           the caller passes cannot call `Text` — and the same stringified
 //           closure at the call site.
 //   Both    `children: VNodeChild` reached the target as a type name neither
@@ -20,7 +20,7 @@
 //
 // Bisect-load-bearing: neutering `slotPropsOf` (return []) fails the
 // declaration, invocation and call-site specs on both targets, and the
-// stub + real-SDK compiles fail with the original `(User?) -> Void` /
+// stub + real-SDK compiles fail with the original `(Member?) -> Void` /
 // debug-description emit.
 
 import { readFileSync } from 'node:fs'
@@ -32,15 +32,15 @@ import { runtimeSwiftSources, swiftErrorLines, typecheckAgainstRealRuntime } fro
 
 const HEAD = `import { Stack, Text } from '@pyreon/primitives'
 import type { VNodeChild } from '@pyreon/core'
-type User = { name: string; age: number }
+type Member = { name: string; age: number }
 `
 
 const swift = (src: string) => transform(HEAD + src, { target: 'swift' })
 const kotlin = (src: string) => transform(HEAD + src, { target: 'kotlin' })
 
 /** The lathe `<Op>Data` shape: `children: (data: T | undefined) => unknown`, returned from the body. */
-const DATA = `function UserData(props: { children: (data: User | undefined) => unknown }) {
-  const u: User = { name: 'Ada', age: 36 }
+const DATA = `function UserData(props: { children: (data: Member | undefined) => unknown }) {
+  const u: Member = { name: 'Ada', age: 36 }
   return props.children(u)
 }
 `
@@ -52,7 +52,7 @@ describe('the receiving component', () => {
     )
     expect(warnings).toEqual([])
     expect(code).toContain('struct UserData<ChildrenContent: View>: View {')
-    expect(code).toContain('@ViewBuilder let children: (User?) -> ChildrenContent')
+    expect(code).toContain('@ViewBuilder let children: (Member?) -> ChildrenContent')
     expect(code).toContain('    children(u)')
     expect(code).not.toContain('-> Void')
   })
@@ -62,7 +62,7 @@ describe('the receiving component', () => {
       `${DATA}export function App() { return <UserData>{(u) => <Text>{u?.name ?? '-'}</Text>}</UserData> }`,
     )
     expect(warnings).toEqual([])
-    expect(code).toContain('fun UserData(children: @Composable (User?) -> Unit)')
+    expect(code).toContain('fun UserData(children: @Composable (Member?) -> Unit)')
     expect(code).toContain('  children(u)')
   })
 
@@ -141,29 +141,29 @@ describe('the call site', () => {
 
   it('named reference: a component-scope JSX function', () => {
     const src = `${DATA}export function App() {
-  const renderUser = (u: User | undefined) => <Text>{u?.name ?? 'local'}</Text>
+  const renderUser = (u: Member | undefined) => <Text>{u?.name ?? 'local'}</Text>
   return <UserData>{renderUser}</UserData>
 }`
     const sw = swift(src)
     expect(sw.warnings).toEqual([])
-    expect(sw.code).toContain('@ViewBuilder private func renderUser(_ u: User?) -> some View {')
+    expect(sw.code).toContain('@ViewBuilder private func renderUser(_ u: Member?) -> some View {')
     expect(sw.code).toContain('UserData(children: { a0 in renderUser(a0) })')
     const kt = kotlin(src)
     expect(kt.warnings).toEqual([])
-    expect(kt.code).toContain('  @Composable\n  fun renderUser(u: User?) {')
+    expect(kt.code).toContain('  @Composable\n  fun renderUser(u: Member?) {')
     // never `::renderUser` — Compose rejects references to @Composable functions
     expect(kt.code).toContain('UserData(children = { a0 -> renderUser(a0) })')
   })
 
   it('named reference: a file-scope JSX arrow', () => {
-    const src = `${DATA}const renderUser = (u: User | undefined) => <Text>{u?.name ?? 'top'}</Text>
+    const src = `${DATA}const renderUser = (u: Member | undefined) => <Text>{u?.name ?? 'top'}</Text>
 export function App() { return <UserData>{renderUser}</UserData> }`
     const sw = swift(src)
     expect(sw.warnings).toEqual([])
-    expect(sw.code).toContain('@ViewBuilder private func renderUser(_ u: User?) -> some View {')
+    expect(sw.code).toContain('@ViewBuilder private func renderUser(_ u: Member?) -> some View {')
     expect(sw.code).not.toContain('private let renderUser')
     const kt = kotlin(src)
-    expect(kt.code).toContain('@Composable\nprivate fun renderUser(u: User?) {')
+    expect(kt.code).toContain('@Composable\nprivate fun renderUser(u: Member?) {')
     expect(kt.code).not.toContain('private val renderUser')
   })
 
@@ -178,7 +178,7 @@ export function App() { return <Shell render={(it) => <Text>{it.title}</Text>} /
 
   it('a component from ANOTHER file is lowered from the callback shape alone', () => {
     // `GetBookData` is not declared here — the generated-client case.
-    const src = `export function Screen() { return <GetBookData bookId="1">{(b: User | undefined) => <Text>{b?.name ?? '…'}</Text>}</GetBookData> }`
+    const src = `export function Screen() { return <GetBookData bookId="1">{(b: Member | undefined) => <Text>{b?.name ?? '…'}</Text>}</GetBookData> }`
     expect(swift(src).code).toContain('GetBookData(bookId: "1", children: { b in')
     expect(kotlin(src).code).toContain('GetBookData(bookId = "1", children = { b ->')
   })
@@ -224,7 +224,7 @@ describe('shapes that do not lower are NAMED', () => {
   })
 
   it('a render prop value PMTC cannot see into', () => {
-    const src = `${DATA}function pick(): (u: User | undefined) => unknown { return (u) => null }
+    const src = `${DATA}function pick(): (u: Member | undefined) => unknown { return (u) => null }
 export function App() { return <UserData children={pick()} /> }`
     for (const out of [swift(src), kotlin(src)]) {
       expect(out.warnings.join('\n')).toContain('this render prop is not an inline arrow')
@@ -284,15 +284,15 @@ export function App() { const s = signal(1); return () => { let t = s(); t = t +
 describe('a JSX function called in view position renders (was an EmptyView)', () => {
   it('both targets', () => {
     const src = `export function App() {
-  const row = (u: User) => <Text>{u.name}</Text>
+  const row = (u: Member) => <Text>{u.name}</Text>
   return <Stack>{row({ name: 'a', age: 1 })}</Stack>
 }`
     const sw = swift(src)
     expect(sw.warnings).toEqual([])
-    expect(sw.code).toContain('      row(User(name: "a", age: 1))')
+    expect(sw.code).toContain('      row(Member(name: "a", age: 1))')
     const kt = kotlin(src)
     expect(kt.warnings).toEqual([])
-    expect(kt.code).toContain('    row(User(name = "a", age = 1L))')
+    expect(kt.code).toContain('    row(Member(name = "a", age = 1L))')
   })
 })
 
@@ -300,7 +300,7 @@ describe('a JSX function called in view position renders (was an EmptyView)', ()
 // Compile gates. The broad fixture covers every lowered shape at once.
 
 const BROAD = `${DATA}
-const renderTop = (u: User | undefined) => <Text>{u?.name ?? 'top'}</Text>
+const renderTop = (u: Member | undefined) => <Text>{u?.name ?? 'top'}</Text>
 function Picker(props: { label: string; render: (item: { title: string; rank: number }) => VNodeChild }) {
   return <Stack><Text>{props.label}</Text>{props.render({ title: 'x', rank: 1 })}</Stack>
 }
@@ -314,7 +314,7 @@ function Opt(props: { render?: (n: number) => VNodeChild }) {
   return <Stack>{props.render?.(1)}</Stack>
 }
 export function App() {
-  const renderLocal = (u: User | undefined) => <Text>{u?.name ?? 'local'}</Text>
+  const renderLocal = (u: Member | undefined) => <Text>{u?.name ?? 'local'}</Text>
   return (
     <Stack>
       <UserData>{(user) => <Text>{user?.name ?? 'none'}</Text>}</UserData>

@@ -1,8 +1,10 @@
 import { transform } from './charts-plugin'
 const APP =
   'interface Slice { value: number }; export function Example() { return <Text>hello</Text> }'
+// Kotlin: on Swift the compiler renames a user type named like an engine type (swift-reserved-rename.ts), so the
+// chart plugin's shadow warning only ever fires on Kotlin — which is where its import detection is observable.
 const shadows = (source: string) =>
-  transform(source, { target: 'swift' }).warnings.filter((w) => w.includes('SHADOWS'))
+  transform(source, { target: 'kotlin' }).warnings.filter((w) => w.includes('SHADOWS'))
 describe('compiler driver input contracts', () => {
   it('rejects an unknown target before emitting another language', () => {
     expect(() => transform(APP, { target: 'rust' as never })).toThrow(

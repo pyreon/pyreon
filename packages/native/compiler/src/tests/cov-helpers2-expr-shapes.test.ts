@@ -245,12 +245,12 @@ describe('explainUntypeableField — the WHY behind a synthesis bail', () => {
   it('an ANNOTATED declaration lowers to the declared struct, no synthesis', () => {
     const out = sw(`import { Stack, Text } from '@pyreon/primitives'
 import { signal } from '@pyreon/reactivity'
-type Node = { id: string; parent: string | null }
+type Vertex = { id: string; parent: string | null }
 export function App() {
-  const v = signal<Node>({ id: 'a', parent: null })
+  const v = signal<Vertex>({ id: 'a', parent: null })
   return (<Stack><Text>{v().id}</Text></Stack>)
 }`)
-    expect(out).toContain('Node(id: "a", parent: nil)')
+    expect(out).toContain('Vertex(id: "a", parent: nil)')
   })
 })
 

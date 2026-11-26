@@ -7,16 +7,16 @@
 // infer type for T". The declared type already resolves to a nullable `T?`
 // via `kotlinType`/`kotlinUnionType`; emit it explicitly:
 //
-//   signal<Box | null>(null)  → var x by remember { mutableStateOf<Box?>(null) }
+//   signal<Crate | null>(null)  → var x by remember { mutableStateOf<Crate?>(null) }
 //   signal<string | null>(null) → mutableStateOf<String?>(null)
 //
-// Swift needs NO equivalent — it already emits `@State var x: Box? = nil`.
+// Swift needs NO equivalent — it already emits `@State var x: Crate? = nil`.
 //
 // Verification rungs (honest):
 //  - Kotlin: full `kotlinc` semantic typecheck — a fixture that ASSIGNS a
-//    real `Box` (and `null`) to the nullable signal, which only typechecks
-//    when the signal is `MutableState<Box?>` (the bug's `Nothing?` rejects
-//    the `Box` assignment).
+//    real `Crate` (and `null`) to the nullable signal, which only typechecks
+//    when the signal is `MutableState<Crate?>` (the bug's `Nothing?` rejects
+//    the `Crate` assignment).
 //  - emit-shape: the explicit `<T?>` type param is present (not bare
 //    `mutableStateOf(null)`).
 
@@ -26,7 +26,7 @@ import { isKotlincAvailable, validateKotlin } from '../validate'
 
 const app = (body: string) =>
   `import { Stack, Text } from '@pyreon/primitives'
-type Box = { name: string }
+type Crate = { name: string }
 function App() {
 ${body}
   return (<Stack><Text>x</Text></Stack>)
@@ -34,10 +34,10 @@ ${body}
 
 describe('Kotlin nullable-signal init type annotation', () => {
   it('emits an explicit nullable type param for a data-class | null signal', () => {
-    const out = transform(app(`  const a = signal<Box | null>(null)`), {
+    const out = transform(app(`  const a = signal<Crate | null>(null)`), {
       target: 'kotlin',
     }).code
-    expect(out).toContain('mutableStateOf<Box?>(null)')
+    expect(out).toContain('mutableStateOf<Crate?>(null)')
     expect(out).not.toContain('mutableStateOf(null)')
   })
 
@@ -57,25 +57,25 @@ describe('Kotlin nullable-signal init type annotation', () => {
   })
 
   it('Swift is unaffected — already emits the optional type', () => {
-    const out = transform(app(`  const a = signal<Box | null>(null)`), {
+    const out = transform(app(`  const a = signal<Crate | null>(null)`), {
       target: 'swift',
     }).code
-    expect(out).toContain('Box? = nil')
+    expect(out).toContain('Crate? = nil')
   })
 
   it.skipIf(!isKotlincAvailable())(
     'Kotlin: a nullable signal assigned a real value typechecks via kotlinc',
     () => {
-      // `setIt(v: Box) { a = v }` + `clearIt() { a = null }` require `a` to be
-      // `MutableState<Box?>` — the bug's `Nothing?` rejects the `Box`
+      // `setIt(v: Crate) { a = v }` + `clearIt() { a = null }` require `a` to be
+      // `MutableState<Crate?>` — the bug's `Nothing?` rejects the `Crate`
       // assignment, so this fixture is the discriminator.
       const out = transform(
-        app(`  const a = signal<Box | null>(null)
-  const setIt = (v: Box) => a.set(v)
+        app(`  const a = signal<Crate | null>(null)
+  const setIt = (v: Crate) => a.set(v)
   const clearIt = () => a.set(null)`),
         { target: 'kotlin' },
       ).code
-      expect(out).toContain('mutableStateOf<Box?>(null)')
+      expect(out).toContain('mutableStateOf<Crate?>(null)')
       const res = validateKotlin(out)
       expect(res.ok, res.error ?? '').toBe(true)
     },

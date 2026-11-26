@@ -28,11 +28,11 @@ const ENDPOINT_GET = `
 import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
 import { Stack, Text } from '${P}'
-interface User { id: string; name: string }
+interface Member { id: string; name: string }
 const api = createHttp({ baseUrl: '/api' })
 const getUser = api.endpoint('GET /users/:id', { response: UserSchema })
 export function UserScreen() {
-  const user = useFetch<User>(getUser({ params: { id: '1' } }))
+  const user = useFetch<Member>(getUser({ params: { id: '1' } }))
   return <Stack><Text>{user.data()?.name ?? ''}</Text></Stack>
 }
 `
@@ -42,9 +42,9 @@ export function UserScreen() {
 const LITERAL_GET = `
 import { useFetch } from '@pyreon/query'
 import { Stack, Text } from '${P}'
-interface User { id: string; name: string }
+interface Member { id: string; name: string }
 export function UserScreen() {
-  const user = useFetch<User>('/api/users/1', { method: 'GET' })
+  const user = useFetch<Member>('/api/users/1', { method: 'GET' })
   return <Stack><Text>{user.data()?.name ?? ''}</Text></Stack>
 }
 `
@@ -63,8 +63,8 @@ const KOTLIN_FETCH_RE = /PyreonFetch|PyreonHttp|LaunchedEffect|method =|\/api\/u
 describe('endpoint DSL — Swift lowering', () => {
   const r = swift(ENDPOINT_GET)
 
-  it('emits an @State PyreonFetch<User> and the resolved URL + GET verb', () => {
-    expect(r.code).toContain('@State private var user = PyreonFetch<User>()')
+  it('emits an @State PyreonFetch<Member> and the resolved URL + GET verb', () => {
+    expect(r.code).toContain('@State private var user = PyreonFetch<Member>()')
     expect(r.code).toContain('url: "/api/users/1"')
     expect(r.code).toContain('method: .get')
     expect(r.code).toContain('PyreonHttp.send(')
@@ -91,8 +91,8 @@ describe('endpoint DSL — Swift lowering', () => {
 describe('endpoint DSL — Kotlin lowering', () => {
   const r = kotlin(ENDPOINT_GET)
 
-  it('emits a remembered PyreonFetch<User> + LaunchedEffect(Unit) + resolved URL', () => {
-    expect(r.code).toContain('PyreonFetch<User>()')
+  it('emits a remembered PyreonFetch<Member> + LaunchedEffect(Unit) + resolved URL', () => {
+    expect(r.code).toContain('PyreonFetch<Member>()')
     expect(r.code).toContain('LaunchedEffect(Unit)')
     expect(r.code).toContain('url = "/api/users/1"')
     expect(r.code).toContain('PyreonHttpMethod.GET')
@@ -121,11 +121,11 @@ describe('endpoint DSL — the verb carries through', () => {
 import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
 import { Stack, Text } from '${P}'
-interface User { id: string }
+interface Member { id: string }
 const api = createHttp({ baseUrl: '/api' })
 const createUser = api.endpoint('POST /users/:id')
 export function S() {
-  const u = useFetch<User>(createUser({ params: { id: '1' } }))
+  const u = useFetch<Member>(createUser({ params: { id: '1' } }))
   return <Stack><Text>{u.data()?.id ?? ''}</Text></Stack>
 }
 `
@@ -153,11 +153,11 @@ describe('endpoint DSL — literal query params append to the URL', () => {
 import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
 import { Stack, Text } from '${P}'
-interface User { id: string }
+interface Member { id: string }
 const api = createHttp({ baseUrl: '/api' })
 const listUsers = api.endpoint('GET /users')
 export function S() {
-  const u = useFetch<User>(listUsers({ query: { page: 2, active: true } }))
+  const u = useFetch<Member>(listUsers({ query: { page: 2, active: true } }))
   return <Stack><Text>{u.data()?.id ?? ''}</Text></Stack>
 }
 `
@@ -176,12 +176,12 @@ import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
 import { signal } from '@pyreon/reactivity'
 import { Stack, Text } from '${P}'
-interface User { id: string }
+interface Member { id: string }
 const api = createHttp({ baseUrl: '/api' })
 const getUser = api.endpoint('GET /users/:id')
 export function S() {
   const id = signal('1')
-  const user = useFetch<User>(getUser({ params: { id: id() } }))
+  const user = useFetch<Member>(getUser({ params: { id: id() } }))
   return <Stack><Text>{user.data()?.id ?? ''}</Text></Stack>
 }
 `
@@ -208,11 +208,11 @@ export function S() {
 import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
 import { Stack, Text } from '${P}'
-interface User { id: string }
+interface Member { id: string }
 const api = createHttp({ baseUrl: resolveBase() })
 const getUser = api.endpoint('GET /users/:id')
 export function S() {
-  const user = useFetch<User>(getUser({ params: { id: '1' } }))
+  const user = useFetch<Member>(getUser({ params: { id: '1' } }))
   return <Stack><Text>{user.data()?.id ?? ''}</Text></Stack>
 }
 `
@@ -224,12 +224,12 @@ export function S() {
 import { createHttp } from '@pyreon/http'
 import { useFetch } from '@pyreon/query'
 import { Stack, Text } from '${P}'
-interface User { id: string }
+interface Member { id: string }
 const API_BASE = 'https://api.example.com'
 const api = createHttp({ baseUrl: API_BASE })
 const getUser = api.endpoint('GET /users/:id')
 export function S() {
-  const user = useFetch<User>(getUser({ params: { id: '1' } }))
+  const user = useFetch<Member>(getUser({ params: { id: '1' } }))
   return <Stack><Text>{user.data()?.id ?? ''}</Text></Stack>
 }
 `
@@ -244,11 +244,11 @@ export function S() {
 import { createHttp } from '@pyreon/http'
 import { useQuery } from '@pyreon/query'
 import { Stack, Text } from '${P}'
-interface User { id: string }
+interface Member { id: string }
 const api = createHttp({ baseUrl: '/api' })
 const getUser = api.endpoint('GET /users/:id')
 export function S() {
-  const q = useQuery<User>(() => getUser.query({ params: { id: '1' } }))
+  const q = useQuery<Member>(() => getUser.query({ params: { id: '1' } }))
   return <Stack><Text>{q.data()?.id ?? ''}</Text></Stack>
 }
 `
@@ -256,9 +256,9 @@ export function S() {
     const k = kotlin(QUERY)
     // Resolves to the SAME PyreonQuery path a literal-key useQuery takes, no
     // emit change — the endpoint just supplies the url + a `method:url` key.
-    expect(s.code).toContain('PyreonQuery<User>(queryKey: "GET:/api/users/1"')
+    expect(s.code).toContain('PyreonQuery<Member>(queryKey: "GET:/api/users/1"')
     expect(s.code).toContain('/api/users/1')
-    expect(k.code).toContain('PyreonQuery<User>')
+    expect(k.code).toContain('PyreonQuery<Member>')
     expect(k.code).toContain('"GET:/api/users/1"')
     expect(k.code).toContain('/api/users/1')
     // No longer stays web.

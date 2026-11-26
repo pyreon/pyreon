@@ -1075,12 +1075,12 @@ describe('Phase C5.1 — route extraction from createRouter({routes:[…]})', ()
   it('captures member-expression component references (e.g. pages.Home)', async () => {
     const result = await parse(`
       import { createRouter } from '@pyreon/router'
-      declare const pages: { Home: any; User: any }
+      declare const pages: { Home: any; Member: any }
       export function App() {
         const router = createRouter({
           routes: [
             { path: '/', component: pages.Home },
-            { path: '/users/:id', component: pages.User },
+            { path: '/users/:id', component: pages.Member },
           ],
         })
         return <RouterView />
@@ -1730,21 +1730,21 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
   // `x.isPending`) are @Observable properties on Swift, MutableState
   // (`.value`) on Kotlin.
   const FETCH_SRC = `
-    type User = { name: string }
+    type Member = { name: string }
     export function Profile() {
-      const user = useFetch<User>('/api/user')
+      const user = useFetch<Member>('/api/user')
       return <Text>{user.data}</Text>
     }
   `
 
   it('Swift: emits @State PyreonFetch<T> + a .task harness that REGISTERS the request (run), so refetch() re-runs it', () => {
     const out = transform(FETCH_SRC, { target: 'swift' }).code
-    expect(out).toContain('@State private var user = PyreonFetch<User>()')
+    expect(out).toContain('@State private var user = PyreonFetch<Member>()')
     expect(out).toContain('.task {')
     expect(out).toContain('await user.run {')
     expect(out).not.toContain('user.begin()')
     expect(out).toContain('URLSession.shared.data(from: URL(string: "/api/user")!)')
-    expect(out).toContain('return try PyreonJSON.decode(User.self, from: bytes)')
+    expect(out).toContain('return try PyreonJSON.decode(Member.self, from: bytes)')
     // Swift field access is a plain @Observable property read.
     expect(out).toContain('user.data')
     expect(out).not.toContain('user.data.value')
@@ -1752,7 +1752,7 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
 
   it('Kotlin: emits remember { PyreonFetch<T>() } + a LaunchedEffect harness', () => {
     const out = transform(FETCH_SRC, { target: 'kotlin' }).code
-    expect(out).toContain('val user = remember { PyreonFetch<User>() }')
+    expect(out).toContain('val user = remember { PyreonFetch<Member>() }')
     expect(out).toContain('LaunchedEffect(Unit) {')
     expect(out).toMatch(/user\.run\(launch = \{ __refetch -> \w+\.launch \{ __refetch\(\) \} \}\) \{/)
     expect(out).not.toContain('user.begin()')
@@ -1763,7 +1763,7 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
     // against any real API. The invariant this line guards is unchanged (the
     // harness's request decodes the response); only the reader it decodes
     // with is now the parity-configured one.
-    expect(out).toContain('PyreonJson.decode<User>(body)')
+    expect(out).toContain('PyreonJson.decode<Member>(body)')
     // Kotlin field access reads through Compose MutableState `.value`.
     expect(out).toContain('user.data.value')
   })
@@ -1771,9 +1771,9 @@ describe('Phase 4.1 — useFetch emit (PyreonFetch container + async harness)', 
   it('Kotlin: every reactive field read appends .value (data / isPending / error)', () => {
     const out = transform(
       `
-      type User = { name: string }
+      type Member = { name: string }
       export function Profile() {
-        const user = useFetch<User>('/api/user')
+        const user = useFetch<Member>('/api/user')
         return <Show when={() => user.isPending}><Text>{user.error}</Text></Show>
       }
       `,

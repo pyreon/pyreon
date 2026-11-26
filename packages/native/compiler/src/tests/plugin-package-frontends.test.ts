@@ -35,18 +35,18 @@ const factoryPlugin: CompilerPlugin = {
 describe.each(targets)('package frontend seams (%s)', (target) => {
   it('rewrites a local factory tag through generic JSX, independent of declaration order', () => {
     const compiler = createCompiler({ plugins: [factoryPlugin] })
-    const source = 'function App() { return <Box>owned</Box> }; const Box = box()'
+    const source = 'function App() { return <Crate>owned</Crate> }; const Crate = box()'
     const result = compiler.transform(source, { target })
     expect(result.code).toContain('owned')
-    expect(result.code).not.toMatch(/\bBox[ ({]/)
+    expect(result.code).not.toMatch(/\bCrate[ ({]/)
     expect(result.code).not.toContain('box(')
-    expect(createCompiler().transform(source, { target }).code).toMatch(/\bBox[ ({]/)
+    expect(createCompiler().transform(source, { target }).code).toMatch(/\bCrate[ ({]/)
   })
 
   it('does not retain a factory binding across files or compiler instances', () => {
     const compiler = createCompiler({ plugins: [factoryPlugin] })
-    compiler.transform('const Box = box(); function App() { return <Box>first</Box> }', { target })
-    const source = 'function App() { return <Box>second</Box> }'
+    compiler.transform('const Crate = box(); function App() { return <Crate>first</Crate> }', { target })
+    const source = 'function App() { return <Crate>second</Crate> }'
     expect(compiler.transform(source, { target })).toEqual(
       createCompiler().transform(source, { target }),
     )
@@ -133,47 +133,47 @@ describe.each(targets)('package frontend seams (%s)', (target) => {
   })
 
   it.each([
-    ['attrs', attrsPlugin, "attrs({ name: 'Box', component: Stack }).attrs({ padding: 4 })"],
+    ['attrs', attrsPlugin, "attrs({ name: 'Crate', component: Stack }).attrs({ padding: 4 })"],
     ['styler', stylerPlugin, 'styled(Stack)`padding: 16px;`'],
     [
       'rocketstyle',
       rocketstylePlugin,
-      "rocketstyle()({ name: 'Box', component: Stack }).theme(() => ({ padding: 16 }))",
+      "rocketstyle()({ name: 'Crate', component: Stack }).theme(() => ({ padding: 16 }))",
     ],
   ] as const)(
     '%s owns its factory without loading any other library plugin',
     (_name, plugin, factory) => {
-      const source = `const Box = ${factory}; function App() { return <Box>owned</Box> }`
+      const source = `const Crate = ${factory}; function App() { return <Crate>owned</Crate> }`
       const owned = createCompiler({ plugins: [plugin] }).transform(source, { target })
       expect(owned.code).toContain(target === 'swift' ? 'VStack' : 'Column(')
-      expect(owned.code).not.toMatch(/\bBox[ ({]/)
-      expect(createCompiler().transform(source, { target }).code).toMatch(/\bBox[ ({]/)
+      expect(owned.code).not.toMatch(/\bCrate[ ({]/)
+      expect(createCompiler().transform(source, { target }).code).toMatch(/\bCrate[ ({]/)
     },
   )
 
   it.each([
-    ['attrs', attrsPlugin, "alias({ name: 'Box', component: Stack }).attrs({ padding: 4 })"],
+    ['attrs', attrsPlugin, "alias({ name: 'Crate', component: Stack }).attrs({ padding: 4 })"],
     ['styler', stylerPlugin, 'alias(Stack)`padding: 16px;`'],
     [
       'rocketstyle',
       rocketstylePlugin,
-      "alias()({ name: 'Box', component: Stack }).theme(() => ({ padding: 16 }))",
+      "alias()({ name: 'Crate', component: Stack }).theme(() => ({ padding: 16 }))",
     ],
   ] as const)(
     '%s follows default import aliases and refuses foreign factory bindings',
     (name, plugin, factory) => {
-      const source = `import alias from '@pyreon/${name}'; const Box = ${factory}; function App() { return <Box>alias</Box> }`
+      const source = `import alias from '@pyreon/${name}'; const Crate = ${factory}; function App() { return <Crate>alias</Crate> }`
       const compiler = createCompiler({ plugins: [plugin] })
-      expect(compiler.transform(source, { target }).code).not.toMatch(/\bBox[ ({]/)
+      expect(compiler.transform(source, { target }).code).not.toMatch(/\bCrate[ ({]/)
       expect(
         compiler.transform(source.replace(`@pyreon/${name}`, './foreign'), { target }).code,
-      ).toMatch(/\bBox[ ({]/)
+      ).toMatch(/\bCrate[ ({]/)
     },
   )
 
   it('activates the kinetic preset vocabulary independently from the kinetic factory', () => {
     const source = `import { kinetic } from '@pyreon/kinetic'; import { fadeUp as enter } from '@pyreon/kinetic-presets'
-      const Box = kinetic('div').preset(enter); function App() { return <Box>animate</Box> }`
+      const Crate = kinetic('div').preset(enter); function App() { return <Crate>animate</Crate> }`
     const compiler = createCompiler({ plugins: [kineticPlugin, kineticPresetsPlugin] })
     expect(compiler.transform(source, { target }).code).toContain('__kineticIn')
     expect(

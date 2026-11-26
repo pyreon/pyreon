@@ -21,9 +21,9 @@ const SRC = `
   import { defineStore } from '@pyreon/store'
   import { signal, computed } from '@pyreon/reactivity'
   import { Stack, Text } from '@pyreon/primitives'
-  type Task = { id: number; title: string; done: boolean }
+  type Todo = { id: number; title: string; done: boolean }
   const useApp = defineStore('app', () => {
-    const tasks = signal<Task[]>([])
+    const tasks = signal<Todo[]>([])
     const filter = signal('all')
     const visible = computed(() => {
       const xs = tasks()
@@ -61,7 +61,7 @@ describe('defineStore — block-body computed lowers', () => {
   it('Swift: a typed multi-statement getter on the singleton', () => {
     const out = transform(SRC, { target: 'swift' }).code
     expect(out).toContain('final class PyreonStore_app')
-    expect(out).toContain('var visible: [Task] {')
+    expect(out).toContain('var visible: [Todo] {')
     expect(out).toContain('var summary: String {')
     expect(out).toContain('let xs = tasks')
     // A single-return block collapses to the compact expression form.
@@ -72,7 +72,7 @@ describe('defineStore — block-body computed lowers', () => {
   it('Kotlin: a statement-body getter on the singleton', () => {
     const out = transform(SRC, { target: 'kotlin' }).code
     expect(out).toContain('object PyreonStore_app')
-    expect(out).toContain('val visible: List<Task> get() {')
+    expect(out).toContain('val visible: List<Todo> get() {')
     expect(out).toContain('val summary: String get() {')
     expect(out).toContain('val hasAny get() = tasks.length > 0L')
     expect(out).not.toContain('defineStore(')

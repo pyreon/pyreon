@@ -10,7 +10,7 @@
 //      took indexOf's ARRAY branch — `firstIndex ?? -1`, a String.Index
 //      vs Int type error — instead of the range(of:) distance form).
 //   4. Struct-init coerces an Int-valued arg into a Float-typed field
-//      (`Tick(value: i)` over a loop counter).
+//      (`Beat(value: i)` over a loop counter).
 
 import { describe, expect, it } from 'vitest'
 import { transform } from '../index'
@@ -53,9 +53,9 @@ describe('P1 — seeding + inference gaps (charts-engine shapes)', () => {
 
   it('struct-init coerces an Int counter into a Float field', () => {
     const out = transform(`
-  type Tick = { value: Double; label: string }
-  function make(n: Double): Tick[] {
-    const out: Tick[] = []
+  type Beat = { value: Double; label: string }
+  function make(n: Double): Beat[] {
+    const out: Beat[] = []
     let i = 0
     while (i < 3) {
       out.push({ value: i, label: String(i) })
@@ -65,14 +65,14 @@ describe('P1 — seeding + inference gaps (charts-engine shapes)', () => {
   }
   export function P() { return <Text>{String(make(3.0).length)}</Text> }
 `, { target: 'swift' }).code
-    expect(out).toContain('Tick(value: Double(i)')
+    expect(out).toContain('Beat(value: Double(i)')
   })
 
   it('Kotlin: struct-init coerces the Int counter too (named args do not widen)', () => {
     const out = transform(`
-  type Tick = { value: Double; label: string }
-  function make(n: Double): Tick[] {
-    const out: Tick[] = []
+  type Beat = { value: Double; label: string }
+  function make(n: Double): Beat[] {
+    const out: Beat[] = []
     let i = 0
     while (i < 3) {
       out.push({ value: i, label: String(i) })

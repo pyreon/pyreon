@@ -236,7 +236,7 @@ describe('parse.ts — useQuery option parsing', () => {
 describe('parse.ts — endpointQueryCallInArrow arrow shapes', () => {
   const HTTP = `import { createHttp } from '@pyreon/http'
 import { useQuery } from '@pyreon/query'
-interface User { id: string }
+interface Member { id: string }
 const api = createHttp({ baseUrl: '/api' })
 const getUser = api.endpoint('GET /users/1')
 `
@@ -249,9 +249,9 @@ const getUser = api.endpoint('GET /users/1')
       '() => { return getUser.query() }',
       '() => { return (getUser.query()) }',
     ]) {
-      const r = transform(app(`  const u = useQuery<User>(${form})`), { target: 'swift' })
+      const r = transform(app(`  const u = useQuery<Member>(${form})`), { target: 'swift' })
       expect(r.warnings).toEqual([])
-      expect(r.code).toContain('PyreonQuery<User>(queryKey: "GET:/api/users/1"')
+      expect(r.code).toContain('PyreonQuery<Member>(queryKey: "GET:/api/users/1"')
     }
   })
 
@@ -262,9 +262,9 @@ const getUser = api.endpoint('GET /users/1')
       "() => getUser['query']()",
       '() => getUser.mutate()',
     ]) {
-      expect(transform(app(`  const u = useQuery<User>(${form})`), { target: 'swift' }).warnings.join('\n')).toContain(generic)
+      expect(transform(app(`  const u = useQuery<Member>(${form})`), { target: 'swift' }).warnings.join('\n')).toContain(generic)
     }
-    const unknown = transform(app(`  declare const other: any\n  const u = useQuery<User>(() => other.query())`), {
+    const unknown = transform(app(`  declare const other: any\n  const u = useQuery<Member>(() => other.query())`), {
       target: 'swift',
     })
     expect(unknown.warnings.join('\n')).toContain(generic)

@@ -234,7 +234,8 @@ export function buildChartEngine(repoRoot: string = REPO): { swift: string; kotl
   const src = bundleEngineSource(repoRoot)
   const outputs: Record<'swift' | 'kotlin', string> = { swift: '', kotlin: '' }
   for (const target of ['swift', 'kotlin'] as const) {
-    const r = transform(src, { target })
+    // The engine IS runtime source: its type names are the ones the Swift runtime reserves, so it keeps them.
+    const r = transform(src, { target, runtimeSource: true })
     if (r.warnings.length > 0) {
       throw new Error(
         `[gen-native-engine] ${target} emit has ${r.warnings.length} warning(s) — a warning here is a silently-gutted function. First: ${JSON.stringify(r.warnings[0]).slice(0, 300)}`,

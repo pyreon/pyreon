@@ -13,7 +13,7 @@
 // fired, and `if (token)` emitted a bare optional as the condition:
 // swiftc "optional type 'String?' cannot be used as a boolean"; kotlinc
 // "condition type mismatch" PLUS "argument type mismatch" on the body's
-// `User(name = token)`. The fix is two-part and both parts are asserted:
+// `Member(name = token)`. The fix is two-part and both parts are asserted:
 //   1. `SERVICE_METHOD_RETURNS` types `secureStorage.read` → string|null.
 //   2. Swift lowers the bare-identifier PRESENT condition to the BINDING
 //      `if let token {` (nil-test alone leaves the body reading String?),
@@ -28,10 +28,10 @@ const SRC = `import { onMount } from '@pyreon/core'
 import { useAuth, useSecureStorage } from '@pyreon/hooks'
 import { Button, Stack, Text } from '@pyreon/primitives'
 
-type User = { name: string }
+type Member = { name: string }
 
 export function App() {
-  const auth = useAuth<User>()
+  const auth = useAuth<Member>()
   const secrets = useSecureStorage()
   onMount(() => {
     const token = secrets.read('session-user')
@@ -53,7 +53,7 @@ describe('session rehydrate — service method-return typing + optional-if lower
     const out = transform(SRC, { target: 'swift' })
     // A truthiness test on a string also rejects '' — the web skips an empty token.
     expect(out.code).toContain('if let token, !token.isEmpty {')
-    expect(out.code).toContain('auth.signInSucceeded(User(name: token))')
+    expect(out.code).toContain('auth.signInSucceeded(Member(name: token))')
     // The broken emit — a bare optional as the condition.
     expect(out.code).not.toContain('if token {')
     expect(out.warnings).toEqual([])
@@ -62,7 +62,7 @@ describe('session rehydrate — service method-return typing + optional-if lower
   it('Kotlin: the token read lowers to a null-check (smart cast covers the body)', () => {
     const out = transform(SRC, { target: 'kotlin' })
     expect(out.code).toContain('if (token != null && token.isNotEmpty()) {')
-    expect(out.code).toContain('auth.signInSucceeded(User(name = token))')
+    expect(out.code).toContain('auth.signInSucceeded(Member(name = token))')
     expect(out.code).not.toContain('if (token) {')
     expect(out.warnings).toEqual([])
   })
