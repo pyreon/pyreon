@@ -1,5 +1,36 @@
 # @pyreon/create-multiplatform
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4788](https://github.com/pyreon/pyreon/pull/4788) [`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Android remote images now use Coil 3. A remote `<Image src="http…">` emits `import coil3.compose.AsyncImage` instead of `coil.compose.AsyncImage`, and the `create-multiplatform` Android template depends on `io.coil-kt.coil3:coil-compose:3.6.3` and `io.coil-kt.coil3:coil-network-okhttp:3.6.3` instead of `io.coil-kt:coil-compose:2.7.0`.
+
+  Breaking for existing scaffolded Android apps that render a remote `<Image>`: in `android/app/build.gradle.kts`, replace `implementation("io.coil-kt:coil-compose:2.7.0")` with:
+
+  ```kotlin
+  implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+  implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
+  ```
+
+  The network artifact is required: Coil 3 has no HTTP fetcher by default, so without it an http(s) image renders nothing.
+
+### Patch Changes
+
+- [#4810](https://github.com/pyreon/pyreon/pull/4810) [`42c6de7`](https://github.com/pyreon/pyreon/commit/42c6de7a0b9374db0f94bf04b54f36ae04ea8c95) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Piped command output is no longer cut off. `pyreon doctor --ci --json | jq` received only the first 64 KiB of the report, because the CLI called `process.exit()` right after printing, and a write to a pipe is asynchronous. The same happened to `pyreon check --json`, `pyreon lint`, `pyreon-lint --format json`, `zero doctor --ci --json`, `pyreon-native` and `atlas` (when a slow reader was still draining after 500 ms). Every command now exits only after stdout and stderr have flushed, and keeps its exit code. Reports (`--json`, doctor, check, plain, lint) are written with `process.stdout.write` and backpressure instead of `console.log`, so they also arrive whole when a bin is run with Bun (`bun <bin>`), whose `console.log` dropped what a full pipe would not take.
+
+  `zero doctor` no longer runs the audit twice. `@pyreon/cli`'s library entry also ran the `pyreon` CLI when it was imported, so `zero doctor` printed two reports and `zero doctor --json` printed two JSON documents. The `pyreon` bin is now `bin/pyreon.js`, and importing `@pyreon/cli` runs nothing.
+
+- [#4789](https://github.com/pyreon/pyreon/pull/4789) [`9c3818b`](https://github.com/pyreon/pyreon/commit/9c3818b0f8963ffc287e254e2463680f30284631) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh. `@pyreon/compiler` depends on `@jridgewell/sourcemap-codec` ^1.6.0, `@pyreon/table` and `@pyreon/feature` on `@tanstack/table-core` ^9.3.1, and `@pyreon/mcp` on `zod` ^4.6.7.
+
+  New `create-zero` apps install `@tanstack/query-core` ^5.107.1, `@tanstack/virtual-core` ^3.19.11, `zod` ^4.6.7, `vite` ^8.3.7, `oxlint` ^1.93.0 and `oxfmt` ^0.78.0. The `@tanstack/table*` range it would write moved from the v8 line to ^9.3.1, which is the major `@pyreon/table` is built on. New `create-multiplatform` apps install `oxlint` ^1.93.0, `oxfmt` ^0.78.0, `typescript` ^6.0.3 and `vite` ^8.3.7.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- [#4846](https://github.com/pyreon/pyreon/pull/4846) [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The synthetic SSG/SSR entry a build writes is now in Vite's `cacheDir`, not the app root, under a per-build name (`__pyreon-zero-ssg-entry-<pid>-<random>.js`); its bare imports still resolve as if from the root. The root can be read-only (an app shipped inside an installed package under Yarn PnP or a Nix store) and is the user's working tree. With one fixed name, two builds of the same root at once also shared the file, and the first to finish deleted it under the other (`Cannot resolve entry module …/__pyreon-zero-ssg-entry.js`). Scaffolded `.gitignore` files ignore `__pyreon-zero-ssg-entry*.js` / `__pyreon-zero-ssr-entry*.js`, which covers both forms.
+
 ## 0.54.0
 
 ### Minor Changes

@@ -1,5 +1,68 @@
 # @pyreon/vite-plugin
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: `_`-prefixed test and internal helpers are no longer exported from the public entries. Each of these packages now has an `./internal` subpath that holds them. `./internal` is not public API and carries no semver promise (see "What counts as public API" on the stability page).
+
+  Moved exports, with their new specifier:
+
+  - `@pyreon/primitives`: `_resetNativeModules` → `@pyreon/primitives/internal`
+  - `@pyreon/solid-compat`: `_STORE_SIGNAL_CACHE` → `@pyreon/solid-compat/internal`
+  - `@pyreon/vite-plugin`: `_collectImportedNames`, `_compatAliasTable`, `_computeLineStarts`, `_extractBalancedArgs`, `_getCompatTarget`, `_handleSsrRequest`, `_isPyreonWorkspaceFile`, `_isTruthyEnv`, `_isUnaliasedFrameworkImport`, `_maskComments`, `_maskCommentsAndStrings`, `_maskStringsAndComments`, `_offsetToLineCol`, `_reactiveCalleeStarts`, `_requestUrlFromTarget`, `_skipStringLiteral`, `_unaliasedImportWarning` → `@pyreon/vite-plugin/internal`
+  - `@pyreon/lint`: `_workerEntry` → `@pyreon/lint/internal` (the parallel driver still finds its worker through the `./lint-worker` export)
+  - `@pyreon/store`: `__clearStoreHydrationForTesting` → `@pyreon/store/internal`
+  - `@pyreon/store/devtools`: `_notifyChange` → `@pyreon/store/internal`
+  - `@pyreon/i18n/devtools`: `_resetDevtools` → `@pyreon/i18n/internal`
+  - `@pyreon/state-tree/devtools`: `_resetDevtools` → `@pyreon/state-tree/internal`
+  - `@pyreon/command`: `_resetDefaultCommands` → `@pyreon/command/internal`
+  - `@pyreon/http/server`: `_resetRequestSource` → `@pyreon/http/internal`
+  - `@pyreon/http/json`: `_setSourceTextSupport` → `@pyreon/http/internal`
+  - `@pyreon/storage`: `_resetDBCache`, `_resetRegistry`, `_resetStorageListener` → `@pyreon/storage/internal`
+  - `@pyreon/document`: `_resetRenderers` → `@pyreon/document/internal`
+  - `@pyreon/hotkeys`: `_resetHotkeys` → `@pyreon/hotkeys/internal`
+  - `@pyreon/toast`: `_reset`, `_toasts` → `@pyreon/toast/internal`. App code that read `_toasts()` uses the new public `toast.list()` (a reactive, read-only view of the live queue); the codemod does not rewrite `_toasts`, so the type checker points at each use. In tests, use `clearToasts`, `getToasts`, `expectToast` and `findToast` from `@pyreon/testing/toast`.
+  - `@pyreon/ambient/testing`: `_fireAll`, `_tickerStats` → `@pyreon/ambient/internal`
+
+  `@pyreon/ambient/testing` stays the supported test kit, and its two documented hooks lose the underscore: `_resetClockState` → `resetClockState` and `_resetLocaleState` → `resetLocaleState`, both still from `@pyreon/ambient/testing`. This is a clean rename with no alias: rename the imports and calls by hand (the codemod does not).
+
+  `@pyreon/testing/toast` now reads the toast store through `@pyreon/toast/internal`; its own API is unchanged. `@pyreon/format` follows the ambient rename internally; its API is unchanged.
+
+  `@pyreon/toast` gains `toast.list()`, a reactive read of the live toast queue (`readonly Readonly<Toast>[]`, oldest first), documented in the README and manifest.
+
+  Upgrade: codemod internal-exports-subpath
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: exports documented as internal or "exported for tests" (without a `_` prefix) left the public entries. Each now carries a JSDoc `@internal` tag and lives on the package's `./internal` subpath (`./internal-server` for zero's and zero-content's Node-only helpers), which carries no semver promise. `check-stability-tier` now fails any `@internal`-tagged declaration reachable from a public entry. These are clean breaks: there are no aliases, and no codemod rewrites them.
+
+  - `@pyreon/zero` → `@pyreon/zero/internal`: from `./actions`: `ACTION_QUERY_PARAM`, `ENHANCED_ACTION_HEADER`, `ACTION_REDIRECT_HEADER`, `formActionSearch`, `resolveActionOptions`, `checkActionOrigin`, `readActionPayload`, `runActionHandler`; `toRfc822` (from `.`, `./seo`, `./server`); `matchLocale`, `validateLocale` (from `./i18n-routing`); `islandsOnlyNavigation` (from `./client`); `buildHydrationReport` (from `./dev-overlay`).
+  - `@pyreon/zero` → `@pyreon/zero/internal-server`: `renderOgSvgFromLoaded` (`./server`), `ROUTE_MIDDLEWARE_RAN` (`./pipeline`), `generateAiPluginManifest`, `generateOpenApiSpec` (`./ai`), `compareApiRoutePatterns` (`./api-routes`), `matchGlob` (`./cache`), `isCompressible` (`./compression`), `createIcoFromPngs` (`./favicon`), `buildFontFace`, `emitFontDescriptorModule`, `fontFormat`, `fontMimeType`, `hashFontFilename`, `inferFontMeta`, `parseFontQueryOverrides` (`./font-import-plugin`), `generatePlaceholder`, `parseJpegDimensions`, `parseWebPDimensions`, `processImage`, `resolvePlaceholder`, `resolveQuality` (`./image-plugin`), `buildTextOverlaySvg`, `renderOgImage` (`./og-image`), `clusterPathsByLocale`, `formatLoc`, `isExcluded`, `resolveHreflangI18n`, `stripLocalePrefix` (`./seo`).
+  - `@pyreon/zero/i18n-routing`: `LocaleCtx` removed (nothing provided or read it).
+  - `@pyreon/zero-content` → `/internal`: `buildBreadcrumbs`, `humanize`, `buildSrcdoc`, `deriveApiId`, `filterHeadings`, `groupEntries`, `groupsFromConfig`, `renderInstallRows`; from `./blog`: `normalizeBlogFrontmatter`, `validateBlogFrontmatter`, `pageFromParam`, `resolveBlogConfig`.
+  - `@pyreon/zero-content` → `/internal-server`: `isBrandedComponentsRegistry`, `joinUrl`; from `./plugin`: `buildPageSearchEntry`, `collectionSlugFor`, `collectUnpublishedFiles`, `emitSeoOutputs`, `findCollectionForFileImpl`, `hasMarkdownInContentDir`, `isMarkdownId`, `isRelativePath`, `makeInternalLinkResolver`, `resolvePublishNow`, `selectPublishedEntries`, `reportPath`.
+  - `@pyreon/lint/cli` → `@pyreon/lint/internal`: `formatRuleList`, `parseRuleOptionsOverride`, `formatInitResult`, `parsePresetList`; `@pyreon/lint/lint-worker` → `@pyreon/lint/internal`: `lintSlice`.
+  - `@pyreon/storybook/preset` → `@pyreon/storybook/internal`: `previewPathFor`.
+  - `@pyreon/styler` → `@pyreon/styler/internal`: `setStyleExtraction`.
+  - `@pyreon/ui-core` → `@pyreon/ui-core/internal`: `getThemeEngine`, `setThemeEngine` (unistyle and rocketstyle import them from there).
+  - `@pyreon/validate` → `@pyreon/validate/internal`: `installServerCheck`, `getServerCheck`; `uninstallServerCheck` left the main entry and stays on `@pyreon/validate/server`.
+  - `@pyreon/vite-plugin` → `@pyreon/vite-plugin/internal`: `buildLpihClientScript`, `registerLpihMiddleware`, `resolveLpihCachePath`, `writeLpihCacheFile`, `isPyreonPackageFile`, `plainMarkerLocalNames`.
+
+  Kept public because they are documented user API (their stale `@internal` wording was removed): zero's `useNoOptimize`, `inferFontMimeType`, `generateLlmsTxt`, `generateLlmsFullTxt`, `buildCspHeader`; zero-content's `getOrCreateSharedSignal`, `resolvePrevNext`, `resolvePageLayout`; reactivity's `LPIH_DEFAULT_FILENAME`; runtime-dom's `nodesForElement`; server's `getRegisteredServerIslands`, `provideRequestLocals`; ui-core's `context` / `Provider`; validate's format-validator hooks; validation's `wrapStandardSchema`.
+
+  Upgrade: manual — import each listed name from its package's ./internal (or ./internal-server) subpath; no codemod covers this set
+
+### Patch Changes
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- [#4846](https://github.com/pyreon/pyreon/pull/4846) [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `pyreon({ projectContext: false })` turns off the dev server's `.pyreon/context.json` project map. A tool that runs its own app under the dev server (`atlas dev` roots at the workbench app inside its install) no longer writes a map of itself into `node_modules`.
+- Updated dependencies [[`db608bf`](https://github.com/pyreon/pyreon/commit/db608bfe7acf6bf34f1bf822859d32e6d249f874), [`03f914c`](https://github.com/pyreon/pyreon/commit/03f914c94984f933c3994754a20d133779f78c78), [`5e90897`](https://github.com/pyreon/pyreon/commit/5e90897abe9804227391e75442d55d97fb4c257f), [`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`d3bfe2f`](https://github.com/pyreon/pyreon/commit/d3bfe2f1e6be85202da5c6e8a8774626c9ac2906), [`9c3818b`](https://github.com/pyreon/pyreon/commit/9c3818b0f8963ffc287e254e2463680f30284631), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`6522f8d`](https://github.com/pyreon/pyreon/commit/6522f8d1442f80cbc313e385c5df8a20daf78bdc), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`3894bcf`](https://github.com/pyreon/pyreon/commit/3894bcfd6c00c7a43b572a66edc2b916cacaba29), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`8d91fc7`](https://github.com/pyreon/pyreon/commit/8d91fc76afc8f128c6d5345dbc934ded524b9e7a), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`daba200`](https://github.com/pyreon/pyreon/commit/daba200aa50a3548b71ffbbb421539d3c9d4517d), [`c397d94`](https://github.com/pyreon/pyreon/commit/c397d9404ad080322d7136b8067890254e093d52), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`95e806f`](https://github.com/pyreon/pyreon/commit/95e806fcb3ba59f0cfd02f48e279052ab689338b), [`1389a05`](https://github.com/pyreon/pyreon/commit/1389a05d67fa4870503874e4b1feeb34ce8d7136), [`f4c955e`](https://github.com/pyreon/pyreon/commit/f4c955ea66eea292e8bb8ac612bdec71fded46e8), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e)]:
+  - @pyreon/compiler@0.55.0
+  - @pyreon/runtime-dom@0.55.0
+  - @pyreon/reactivity@0.55.0
+
 ## 0.54.0
 
 ### Patch Changes

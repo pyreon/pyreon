@@ -1,5 +1,29 @@
 # create-zero
 
+## 0.55.0
+
+### Patch Changes
+
+- [#4810](https://github.com/pyreon/pyreon/pull/4810) [`42c6de7`](https://github.com/pyreon/pyreon/commit/42c6de7a0b9374db0f94bf04b54f36ae04ea8c95) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Piped command output is no longer cut off. `pyreon doctor --ci --json | jq` received only the first 64 KiB of the report, because the CLI called `process.exit()` right after printing, and a write to a pipe is asynchronous. The same happened to `pyreon check --json`, `pyreon lint`, `pyreon-lint --format json`, `zero doctor --ci --json`, `pyreon-native` and `atlas` (when a slow reader was still draining after 500 ms). Every command now exits only after stdout and stderr have flushed, and keeps its exit code. Reports (`--json`, doctor, check, plain, lint) are written with `process.stdout.write` and backpressure instead of `console.log`, so they also arrive whole when a bin is run with Bun (`bun <bin>`), whose `console.log` dropped what a full pipe would not take.
+
+  `zero doctor` no longer runs the audit twice. `@pyreon/cli`'s library entry also ran the `pyreon` CLI when it was imported, so `zero doctor` printed two reports and `zero doctor --json` printed two JSON documents. The `pyreon` bin is now `bin/pyreon.js`, and importing `@pyreon/cli` runs nothing.
+
+- [#4785](https://github.com/pyreon/pyreon/pull/4785) [`7748862`](https://github.com/pyreon/pyreon/commit/774886227c3803f3c1c5e91b277b431b45010051) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The scaffolded Node adapter's Dockerfile now pins the `node:26-alpine` base image to the Node 26.13.1 (Alpine 3.24) digest.
+
+- [#4789](https://github.com/pyreon/pyreon/pull/4789) [`9c3818b`](https://github.com/pyreon/pyreon/commit/9c3818b0f8963ffc287e254e2463680f30284631) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Dependency refresh. `@pyreon/compiler` depends on `@jridgewell/sourcemap-codec` ^1.6.0, `@pyreon/table` and `@pyreon/feature` on `@tanstack/table-core` ^9.3.1, and `@pyreon/mcp` on `zod` ^4.6.7.
+
+  New `create-zero` apps install `@tanstack/query-core` ^5.107.1, `@tanstack/virtual-core` ^3.19.11, `zod` ^4.6.7, `vite` ^8.3.7, `oxlint` ^1.93.0 and `oxfmt` ^0.78.0. The `@tanstack/table*` range it would write moved from the v8 line to ^9.3.1, which is the major `@pyreon/table` is built on. New `create-multiplatform` apps install `oxlint` ^1.93.0, `oxfmt` ^0.78.0, `typescript` ^6.0.3 and `vite` ^8.3.7.
+
+- [#4817](https://github.com/pyreon/pyreon/pull/4817) [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Follow `@pyreon/router`'s `useLoaderData()` accessor ([#4814](https://github.com/pyreon/pyreon/issues/4814)). `diagnose` explains the symptoms of code written for the old value-returning API: a destructure, `data.title` on the accessor, and a value read once in the body that goes stale. The `create-zero` templates and the zero docs read loader data as `data().field`.
+
+  Native (PMTC): a bare signal, computed or `useLoaderData()` accessor passed to a component prop typed `() => T` is now wrapped in a closure (`C(d: { data })`), where it used to emit a Swift/Kotlin type error. `data.field` on the loader accessor and `useLoaderData<T>()()` (the accessor called where it is made) warn with the fix: bind it once and read `data().field`.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- [#4846](https://github.com/pyreon/pyreon/pull/4846) [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af) Thanks [@vitbokisch](https://github.com/vitbokisch)! - The synthetic SSG/SSR entry a build writes is now in Vite's `cacheDir`, not the app root, under a per-build name (`__pyreon-zero-ssg-entry-<pid>-<random>.js`); its bare imports still resolve as if from the root. The root can be read-only (an app shipped inside an installed package under Yarn PnP or a Nix store) and is the user's working tree. With one fixed name, two builds of the same root at once also shared the file, and the first to finish deleted it under the other (`Cannot resolve entry module …/__pyreon-zero-ssg-entry.js`). Scaffolded `.gitignore` files ignore `__pyreon-zero-ssg-entry*.js` / `__pyreon-zero-ssr-entry*.js`, which covers both forms.
+
 ## 0.54.0
 
 ### Minor Changes

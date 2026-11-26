@@ -1,5 +1,29 @@
 # @pyreon/native-router-swift
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4833](https://github.com/pyreon/pyreon/pull/4833) [`d324e3a`](https://github.com/pyreon/pyreon/commit/d324e3a785f02455852fc0b8388a525798159400) Thanks [@vitbokisch](https://github.com/vitbokisch)! - A navigation that changes only the query keeps the screen. On iOS, every `useUrlState` write (`setQueryParam`) and every same-route `replace('/search?q=…')` rewrote the visible `NavigationStack` path element. SwiftUI treated that as a new destination, rebuilt the screen and dropped its `@State`. On both targets, route loaders and `useLoaderData()` were keyed by the full URL, so the same write hid a loader-bearing route's content and re-ran its loader.
+
+  - **Same stack shape on both platforms.** Each `router.path` and `tabPaths` element is now the route WITHOUT its query or fragment (`/search`, not `/search?q=cat#top`). Each entry's tail (`?query#fragment`) is kept beside it, and back, forward, tab switches and SwiftUI's swipe-back keep it in sync. A direct write to `path` / `tabPaths` whose element carries a query or fragment is normalised the same way. `currentPath` still returns the full URL, fragment included. The new `routePath` returns the route alone.
+  - **Query-only changes leave the stack element alone.** `setQueryParam` and a same-route `replace` change only the entry's query; the fragment is kept. On the root view the query is now reflected in `currentPath`, and a same-route `replace` there no longer pushes a second copy of the root.
+  - **Loader key.** `loaderData` is keyed by the route with the query dropped (`PyreonRouter.loaderKey(url)`), matching the web's default loader key.
+  - **Swift only.** The single-stack `NavigationStack` binds through the new `stackBinding()`, so a swipe-back re-resolves `params` / `query`. On both targets, `reset()` now re-resolves them too.
+
+  Migration:
+
+  - Code that read `router.path` / `tabPaths` (Swift and Kotlin) expecting the query or fragment inside an element should read `router.currentPath` / `router.query` (or Kotlin's `tabTop(name)`) instead.
+  - Code that read `loaderData[fullUrl]` directly should use `loaderData[PyreonRouter.loaderKey(fullUrl)]` (Swift also has `loaderData(for:)`).
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `Package.swift` declares iOS 17 / macOS 14, like `@pyreon/native-runtime-swift`. It declared iOS 16 / macOS 13, but every public type of the router already required iOS 17 (`@available(iOS 17.0, macOS 14.0, *)`, for `@Observable`), so nothing ran below 17. An app whose deployment target is below iOS 17 now gets a SwiftPM resolution error instead of availability errors in the router's types: raise the target to 17.0, the floor of Pyreon's support matrix.
+
+### Patch Changes
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
 ## 0.54.0
 
 ### Minor Changes

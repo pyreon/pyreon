@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/calendar",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "description": "An event calendar and scheduler for Pyreon: event model, recurrence and zones, month and time-grid layout, headless state and views",
   "license": "MIT",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/calendar#readme",

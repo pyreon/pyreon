@@ -1,5 +1,22 @@
 # zero-cli
 
+## 0.55.0
+
+### Patch Changes
+
+- [#4810](https://github.com/pyreon/pyreon/pull/4810) [`42c6de7`](https://github.com/pyreon/pyreon/commit/42c6de7a0b9374db0f94bf04b54f36ae04ea8c95) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Piped command output is no longer cut off. `pyreon doctor --ci --json | jq` received only the first 64 KiB of the report, because the CLI called `process.exit()` right after printing, and a write to a pipe is asynchronous. The same happened to `pyreon check --json`, `pyreon lint`, `pyreon-lint --format json`, `zero doctor --ci --json`, `pyreon-native` and `atlas` (when a slow reader was still draining after 500 ms). Every command now exits only after stdout and stderr have flushed, and keeps its exit code. Reports (`--json`, doctor, check, plain, lint) are written with `process.stdout.write` and backpressure instead of `console.log`, so they also arrive whole when a bin is run with Bun (`bun <bin>`), whose `console.log` dropped what a full pipe would not take.
+
+  `zero doctor` no longer runs the audit twice. `@pyreon/cli`'s library entry also ran the `pyreon` CLI when it was imported, so `zero doctor` printed two reports and `zero doctor --json` printed two JSON documents. The `pyreon` bin is now `bin/pyreon.js`, and importing `@pyreon/cli` runs nothing.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af), [`b802fce`](https://github.com/pyreon/pyreon/commit/b802fce509cfffc92bc0f6c47390bc61350deddd), [`42c6de7`](https://github.com/pyreon/pyreon/commit/42c6de7a0b9374db0f94bf04b54f36ae04ea8c95), [`7748862`](https://github.com/pyreon/pyreon/commit/774886227c3803f3c1c5e91b277b431b45010051), [`9c3818b`](https://github.com/pyreon/pyreon/commit/9c3818b0f8963ffc287e254e2463680f30284631), [`a984938`](https://github.com/pyreon/pyreon/commit/a98493856906aad17c4300dad785047ba8cae090), [`11b766d`](https://github.com/pyreon/pyreon/commit/11b766dc2f86e2a64d302618b562462998ec71aa), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5c4ac80`](https://github.com/pyreon/pyreon/commit/5c4ac804f25a6d5824edc53d8cb0c7be20b01d97), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`2c01201`](https://github.com/pyreon/pyreon/commit/2c0120190e33ff79c9d43e097240c10621660cdb), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`396de14`](https://github.com/pyreon/pyreon/commit/396de1408ba9651b9e4d47e98cbbc669113088af)]:
+  - @pyreon/zero@0.55.0
+  - @pyreon/cli@0.55.0
+  - @pyreon/create-zero@0.55.0
+
 ## 0.54.0
 
 ### Patch Changes

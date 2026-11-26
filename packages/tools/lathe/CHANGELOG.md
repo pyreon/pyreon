@@ -1,5 +1,59 @@
 # @pyreon/lathe
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4876](https://github.com/pyreon/pyreon/pull/4876) [`c5dab5e`](https://github.com/pyreon/pyreon/commit/c5dab5e4f4e9aa5e9c3154300f07151286d1a104) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Lathe can now write the spec's models as plain native types. The new `swift` and `kotlin` plugins write `swift/Models.swift` (`Codable` structs, enums and unions) and `kotlin/Models.kt` (kotlinx.serialization `@Serializable` data classes). This is for iOS and Android apps that have their own networking and want the same contract types as the web client. `nativeModels: { kotlinPackage, swiftAccess }` sets the Kotlin package (default `api`) and the Swift access level (default `internal`). The files are covered by `lathe check` and by pruning. The project `format` hook does not receive them. `@pyreon/config`'s `LatheSection` accepts the new plugin names and the `nativeModels` key. A union with a `discriminator` dispatches on the tag. When the tag property is a plain string, the values come from OpenAPI's `mapping` or the member's component name, which the IR union now keeps as `declared`.
+
+- [#4879](https://github.com/pyreon/pyreon/pull/4879) [`7270be8`](https://github.com/pyreon/pyreon/commit/7270be81c1c2db7bb27c74f4f9c1016eb9fc0382) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `responseValidation: 'off'` at generate time now declares those endpoints types only ([#4815](https://github.com/pyreon/pyreon/issues/4815)).
+  - The response, error and stream-event bodies are typed from the model interfaces (`api.endpoint<'GET /items', (raw: unknown) => Items, …>`), every model is an `import type`, and no schema is referenced.
+  - So neither the schema modules nor `@pyreon/validate` (or zod) ship with those endpoints: one `GET` over a nested response went from 21.9 KB to 6.8 KB gzipped.
+  - Error bodies keep `err.matched`: each declared status maps to the identity `unchecked` exported from the generated `client.ts`.
+  - `operations.<id>.responseValidation: 'off'` does the same for one operation. A per-operation `'strict'` or `'warn'` on an `'off'` project keeps its schemas.
+  - For `'strict'` and `'warn'` nothing changes, including `configureApi({ validate })` switching modes at runtime.
+
+  Writes reach native ([#4835](https://github.com/pyreon/pyreon/issues/4835)). With `target: 'multiplatform'`, a `POST` / `PUT` / `PATCH` / `DELETE` with a JSON body (or none) and a typed JSON response (or no content) gets an `<Op>Mutation` component in its tag's `.native.tsx` module.
+  - The component is `useMutation<T, E, Vars>(op.mutation({ invalidates }))`, which `@pyreon/query`'s native plugin lowers to the `PyreonMutation` runtime.
+  - `children(mutate, data, isPending, error)` receives the trigger (`data` only when the response is typed). Path parameters and the body are props, read when `mutate` is called.
+  - A successful write refreshes the same queries as the web hook (`useCreateX`), on the web and natively. Natively each target is a URL root that also covers the paths below it. Only targets in the operation's own tag can be named, because the native module is one file.
+  - The reach report counts these writes as reaching native. A write that cannot be lowered names the reason: a non-JSON body or response, a required query, header or cookie parameter, a path parameter named `json` or `children`, or `hook: false`.
+  - The stale "PMTC does not yet recognise mutations" reason is gone, and the native verifier expects `PyreonMutation<` wherever a module uses `useMutation`.
+
+  A native data component now sends a `GET`'s required query parameters ([#4835](https://github.com/pyreon/pyreon/issues/4835)).
+  - Each one is a prop, sent as `query`. It used to pass path parameters only, so the module lowered and was reported `web+native` while every native request left the parameter out.
+  - A required query parameter that is not a scalar or not a plain identifier, or a required header or cookie parameter, leaves that read `web-only` with the reason.
+  - The generated components' locals are now `__q` / `__m` / `__s`, so a parameter named `q` no longer collides with them on Swift.
+
+  Every generated read hook takes the same `args` accessor first ([#4841](https://github.com/pyreon/pyreon/issues/4841)).
+  - It is optional for an operation without parameters, so `useListThings(() => ({ meta, headers, timeout }))` sends them with the request. Returning `undefined` holds the request, as on a hook with parameters.
+  - Query options move to the second argument, which now also takes `key: (base) => [...base, discriminator]` to extend the cache key. Start from `base`, so invalidating the endpoint still matches.
+  - `key` is also accepted by the factories a loader prefetches with: `op.query(args, { key })` and `<op>InfiniteOptions(args, { key })`. A prefetch therefore lands where a hook with an extended key reads.
+  - A held query (args returned `undefined`) is cached under `[...prefix, { held: true }]`, a key no request produces. It used to share the bare prefix with a live call that has no arguments. TanStack keeps one query per key and the last observer's options win, so a held hook mounted beside a live `useListThings()` gave the live one its disabled fetcher, and an invalidation then failed it with "query is disabled".
+
+  Breaking:
+
+  - A hook for an operation without parameters took its query options first. Pass them second, for example `useListThings(undefined, () => ({ staleTime }))`.
+    - An inline literal of query options in the first position is now a type error.
+    - An options object that is not a literal still compiles, and its query options (`staleTime`, `enabled`, `select`, …) no longer take effect. The hook names them in a one-time `console.warn`.
+    - `meta` is valid in both positions, so it compiles silently. In the first position it is now the REQUEST's meta (what a middleware reads), not TanStack's query meta. Move a query `meta` to the second argument.
+  - With `responseValidation: 'off'` at generate time, `configureApi({ validate: 'strict' })` has no schema to check those endpoints against. Generate with `'strict'` or `'warn'` to keep the runtime switch.
+
+### Patch Changes
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`7270be8`](https://github.com/pyreon/pyreon/commit/7270be81c1c2db7bb27c74f4f9c1016eb9fc0382), [`0ce0db7`](https://github.com/pyreon/pyreon/commit/0ce0db79430645ce8ab7f5a7422e924dc9bdd787), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`c5dab5e`](https://github.com/pyreon/pyreon/commit/c5dab5e4f4e9aa5e9c3154300f07151286d1a104), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`7270be8`](https://github.com/pyreon/pyreon/commit/7270be81c1c2db7bb27c74f4f9c1016eb9fc0382), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e), [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39)]:
+  - @pyreon/reactivity@0.55.0
+  - @pyreon/native-compiler@0.55.0
+  - @pyreon/http@0.55.0
+  - @pyreon/validate@0.55.0
+  - @pyreon/validation@0.55.0
+  - @pyreon/config@0.55.0
+  - @pyreon/query@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

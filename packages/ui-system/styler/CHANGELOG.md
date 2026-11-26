@@ -1,5 +1,55 @@
 # @pyreon/styler
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: exports documented as internal or "exported for tests" (without a `_` prefix) left the public entries. Each now carries a JSDoc `@internal` tag and lives on the package's `./internal` subpath (`./internal-server` for zero's and zero-content's Node-only helpers), which carries no semver promise. `check-stability-tier` now fails any `@internal`-tagged declaration reachable from a public entry. These are clean breaks: there are no aliases, and no codemod rewrites them.
+
+  - `@pyreon/zero` → `@pyreon/zero/internal`: from `./actions`: `ACTION_QUERY_PARAM`, `ENHANCED_ACTION_HEADER`, `ACTION_REDIRECT_HEADER`, `formActionSearch`, `resolveActionOptions`, `checkActionOrigin`, `readActionPayload`, `runActionHandler`; `toRfc822` (from `.`, `./seo`, `./server`); `matchLocale`, `validateLocale` (from `./i18n-routing`); `islandsOnlyNavigation` (from `./client`); `buildHydrationReport` (from `./dev-overlay`).
+  - `@pyreon/zero` → `@pyreon/zero/internal-server`: `renderOgSvgFromLoaded` (`./server`), `ROUTE_MIDDLEWARE_RAN` (`./pipeline`), `generateAiPluginManifest`, `generateOpenApiSpec` (`./ai`), `compareApiRoutePatterns` (`./api-routes`), `matchGlob` (`./cache`), `isCompressible` (`./compression`), `createIcoFromPngs` (`./favicon`), `buildFontFace`, `emitFontDescriptorModule`, `fontFormat`, `fontMimeType`, `hashFontFilename`, `inferFontMeta`, `parseFontQueryOverrides` (`./font-import-plugin`), `generatePlaceholder`, `parseJpegDimensions`, `parseWebPDimensions`, `processImage`, `resolvePlaceholder`, `resolveQuality` (`./image-plugin`), `buildTextOverlaySvg`, `renderOgImage` (`./og-image`), `clusterPathsByLocale`, `formatLoc`, `isExcluded`, `resolveHreflangI18n`, `stripLocalePrefix` (`./seo`).
+  - `@pyreon/zero/i18n-routing`: `LocaleCtx` removed (nothing provided or read it).
+  - `@pyreon/zero-content` → `/internal`: `buildBreadcrumbs`, `humanize`, `buildSrcdoc`, `deriveApiId`, `filterHeadings`, `groupEntries`, `groupsFromConfig`, `renderInstallRows`; from `./blog`: `normalizeBlogFrontmatter`, `validateBlogFrontmatter`, `pageFromParam`, `resolveBlogConfig`.
+  - `@pyreon/zero-content` → `/internal-server`: `isBrandedComponentsRegistry`, `joinUrl`; from `./plugin`: `buildPageSearchEntry`, `collectionSlugFor`, `collectUnpublishedFiles`, `emitSeoOutputs`, `findCollectionForFileImpl`, `hasMarkdownInContentDir`, `isMarkdownId`, `isRelativePath`, `makeInternalLinkResolver`, `resolvePublishNow`, `selectPublishedEntries`, `reportPath`.
+  - `@pyreon/lint/cli` → `@pyreon/lint/internal`: `formatRuleList`, `parseRuleOptionsOverride`, `formatInitResult`, `parsePresetList`; `@pyreon/lint/lint-worker` → `@pyreon/lint/internal`: `lintSlice`.
+  - `@pyreon/storybook/preset` → `@pyreon/storybook/internal`: `previewPathFor`.
+  - `@pyreon/styler` → `@pyreon/styler/internal`: `setStyleExtraction`.
+  - `@pyreon/ui-core` → `@pyreon/ui-core/internal`: `getThemeEngine`, `setThemeEngine` (unistyle and rocketstyle import them from there).
+  - `@pyreon/validate` → `@pyreon/validate/internal`: `installServerCheck`, `getServerCheck`; `uninstallServerCheck` left the main entry and stays on `@pyreon/validate/server`.
+  - `@pyreon/vite-plugin` → `@pyreon/vite-plugin/internal`: `buildLpihClientScript`, `registerLpihMiddleware`, `resolveLpihCachePath`, `writeLpihCacheFile`, `isPyreonPackageFile`, `plainMarkerLocalNames`.
+
+  Kept public because they are documented user API (their stale `@internal` wording was removed): zero's `useNoOptimize`, `inferFontMimeType`, `generateLlmsTxt`, `generateLlmsFullTxt`, `buildCspHeader`; zero-content's `getOrCreateSharedSignal`, `resolvePrevNext`, `resolvePageLayout`; reactivity's `LPIH_DEFAULT_FILENAME`; runtime-dom's `nodesForElement`; server's `getRegisteredServerIslands`, `provideRequestLocals`; ui-core's `context` / `Provider`; validate's format-validator hooks; validation's `wrapStandardSchema`.
+
+  Upgrade: manual — import each listed name from its package's ./internal (or ./internal-server) subpath; no codemod covers this set
+
+### Patch Changes
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: the core packages' `_`-prefixed internals and `@pyreon/core`'s compat-layer plumbing are no longer exported from the public entries. They moved to subpaths that carry no semver promise (see "What counts as public API" on the stability page). The compiler-emitted helpers (`_rp`, `_pp`, `_tpl`, `_bind`, `_ssr*`, …) are the compiler ABI and stay where they were.
+
+  - `@pyreon/core` → `@pyreon/core/internal`: `_IslandIds`, `_childText`, `_copyProp`, `_devMarkOwnerAlias`, `_isStructuralChild`, `_isVNodeLike`, `_mergePropsExcept`, `_mergePropsOmit`, `_nextIslandIdPrefix`, `_pickProps`, `_requestIdFrame`, `_resetAsyncWarning`, `_resetIdCounter`, `_runHooked`, `_setSuspenseHydrating`, `_takeHooks`, and the non-`_` internals `dispatchToErrorBoundary`, `propagateError`, `runWithHooks`, `setContextStackProvider`, `getContextStackLength`, `removeContextFrame`, `REACTIVE_PROP`, `isSafeImageDataUri` (no codemod rewrites these; move the import by hand). `pushContext` / `popContext` stay public: the core and runtime-server docs present them as the SSR / test escape hatch for seeding context outside component setup.
+  - `@pyreon/core` → `@pyreon/core/compat` (new subpath for the compat layers): `isNativeCompat`, `NATIVE_COMPAT_MARKER`, `mapCompatDomProps`, `shallowEqualProps`, `_compatProps`. `nativeCompat()` stays public on `@pyreon/core`.
+  - `@pyreon/reactivity` → `@pyreon/reactivity/internal`: `__resetReactiveDevtoolsForTesting`, `_abortOwnerFrame`, `_captureRun`, `_claimContextOwner`, `_closeOwnerFrame`, `_currentScope`, `_devOwner`, `_enterCleanupFrame`, `_exitCleanupFrame`, `_frameReads`, `_hasSubscribers`, `_noopDispose`, `_openOwnerFrame`, `_rdCloseBindingFrame`, `_rdDropBinding`, `_rdLabelBinding`, `_rdLabelDirect`, `_rdLabelSubscribers`, `_rdNodeId`, `_rdNoteTarget`, `_rdOpenBindingFrame`, `_rdPreview`, `_rdRegistrySize`, `_rdScopeNodes`, `_releaseRun`, `_renderBind`, `_replayReads`, `_resetSentinel`, `_resumeSoleSubscriber`, `_resumeSubscriber`, `_sampleReads`, `_setRequestOwnerReader`, `_suspendSoleSubscriber`, `_suspendSubscriber`, `_swapPendingOwner` (the `CleanupFrameToken`, `RunCapture` and `SoleSubscriberToken` types are also exported there)
+  - `@pyreon/runtime-dom` → `@pyreon/runtime-dom/internal`: `_declareRootDecoration`
+  - `@pyreon/runtime-server` → `@pyreon/runtime-server/internal`: `_setStreamFlushBytes`
+  - `@pyreon/server` → `@pyreon/server/internal`: `_resetServerIslands`
+
+  The compat layers, `@pyreon/elements`, `@pyreon/rocketstyle`, `@pyreon/styler`, `@pyreon/kinetic` and `@pyreon/atlas` now import these from the new subpaths; their own APIs are unchanged.
+
+  Upgrade: codemod internal-exports-subpath
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Pin every edge to another package's internals exactly. A package whose shipped code imports `@pyreon/x/internal`, `@pyreon/x/internal-server` or `@pyreon/core/compat` now declares `@pyreon/x` as `workspace:*`, which publishes as the exact version (`"@pyreon/core": "0.55.0"`) instead of a caret range, so an install can never pair it with a different version of those internals. `check-stability-tier` (rule 10) enforces this. The edges: runtime-dom, runtime-server, server, head, elements, rocketstyle, styler, kinetic, store, testing and the five compat layers → `@pyreon/core` / `@pyreon/reactivity` / `@pyreon/runtime-dom` / `@pyreon/toast`; ui-core → `@pyreon/styler`; unistyle and rocketstyle → `@pyreon/ui-core`; core → `@pyreon/reactivity`.
+
+  `@pyreon/zero`'s dev SSR alias for `@pyreon/runtime-server` is now an exact-match pattern, so it no longer rewrites `@pyreon/runtime-server/internal` to a path inside the package directory.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39)]:
+  - @pyreon/core@0.55.0
+  - @pyreon/reactivity@0.55.0
+  - @pyreon/native-compiler@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

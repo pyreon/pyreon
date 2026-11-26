@@ -1,5 +1,38 @@
 # @pyreon/validation
 
+## 0.55.0
+
+### Patch Changes
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: exports documented as internal or "exported for tests" (without a `_` prefix) left the public entries. Each now carries a JSDoc `@internal` tag and lives on the package's `./internal` subpath (`./internal-server` for zero's and zero-content's Node-only helpers), which carries no semver promise. `check-stability-tier` now fails any `@internal`-tagged declaration reachable from a public entry. These are clean breaks: there are no aliases, and no codemod rewrites them.
+
+  - `@pyreon/zero` → `@pyreon/zero/internal`: from `./actions`: `ACTION_QUERY_PARAM`, `ENHANCED_ACTION_HEADER`, `ACTION_REDIRECT_HEADER`, `formActionSearch`, `resolveActionOptions`, `checkActionOrigin`, `readActionPayload`, `runActionHandler`; `toRfc822` (from `.`, `./seo`, `./server`); `matchLocale`, `validateLocale` (from `./i18n-routing`); `islandsOnlyNavigation` (from `./client`); `buildHydrationReport` (from `./dev-overlay`).
+  - `@pyreon/zero` → `@pyreon/zero/internal-server`: `renderOgSvgFromLoaded` (`./server`), `ROUTE_MIDDLEWARE_RAN` (`./pipeline`), `generateAiPluginManifest`, `generateOpenApiSpec` (`./ai`), `compareApiRoutePatterns` (`./api-routes`), `matchGlob` (`./cache`), `isCompressible` (`./compression`), `createIcoFromPngs` (`./favicon`), `buildFontFace`, `emitFontDescriptorModule`, `fontFormat`, `fontMimeType`, `hashFontFilename`, `inferFontMeta`, `parseFontQueryOverrides` (`./font-import-plugin`), `generatePlaceholder`, `parseJpegDimensions`, `parseWebPDimensions`, `processImage`, `resolvePlaceholder`, `resolveQuality` (`./image-plugin`), `buildTextOverlaySvg`, `renderOgImage` (`./og-image`), `clusterPathsByLocale`, `formatLoc`, `isExcluded`, `resolveHreflangI18n`, `stripLocalePrefix` (`./seo`).
+  - `@pyreon/zero/i18n-routing`: `LocaleCtx` removed (nothing provided or read it).
+  - `@pyreon/zero-content` → `/internal`: `buildBreadcrumbs`, `humanize`, `buildSrcdoc`, `deriveApiId`, `filterHeadings`, `groupEntries`, `groupsFromConfig`, `renderInstallRows`; from `./blog`: `normalizeBlogFrontmatter`, `validateBlogFrontmatter`, `pageFromParam`, `resolveBlogConfig`.
+  - `@pyreon/zero-content` → `/internal-server`: `isBrandedComponentsRegistry`, `joinUrl`; from `./plugin`: `buildPageSearchEntry`, `collectionSlugFor`, `collectUnpublishedFiles`, `emitSeoOutputs`, `findCollectionForFileImpl`, `hasMarkdownInContentDir`, `isMarkdownId`, `isRelativePath`, `makeInternalLinkResolver`, `resolvePublishNow`, `selectPublishedEntries`, `reportPath`.
+  - `@pyreon/lint/cli` → `@pyreon/lint/internal`: `formatRuleList`, `parseRuleOptionsOverride`, `formatInitResult`, `parsePresetList`; `@pyreon/lint/lint-worker` → `@pyreon/lint/internal`: `lintSlice`.
+  - `@pyreon/storybook/preset` → `@pyreon/storybook/internal`: `previewPathFor`.
+  - `@pyreon/styler` → `@pyreon/styler/internal`: `setStyleExtraction`.
+  - `@pyreon/ui-core` → `@pyreon/ui-core/internal`: `getThemeEngine`, `setThemeEngine` (unistyle and rocketstyle import them from there).
+  - `@pyreon/validate` → `@pyreon/validate/internal`: `installServerCheck`, `getServerCheck`; `uninstallServerCheck` left the main entry and stays on `@pyreon/validate/server`.
+  - `@pyreon/vite-plugin` → `@pyreon/vite-plugin/internal`: `buildLpihClientScript`, `registerLpihMiddleware`, `resolveLpihCachePath`, `writeLpihCacheFile`, `isPyreonPackageFile`, `plainMarkerLocalNames`.
+
+  Kept public because they are documented user API (their stale `@internal` wording was removed): zero's `useNoOptimize`, `inferFontMimeType`, `generateLlmsTxt`, `generateLlmsFullTxt`, `buildCspHeader`; zero-content's `getOrCreateSharedSignal`, `resolvePrevNext`, `resolvePageLayout`; reactivity's `LPIH_DEFAULT_FILENAME`; runtime-dom's `nodesForElement`; server's `getRegisteredServerIslands`, `provideRequestLocals`; ui-core's `context` / `Provider`; validate's format-validator hooks; validation's `wrapStandardSchema`.
+
+  Upgrade: manual — import each listed name from its package's ./internal (or ./internal-server) subpath; no codemod covers this set
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- [#4843](https://github.com/pyreon/pyreon/pull/4843) [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `email()` accepts internationalised domains at every precision ([#4821](https://github.com/pyreon/pyreon/issues/4821)), in both forms. Written in its own letters (`jan@müller.de`, `a@пример.рф`, also with the ideographic full stops `。` `．` `｡` as separators and ZWNJ / ZWJ inside a label) or in punycode (`a@xn--e1afmkfd.xn--p1ai`, the form a browser's `<input type=email>` returns — a punycode TLD used to be refused at `standard` / `rfc5322`). Invalid shapes are still refused (no leading hyphen or joiner, no empty label, a 2+ letter or `xn--` TLD outside `html5`). Two all-ASCII verdicts change: a punycode TLD now passes, and `rfc5322` now refuses a domain label longer than 63 characters (the DNS limit). The IDNA context and bidi rules are not checked, so the check is a superset of valid IDNs. The local part stays ASCII. The same grammar now applies on every target: the compiled validator emit (`@pyreon/compiler`) and the Swift / Kotlin lowering (`@pyreon/validation`'s native plugin), which used to lower every `.email()` to zod's ASCII approximation and ignored `precision`. A `precision` the native compiler cannot read is now reported by name and left unchecked on device, instead of guessed.
+
+  `TFn` accepts `@pyreon/i18n`'s `t` directly ([#4822](https://github.com/pyreon/pyreon/issues/4822)). `formatError`, `formatErrors`, `formatErrorsByPath`, `toFormValidator` and `resolveMetaField` refused i18n's `t` under `strictFunctionTypes` (TS2345), because its `values` parameter is `InterpolationValues`. `TFn` is now a method-signature type, so any `(key, params?) => string` translate function, a key-typed i18n instance's `t` included, is accepted without a cast; a function of a different shape is still rejected.
+
+- Updated dependencies [[`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39)]:
+  - @pyreon/native-compiler@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

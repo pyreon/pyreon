@@ -1,5 +1,44 @@
 # @pyreon/native-compiler
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4880](https://github.com/pyreon/pyreon/pull/4880) [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39) Thanks [@vitbokisch](https://github.com/vitbokisch)! - `<WebView>` handles downloads on iOS and Android. Before, both native hosts dropped them silently: an `<a download>` link (including the `blob:` / `data:` URL a page builds for an export), a `Content-Disposition: attachment` response and a file type the engine cannot display all did nothing.
+
+  Two new props:
+
+  - `onDownload={(d) => …}` receives `{ url, filename, mimeType }` (`WebViewDownload`) once the download is ready to hand to the user (a download that cannot be fetched or read is not reported). The file name comes from the link's `download` attribute, the `Content-Disposition` header or the URL, reduced to one safe path component of at most 255 UTF-8 bytes with bidi controls removed.
+  - `saveDownloads` (default `true`, a literal) saves the file where the user can find it. On iOS that is a `WKDownload` followed by the share sheet (Save to Files, AirDrop, …). On Android an `http(s)` URL goes to `DownloadManager` with its notification and the page's cookies (sent only to the page's own origin; redirects are resolved first), and a `blob:` / `data:` URL is streamed from the page in chunks (up to 256 MB) and offered to the system "save as" picker. `saveDownloads={false}` reports each download as it starts and leaves it to the app.
+
+  Downloads are scoped like the message bridge: only the main frame on the page the app loaded, after a tap or key press there (one download per gesture), and one at a time. A download from an iframe, without a gesture, or while another is in flight is refused with a `[Pyreon] <WebView>` log and does not reach `onDownload`.
+
+  On the web the browser handles downloads in the `<iframe>` itself, and both props are ignored. The usual export snippet (`a.click(); URL.revokeObjectURL(a.href)`) works on Android too: the host starts reading a `blob:` link as it is clicked.
+
+### Patch Changes
+
+- [#4788](https://github.com/pyreon/pyreon/pull/4788) [`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Android remote images now use Coil 3. A remote `<Image src="http…">` emits `import coil3.compose.AsyncImage` instead of `coil.compose.AsyncImage`, and the `create-multiplatform` Android template depends on `io.coil-kt.coil3:coil-compose:3.6.3` and `io.coil-kt.coil3:coil-network-okhttp:3.6.3` instead of `io.coil-kt:coil-compose:2.7.0`.
+
+  Breaking for existing scaffolded Android apps that render a remote `<Image>`: in `android/app/build.gradle.kts`, replace `implementation("io.coil-kt:coil-compose:2.7.0")` with:
+
+  ```kotlin
+  implementation("io.coil-kt.coil3:coil-compose:3.6.3")
+  implementation("io.coil-kt.coil3:coil-network-okhttp:3.6.3")
+  ```
+
+  The network artifact is required: Coil 3 has no HTTP fetcher by default, so without it an http(s) image renders nothing.
+
+- [#4817](https://github.com/pyreon/pyreon/pull/4817) [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Follow `@pyreon/router`'s `useLoaderData()` accessor ([#4814](https://github.com/pyreon/pyreon/issues/4814)). `diagnose` explains the symptoms of code written for the old value-returning API: a destructure, `data.title` on the accessor, and a value read once in the body that goes stale. The `create-zero` templates and the zero docs read loader data as `data().field`.
+
+  Native (PMTC): a bare signal, computed or `useLoaderData()` accessor passed to a component prop typed `() => T` is now wrapped in a closure (`C(d: { data })`), where it used to emit a Swift/Kotlin type error. `data.field` on the loader accessor and `useLoaderData<T>()()` (the accessor called where it is made) warn with the fix: bind it once and read `data().field`.
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`db608bf`](https://github.com/pyreon/pyreon/commit/db608bfe7acf6bf34f1bf822859d32e6d249f874), [`03f914c`](https://github.com/pyreon/pyreon/commit/03f914c94984f933c3994754a20d133779f78c78), [`5e90897`](https://github.com/pyreon/pyreon/commit/5e90897abe9804227391e75442d55d97fb4c257f), [`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`d3bfe2f`](https://github.com/pyreon/pyreon/commit/d3bfe2f1e6be85202da5c6e8a8774626c9ac2906), [`9c3818b`](https://github.com/pyreon/pyreon/commit/9c3818b0f8963ffc287e254e2463680f30284631), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`3894bcf`](https://github.com/pyreon/pyreon/commit/3894bcfd6c00c7a43b572a66edc2b916cacaba29), [`8d91fc7`](https://github.com/pyreon/pyreon/commit/8d91fc76afc8f128c6d5345dbc934ded524b9e7a), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`1389a05`](https://github.com/pyreon/pyreon/commit/1389a05d67fa4870503874e4b1feeb34ce8d7136), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e)]:
+  - @pyreon/compiler@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

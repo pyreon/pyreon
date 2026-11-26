@@ -1,5 +1,31 @@
 # @pyreon/form
 
+## 0.55.0
+
+### Minor Changes
+
+- [#4801](https://github.com/pyreon/pyreon/pull/4801) [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404) Thanks [@vitbokisch](https://github.com/vitbokisch)! - BREAKING: `useForm` has one option shape, `useForm({ initialValues, validators, onSubmit, … })`. The second shape, `useForm({ fields: [field('email', '', validate), …] })`, was a translation to the first and is removed, together with `field()` and the `FieldDefinition`, `InferFieldValues` and `UseFormFieldsOptions` types. `useField`, `<Form>`, `<FormProvider>` and context-based reads are unchanged.
+
+  Also BREAKING: `_resetDevtools` moved from `@pyreon/form/devtools` to the new `@pyreon/form/internal` subpath (no semver promise).
+
+  Upgrade: codemod form-use-form-fields (rewrites `fields: [email, password]` to `initialValues: { … }, validators: { … }` when the definitions are inline or declared in the same file) and codemod internal-exports-subpath (the `_resetDevtools` import).
+
+### Patch Changes
+
+- [#4843](https://github.com/pyreon/pyreon/pull/4843) [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every read accessor now tracks ([#4824](https://github.com/pyreon/pyreon/issues/4824)). `useFieldArray().values()` read `items.peek()` and each `item.value.peek()`, so a `computed` / effect / JSX accessor built on it was evaluated once and never again — after `append`, `remove`, `update` or an item's `value.set`. The same mistake was in `useForm`'s `values()`, `getValues()`, `getValues(name)` and `errors()`, and `dirtyFields()` / `touchedFields()` did not see a field added by `registerField()`. All of them now read through the tracking call (and the registered field set), so a derived "is this list dirty?" computed updates. `values()` still returns a cached object that keeps its reference until a value changes, and it no longer returns a stale snapshot after a direct `form.fields.x.value.set(...)`. Inside an effect that also writes the array, read it with `untrack(() => arr.values())`.
+
+  `values()` / `getValues()` are one memoised computed: a clean read is a cached return, and it re-derives once per change. `useFormState()`'s `touchedFields` / `dirtyFields` / `errors` now read through the same accessors, so they see a field added by `registerField()` and drop an empty-string error like `form.errors()` does. `unregisterField()` notifies a `values()` consumer once, and `reset({ keepDirty, keepTouched })` no longer subscribes the calling effect. Measured (bun, paired, machine under load): the `read-all-values` bench moved from 6.9 to 8.9 ns (TanStack form-core 8.2 ns), the cost of `values()` becoming reactive; the keystroke path is unchanged (38.3 vs 38.6 ns).
+
+- [#4858](https://github.com/pyreon/pyreon/pull/4858) [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d) Thanks [@vitbokisch](https://github.com/vitbokisch)! - Every published package declares the supported Node.js floor: `"engines": { "node": ">=22" }`. 73 packages declared no `engines`, 13 said `>= 22` and the seven `@pyreon/compiler-*` binaries still said `>=18`. Node.js 22 is the floor of the support matrix (Node.js 22+, Bun 1.3+, browsers at Baseline 2024, iOS 17+, Android minSdk 26+), now stated on the stability page and in SECURITY.md; the new `check-support-matrix` gate keeps every package, the native platform floors and both documents in agreement, so a new package cannot ship without the field.
+
+  Upgrade: manual — run on Node.js 22 or later (or Bun 1.3 or later); npm warns on an older Node.js
+
+- Updated dependencies [[`e63f109`](https://github.com/pyreon/pyreon/commit/e63f109a145b96da6301323988bbab32fa10f8f0), [`9cd77ca`](https://github.com/pyreon/pyreon/commit/9cd77ca2f0e69b259d6f6775c077086e91ebf620), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`09a6d23`](https://github.com/pyreon/pyreon/commit/09a6d23a929c537c0c9b16500a503d84ab2cd8a2), [`d7350a3`](https://github.com/pyreon/pyreon/commit/d7350a39ecee9a17dafd11d3c60330644e31dbb6), [`552188e`](https://github.com/pyreon/pyreon/commit/552188ec945af3a5e999c6776d338777bb0d7758), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`5566eb0`](https://github.com/pyreon/pyreon/commit/5566eb099b799a2bb705e287ef1b4214102dd17c), [`eb1234a`](https://github.com/pyreon/pyreon/commit/eb1234a28aca17f7c4f74f07db8aac00f8167e65), [`79c6ebb`](https://github.com/pyreon/pyreon/commit/79c6ebb9b2e7f753cbe751765b77a7376cb1197f), [`0de9ca5`](https://github.com/pyreon/pyreon/commit/0de9ca5bfb002927562a80a73fcfd99df8e0fe3a), [`579a51e`](https://github.com/pyreon/pyreon/commit/579a51ecda33f7fba2b32d1f6b60f8965ad2e404), [`aee634a`](https://github.com/pyreon/pyreon/commit/aee634aac159f80ead617e32fe105b34b1b8cc9d), [`bdd5321`](https://github.com/pyreon/pyreon/commit/bdd5321063c57638b76f3dbd9388ab08efdb049e), [`d4da414`](https://github.com/pyreon/pyreon/commit/d4da41457864545b2ed5b810bfd573dd2086ef39)]:
+  - @pyreon/core@0.55.0
+  - @pyreon/reactivity@0.55.0
+  - @pyreon/native-compiler@0.55.0
+  - @pyreon/validation@0.55.0
+
 ## 0.54.0
 
 ### Minor Changes

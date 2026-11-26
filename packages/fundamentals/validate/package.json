@@ -1,6 +1,6 @@
 {
   "name": "@pyreon/validate",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "description": "Pyreon's own validator (the `s` schema runtime, with mini, JIT and JSON Schema subpaths) plus a Standard Schema DX layer \u2014 withField metadata, reactive parse, i18n-aware error formatting. The DX layer also works with Zod, Valibot, ArkType, or any Standard Schema-compliant validator.",
   "homepage": "https://github.com/pyreon/pyreon/tree/main/packages/fundamentals/validate#readme",
   "bugs": {
