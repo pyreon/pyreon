@@ -377,3 +377,339 @@ class PyreonPermissionQueue(private val launch: (List<String>) -> Unit) {
         launch(next.permissions)
     }
 }
+
+// ---- Downloads (#4828) ----------------------------------------------------------
+//
+// The decisions behind PyreonWebView's DownloadListener. Same naming rule, the
+// same download rule and the same `PyreonWebViewDownload` shape as the iOS host
+// (PyreonWebView.swift).
+
+/** A download the hosted page started — mirror of the Swift `PyreonWebViewDownload`. */
+data class PyreonWebViewDownload(
+    /** The URL being downloaded: `http(s)`, or a `blob:` / `data:` URL the page created. */
+    val url: String,
+    /** A file name safe to write (see [pyreonWebViewDownloadFilename]). */
+    val filename: String,
+    /** The MIME type, or "" when it is not known. */
+    val mimeType: String,
+)
+
+/** How a download's bytes are obtained. */
+enum class PyreonDownloadRoute {
+    /** `http(s)`: the system `DownloadManager` fetches it. */
+    SYSTEM,
+    /** `blob:` / `data:`: only the page can read it, so the page streams it over in chunks. */
+    PAGE,
+    /** Anything else (`file:`, `javascript:`, a custom scheme): not downloaded. */
+    UNSUPPORTED,
+}
+
+fun pyreonWebViewDownloadRoute(url: String?): PyreonDownloadRoute =
+    when (url?.substringBefore(':', "")?.lowercase()) {
+        "http", "https" -> PyreonDownloadRoute.SYSTEM
+        "blob", "data" -> PyreonDownloadRoute.PAGE
+        else -> PyreonDownloadRoute.UNSUPPORTED
+    }
+
+/**
+ * The largest `blob:` / `data:` download the page streams over. It crosses in
+ * [PYREON_WEBVIEW_PAGE_DOWNLOAD_CHUNK_BYTES] pieces written straight to a cache
+ * file, so memory stays at about one chunk whatever the size; the cap bounds
+ * the DISK the cache copy takes until the user has saved it.
+ */
+const val PYREON_WEBVIEW_PAGE_DOWNLOAD_MAX_BYTES: Long = 256L * 1024 * 1024
+
+/** One piece of a page download (~1.4 MB of base64 text across the bridge). */
+const val PYREON_WEBVIEW_PAGE_DOWNLOAD_CHUNK_BYTES: Int = 1024 * 1024
+
+/** The space characters trimmed from a name's ends (identical list in Swift). */
+val PYREON_WEBVIEW_NAME_TRIM: Set<Int> = setOf(
+    0x20, 0xA0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006,
+    0x2007, 0x2008, 0x2009, 0x200A, 0x202F, 0x205F, 0x3000, 0xFEFF,
+)
+
+/** The most UTF-8 bytes a saved name may take. */
+const val PYREON_WEBVIEW_NAME_MAX_BYTES = 255
+
+/**
+ * The name a download is saved under: the first candidate that is still a name
+ * after cleaning, else "download". Cleaning keeps ONE safe path component, by
+ * the same rule as the Swift host:
+ *
+ * - `/`, `\`, `:`, C0 and C1 controls and DEL become `_`;
+ * - bidi marks, embeddings, overrides and isolates (U+200E/F, U+202A–202E,
+ *   U+2066–2069) are removed, so `photo‮gpj.apk` cannot pose as a JPEG;
+ * - the [PYREON_WEBVIEW_NAME_TRIM] spaces go from both ends, then leading dots;
+ * - a name of only `_` is no name;
+ * - at most [PYREON_WEBVIEW_NAME_MAX_BYTES] UTF-8 BYTES, keeping a short
+ *   extension and cutting the rest on a grapheme boundary.
+ */
+fun pyreonWebViewDownloadFilename(vararg candidates: String?): String {
+    for (candidate in candidates) {
+        if (candidate == null) continue
+        val cleaned = pyreonCleanFilename(candidate)
+        if (cleaned.isNotEmpty()) return cleaned
+    }
+    return "download"
+}
+
+private fun pyreonIsBidiControl(cp: Int): Boolean =
+    cp == 0x200E || cp == 0x200F || cp in 0x202A..0x202E || cp in 0x2066..0x2069
+
+private fun pyreonTrimName(s: String): String {
+    var start = 0
+    var end = s.length
+    while (start < end && s.codePointAt(start) in PYREON_WEBVIEW_NAME_TRIM) start += Character.charCount(s.codePointAt(start))
+    while (end > start && s.codePointBefore(end) in PYREON_WEBVIEW_NAME_TRIM) end -= Character.charCount(s.codePointBefore(end))
+    return s.substring(start, end)
+}
+
+private fun utf8Size(s: String): Int = s.toByteArray(Charsets.UTF_8).size
+
+private fun pyreonCleanFilename(raw: String): String {
+    val sb = StringBuilder(raw.length)
+    var i = 0
+    while (i < raw.length) {
+        val cp = raw.codePointAt(i)
+        i += Character.charCount(cp)
+        if (pyreonIsBidiControl(cp)) continue
+        if (cp < 0x20 || cp == 0x7F || cp in 0x80..0x9F || cp == '/'.code || cp == '\\'.code || cp == ':'.code) {
+            sb.append('_')
+        } else {
+            sb.appendCodePoint(cp)
+        }
+    }
+    var name = pyreonTrimName(sb.toString())
+    name = pyreonTrimName(name.trimStart('.'))
+    if (name.all { it == '_' }) return ""
+    if (utf8Size(name) > PYREON_WEBVIEW_NAME_MAX_BYTES) {
+        val dot = name.lastIndexOf('.')
+        val ext = if (dot > 0 && dot < name.length - 1 && utf8Size(name.substring(dot)) <= 32) name.substring(dot) else ""
+        val stem = name.substring(0, name.length - ext.length)
+        val budget = PYREON_WEBVIEW_NAME_MAX_BYTES - utf8Size(ext)
+        val graphemes = java.text.BreakIterator.getCharacterInstance()
+        graphemes.setText(stem)
+        var cut = 0
+        var bytes = 0
+        var start = graphemes.first()
+        var next = graphemes.next()
+        while (next != java.text.BreakIterator.DONE) {
+            val size = utf8Size(stem.substring(start, next))
+            if (bytes + size > budget) break
+            bytes += size
+            cut = next
+            start = next
+            next = graphemes.next()
+        }
+        name = stem.substring(0, cut) + ext
+    }
+    return name
+}
+
+/** The last path segment of an `http(s)` / `file` URL; null for `blob:` / `data:` (no name there). */
+fun pyreonWebViewDownloadURLName(url: String?): String? {
+    if (url == null) return null
+    val scheme = url.substringBefore(':', "").lowercase()
+    if (scheme != "http" && scheme != "https" && scheme != "file") return null
+    val afterAuthority = url.substringAfter("://", "").let { rest -> rest.indexOf('/').let { if (it < 0) "" else rest.substring(it) } }
+    val path = afterAuthority.substringBefore('?').substringBefore('#')
+    val last = path.substringAfterLast('/')
+    if (last.isEmpty()) return null
+    return pyreonPercentDecode(last, Charsets.UTF_8) ?: last
+}
+
+/**
+ * The file name a `Content-Disposition` header carries: `filename*` (RFC 6266 /
+ * 5987, percent-encoded in the named charset) wins over `filename` (quoted with
+ * backslash escapes, or a bare token). Null when it names none.
+ */
+fun pyreonContentDispositionFilename(header: String?): String? {
+    if (header.isNullOrBlank()) return null
+    val extended = Regex("""(?i)(?:^|;)\s*filename\*\s*=\s*([^';\s]*)'[^']*'([^;\s]+)""").find(header)
+    if (extended != null) {
+        val charset = try {
+            java.nio.charset.Charset.forName(extended.groupValues[1].ifEmpty { "UTF-8" })
+        } catch (e: Exception) {
+            null
+        }
+        val decoded = charset?.let { pyreonPercentDecode(extended.groupValues[2], it) }
+        if (!decoded.isNullOrEmpty()) return decoded
+    }
+    val plain = Regex("""(?i)(?:^|;)\s*filename\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^;]+))""").find(header) ?: return null
+    val quoted = plain.groups[1]?.value
+    val value = quoted?.replace(Regex("""\\(.)"""), "$1") ?: plain.groupValues[2].trim()
+    return value.ifEmpty { null }
+}
+
+/** `%XX` decoding to bytes in [charset] (no `+` → space: that is form encoding). Null when malformed. */
+private fun pyreonPercentDecode(s: String, charset: java.nio.charset.Charset): String? {
+    if (!s.contains('%')) return s
+    val out = java.io.ByteArrayOutputStream()
+    var i = 0
+    while (i < s.length) {
+        val c = s[i]
+        if (c == '%') {
+            if (i + 2 >= s.length) return null
+            val byte = s.substring(i + 1, i + 3).toIntOrNull(16) ?: return null
+            out.write(byte)
+            i += 3
+        } else {
+            out.write(c.toString().toByteArray(Charsets.UTF_8))
+            i++
+        }
+    }
+    return String(out.toByteArray(), charset)
+}
+
+/**
+ * Whether `DownloadManager` may write to the PUBLIC Downloads folder: always
+ * from Android 10 (API 29), before that only with `WRITE_EXTERNAL_STORAGE`.
+ * Otherwise the file goes to the app's own external Downloads directory, which
+ * the system download list and notification still open.
+ */
+fun pyreonDownloadToPublicDir(sdkInt: Int, hasWriteExternalStorage: Boolean): Boolean =
+    sdkInt >= 29 || hasWriteExternalStorage
+
+/**
+ * Whether the page's cookies go with a request for [url]: only to the exact
+ * origin the host's page is on (an `http(s)` one). `DownloadManager` repeats a
+ * request's headers on every redirect, so the host resolves redirects itself
+ * first and asks this for each hop and for the final URL.
+ */
+fun pyreonDownloadCookieAllowed(url: String?, allowedOrigin: String?): Boolean {
+    if (allowedOrigin == null || !allowedOrigin.startsWith("http")) return false
+    return pyreonWebViewOrigin(url) == allowedOrigin
+}
+
+// ---- The download rule -----------------------------------------------------------
+//
+// Same rule as the iOS host: a download needs the MAIN frame on the allowed
+// origin, a fresh UNUSED user gesture there, and no other download in flight.
+// Android's DownloadListener says neither which frame started a download nor
+// whether a user did, so the main-frame shim reports each link a user activated
+// ([PyreonDownloadIntent], through the token-checked bridge a sub-frame cannot
+// use) and the listener matches the download against them.
+
+/** How long a user gesture in the main frame allows a download. */
+const val PYREON_WEBVIEW_ACTIVATION_WINDOW_MS: Long = 5_000
+/** A download still "in flight" after this long no longer blocks the next one. */
+const val PYREON_WEBVIEW_DOWNLOAD_BUSY_STALE_MS: Long = 120_000
+/** The most link activations remembered per host. */
+const val PYREON_WEBVIEW_MAX_DOWNLOAD_INTENTS = 8
+
+/** Why a download was allowed or refused — mirror of the Swift verdict. */
+enum class PyreonWebViewDownloadVerdict { ALLOW, NOT_MAIN_FRAME, NO_ACTIVATION, BUSY }
+
+fun pyreonWebViewDownloadVerdict(
+    fromMainFrame: Boolean,
+    onAllowedOrigin: Boolean,
+    activationAgeMs: Long?,
+    busy: Boolean,
+): PyreonWebViewDownloadVerdict {
+    if (!fromMainFrame || !onAllowedOrigin) return PyreonWebViewDownloadVerdict.NOT_MAIN_FRAME
+    if (activationAgeMs == null || activationAgeMs < 0 || activationAgeMs > PYREON_WEBVIEW_ACTIVATION_WINDOW_MS) {
+        return PyreonWebViewDownloadVerdict.NO_ACTIVATION
+    }
+    return if (busy) PyreonWebViewDownloadVerdict.BUSY else PyreonWebViewDownloadVerdict.ALLOW
+}
+
+/** Whether a download that started at [sinceMs] still blocks a new one. */
+fun pyreonWebViewDownloadBusy(sinceMs: Long?, nowMs: Long): Boolean =
+    sinceMs != null && nowMs - sinceMs < PYREON_WEBVIEW_DOWNLOAD_BUSY_STALE_MS
+
+/** A link the user activated in the main frame: its href, its `download` name (null without the attribute), when. */
+data class PyreonDownloadIntent(val href: String, val name: String?, val atMs: Long)
+
+/** Remember [intent], keeping the newest [PYREON_WEBVIEW_MAX_DOWNLOAD_INTENTS]. */
+fun pyreonWebViewRecordIntent(intents: MutableList<PyreonDownloadIntent>, intent: PyreonDownloadIntent) {
+    intents.add(intent)
+    while (intents.size > PYREON_WEBVIEW_MAX_DOWNLOAD_INTENTS) intents.removeAt(0)
+}
+
+/**
+ * The activation a download of [url] consumes, removed from [intents] (each
+ * allows ONE download), or null. Expired ones are dropped. A `blob:` / `data:`
+ * download must match the activated link EXACTLY: such a URL is minted by the
+ * frame that downloads it, so a sub-frame's can never equal a main-frame link.
+ * An `http(s)` one prefers the exact link and otherwise takes the newest
+ * activation, because a server may redirect the link to the file.
+ */
+fun pyreonWebViewTakeIntent(
+    intents: MutableList<PyreonDownloadIntent>,
+    url: String,
+    route: PyreonDownloadRoute,
+    nowMs: Long,
+): PyreonDownloadIntent? {
+    intents.removeAll { nowMs - it.atMs > PYREON_WEBVIEW_ACTIVATION_WINDOW_MS || nowMs < it.atMs }
+    val exact = intents.lastOrNull { it.href == url }
+    val taken = exact ?: if (route == PyreonDownloadRoute.SYSTEM) intents.lastOrNull() else null
+    if (taken != null) intents.remove(taken)
+    return taken
+}
+
+/** A JS string literal for [s] (double-quoted; safe inside evaluated script). */
+fun pyreonJsString(s: String): String {
+    val sb = StringBuilder(s.length + 2).append('"')
+    for (c in s) {
+        when {
+            c == '"' -> sb.append("\\\"")
+            c == '\\' -> sb.append("\\\\")
+            c == '\n' -> sb.append("\\n")
+            c == '\r' -> sb.append("\\r")
+            c == '\t' -> sb.append("\\t")
+            c.code < 0x20 || c == ' ' || c == ' ' || c == '<' ->
+                sb.append("\\u").append(String.format("%04x", c.code))
+            else -> sb.append(c)
+        }
+    }
+    return sb.append('"').toString()
+}
+
+/**
+ * The main-frame download shim, evaluated with the bridge shim (closing over
+ * the same per-view token). For every link the USER activates — a trusted
+ * click on it, or `a.click()` while the page has transient user activation
+ * (`navigator.userActivation.isActive`; covers a link the page never attached)
+ * — it reports `downloadIntent(token, href, downloadName)`. For a `blob:` link
+ * with a `download` attribute it also starts reading the blob AT ONCE, in the
+ * same task as the click: the common export snippet revokes the URL right after
+ * `a.click()`, long before the host's listener runs. The read is kept (at most
+ * 4, for 60 s) for [pyreonWebViewDownloadFetchScript].
+ */
+fun pyreonWebViewDownloadShim(token: String): String =
+    "(function(){if(window.__pyreonDownloadShim)return;" +
+        "Object.defineProperty(window,'__pyreonDownloadShim',{value:1});" +
+        "var n=window.__pyreonNative,t=${pyreonJsString(token)},B=new Map();" +
+        "Object.defineProperty(window,'__pyreonDownloadBlobs',{value:B});" +
+        "function act(e){var u=navigator.userActivation;return !!((e&&e.isTrusted)||(u&&u.isActive));}" +
+        "function r(a,e){try{if(!a||!a.href||!act(e))return;var h=String(a.href)," +
+        "d=a.hasAttribute('download')?a.getAttribute('download'):null;" +
+        "if(d!==null&&h.slice(0,5)==='blob:'&&!B.has(h)){var p=fetch(h).then(function(x){return x.blob();});" +
+        "p.catch(function(){});B.set(h,p);setTimeout(function(){B.delete(h);},60000);" +
+        "if(B.size>4)B.delete(B.keys().next().value);}" +
+        "n.downloadIntent(t,h,d);}catch(x){}}" +
+        "document.addEventListener('click',function(e){var a=e.target;while(a&&a.nodeName!=='A')a=a.parentNode;if(a)r(a,e);},true);" +
+        "var c=HTMLAnchorElement.prototype.click;" +
+        "HTMLAnchorElement.prototype.click=function(){r(this,null);return c.apply(this,arguments);};})();"
+
+/**
+ * Script that streams a `blob:` / `data:` download from the page: the read the
+ * shim started at click time (or a new one), then
+ * `downloadChunk(token, id, base64)` per [PYREON_WEBVIEW_PAGE_DOWNLOAD_CHUNK_BYTES]
+ * (false stops it) and `downloadDone(token, id, type, error)`. A read that
+ * fails — a blob revoked before even the shim saw it, a larger file than
+ * [PYREON_WEBVIEW_PAGE_DOWNLOAD_MAX_BYTES] — ends with an error, and the
+ * download is not reported.
+ */
+fun pyreonWebViewDownloadFetchScript(url: String, token: String, id: String): String =
+    "(function(){var n=window.__pyreonNative,t=${pyreonJsString(token)},i=${pyreonJsString(id)}," +
+        "u=${pyreonJsString(url)},C=$PYREON_WEBVIEW_PAGE_DOWNLOAD_CHUNK_BYTES,M=$PYREON_WEBVIEW_PAGE_DOWNLOAD_MAX_BYTES;" +
+        "function f(e){n.downloadDone(t,i,'',String(e&&e.message||e));}" +
+        "try{var B=window.__pyreonDownloadBlobs,p=B&&B.get(u);if(p)B.delete(u);" +
+        "(p||fetch(u).then(function(r){return r.blob();})).then(function(b){" +
+        "if(b.size>M){f('larger than '+M+' bytes');return;}var o=0;" +
+        "function next(){if(o>=b.size){n.downloadDone(t,i,b.type||'',null);return;}" +
+        "var rd=new FileReader();rd.onload=function(){var s=String(rd.result);" +
+        "if(!n.downloadChunk(t,i,s.slice(s.indexOf(',')+1))){f('the host stopped the transfer');return;}o+=C;next();};" +
+        "rd.onerror=function(){f('unreadable');};rd.readAsDataURL(b.slice(o,o+C));}" +
+        "next();}).catch(f);}catch(e){f(e);}})();"

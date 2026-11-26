@@ -2481,4 +2481,44 @@ final class PyreonTasksUITests: XCTestCase {
         // Dismiss: tap outside the menu.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
     }
+
+    /// A download the hosted page starts (#4828): before, WKWebView had no
+    /// download handling and the page's "export" did nothing at all. The page
+    /// builds a CSV in a `blob:` URL behind `<a download="pyreon-tasks.csv">`;
+    /// the host must report it to `onDownload` (read in a NATIVE Text) and then
+    /// offer the finished file through the share sheet.
+    func test_webHostDownloadReachesOnDownloadAndTheShareSheet() throws {
+        let app = XCUIApplication()
+        app.launchFresh()
+        navigateToWebHost(app)
+
+        let web = app.webViews.firstMatch
+        XCTAssertTrue(web.waitToExist(timeout: 20), "hosted WKWebView missing")
+        let button = web.buttons["Download CSV"].firstMatch
+        XCTAssertTrue(button.waitToExist(timeout: 15), "the page's download button is missing")
+        button.tap()
+
+        let readout = app.staticTexts["webhost-download"].firstMatch
+        XCTAssertTrue(
+            waitForLabelContaining(readout, "pyreon-tasks.csv|", timeout: 20),
+            "onDownload never reported the page's download (label: \(readout.label))"
+        )
+        print("[PyreonTasksUITests] onDownload reported: \(readout.label)")
+
+        // The share sheet: its activity list (the identifier and the Close
+        // button have been stable since iOS 13), or its "Save to Files" entry.
+        let deadline = Date().addingTimeInterval(20)
+        var sheet = false
+        while Date() < deadline && !sheet {
+            sheet = app.otherElements["ActivityListView"].exists
+                || app.navigationBars["UIActivityContentView"].exists
+                || app.buttons["Save to Files"].exists
+                || app.cells["Save to Files"].exists
+            if !sheet { RunLoop.current.run(until: Date().addingTimeInterval(0.3)) }
+        }
+        XCTAssertTrue(sheet, "the finished download presented no share sheet: \(app.debugDescription.prefix(2000))")
+        let close = app.buttons["Close"].firstMatch
+        if close.exists { close.tap() } else { app.swipeDown() }
+        XCTAssertTrue(app.otherElements["webhost-page"].firstMatch.waitToExist(timeout: 15), "the hosted page did not survive the share sheet")
+    }
 }
