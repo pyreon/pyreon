@@ -67,6 +67,14 @@ public protocol PyreonSecureBackend {
     /// Delete the secret at `key`. Returns true on success OR if the key
     /// was already absent (idempotent delete).
     @discardableResult func remove(key: String) -> Bool
+    /// Where this backend persists, when two backend OBJECTS can share it: backends with the same
+    /// non-nil location read and write the same entries. `nil` (the default) means only this object
+    /// holds its entries (an in-memory store).
+    var location: String? { get }
+}
+
+public extension PyreonSecureBackend {
+    var location: String? { nil }
 }
 
 /// In-memory backend — for tests + SwiftUI previews. **NOT secure**: no
@@ -104,6 +112,9 @@ public final class KeychainSecureBackend: PyreonSecureBackend {
 
     /// `service` namespaces this app's keychain items (default
     /// `com.pyreon.securestorage`). Pass your app's bundle id to isolate.
+    /// The keychain service (generic-password items of this app with that service).
+    public var location: String? { "keychain:\(service)" }
+
     public init(service: String = "com.pyreon.securestorage") {
         self.service = service
     }

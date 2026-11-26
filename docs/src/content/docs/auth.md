@@ -108,7 +108,7 @@ Every member of the result is a reactive read. Use it in JSX, `computed`, or `ef
 | `error()` | `string \| null` | The last failure's code — see [Errors](#errors). Cleared by the next successful step. |
 | `signIn()` | `Promise<void>` | Web: navigates to the provider. Native: opens the system browser. |
 | `refresh()` | `Promise<void>` | Swap the refresh token for fresh tokens. |
-| `signOut(opts?)` | `void` | Local sign-out, or provider sign-out with `{ endProviderSession: true }`. |
+| `signOut(opts?)` | `Promise<{ revoked, error }>` | Local sign-out (immediate) with RFC 7009 token revocation when the provider advertises it, or provider sign-out too with `{ endProviderSession: true }`. |
 | `handleCallback(url)` | `Promise<void>` | Complete a sign-in from a redirect URL. `useOidc` already calls this on the redirect page. |
 
 :::warning[Identity comes from claims, never from a raw token]
@@ -242,7 +242,9 @@ auth.signOut() // forget the session in THIS app
 auth.signOut({ endProviderSession: true }) // also end the session at the provider
 ```
 
-A local sign-out leaves the provider's own session intact, so the next `signIn()` usually completes **without a password prompt** — the provider still remembers the user. That is right for "switch back later" and wrong for a shared computer. `endProviderSession: true` sends the user to the provider's `end_session_endpoint` (OpenID Connect RP-Initiated Logout) with an `id_token_hint`, and the provider sends them back to `postLogoutRedirectUri` if you registered one:
+Either way the session is cleared at once and, when the provider advertises a `revocation_endpoint`, its refresh and access tokens are revoked there (RFC 7009), so a copied token stops working. The call resolves to `{ revoked, error }`: a revocation the provider refuses or cannot be reached for still signs out locally, and `error` says why. Pass `revokeTokens: false` to skip it. On iOS and Android sign-out revokes the same way (always, when advertised) and also signs out every other live container over the same stored session (same client, issuer and secure store — a session is defined by where it is persisted; instances over different stores are separate sessions), revoking every token any of them or the stored record holds. `revoked` covers the tokens held when `signOut()` was called; a sign-in or refresh still in flight is not covered: its token response, when it arrives, is discarded and revoked in the background (best effort, not reported).
+
+A local sign-out leaves the provider's own session intact, so the next `signIn()` usually completes **without a password prompt** — the provider still remembers the user. That is right for "switch back later" and wrong for a shared computer. `endProviderSession: true` sends the user to the provider's `end_session_endpoint` (OpenID Connect RP-Initiated Logout) with an `id_token_hint` — after the revocation, which waits at most 5 s — and the provider sends them back to `postLogoutRedirectUri` if you registered one:
 
 ```ts
 const auth = useOidc({
@@ -525,6 +527,13 @@ export async function checkSecondFactor(user: User, code: string): Promise<'ok' 
 
 <Example file="./examples/auth/totp-live" title="TOTP — live codes and single-use verification" />
 
+A secret must be at least 128 bits. Enrolments from before that rule (80-bit secrets) verify with `verifyTotpWithMigration`, which also hands back `reEnrol` — a fresh 160-bit secret — for them. Show it as a new setup key, and replace the stored secret only once a code from it verifies; until then the old one keeps working:
+
+```ts
+const r = await verifyTotpWithMigration(user.totpSecret, code, { lastUsedStep: user.lastTotpStep })
+if (r.ok && r.reEnrol) await offerReEnrolment(user, r.reEnrol) // swap after verifyTotp(r.reEnrol, newCode) succeeds
+```
+
 ## Limiting attempts
 
 A six-digit code has a million values; without a limit, an attacker tries them all. `createAttemptLimiter` counts attempts per key (an account id, and an IP for unauthenticated endpoints) inside a window, and is bounded so a flood of keys cannot exhaust memory. Call `reset` after a **successful** check:
@@ -665,6 +674,8 @@ Without `nativeRedirectUri`, native apps reuse `redirectUri` and the compiler wa
 
 `PyreonAuthActivity` opens the browser and waits; `PyreonAuthRedirectActivity` receives the provider's redirect and hands it back. If the user returns to the app without finishing (back button, closed tab), sign-in ends promptly with `cancelled` instead of hanging. A Custom Tab is used when the browser supports it, with no `androidx.browser` dependency.
 
+`PyreonAuthRedirectActivity` has to be exported, so any installed app can start it. It forwards only the answer to the sign-in in flight — the same redirect target and that request's `state` — and drops anything else, so another app can neither cancel nor feed a sign-in. (A provider error sent without the `state` is dropped too; the user's return then reports `cancelled`.) It cannot stop another app that registers the same custom scheme from receiving the real redirect instead — PKCE keeps the code useless to it, but the sign-in fails. **Prefer an App Link:** an `https` `nativeRedirectUri` on a domain you control, verified by `/.well-known/assetlinks.json` (package name and signing-certificate SHA-256) and an intent filter with `android:autoVerify="true"` and `android:scheme="https"`, `android:host`, `android:path`. Check it with `adb shell pm get-app-links <your.package>`: an unverified App Link falls back to a chooser, no better than a custom scheme.
+
 ### What compiles to native, and what does not
 
 Native code bakes the configuration in at compile time, so `useOidc`'s options must be **static** — string literals or module-level `const`s:
@@ -677,6 +688,7 @@ Native code bakes the configuration in at compile time, so `useOidc`'s options m
 | An `http://` issuer that is not loopback | Warning — native refuses it exactly as the web does |
 | A reserved `authorizationParams` key (`state`, `nonce`, …) | Warning |
 | `signOut({ postLogoutRedirectUri })` per call | Warning — pass it once, in the `useOidc` options |
+| `signOut({ revokeTokens })` | Warning — native always revokes when the provider advertises it |
 | `` authorization: `Bearer ${auth.accessToken() ?? ''}` `` in a `useQuery` `queryFn` | Sent, built on the device for every request — see [Calling your API](#calling-your-api) |
 | `bearer(() => auth.accessToken())` on an `@pyreon/http` client | Web and server only — no native lowering |
 
@@ -687,7 +699,7 @@ The lower-level API — `createAuth`, `discover`, `exchangeCode`, sessions, TOTP
 The web, Swift and Kotlin verifiers share one answer sheet: `native/tests/vectors.json`, a set of signed ID tokens — valid ones and every rejection the verifier makes — that all three must judge identically, down to the error code. The native containers also run end to end against an in-process provider that enforces PKCE and the nonce.
 
 :::warning[Native sign-in is not verified on a device against a real provider]
-On a real iOS simulator and Android emulator, the `native-tasks` example's sign-in panel has been driven only to the `network_error` path (an unreachable issuer). A complete sign-in — system browser, a real provider's login page, the redirect back into the app, the code exchange — has not been run on a device. Test your own provider on your own devices before you depend on it.
+The native sources are built in CI against the iOS and Android SDKs (the `native-tasks` app, which uses `useOidc`), and on a real iOS simulator and Android emulator its sign-in panel has been driven only to the `network_error` path (an unreachable issuer). A complete sign-in — system browser, a real provider's login page, the redirect back into the app, the code exchange — has not been run on a device. Test your own provider on your own devices before you depend on it.
 :::
 
 ## Testing
@@ -734,16 +746,16 @@ The live demo at the top of this page is built exactly this way — its provider
 
 - **L1 — iOS Keychain backups.** The session is stored with `kSecAttrAccessibleAfterFirstUnlock`, not `…ThisDeviceOnly`: an encrypted backup moves it to another device, and Keychain items survive an uninstall.
 - **L2 — OAuth2-only sign-in.** A sign-in with a provider that returns no ID token (GitHub, Facebook) has no verified identity until a refresh brings an ID token, and two such sessions in one app cannot be told apart, so native instances never adopt each other's refresh of one.
-- **L3 — callback parsing.** Duplicated callback parameters are read differently on Android (last value) than on the web and iOS (first). On native, a flow started for another provider is refused but consumed, so that sign-in has to be retried.
-- **Native is unverified on a device.** Native sign-in has never completed against a real provider on a device, and none of the following has run on a device or been compiled against the Android SDK: the native redirect check, Android `activate()` / `dispose()` and the process-wide refresh, and the iOS `.onAppear` emit.
-- **Android custom schemes.** Another installed app can claim the scheme and receive the redirect (PKCE is then the only defence), and any app can cancel a sign-in in progress through the exported `PyreonAuthRedirectActivity`. Prefer an App Link.
-- **Sign-out does not revoke tokens** (no RFC 7009), and a sign-out in one native instance does not sign out the others.
+- **L3 — a flow for another provider is consumed.** On native, a callback carrying a flow started for another provider is refused but the flow is consumed, so that sign-in has to be retried. (Callback parameters are read by one rule on every target — URLSearchParams': a repeated parameter means its first value, a bad `%` escape stays literal, bytes that are not UTF-8 become U+FFFD — held to the shared vectors in `native/tests/callback-vectors.json`.)
+- **Native is unverified on a device against a real provider.** Native sign-in has never completed against a real provider. The native sources are compiled against the iOS and Android SDKs in CI and the `native-tasks` app runs on a simulator and an emulator, but only to the `network_error` path.
+- **Android custom schemes.** Another installed app can claim the scheme and receive the redirect (PKCE is then the only defence). The exported `PyreonAuthRedirectActivity` forwards only the answer to the sign-in in flight, so other apps can no longer cancel or feed one. Prefer a verified App Link (see the Android setup above).
+- **Sign-out propagation stops at the process.** Native sign-out signs out every live container over the same stored session (same client, issuer and secure store — a session is defined by where it is persisted; instances over different stores are separate sessions) in the process; another process (an app extension sharing the Keychain) keeps its in-memory session until it next reads the store. Token revocation (RFC 7009) happens only when the provider advertises a `revocation_endpoint`.
 - **OAuth mix-up: one redirect URI per provider is the only complete defence.** The registry sees only providers alive together in one process — not per-request servers, separate workers, or a page that builds only the chosen provider. The compiler only warns, one file at a time.
 - **A leaked authorization request still allows login CSRF.** Pushed authorization requests (PAR) are not offered.
 - **Server sign-ins need the public callback path or URL, and HTTPS.** The binding cookie is `__Host-` (Secure): Safari does not set it on `http://localhost`, so a local server sign-in fails with `unbound_flow` — develop over HTTPS (`https()` from `@pyreon/zero/server`). `response_mode=form_post` is not supported. Redirect URIs must be ASCII (punycode hosts), with no `%2e`, backslash or whitespace.
 - **A refresh that cannot reach the provider** keeps the session in `error` until `refresh()` succeeds or the app relaunches. If the response to a rotating refresh is lost in transit, the new refresh token is lost with it and a provider with reuse detection may revoke the family — inherent to rotation.
 - **The first npm version, 0.54.0, is published by hand** from the commit that made the package public (after the `v0.54.0` tag, which does not contain a public auth), without provenance. From the next release on it publishes through CI with provenance.
-- **TOTP secrets under 128 bits throw** unless `allowShortSecret: true` is set. Existing 80-bit enrolments need the flag: a behaviour change to announce.
+- **TOTP secrets under 128 bits throw** unless `allowShortSecret: true` is set. Existing 80-bit enrolments need the flag: a behaviour change to announce. `verifyTotpWithMigration(secret, code)` verifies a legacy enrolment and returns a fresh 160-bit `reEnrol` secret to move the user to — replace the stored secret only after `verifyTotp(reEnrol, code)` succeeds.
 
 **Your production checklist** — these need storage or policy only your app has:
 
@@ -763,12 +775,12 @@ The live demo at the top of this page is built exactly this way — its provider
 | Sign-in (web + native) | `useOidc`, `sessionStorageFlowStore` |
 | State machine | `createAuth`, `memoryFlowStore`, `AuthError` |
 | Server-side binding | `createFlowBinding`, `readFlowBinding` |
-| OIDC steps | `discover`, `beginAuthorization`, `parseCallback`, `exchangeCode`, `refreshTokens`, `endSessionUrl` |
+| OIDC steps | `discover`, `beginAuthorization`, `parseCallback`, `exchangeCode`, `refreshTokens`, `revokeToken`, `endSessionUrl` |
 | ID tokens | `verifyIdToken`, `createJwksCache` |
 | Providers | `google`, `keycloak`, `github`, `facebook`, `oauth2`, `withPreset` |
 | Route guards | `createGuard`, `safeReturnTo` |
 | Sessions | `signSession`, `verifySession`, `sessionCookie` |
-| Two-factor | `generateTotpSecret`, `totp`, `verifyTotp` |
+| Two-factor | `generateTotpSecret`, `totp`, `verifyTotp`, `verifyTotpWithMigration` |
 | Passkeys | `passkeyChallenge`, `verifyRegistration`, `verifyAssertion` |
 | Hardening | `createAttemptLimiter` |
 | PKCE | `generateCodeVerifier`, `codeChallengeS256` |

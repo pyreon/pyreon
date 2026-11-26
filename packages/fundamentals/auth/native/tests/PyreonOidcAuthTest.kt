@@ -56,6 +56,11 @@ class FakeProvider : PyreonAuthTransport {
     var refreshStatus = 200
     @Volatile var refreshDelayMs = 0L
     var jwksStatus = 200
+    /** Advertise an RFC 7009 revocation_endpoint answering with this status. */
+    var revocationStatus: Int? = null
+    val revoked = ArrayList<Map<String, String>>()
+    /** Runs while a token request is in flight, with its grant type (a sign-out racing it). */
+    var duringToken: ((String) -> Unit)? = null
     val presentedRefreshTokens = ArrayList<String>()
     var jwksFetches = 0
     val requests = ArrayList<String>()
@@ -75,7 +80,12 @@ class FakeProvider : PyreonAuthTransport {
             val m = linkedMapOf<String, Any?>("issuer" to ISS, "authorization_endpoint" to "$ISS/auth", "token_endpoint" to "$ISS/token",
                 "jwks_uri" to "$ISS/jwks", "end_session_endpoint" to "$ISS/logout")
             if (advertiseIss) m["authorization_response_iss_parameter_supported"] = true
+            if (revocationStatus != null) m["revocation_endpoint"] = "$ISS/revoke"
             return ok(m)
+        }
+        if (url.endsWith("/revoke")) {
+            revoked.add(query(request.body ?: ""))
+            return PyreonAuthResponse(revocationStatus ?: 404)
         }
         if (url.endsWith("/jwks")) {
             if (jwksStatus != 200) return PyreonAuthResponse(jwksStatus)
@@ -85,6 +95,7 @@ class FakeProvider : PyreonAuthTransport {
                 "x" to b64(fixed(w.affineX)), "y" to b64(fixed(w.affineY))))))
         }
         val form = query(request.body ?: "")
+        form["grant_type"]?.let { g -> duringToken?.let { duringToken = null; it(g) } }
         if (form["grant_type"] == "authorization_code") {
             val grant = codes.remove(form["code"])
             if (grant == null || PyreonPKCE.challengeS256(form["code_verifier"] ?: "") != grant.first) {
@@ -147,6 +158,13 @@ class FakeBrowser(private val provider: FakeProvider) : PyreonAuthBrowser {
     }
 }
 
+/** A store with a [location]: two of these over one map are one persisted store, as two Keystore backends with one alias are. */
+class LocatedStore(override val location: String, private val entries: HashMap<String, String>) : PyreonSecureBackend {
+    override fun write(key: String, value: String): Boolean { entries[key] = value; return true }
+    override fun read(key: String): String? = entries[key]
+    override fun remove(key: String): Boolean = entries.remove(key) != null
+}
+
 class MemStore : PyreonSecureBackend {
     val entries = HashMap<String, String>()
     override fun write(key: String, value: String): Boolean { entries[key] = value; return true }
@@ -156,7 +174,7 @@ class MemStore : PyreonSecureBackend {
 
 private val INLINE = Executor { it.run() }
 
-private fun make(p: FakeProvider, s: MemStore, b: FakeBrowser) = PyreonOidcAuth(
+private fun make(p: FakeProvider, s: PyreonSecureBackend, b: FakeBrowser) = PyreonOidcAuth(
     issuer = ISS, clientId = "app", redirectUri = "com.example.app:/oauth", postLogoutRedirectUri = "com.example.app:/bye",
     store = s, browser = b, transport = p, executor = INLINE,
 )
@@ -603,6 +621,149 @@ fun testTokenEndpointHttpsAtUse() {
     check(sent == 1 && (e as? PyreonAuthError)?.code == "provider_unavailable") { "loopback reaches the transport (its 500 is provider_unavailable): $e" }
 }
 
+fun testSignOutRevokesTokens() {
+    val p = FakeProvider()
+    p.revocationStatus = 200
+    val auth = make(p, MemStore(), FakeBrowser(p))
+    auth.signIn()
+    auth.signOut()
+    check(auth.status.value == PyreonOidcStatus.SIGNED_OUT && auth.accessToken.value == null) { "signed out locally" }
+    check(p.revoked == listOf(
+        mapOf("token" to "rt-0", "client_id" to "app", "token_type_hint" to "refresh_token"),
+        mapOf("token" to "at-0", "client_id" to "app", "token_type_hint" to "access_token"),
+    )) { "refresh then access token revoked (RFC 7009): ${p.revoked}" }
+
+    // A refused revocation still signs out; nothing is revoked when the provider advertises no endpoint.
+    val refused = FakeProvider()
+    refused.revocationStatus = 400
+    val r = make(refused, MemStore(), FakeBrowser(refused))
+    r.signIn()
+    r.signOutNow()
+    check(r.status.value == PyreonOidcStatus.SIGNED_OUT && refused.revoked.size == 2) { "a refused revocation still signs out" }
+    val plain = FakeProvider()
+    val n = make(plain, MemStore(), FakeBrowser(plain))
+    n.signIn()
+    n.signOutNow()
+    check(plain.requests.none { it.endsWith("/revoke") }) { "no revocation without an advertised endpoint" }
+}
+
+fun testSignOutRevokesEveryInstancesTokens() {
+    // A sibling refreshed (and rotated) the session: the instance signing out holds only the spent
+    // tokens; the live ones are in the sibling and the store, and must be revoked too.
+    val p = FakeProvider()
+    p.revocationStatus = 200
+    p.rotateRefresh = true
+    val store = MemStore()
+    val b = FakeBrowser(p)
+    val a = make(p, store, b)
+    a.signIn()
+    val sibling = make(p, store, b)
+    sibling.refreshNow()
+    check(sibling.accessToken.value == "at-1") { "the sibling refreshed: ${sibling.error.value}" }
+    a.signOutNow()
+    val revoked = p.revoked.map { it["token"] }.toSet()
+    check(revoked == setOf("rt-0", "at-0", "rt-1", "at-1")) { "every instance's and the store's tokens revoked: $revoked" }
+    check(sibling.status.value == PyreonOidcStatus.SIGNED_OUT) { "the sibling signed out" }
+
+    // The instance signing out holds nothing, a sibling does: still revoked (no early return).
+    val p2 = FakeProvider()
+    p2.revocationStatus = 200
+    val s2 = MemStore()
+    val empty = make(p2, s2, FakeBrowser(p2))
+    val holder = make(p2, s2, FakeBrowser(p2))
+    holder.signIn()
+    empty.signOut()
+    check(p2.revoked.map { it["token"] }.toSet() == setOf("rt-0", "at-0")) { "revoked from the sibling: ${p2.revoked}" }
+    check(holder.status.value == PyreonOidcStatus.SIGNED_OUT) { "the holder signed out" }
+}
+
+fun testTokensLandingAfterSignOutAreRevoked() {
+    // A code exchange still in flight when the user signs out: its tokens are revoked, not dropped.
+    val p = FakeProvider()
+    p.revocationStatus = 200
+    val auth = make(p, MemStore(), FakeBrowser(p))
+    p.duringToken = { auth.signOut() }
+    auth.signIn()
+    check(auth.status.value == PyreonOidcStatus.SIGNED_OUT && auth.accessToken.value == null) { "the late sign-in is discarded" }
+    check(p.revoked.map { it["token"] }.toSet() == setOf("rt-0", "at-0")) { "its tokens revoked: ${p.revoked}" }
+
+    // A refresh in flight: sign-out revokes what the session held, the refresh's new tokens when they land.
+    val r = FakeProvider()
+    r.revocationStatus = 200
+    r.rotateRefresh = true
+    val ra = make(r, MemStore(), FakeBrowser(r))
+    ra.signIn()
+    r.duringToken = { ra.signOut() }
+    ra.refreshNow()
+    check(ra.status.value == PyreonOidcStatus.SIGNED_OUT && ra.accessToken.value == null) { "the late refresh is discarded" }
+    check(r.revoked.map { it["token"] }.toSet() == setOf("rt-0", "at-0", "rt-1", "at-1")) { "held and late tokens revoked: ${r.revoked}" }
+}
+
+fun testSignOutStaysInItsStore() {
+    // A session is defined by where it is persisted: the same client and issuer over two different
+    // stores are two sessions, and a sign-out in one neither signs out nor revokes the other.
+    val p = FakeProvider()
+    p.revocationStatus = 200
+    p.uniqueRefreshTokens = true
+    val b = FakeBrowser(p)
+    val mine = make(p, MemStore(), b)
+    val theirs = make(p, MemStore(), b)
+    mine.signIn() // rt-c1
+    theirs.signIn() // rt-c2
+    mine.signOutNow()
+    check(theirs.status.value == PyreonOidcStatus.SIGNED_IN && theirs.accessToken.value != null) {
+        "the other store's session stays signed in: ${theirs.status.value}"
+    }
+    val revoked = p.revoked.mapNotNull { it["token"] }
+    check("rt-c1" in revoked) { "this store's refresh token is revoked: $revoked" }
+    check("rt-c2" !in revoked) { "the other store's refresh token is not revoked: $revoked" }
+    theirs.signOutNow()
+
+    // Two backend OBJECTS over one location are one store: a sibling there still signs out.
+    val shared = HashMap<String, String>()
+    val q = FakeProvider()
+    q.revocationStatus = 200
+    val qb = FakeBrowser(q)
+    val one = make(q, LocatedStore("test:shared", shared), qb)
+    one.signIn()
+    val two = make(q, LocatedStore("test:shared", shared), qb)
+    check(two.status.value == PyreonOidcStatus.SIGNED_IN) { "restored through the second backend object" }
+    one.signOutNow()
+    check(two.status.value == PyreonOidcStatus.SIGNED_OUT && two.accessToken.value == null) { "the sibling over the same location signed out" }
+}
+
+fun testSignOutReachesOtherInstances() {
+    // Two containers over one stored session (an Activity recreated, two useOidc calls): a sign-out
+    // in one removes the record both read, so the other signs out too — it must not keep serving
+    // a token the user signed out of, nor refresh it back.
+    val p = FakeProvider()
+    val store = MemStore()
+    val b = FakeBrowser(p)
+    val a = make(p, store, b)
+    a.signIn()
+    val other = make(p, store, b)
+    check(other.status.value == PyreonOidcStatus.SIGNED_IN) { "the second instance restored the session" }
+    a.signOut()
+    check(other.status.value == PyreonOidcStatus.SIGNED_OUT && other.accessToken.value == null && other.subject.value == null) {
+        "the other instance signed out: ${other.status.value}"
+    }
+    val tokenCalls = p.requests.count { it.endsWith("/token") }
+    other.refreshNow()
+    check(other.status.value != PyreonOidcStatus.SIGNED_IN && p.requests.count { it.endsWith("/token") } == tokenCalls) { "and cannot refresh back" }
+    // Another provider's instance (another stored session) is untouched.
+    val elsewhere = PyreonOidcAuth(
+        issuer = ISS, clientId = "other-app", redirectUri = "com.example.app:/oauth2",
+        store = store, browser = b, transport = p, executor = INLINE,
+    )
+    val otherProvider = FakeProvider()
+    val c = make(otherProvider, MemStore(), FakeBrowser(otherProvider))
+    c.signIn()
+    elsewhere.signOut()
+    check(c.status.value == PyreonOidcStatus.SIGNED_IN) { "an instance of another stored session stays signed in" }
+    c.signOut()
+    elsewhere.dispose()
+}
+
 fun main() {
     testTokenEndpointHttpsAtUse()
     testUrlConnectionTransport()
@@ -627,5 +788,10 @@ fun main() {
     testNoAdoptionWithoutSubject()
     testExpiredTokenNeverExposed()
     testFreshAccessTokenRefusesMainThread()
+    testSignOutRevokesTokens()
+    testSignOutReachesOtherInstances()
+    testSignOutRevokesEveryInstancesTokens()
+    testTokensLandingAfterSignOutAreRevoked()
+    testSignOutStaysInItsStore()
     println("[PyreonOidcAuthTest] all smoke tests passed")
 }

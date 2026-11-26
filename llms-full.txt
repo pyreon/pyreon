@@ -2348,6 +2348,8 @@ session.refreshToken = t.refresh_token ?? session.refreshToken
 const url = endSessionUrl(meta, { idTokenHint: tokens.id_token, postLogoutRedirectUri: 'https://app.example/' })
 if (url) location.assign(url)
 
+if (meta.revocation_endpoint) await revokeToken(meta, { clientId: 'app' }, tokens.refresh_token, { tokenTypeHint: 'refresh_token' })
+
 const jwks = createJwksCache(meta)
 const claims = await verifyIdToken(idToken, jwks, meta, { clientId: 'bff', nonce })
 
@@ -2366,6 +2368,9 @@ const client = withPreset(google, { clientId: 'app', redirectUri: 'https://app.e
 const auth = createAuth({ metadata: facebook('v20.0'), client, flows, binding, redirect })
 
 const meta = oauth2('https://git.example', 'https://git.example/oauth/authorize', 'https://git.example/oauth/token')
+
+const r = await verifyTotpWithMigration(user.totpSecret, input, { lastUsedStep: user.lastTotpStep })
+if (r.ok && r.reEnrol) await offerReEnrolment(r.reEnrol) // swap the secret only after the user proves it
 
 const code = await totp(secret)
 

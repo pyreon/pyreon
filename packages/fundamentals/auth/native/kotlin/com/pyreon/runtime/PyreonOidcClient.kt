@@ -80,6 +80,8 @@ public data class PyreonOidcMetadata(
     val endSessionEndpoint: String? = null,
     /** RFC 9207 — the provider sends `iss` on the redirect. */
     val issParameterSupported: Boolean = false,
+    /** RFC 7009 token revocation; `signOut()` revokes the session's tokens there when present. */
+    val revocationEndpoint: String? = null,
 )
 
 /** A validated token-endpoint response. */
@@ -127,7 +129,7 @@ public object PyreonOidcClient {
         }
         PyreonAuthUrl.assertHttps(auth)
         PyreonAuthUrl.assertHttps(token)
-        for (k in listOf("jwks_uri", "userinfo_endpoint", "end_session_endpoint")) {
+        for (k in listOf("jwks_uri", "userinfo_endpoint", "end_session_endpoint", "revocation_endpoint")) {
             val v = m[k]
             if (v == null || v === PyreonJsonNull) continue
             if (v !is String) throw PyreonAuthError("insecure_url", "$k is not a URL")
@@ -140,7 +142,28 @@ public object PyreonOidcClient {
             jwksUri = m["jwks_uri"] as? String,
             endSessionEndpoint = m["end_session_endpoint"] as? String,
             issParameterSupported = m["authorization_response_iss_parameter_supported"] == true,
+            revocationEndpoint = m["revocation_endpoint"] as? String,
         )
+    }
+
+    private fun formBody(form: List<Pair<String, String>>): String =
+        form.joinToString("&") { "${URLEncoder.encode(it.first, "UTF-8")}=${URLEncoder.encode(it.second, "UTF-8")}" }
+
+    /**
+     * Revoke a token at the provider (RFC 7009; public client: `client_id`, no secret) — the web
+     * `revokeToken`, with its error codes: `no_revocation_endpoint`, `provider_unavailable` (429 /
+     * 5xx), `revocation_failed` (any other refusal), `network_error`.
+     */
+    public fun revoke(meta: PyreonOidcMetadata, clientId: String, token: String, tokenTypeHint: String?, transport: PyreonAuthTransport) {
+        val endpoint = meta.revocationEndpoint ?: throw PyreonAuthError("no_revocation_endpoint", "the provider advertises no revocation_endpoint")
+        // The POST carries a live token: never over cleartext.
+        PyreonAuthUrl.assertHttps(endpoint)
+        val form = listOf("token" to token, "client_id" to clientId) + listOfNotNull(tokenTypeHint?.let { "token_type_hint" to it })
+        val res = send(transport,
+            PyreonAuthRequest.post(endpoint, formBody(form), mapOf("content-type" to "application/x-www-form-urlencoded", "accept" to "application/json")),
+        )
+        if (res.status == 429 || res.status >= 500) throw PyreonAuthError("provider_unavailable", "revocation endpoint returned ${res.status}")
+        if (!res.isOk) throw PyreonAuthError("revocation_failed", "revocation endpoint returned ${res.status}")
     }
 
     /** POST to the token endpoint and validate the response — the same rules as the web `postToken`. */
@@ -148,7 +171,7 @@ public object PyreonOidcClient {
         // The POST carries the code + verifier (or a refresh token): https at USE, like
         // the web, because metadata built directly never went through discovery.
         PyreonAuthUrl.assertHttps(meta.tokenEndpoint)
-        val body = form.joinToString("&") { "${URLEncoder.encode(it.first, "UTF-8")}=${URLEncoder.encode(it.second, "UTF-8")}" }
+        val body = formBody(form)
         val res = send(transport, 
             PyreonAuthRequest.post(
                 meta.tokenEndpoint,

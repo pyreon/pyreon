@@ -2,8 +2,8 @@
  * Session lifecycle after sign-in: the JWKS cache (key rotation), token refresh,
  * provider logout, session revocation and the attempt limiter. Real ES256 keys.
  */
-import { afterEach, describe, expect, it } from 'vitest'
-import { createAttemptLimiter, createAuth, createJwksCache, endSessionUrl, memoryFlowStore, refreshTokens, signSession, verifySession } from '../index'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createAttemptLimiter, createAuth, createJwksCache, discover, endSessionUrl, memoryFlowStore, refreshTokens, revokeToken, signSession, verifySession } from '../index'
 import { base64url } from '../pkce'
 import { tokenKid } from '../jwt'
 import type { FetchLike, Jwk, OidcMetadata } from '../index'
@@ -143,14 +143,31 @@ describe('refreshTokens / endSessionUrl', () => {
 
 /** A fake provider that can sign in, refresh and rotate its signing key. */
 async function provider(
-  opts: { refreshSub?: string; refreshRotates?: boolean; refreshStatus?: number; noRefreshToken?: boolean; minRefreshMs?: number } = {},
+  opts: {
+    refreshSub?: string
+    refreshRotates?: boolean
+    refreshStatus?: number
+    noRefreshToken?: boolean
+    minRefreshMs?: number
+    /** Advertise a revocation_endpoint answering with this status (or hanging, for 'hang'). */
+    revoke?: number | 'hang'
+  } = {},
 ) {
   let kp = await keypair('k1')
   let nonce = ''
   let refreshes = 0
   let jwksCalls = 0
+  const revocations: Record<string, string>[] = []
   const f: FetchLike = async (u, init) => {
-    if (u.endsWith('openid-configuration')) return json(meta)
+    if (u.endsWith('openid-configuration')) return json(opts.revoke === undefined ? meta : { ...meta, revocation_endpoint: `${issuer}/revoke` })
+    if (u.endsWith('/revoke')) {
+      revocations.push(Object.fromEntries(new URLSearchParams(String(init?.body))))
+      if (opts.revoke === 'hang') {
+        return new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))))
+      }
+
+      return new Response('', { status: opts.revoke ?? 404 })
+    }
     if (u.endsWith('/jwks')) {
       jwksCalls++
       return json({ keys: [kp.jwk] })
@@ -196,6 +213,7 @@ async function provider(
     before,
     rotateKey: async () => (kp = await keypair('k2')),
     jwksCalls: () => jwksCalls,
+    revocations,
   }
 }
 
@@ -275,12 +293,148 @@ describe('createAuth — after sign-in', () => {
     expect(u.searchParams.get('post_logout_redirect_uri')).toBe('https://app.example/')
   })
 
+  it('signOut() revokes the refresh and access tokens when the provider advertises revocation (RFC 7009)', async () => {
+    const { auth, revocations } = await provider({ revoke: 200 })
+    const result = auth.signOut()
+    // The local session is gone at once, before the provider answers.
+    expect(auth.status()).toBe('signedOut')
+    expect(auth.tokens()).toBeNull()
+    expect(await result).toEqual({ revoked: true, error: null })
+    expect(revocations).toEqual([
+      { token: 'rt0', client_id: 'app', token_type_hint: 'refresh_token' },
+      { token: 'at0', client_id: 'app', token_type_hint: 'access_token' },
+    ])
+  })
+
+  it('a refused or unavailable revocation still signs out locally, and says so', async () => {
+    const refused = await provider({ revoke: 400 })
+    const r = await refused.auth.signOut()
+    expect(refused.auth.status()).toBe('signedOut')
+    expect(r.revoked).toBe(false)
+    expect(r.error?.code).toBe('revocation_failed')
+    expect((await (await provider({ revoke: 503 })).auth.signOut()).error?.code).toBe('provider_unavailable')
+  })
+
+  it('revokeTokens: false, or no advertised endpoint, stays local', async () => {
+    const opted = await provider({ revoke: 200 })
+    expect(await opted.auth.signOut({ revokeTokens: false })).toEqual({ revoked: false, error: null })
+    expect(opted.revocations).toHaveLength(0)
+    const none = await provider()
+    expect(await none.auth.signOut()).toEqual({ revoked: false, error: null })
+  })
+
+  it('the provider-logout redirect waits for the revocation, and a hung provider cannot hold it', async () => {
+    const p = await provider({ revoke: 200 })
+    const n = p.redirects.length
+    const done = p.auth.signOut({ endProviderSession: true })
+    expect(p.redirects).toHaveLength(n) // not yet: the tokens are being revoked
+    await done
+    expect(new URL(p.redirects.at(-1)!).pathname).toBe('/logout')
+
+    vi.useFakeTimers()
+    try {
+      const hung = await provider({ revoke: 'hang' })
+      const m = hung.redirects.length
+      const r = hung.auth.signOut({ endProviderSession: true })
+      await vi.advanceTimersByTimeAsync(5000)
+      expect((await r).error?.code).toBe('network_error')
+      expect(new URL(hung.redirects.at(-1)!).pathname).toBe('/logout')
+      expect(hung.redirects).toHaveLength(m + 1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a sign-in started while the revocation runs is not navigated away by the provider logout', async () => {
+    const p = await provider({ revoke: 200 })
+    const done = p.auth.signOut({ endProviderSession: true })
+    await p.auth.signIn()
+    await done
+    expect(p.redirects.filter((u) => new URL(u).pathname === '/logout')).toHaveLength(0)
+  })
+
+  it('revokeToken refuses cleartext and a provider without the endpoint; discovery checks it is https', async () => {
+    await expect(revokeToken(meta, { clientId: 'app' }, 't')).rejects.toMatchObject({ code: 'no_revocation_endpoint' })
+    await expect(revokeToken({ ...meta, revocation_endpoint: 'http://idp.example/revoke' }, { clientId: 'app' }, 't')).rejects.toMatchObject({ code: 'insecure_url' })
+    const f: FetchLike = () => json({ ...meta, revocation_endpoint: 'http://idp.example/revoke' })
+    await expect(discover(issuer, f)).rejects.toMatchObject({ code: 'insecure_url' })
+  })
+
   it('plain signOut() stays local', async () => {
     const { auth, redirects } = await provider()
     const n = redirects.length
     auth.signOut()
     expect(auth.status()).toBe('signedOut')
     expect(redirects).toHaveLength(n)
+  })
+})
+
+describe('signOut overtaking a token response in flight', () => {
+  // No ID token, explicit metadata: the race is about the token endpoint alone.
+  function setup() {
+    const m: OidcMetadata = { issuer, authorization_endpoint: `${issuer}/auth`, token_endpoint: `${issuer}/token`, revocation_endpoint: `${issuer}/revoke` }
+    const revoked: string[] = []
+    let release = () => {}
+    let gate: Promise<void> | null = null
+    let n = 0
+    const f: FetchLike = async (u, init) => {
+      const body = new URLSearchParams(String(init?.body))
+      if (u.endsWith('/revoke')) {
+        revoked.push(body.get('token')!)
+
+        return new Response('', { status: 200 })
+      }
+      if (gate) await gate
+      n++
+      const rotated = body.get('grant_type') === 'refresh_token'
+
+      return json({ access_token: `at${n}`, token_type: 'Bearer', refresh_token: rotated ? `rt-rotated${n}` : `rt${n}` })
+    }
+    const redirects: string[] = []
+    const auth = createAuth({ metadata: m, client: { clientId: 'app', redirectUri: 'https://app.example/cb' }, flows: memoryFlowStore(), binding: 'b', redirect: (u) => redirects.push(u), fetch: f })
+    const hold = () => (gate = new Promise<void>((r) => (release = () => { gate = null; r() })))
+    const callback = async () => {
+      await auth.signIn()
+
+      return `https://app.example/cb?code=c&state=${new URL(redirects.at(-1)!).searchParams.get('state')}`
+    }
+
+    return { auth, revoked, hold, release: () => release(), callback }
+  }
+
+  it('a code exchange that lands after signOut is revoked, not dropped while valid', async () => {
+    const s = setup()
+    const cb = await s.callback()
+    s.hold()
+    const landing = s.auth.handleCallback(cb)
+    expect(await s.auth.signOut()).toEqual({ revoked: false, error: null }) // nothing held yet
+    s.release()
+    await landing
+    expect(s.auth.status()).toBe('signedOut')
+    expect(s.auth.tokens()).toBeNull()
+    await vi.waitFor(() => expect(s.revoked.sort()).toEqual(['at1', 'rt1']))
+  })
+
+  it('a refresh that lands after signOut has its new tokens revoked too', async () => {
+    const s = setup()
+    await s.auth.handleCallback(await s.callback())
+    s.hold()
+    const refreshing = s.auth.refresh()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(await s.auth.signOut()).toEqual({ revoked: true, error: null }) // the tokens it held: at1 / rt1
+    s.release()
+    await refreshing
+    expect(s.auth.tokens()).toBeNull()
+    await vi.waitFor(() => expect(s.revoked.sort()).toEqual(['at1', 'at2', 'rt-rotated2', 'rt1']))
+  })
+
+  it('a refresh that is committed revokes nothing', async () => {
+    const s = setup()
+    await s.auth.handleCallback(await s.callback())
+    await s.auth.refresh()
+    expect(s.auth.tokens()?.access_token).toBe('at2')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(s.revoked).toEqual([])
   })
 })
 

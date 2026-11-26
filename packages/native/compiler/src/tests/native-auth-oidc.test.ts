@@ -169,4 +169,17 @@ export function A() {
 `
     expect(transform(src, { target: 'swift' }).warnings.join('\n')).toMatch(/take `postLogoutRedirectUri` once, in the useOidc options/)
   })
+
+  it('revokeTokens on signOut is reported: native always revokes when the provider advertises it', () => {
+    const src = `import { useOidc } from '@pyreon/auth'
+import { Button } from '@pyreon/primitives'
+export function A() {
+  const auth = useOidc({ issuer: 'https://idp.example', clientId: 'a', redirectUri: 'x:/cb' })
+  return <Button onPress={() => auth.signOut({ revokeTokens: false })}>out</Button>
+}
+`
+    for (const target of ['swift', 'kotlin'] as const) {
+      expect(transform(src, { target }).warnings.join('\n')).toMatch(/native sign-out always revokes the tokens/)
+    }
+  })
 })

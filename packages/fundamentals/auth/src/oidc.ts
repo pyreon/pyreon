@@ -7,6 +7,8 @@ export interface OidcMetadata {
   jwks_uri?: string
   userinfo_endpoint?: string
   end_session_endpoint?: string
+  /** RFC 7009 token revocation. When advertised, `signOut()` revokes the session's tokens there. */
+  revocation_endpoint?: string
   /** RFC 9207 — the AS advertises that it sends `iss` on the redirect. */
   authorization_response_iss_parameter_supported?: boolean
 }
@@ -131,7 +133,7 @@ export async function discover(issuer: string, fetchImpl: FetchLike = (i, o) => 
   assertHttps(meta.token_endpoint, 'token_endpoint')
   // Optional endpoints must be https too when present. jwks_uri matters most:
   // it is where the ID-token signing keys come from.
-  for (const k of ['jwks_uri', 'userinfo_endpoint', 'end_session_endpoint'] as const) {
+  for (const k of ['jwks_uri', 'userinfo_endpoint', 'end_session_endpoint', 'revocation_endpoint'] as const) {
     const v = meta[k]
     if (v !== undefined) assertHttps(String(v), k)
   }
@@ -386,6 +388,40 @@ export function refreshTokens(
   fetchImpl: FetchLike = (i, o) => fetch(i, o),
 ): Promise<TokenResponse> {
   return postToken(meta, { grant_type: 'refresh_token', refresh_token: refreshToken, client_id: client.clientId }, fetchImpl)
+}
+
+/**
+ * Revoke a token at the provider (RFC 7009) — a public client, so the request carries `client_id`
+ * and no secret. Revoking the refresh token also ends the access tokens of its grant at most
+ * providers (RFC 7009 §2.1); `signOut()` revokes both anyway. The provider answers 200 for a token
+ * it does not know, so success means "not usable any more", not "was valid". Throws
+ * `no_revocation_endpoint` when the provider advertises none, `provider_unavailable` on 429 / 5xx,
+ * `revocation_failed` on any other refusal, `network_error` when it cannot be reached.
+ */
+export async function revokeToken(
+  meta: OidcMetadata,
+  client: Pick<ClientConfig, 'clientId'>,
+  token: string,
+  opts: { tokenTypeHint?: 'refresh_token' | 'access_token' | undefined; fetch?: FetchLike | undefined; signal?: AbortSignal | undefined } = {},
+): Promise<void> {
+  const { tokenTypeHint, signal } = opts
+  const fetchImpl = opts.fetch ?? ((i, o) => fetch(i, o))
+  if (!meta.revocation_endpoint) throw new AuthError('no_revocation_endpoint', 'the provider advertises no revocation_endpoint')
+  // The POST carries a live token: never over cleartext.
+  assertHttps(meta.revocation_endpoint, 'revocation_endpoint')
+  const body: Record<string, string> = { token, client_id: client.clientId }
+  if (tokenTypeHint) body.token_type_hint = tokenTypeHint
+  const res = await send(fetchImpl, meta.revocation_endpoint, {
+    method: 'POST',
+    redirect: 'error',
+    // A sign-out that navigates away (provider logout) must not cancel the request in a browser.
+    keepalive: true,
+    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+    body: new URLSearchParams(body),
+    ...(signal ? { signal } : {}),
+  })
+  if (res.status === 429 || res.status >= 500) throw new AuthError('provider_unavailable', `revocation endpoint returned ${res.status}`)
+  if (!res.ok) throw new AuthError('revocation_failed', `revocation endpoint returned ${res.status}`)
 }
 
 /**

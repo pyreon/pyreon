@@ -23,7 +23,13 @@ import java.util.concurrent.TimeoutException
 //     finishing (back button, closed tab) — that is a cancellation, reported at once instead
 //     of leaving sign-in hanging for the flow's ten minutes.
 //   - PyreonAuthRedirectActivity (exported, on the redirect scheme) receives the provider's
-//     redirect and hands it to PyreonAuthActivity, which completes the waiting sign-in.
+//     redirect and hands it to PyreonAuthActivity, which completes the waiting sign-in. Being
+//     exported, any installed app can start it with any data, so it forwards only the answer to
+//     the request in flight (PyreonRedirect.answers: the same redirect target and the request's
+//     `state`) and drops everything else — another app can no longer cancel or feed a sign-in.
+//     It cannot stop another app that registers the same custom SCHEME from receiving the real
+//     redirect instead (PKCE is then the defence): use a verified App Link (https redirect URI,
+//     android:autoVerify="true") so that only this app can receive it.
 //
 // The host app declares both in AndroidManifest.xml (sources are wired, not an AAR, so there
 // is no manifest to merge from):
@@ -39,9 +45,13 @@ import java.util.concurrent.TimeoutException
 //     </intent-filter>
 //   </activity>
 
+/** One browser request in flight: where it must come back, and what it was. */
+internal class PyreonAuthBrowserRequest(val result: CompletableFuture<String>, val url: String, val redirectUri: String)
+
 /** The one sign-in in flight. One at a time: a new attempt supersedes the last. */
 internal object PyreonAuthPending {
-    @Volatile var result: CompletableFuture<String>? = null
+    @Volatile var request: PyreonAuthBrowserRequest? = null
+    val result: CompletableFuture<String>? get() = request?.result
 }
 
 /** A browser for sign-in: a Custom Tab when the browser supports it, the default browser otherwise. */
@@ -50,8 +60,9 @@ public class PyreonActivityAuthBrowser(context: Context) : PyreonAuthBrowser {
 
     override fun authorize(url: String, redirectUri: String): String {
         val pending = CompletableFuture<String>()
+        val request = PyreonAuthBrowserRequest(pending, url, redirectUri)
         PyreonAuthPending.result?.completeExceptionally(PyreonAuthCancelled())
-        PyreonAuthPending.result = pending
+        PyreonAuthPending.request = request
         app.startActivity(
             Intent(app, PyreonAuthActivity::class.java)
                 .putExtra(PyreonAuthActivity.EXTRA_URL, url)
@@ -64,7 +75,7 @@ public class PyreonActivityAuthBrowser(context: Context) : PyreonAuthBrowser {
         } catch (_: TimeoutException) {
             throw PyreonAuthCancelled()
         } finally {
-            if (PyreonAuthPending.result === pending) PyreonAuthPending.result = null
+            if (PyreonAuthPending.request === request) PyreonAuthPending.request = null
         }
     }
 }
@@ -121,15 +132,26 @@ public class PyreonAuthActivity : Activity() {
     }
 }
 
-/** Receives the provider redirect on the app's scheme and returns it to [PyreonAuthActivity]. */
+/**
+ * Receives the provider redirect on the app's scheme and returns it to [PyreonAuthActivity]. It is
+ * exported, so it forwards only the answer to the request in flight ([PyreonRedirect.answers]):
+ * an intent from another app without that request's `state` (or with no data at all) is dropped
+ * and neither cancels nor completes the sign-in.
+ */
 public class PyreonAuthRedirectActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        startActivity(
-            Intent(this, PyreonAuthActivity::class.java)
-                .setData(intent.data)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-        )
+        val data = intent?.data
+        val request = PyreonAuthPending.request
+        if (intent?.action == Intent.ACTION_VIEW && request != null &&
+            PyreonRedirect.answers(data?.toString(), request.url, request.redirectUri)
+        ) {
+            startActivity(
+                Intent(this, PyreonAuthActivity::class.java)
+                    .setData(data)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            )
+        }
         finish()
     }
 }

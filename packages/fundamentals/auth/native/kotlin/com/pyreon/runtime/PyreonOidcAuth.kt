@@ -24,6 +24,29 @@ import java.util.concurrent.atomic.AtomicInteger
 // browser call blocks that background thread until the redirect arrives.
 
 /**
+ * The live containers, by stored-session key (client and issuer), so a sign-out reaches every
+ * instance over the session it removes (filtered further by store: see `sharesStoreWith`). Weak: an instance the app drops is not kept alive, and a
+ * collected one is pruned on every access to its key (a key with none left is removed), so the
+ * map is bounded by the live instances.
+ */
+internal object PyreonOidcInstances {
+    private val live = HashMap<String, MutableList<java.lang.ref.WeakReference<PyreonOidcAuth>>>()
+
+    fun add(key: String, auth: PyreonOidcAuth): Unit = synchronized(this) {
+        val list = live.getOrPut(key) { ArrayList() }
+        list.removeAll { it.get() == null }
+        list.add(java.lang.ref.WeakReference(auth))
+    }
+
+    fun others(key: String, auth: PyreonOidcAuth): List<PyreonOidcAuth> = synchronized(this) {
+        val list = live[key] ?: return emptyList()
+        list.removeAll { it.get() == null }
+        if (list.isEmpty()) live.remove(key)
+        list.mapNotNull { it.get() }.filter { it !== auth }
+    }
+}
+
+/**
  * The four session states. `status` is a String on every target — exactly the spelling the web
  * `status()` returns — so shared source can render it AND compare it (`auth.status() === 'signedIn'`);
  * an enum would not compile there.
@@ -115,6 +138,7 @@ public class PyreonOidcAuth(
     @Volatile private var launchRefreshPending = false
 
     init {
+        PyreonOidcInstances.add(sessionKey, this)
         if (!redirectUriValid) {
             // A misconfiguration fails at construction, visibly, not at every sign-in.
             status.value = PyreonOidcStatus.ERROR
@@ -171,9 +195,37 @@ public class PyreonOidcAuth(
         // On a redirect URI another provider also uses, only `iss` says who answered: require it.
         val (code, flow) = PyreonAuthCore(store).complete(callback, m.issuer, m.issParameterSupported || redirectClaim.isShared)
         val t = PyreonOidcClient.exchangeCode(m, clientId, flow, code, transport)
-        val verified = verify(m, t.idToken, flow.nonce)
-        if (my != epoch.get()) return
-        commit(t, t.refreshToken, verified)
+        try {
+            val verified = verify(m, t.idToken, flow.nonce)
+            if (my != epoch.get()) {
+                // A sign-out (or a newer attempt) overtook this exchange: the tokens are never used.
+                discardIssued(m, t)
+                return
+            }
+            commit(t, t.refreshToken, verified)
+        } catch (e: Throwable) {
+            discardIssued(m, t)
+            throw e
+        }
+    }
+
+    /**
+     * A token response that arrived but will never be used — a sign-out or a newer attempt
+     * overtook the request, or its ID token failed — is revoked at the provider (best effort, in
+     * the background) instead of being dropped while still valid. Only the tokens THIS response
+     * issued, never one the live session holds (a refresh that did not rotate returns none).
+     */
+    private fun discardIssued(m: PyreonOidcMetadata, t: PyreonTokenSet) {
+        if (m.revocationEndpoint == null) return
+        val live = setOf(rawAccessToken.value, refreshToken)
+        val issued = listOfNotNull(
+            t.refreshToken?.takeIf { it !in live }?.let { it to "refresh_token" },
+            t.accessToken.takeIf { it.isNotEmpty() && it !in live }?.let { it to "access_token" },
+        )
+        if (issued.isEmpty()) return
+        executor.execute {
+            for ((token, hint) in issued) runCatching { PyreonOidcClient.revoke(m, clientId, token, hint, transport) }
+        }
     }
 
     /**
@@ -278,10 +330,13 @@ public class PyreonOidcAuth(
         // epoch) and no other commit (the session generation).
         val gen = sessionGen
         fun stillCurrent() = my == epoch.get() && gen == sessionGen
+        // The response this refresh received, until it is committed or kept (see discardIssued).
+        var issued: Pair<PyreonOidcMetadata, PyreonTokenSet>? = null
         try {
             val current = refreshToken ?: throw PyreonAuthError("no_refresh_token", "no refresh token — sign in again")
             val m = metadata()
             val t = PyreonOidcClient.refresh(m, clientId, current, transport)
+            issued = m to t
             // A refreshed ID token carries no nonce (OIDC Core §12.2) but must name the same user.
             val verified = try {
                 verify(m, t.idToken, null)
@@ -290,17 +345,21 @@ public class PyreonOidcAuth(
                 // even though the new ID token cannot be checked right now, or the retry would
                 // present the spent token and a provider with reuse detection would revoke the family.
                 if (e.code !in PyreonAuthError.TRANSIENT_REFRESH_CODES) throw e
-                if (stillCurrent()) keepRotated(t, t.refreshToken ?: current, e.code)
+                if (stillCurrent()) keepRotated(t, t.refreshToken ?: current, e.code) else discardIssued(m, t)
                 return
             }
             val sub = subject.value
             if (verified != null && sub != null && verified["sub"] != sub) {
                 throw PyreonAuthError("subject_changed", "refreshed id_token is for a different user")
             }
-            if (!stillCurrent()) return
+            if (!stillCurrent()) {
+                discardIssued(m, t)
+                return
+            }
             // Providers may rotate the refresh token; keep the old one when they do not.
             commit(t, t.refreshToken ?: current, verified ?: claims.value)
         } catch (e: Throwable) {
+            issued?.let { (m, t) -> discardIssued(m, t) }
             if (!stillCurrent()) return
             // Offline or the provider unavailable: keep the session (and the stored record) for a
             // retry — status `error` with the code, `refresh()` tries again. Only a refusal (the
@@ -325,26 +384,96 @@ public class PyreonOidcAuth(
     }
 
     /**
-     * Clear the session. With [endProviderSession], also end it AT THE PROVIDER (RP-initiated
-     * logout) — otherwise the next sign-in completes without a prompt.
+     * Clear the session — here and in every other live instance over the same stored session
+     * (same client and issuer), which shares the record this removes. Then, in the background,
+     * revoke its tokens at the provider when it advertises a `revocation_endpoint` (RFC 7009), and
+     * with [endProviderSession] also end the session AT THE PROVIDER (RP-initiated logout) —
+     * otherwise the next sign-in completes without a prompt.
      */
     public fun signOut(endProviderSession: Boolean = false) {
+        val held = beginSignOut()
+        if (held.isEmpty && !endProviderSession) return
+        executor.execute { finishSignOut(held, endProviderSession) }
+    }
+
+    /** [signOut], blocking until the provider work is done (tests). */
+    public fun signOutNow(endProviderSession: Boolean = false) {
+        finishSignOut(beginSignOut(), endProviderSession)
+    }
+
+    private class HeldTokens(val access: List<String>, val refresh: List<String>, val idToken: String?) {
+        val isEmpty: Boolean get() = access.isEmpty() && refresh.isEmpty()
+    }
+
+    /**
+     * Sign out here and in every other live instance over this stored session, collecting EVERY
+     * token any of them — or the stored record — holds first: an instance whose sibling refreshed
+     * (and rotated) the session may hold only the spent tokens, while the live ones are in the
+     * sibling and the store.
+     */
+    private fun beginSignOut(): HeldTokens {
+        val access = LinkedHashSet<String>()
+        val refresh = LinkedHashSet<String>()
+        var hint = idToken
+        fun take(a: String?, r: String?) {
+            if (!a.isNullOrEmpty()) access.add(a)
+            if (!r.isNullOrEmpty()) refresh.add(r)
+        }
+        take(rawAccessToken.value, refreshToken)
+        val stored = store.read(sessionKey)?.let { PyreonAuthJson.obj(it) }
+        if (stored != null && stored["issuer"] == issuer) {
+            take(stored["accessToken"] as? String, stored["refreshToken"] as? String)
+            if (hint == null) hint = stored["idToken"] as? String
+        }
+        val others = PyreonOidcInstances.others(sessionKey, this).filter { it.holdsSession && it.sharesStoreWith(this) }
+        for (o in others) {
+            take(o.rawAccessToken.value, o.refreshToken)
+            if (hint == null) hint = o.idToken
+        }
+        signOutLocally()
+        for (o in others) o.signOutLocally()
+        return HeldTokens(access.toList(), refresh.toList(), hint)
+    }
+
+    private val holdsSession: Boolean get() = rawAccessToken.value != null || refreshToken != null
+
+    /**
+     * Whether [other] keeps its session where this one does — a session is defined by where it is
+     * persisted: the same backend object, or two backends with the same non-null
+     * [PyreonSecureBackend.location] (on Android every `rememberPyreonOidcAuth` builds its own
+     * `KeystoreSecureBackend` over the one preferences file and key). Instances over different
+     * stores are different sessions and never sign each other out.
+     */
+    private fun sharesStoreWith(other: PyreonOidcAuth): Boolean {
+        if (store === other.store) return true
+        val here = store.location
+
+        return here != null && here == other.store.location
+    }
+
+    private fun signOutLocally() {
         signedOutExplicitly = true
         epoch.incrementAndGet()
-        val hint = idToken
         clear()
         error.value = null
         status.value = PyreonOidcStatus.SIGNED_OUT
-        if (!endProviderSession) return
-        val b = browser ?: return
-        executor.execute {
-            try {
-                // A session restored on relaunch was never discovered, so look the provider up
-                // now: skipping the logout there would leave the provider session alive.
-                val url = PyreonOidcClient.endSessionUrl(metadata(), hint, clientId, postLogoutRedirectUri) ?: return@execute
-                b.authorize(url, postLogoutRedirectUri ?: redirectUri)
-            } catch (_: Throwable) {}
-        }
+    }
+
+    private fun finishSignOut(held: HeldTokens, endProviderSession: Boolean) {
+        try {
+            // A session restored on relaunch was never discovered, so look the provider up now:
+            // skipping the revocation or the logout there would leave them undone.
+            val m = metadata()
+            if (m.revocationEndpoint != null) {
+                // The refresh token first: at most providers that also ends its grant's access tokens.
+                for (t in held.refresh) runCatching { PyreonOidcClient.revoke(m, clientId, t, "refresh_token", transport) }
+                for (t in held.access) runCatching { PyreonOidcClient.revoke(m, clientId, t, "access_token", transport) }
+            }
+            if (!endProviderSession) return
+            val b = browser ?: return
+            val url = PyreonOidcClient.endSessionUrl(m, held.idToken, clientId, postLogoutRedirectUri) ?: return
+            b.authorize(url, postLogoutRedirectUri ?: redirectUri)
+        } catch (_: Throwable) {}
     }
 
     // ---- internals ----

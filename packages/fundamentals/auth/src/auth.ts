@@ -12,6 +12,7 @@ import {
   redirectTarget,
   redirectUriProblem,
   refreshTokens,
+  revokeToken,
 } from './oidc'
 import type { ClientConfig, FetchLike, OidcMetadata, PendingFlow, TokenResponse } from './oidc'
 import { createJwksCache, verifyIdToken } from './jwt'
@@ -71,6 +72,27 @@ export interface SignOutOptions {
   endProviderSession?: boolean
   /** Where the provider sends the user afterwards (must be registered with it). */
   postLogoutRedirectUri?: string
+  /**
+   * Revoke the session's refresh and access tokens at the provider (RFC 7009) when it advertises a
+   * `revocation_endpoint`. Default true. Without it, a copied token stays usable until it expires
+   * (a refresh token often for weeks). The local session is cleared at once either way; the
+   * provider-logout redirect waits for the revocation (at most 5 s).
+   */
+  revokeTokens?: boolean
+}
+
+/** What `signOut()` did at the provider. The local session is always cleared. */
+export interface SignOutResult {
+  /**
+   * True when every token the session HELD when `signOut()` was called was revoked at the provider.
+   * False when nothing was revoked: no session, `revokeTokens: false`, no advertised
+   * `revocation_endpoint`, or a failure (`error`). A sign-in or refresh still in flight at sign-out
+   * is not covered: its token response, when it arrives, is discarded and revoked in the
+   * background (best effort, reported nowhere).
+   */
+  revoked: boolean
+  /** Why a revocation failed (`network_error`, `provider_unavailable`, `revocation_failed`), or null. */
+  error: AuthError | null
 }
 
 export interface Auth {
@@ -101,7 +123,12 @@ export interface Auth {
    * provider refuses it; the user must sign in again.
    */
   refresh(): Promise<void>
-  signOut(opts?: SignOutOptions): void
+  /**
+   * Clear the session (synchronously), revoke its tokens at the provider when it advertises a
+   * `revocation_endpoint` (RFC 7009), and with `endProviderSession` end the provider session too.
+   * Resolves when the provider work is done; local sign-out never fails.
+   */
+  signOut(opts?: SignOutOptions): Promise<SignOutResult>
   /**
    * Release this instance's claim on its redirect URI (see "one redirect URI per provider").
    * `useOidc` calls it when its scope is disposed; call it yourself for a `createAuth` you
@@ -208,6 +235,25 @@ export function createAuth(opts: AuthOptions): Auth {
     })
   }
 
+  /**
+   * A token response that arrived but will never be used — a sign-out or a newer attempt
+   * overtook the exchange or refresh that asked for it, or its ID token failed — is revoked at
+   * the provider (best effort, in the background) instead of being dropped while still valid.
+   * Only the tokens THIS response issued, never one the live session holds (a refresh that did
+   * not rotate returns no refresh token, and the session keeps using the old one).
+   */
+  const discardIssued = (m: OidcMetadata, t: TokenResponse): void => {
+    if (!m.revocation_endpoint) return
+    const held = tokens.peek()
+    const live = new Set([held?.access_token, held?.refresh_token])
+    const issued: [string, 'refresh_token' | 'access_token'][] = []
+    if (t.refresh_token && !live.has(t.refresh_token)) issued.push([t.refresh_token, 'refresh_token'])
+    if (t.access_token && !live.has(t.access_token)) issued.push([t.access_token, 'access_token'])
+    for (const [token, hint] of issued) {
+      revokeToken(m, opts.client, token, { tokenTypeHint: hint, fetch: opts.fetch }).catch(() => {})
+    }
+  }
+
   // The refresh in flight, and the session generation it was started for.
   let refreshing: { gen: number; done: Promise<void> } | undefined
   const doRefresh = async (): Promise<void> => {
@@ -217,11 +263,14 @@ export function createAuth(opts: AuthOptions): Auth {
     const my = epoch
     const gen = sessionGen
     const current_ = () => my === epoch && gen === sessionGen
+    // The response this refresh received, until it is committed or kept (see discardIssued).
+    let issued: { m: OidcMetadata; t: TokenResponse } | undefined
     try {
       const current = tokens.peek()
       if (!current?.refresh_token) throw new AuthError('no_refresh_token', 'no refresh token — sign in again')
       const m = await meta()
       const t = await refreshTokens(m, opts.client, current.refresh_token, opts.fetch)
+      issued = { m, t }
       // Providers may rotate the refresh token; keep the old one when they don't.
       const next: TokenResponse = { ...t, refresh_token: t.refresh_token ?? current.refresh_token }
       let verified = claims.peek()
@@ -244,6 +293,7 @@ export function createAuth(opts: AuthOptions): Auth {
               error.set(e)
               status.set('error')
             })
+            issued = undefined
 
             return
           }
@@ -254,9 +304,14 @@ export function createAuth(opts: AuthOptions): Auth {
         }
         verified = c
       }
-      if (!current_()) return
+      if (!current_()) {
+        discardIssued(m, t)
+
+        return
+      }
       commit(next, verified)
     } catch (e) {
+      if (issued) discardIssued(issued.m, issued.t)
       if (!current_()) return
       // A transient failure (offline, the provider down) keeps the session for a retry: status
       // `error` with the code, tokens and refresh token kept, so `refresh()` can try again.
@@ -269,6 +324,28 @@ export function createAuth(opts: AuthOptions): Auth {
       } else {
         fail(e)
       }
+    }
+  }
+
+  /**
+   * Revoke a signed-out session's tokens (RFC 7009): the refresh token first — at most providers that
+   * also ends the access tokens of its grant — then the access token. Bounded by a timeout, so a
+   * provider that never answers cannot hold up the logout redirect. Resolves to the first failure.
+   */
+  const revokeHeld = async (m: OidcMetadata, held: TokenResponse): Promise<AuthError | null> => {
+    const ctl = new AbortController()
+    const timer = setTimeout(() => ctl.abort(), REVOKE_TIMEOUT_MS)
+    try {
+      const results = await Promise.allSettled([
+        ...(held.refresh_token ? [revokeToken(m, opts.client, held.refresh_token, { tokenTypeHint: 'refresh_token', fetch: opts.fetch, signal: ctl.signal })] : []),
+        revokeToken(m, opts.client, held.access_token, { tokenTypeHint: 'access_token', fetch: opts.fetch, signal: ctl.signal }),
+      ])
+      const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+      if (!failed) return null
+
+      return failed.reason instanceof AuthError ? failed.reason : new AuthError('unknown', String(failed.reason))
+    } finally {
+      clearTimeout(timer)
     }
   }
 
@@ -301,6 +378,8 @@ export function createAuth(opts: AuthOptions): Auth {
     async handleCallback(url) {
       const my = ++epoch
       status.set('signingIn')
+      // The response the exchange received, until it is committed (see discardIssued).
+      let issued: { m: OidcMetadata; t: TokenResponse } | undefined
       try {
         const m = await meta()
         const href = callbackHref(url, opts.client.redirectUri)
@@ -322,13 +401,20 @@ export function createAuth(opts: AuthOptions): Auth {
         // On a redirect URI another provider also uses, only `iss` says who answered: require it.
         const { code } = parseCallback(href, flow, claim.shared() ? { ...m, authorization_response_iss_parameter_supported: true } : m, binding)
         const t = await exchangeCode(m, opts.client, flow, code, opts.fetch)
+        issued = { m, t }
         // An ID token is identity, so it must verify before the session counts:
         // signature, iss / aud / expiry, and THIS flow's nonce (which binds the
         // token to the browser that started it).
         const verified = t.id_token ? await verify(m, t.id_token, flow.nonce) : null
-        if (my !== epoch) return
+        if (my !== epoch) {
+          // A sign-out (or a newer attempt) overtook this exchange: the tokens are never used.
+          discardIssued(m, t)
+
+          return
+        }
         commit(t, verified)
       } catch (e) {
+        if (issued) discardIssued(issued.m, issued.t)
         if (my === epoch) fail(e)
       }
     },
@@ -352,21 +438,36 @@ export function createAuth(opts: AuthOptions): Auth {
       disposed = true
     },
     signOut(o) {
-      epoch++
-      const idToken = tokens.peek()?.id_token
+      const my = ++epoch
+      const held = tokens.peek()
+      const idToken = held?.id_token
       batch(() => {
         clear()
         error.set(null)
         status.set('signedOut')
       })
-      if (o?.endProviderSession && metaResolved) {
-        const url = endSessionUrl(metaResolved, {
+      const m = metaResolved
+      const endSession = () => {
+        // A sign-in started while the revocation ran owns the page now: do not navigate it away.
+        if (!o?.endProviderSession || !m || my !== epoch) return
+        const url = endSessionUrl(m, {
           ...(idToken ? { idTokenHint: idToken } : {}),
           clientId: opts.client.clientId,
           ...(o.postLogoutRedirectUri ? { postLogoutRedirectUri: o.postLogoutRedirectUri } : {}),
         })
         if (url) opts.redirect(url)
       }
+      if (!held || o?.revokeTokens === false || !m?.revocation_endpoint) {
+        endSession()
+
+        return Promise.resolve({ revoked: false, error: null })
+      }
+
+      return revokeHeld(m, held).then((e) => {
+        endSession()
+
+        return { revoked: e === null, error: e }
+      })
     },
   }
 }
@@ -388,6 +489,9 @@ function callbackHref(url: string, redirectUri: string): string {
 
 /** Refresh failures that keep the session for a retry: the provider could not be reached or was unavailable. */
 const TRANSIENT_REFRESH_ERRORS = new Set(['network_error', 'provider_unavailable', 'discovery_failed', 'jwks_failed'])
+
+/** How long `signOut()` waits for the provider to revoke the tokens before it moves on. */
+const REVOKE_TIMEOUT_MS = 5000
 
 /** Upper bound on pending flows a `memoryFlowStore` holds at once. */
 const MAX_PENDING_FLOWS = 1000

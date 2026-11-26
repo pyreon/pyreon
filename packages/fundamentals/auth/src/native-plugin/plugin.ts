@@ -251,7 +251,13 @@ function signOutCall(site: ReceiverSite, ctx: SwiftEmitContext | KotlinEmitConte
   let end: string | undefined
   for (const f of (arg as Extract<ExprIR, { kind: 'object' }>).fields) {
     if (f.name === 'endProviderSession') end = ctx.expr(f.value)
-    else {
+    else if (f.name === 'revokeTokens') {
+      ctx.warn(
+        `${site.receiver.name}.signOut({ revokeTokens }): native sign-out always revokes the tokens when the provider advertises a revocation_endpoint (RFC 7009) — leave the option out of shared code.`,
+      )
+
+      return undefined
+    } else {
       ctx.warn(
         `${site.receiver.name}.signOut({ ${f.name} }): native sessions take \`postLogoutRedirectUri\` once, in the useOidc options — set it there.`,
       )

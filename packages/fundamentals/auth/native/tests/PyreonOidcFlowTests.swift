@@ -26,6 +26,11 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
     var jwksFetches = 0
     var requests: [String] = []
     var endSession = true
+    /// Advertise an RFC 7009 revocation_endpoint answering with this status.
+    var revocationStatus: Int?
+    var revoked: [[String: String]] = []
+    /// Runs on the main actor while a token request is in flight, with its grant type (a sign-out racing it).
+    var duringToken: (@MainActor (String) -> Void)?
     private var codes: [String: (challenge: String, nonce: String)] = [:]
     private var refreshCount = 0
 
@@ -39,6 +44,7 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
                                     "token_endpoint": "\(issuer)/token", "jwks_uri": "\(issuer)/jwks"]
             if endSession { m["end_session_endpoint"] = "\(issuer)/logout" }
             if advertiseIss { m["authorization_response_iss_parameter_supported"] = true }
+            if revocationStatus != nil { m["revocation_endpoint"] = "\(issuer)/revoke" }
             return ok(m)
         }
         if r.url.hasSuffix("/jwks") {
@@ -50,6 +56,14 @@ final class FakeProvider: PyreonAuthTransport, @unchecked Sendable {
         }
         let form = Dictionary(uniqueKeysWithValues: (URLComponents(string: "?" + String(decoding: r.body ?? Data(), as: UTF8.self))?
             .queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        if let g = form["grant_type"], let hook = duringToken {
+            duringToken = nil
+            await MainActor.run { hook(g) }
+        }
+        if r.url.hasSuffix("/revoke") {
+            revoked.append(form)
+            return PyreonAuthResponse(status: revocationStatus ?? 404)
+        }
         if form["grant_type"] == "authorization_code" {
             guard let grant = codes.removeValue(forKey: form["code"] ?? ""),
                   PyreonPKCE.challengeS256(form["code_verifier"] ?? "") == grant.challenge
@@ -115,7 +129,7 @@ final class FakeBrowser: PyreonAuthBrowser {
 
 @MainActor
 enum PyreonOidcFlowTests {
-    static func make(_ p: PyreonAuthTransport, _ store: CountingStore, _ b: FakeBrowser) -> PyreonOidcAuth {
+    static func make(_ p: PyreonAuthTransport, _ store: PyreonSecureBackend, _ b: FakeBrowser) -> PyreonOidcAuth {
         PyreonOidcAuth(issuer: "https://idp.example", clientId: "app", redirectUri: "com.example.app:/oauth",
                        postLogoutRedirectUri: "com.example.app:/bye", store: store, transport: p, browser: b)
     }
@@ -241,6 +255,115 @@ enum PyreonOidcFlowTests {
         restored.signOut(endProviderSession: true)
         for _ in 0..<500 where lob.opened.count == openedBefore { await _Concurrency.Task.yield() }
         expect(lob.opened.count == openedBefore + 1 && lob.opened.last?.path == "/logout", "provider logout opened after a relaunch")
+
+        // Sign-out revokes the refresh and then the access token when the provider advertises
+        // revocation (RFC 7009); a refused revocation still signs out; none without the endpoint.
+        let rvp = FakeProvider(), rvb = FakeBrowser(rvp)
+        rvp.revocationStatus = 200
+        let rv = make(rvp, CountingStore(), rvb)
+        await rv.signInNow()
+        await rv.signOutNow()
+        expect(rv.status == PyreonOidcStatus.signedOut && rv.accessToken == nil, "signed out locally")
+        expect(rvp.revoked == [["token": "rt-0", "client_id": "app", "token_type_hint": "refresh_token"],
+                               ["token": "at-0", "client_id": "app", "token_type_hint": "access_token"]],
+               "refresh then access token revoked: \(rvp.revoked)")
+        let rfp = FakeProvider(), rfb = FakeBrowser(rfp)
+        rfp.revocationStatus = 400
+        let rf = make(rfp, CountingStore(), rfb)
+        await rf.signInNow()
+        await rf.signOutNow()
+        expect(rf.status == PyreonOidcStatus.signedOut && rfp.revoked.count == 2, "a refused revocation still signs out")
+        let nrp = FakeProvider(), nrb = FakeBrowser(nrp)
+        let nr = make(nrp, CountingStore(), nrb)
+        await nr.signInNow()
+        await nr.signOutNow()
+        expect(!nrp.requests.contains { $0.hasSuffix("/revoke") }, "no revocation without an advertised endpoint")
+
+        // Two containers over one stored session: a sign-out in one removes the record both read,
+        // so the other signs out too and cannot refresh back.
+        let shp = FakeProvider(), shb = FakeBrowser(shp), shs = CountingStore()
+        let first = make(shp, shs, shb)
+        await first.signInNow()
+        let second = make(shp, shs, shb)
+        expect(second.status == PyreonOidcStatus.signedIn, "the second instance restored the session")
+        first.signOut()
+        expect(second.status == PyreonOidcStatus.signedOut && second.accessToken == nil && second.subject == nil,
+               "the other instance signed out (\(second.status))")
+        let soTokenPosts = shp.requests.filter { $0.hasSuffix("/token") }.count
+        await second.refreshNow()
+        expect(second.status != PyreonOidcStatus.signedIn && shp.requests.filter { $0.hasSuffix("/token") }.count == soTokenPosts,
+               "and cannot refresh back")
+
+        // A session is defined by where it is persisted: the same client and issuer over two
+        // different stores are two sessions; a sign-out in one neither signs out nor revokes the other.
+        let dsp = FakeProvider(), dsb = FakeBrowser(dsp)
+        dsp.revocationStatus = 200
+        dsp.uniqueRefreshTokens = true
+        let mine = make(dsp, CountingStore(), dsb)
+        let theirs = make(dsp, CountingStore(), dsb)
+        await mine.signInNow() // rt-c1
+        await theirs.signInNow() // rt-c2
+        await mine.signOutNow()
+        expect(theirs.status == PyreonOidcStatus.signedIn && theirs.accessToken != nil,
+               "the other store's session stays signed in (\(theirs.status))")
+        let dsRevoked = dsp.revoked.compactMap { $0["token"] }
+        expect(dsRevoked.contains("rt-c1"), "this store's refresh token is revoked: \(dsRevoked)")
+        expect(!dsRevoked.contains("rt-c2"), "the other store's refresh token is not revoked: \(dsRevoked)")
+        await theirs.signOutNow()
+        // Two backend OBJECTS over one location are one store: a sibling there still signs out.
+        let locShared = SharedEntries()
+        let lsp = FakeProvider(), lsb = FakeBrowser(lsp)
+        let one = make(lsp, LocatedStore(location: "test:shared", entries: locShared), lsb)
+        await one.signInNow()
+        let two = make(lsp, LocatedStore(location: "test:shared", entries: locShared), lsb)
+        expect(two.status == PyreonOidcStatus.signedIn, "restored through the second backend object")
+        await one.signOutNow()
+        expect(two.status == PyreonOidcStatus.signedOut && two.accessToken == nil, "the sibling over the same location signed out")
+
+        // A sibling refreshed (and rotated) the session: the instance signing out holds only the
+        // spent tokens; the live ones are in the sibling and the store, and are revoked too.
+        let svp = FakeProvider(), svb = FakeBrowser(svp), svs = CountingStore()
+        svp.revocationStatus = 200
+        svp.rotateRefresh = true
+        let stale = make(svp, svs, svb)
+        await stale.signInNow()
+        let sib = make(svp, svs, svb)
+        await sib.refreshNow()
+        expect(sib.accessToken == "at-1", "the sibling refreshed (\(sib.error ?? ""))")
+        await stale.signOutNow()
+        expect(Set(svp.revoked.compactMap { $0["token"] }) == ["rt-0", "at-0", "rt-1", "at-1"],
+               "every instance's and the store's tokens revoked: \(svp.revoked)")
+        expect(sib.status == PyreonOidcStatus.signedOut, "the sibling signed out")
+        // The instance signing out holds nothing, a sibling does: still revoked (no early return).
+        let hvp = FakeProvider(), hvs = CountingStore()
+        hvp.revocationStatus = 200
+        let emptyInst = make(hvp, hvs, FakeBrowser(hvp))
+        let holder = make(hvp, hvs, FakeBrowser(hvp))
+        await holder.signInNow()
+        await emptyInst.signOutNow()
+        expect(Set(hvp.revoked.compactMap { $0["token"] }) == ["rt-0", "at-0"], "revoked from the sibling: \(hvp.revoked)")
+        expect(holder.status == PyreonOidcStatus.signedOut, "the holder signed out")
+
+        // A code exchange in flight when the user signs out: its tokens are revoked, not dropped.
+        let lxp = FakeProvider(), lxb = FakeBrowser(lxp)
+        lxp.revocationStatus = 200
+        let lx = make(lxp, CountingStore(), lxb)
+        lxp.duringToken = { _ in lx.signOut() }
+        await lx.signInNow()
+        for _ in 0..<500 where lx.pendingRevocations > 0 { await _Concurrency.Task.yield() }
+        expect(lx.status == PyreonOidcStatus.signedOut && lx.accessToken == nil, "the late sign-in is discarded")
+        expect(Set(lxp.revoked.compactMap { $0["token"] }) == ["rt-0", "at-0"], "its tokens revoked: \(lxp.revoked)")
+        // A refresh in flight: sign-out revokes what the session held, the refresh's tokens when they land.
+        let lrp = FakeProvider(), lrb = FakeBrowser(lrp)
+        lrp.revocationStatus = 200
+        lrp.rotateRefresh = true
+        let lr = make(lrp, CountingStore(), lrb)
+        await lr.signInNow()
+        lrp.duringToken = { _ in lr.signOut() }
+        await lr.refreshNow()
+        for _ in 0..<500 where lr.pendingRevocations > 0 || lrp.revoked.count < 4 { await _Concurrency.Task.yield() }
+        expect(lr.status == PyreonOidcStatus.signedOut && lr.accessToken == nil, "the late refresh is discarded")
+        expect(Set(lrp.revoked.compactMap { $0["token"] }) == ["rt-0", "at-0", "rt-1", "at-1"], "held and late tokens revoked: \(lrp.revoked)")
 
         // Concurrent refreshes share one request (rotating refresh tokens + reuse detection).
         let concP = FakeProvider(), concB = FakeBrowser(concP)
@@ -475,6 +598,20 @@ enum PyreonOidcFlowTests {
         _ = try await (a1, a2)
         expect(kp.jwksFetches == 2, "cached set served")
     }
+}
+
+/// The entries two `LocatedStore`s share.
+final class SharedEntries { var map: [String: String] = [:] }
+
+/// A store with a `location`: two of these over one `SharedEntries` are one persisted store, as two
+/// `KeychainSecureBackend`s with one service are.
+final class LocatedStore: PyreonSecureBackend {
+    let location: String?
+    let entries: SharedEntries
+    init(location: String, entries: SharedEntries) { self.location = location; self.entries = entries }
+    func write(key: String, value: String) -> Bool { entries.map[key] = value; return true }
+    func read(key: String) -> String? { entries.map[key] }
+    func remove(key: String) -> Bool { entries.map.removeValue(forKey: key) != nil }
 }
 
 final class Clock: @unchecked Sendable {

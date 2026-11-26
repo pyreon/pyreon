@@ -1,7 +1,5 @@
 package com.pyreon.runtime
 
-import java.net.URI
-import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -80,6 +78,24 @@ public object PyreonRedirect {
         val raw = (u.rawPath ?: "").let { if (it.startsWith("/")) removeDotSegments(it) else it }
         val path = if (raw.isEmpty() && (scheme == "http" || scheme == "https")) "/" else raw
         return "$scheme $host $path"
+    }
+
+    /**
+     * Whether [redirect] answers the browser request [requestUrl] that was sent to come back at
+     * [redirectUri]: it arrived at the same target and, when the request carried a `state`, it
+     * carries the same one (the first value, as everywhere). The Android redirect activity is
+     * exported — any installed app can start it with any data — so it forwards only a redirect that
+     * passes this; anything else is dropped without cancelling the sign-in in flight. A provider
+     * error sent WITHOUT the state is dropped too: the user's return to the app then reports
+     * `cancelled`.
+     */
+    public fun answers(redirect: String?, requestUrl: String, redirectUri: String): Boolean {
+        if (redirect == null) return false
+        val target = target(redirect) ?: return false
+        if (target != target(redirectUri)) return false
+        val want = PyreonCallbackQuery.parse(requestUrl)["state"] ?: return true
+        val got = PyreonCallbackQuery.parse(redirect)["state"] ?: return false
+        return PyreonPKCE.constantTimeEqual(got, want)
     }
 
     /** RFC 3986 §5.2.4 for an absolute path, as the web URL parser applies it. */
@@ -167,6 +183,58 @@ public class PyreonRedirectToken internal constructor(
     }
 }
 
+/**
+ * The query of a callback URL, read by the web rule (`new URL(url).searchParams.get(name)`), held to
+ * the shared vectors in `native/tests/callback-vectors.json`: the part between the first `?` and the
+ * first `#`, split on `&`, `+` read as a space, percent-decoded, and the FIRST value of a repeated
+ * name wins — on every target, so a callback that repeats `code` or `state` means the same thing
+ * on the web, iOS and Android. Decoding is URLSearchParams': a `%` not followed by two hex digits
+ * stays literal, and bytes that are not UTF-8 become U+FFFD — a stray bad escape in one parameter
+ * never empties the whole query.
+ */
+public object PyreonCallbackQuery {
+    public fun parse(url: String): Map<String, String> {
+        val head = url.substringBefore('#')
+        val q = head.indexOf('?')
+        if (q < 0) return emptyMap()
+        val out = LinkedHashMap<String, String>()
+        for (part in head.substring(q + 1).split('&')) {
+            if (part.isEmpty()) continue
+            val i = part.indexOf('=')
+            val k = decode(if (i < 0) part else part.substring(0, i))
+            val v = if (i < 0) "" else decode(part.substring(i + 1))
+            out.putIfAbsent(k, v)
+        }
+        return out
+    }
+
+    /** application/x-www-form-urlencoded percent-decoding, as the WHATWG URL standard defines it. */
+    internal fun decode(s: String): String {
+        val bytes = s.replace('+', ' ').toByteArray(Charsets.UTF_8)
+        val out = java.io.ByteArrayOutputStream(bytes.size)
+        var i = 0
+        while (i < bytes.size) {
+            val b = bytes[i]
+            if (b == '%'.code.toByte() && i + 2 < bytes.size && hex(bytes[i + 1]) >= 0 && hex(bytes[i + 2]) >= 0) {
+                out.write(hex(bytes[i + 1]) * 16 + hex(bytes[i + 2]))
+                i += 3
+            } else {
+                out.write(b.toInt())
+                i++
+            }
+        }
+        // The JVM decoder replaces malformed input with U+FFFD, as the web does.
+        return String(out.toByteArray(), Charsets.UTF_8)
+    }
+
+    private fun hex(b: Byte): Int = when (val c = b.toInt().toChar()) {
+        in '0'..'9' -> c - '0'
+        in 'a'..'f' -> c - 'a' + 10
+        in 'A'..'F' -> c - 'A' + 10
+        else -> -1
+    }
+}
+
 /** The https rule every endpoint follows, shared with the web `assertHttps`. */
 public object PyreonAuthUrl {
     private val LOOPBACK = setOf("localhost", "127.0.0.1", "[::1]", "::1")
@@ -250,23 +318,6 @@ public class PyreonAuthCore(private val backend: PyreonSecureBackend) {
         else backend.write(INDEX_KEY, m.entries.joinToString(",") { "${it.key}:${it.value}" })
     }
 
-    // A malformed query (a bad `%` escape) reads as empty — the callback then fails
-    // as UnknownFlow, the same as Swift, where URLComponents returns nil.
-    private fun query(url: String): Map<String, String> = try {
-        val raw = URI(url).rawQuery
-        if (raw == null) emptyMap()
-        else raw.split("&").filter { it.isNotEmpty() }.associate {
-            val i = it.indexOf('=')
-            val k = URLDecoder.decode(if (i < 0) it else it.substring(0, i), "UTF-8")
-            val v = if (i < 0) "" else URLDecoder.decode(it.substring(i + 1), "UTF-8")
-            k to v
-        }
-    } catch (e: IllegalArgumentException) {
-        emptyMap()
-    } catch (e: java.net.URISyntaxException) {
-        emptyMap()
-    }
-
     /** Build the authorization URL and persist the pending flow. */
     public fun begin(
         authorizationEndpoint: String,
@@ -318,7 +369,7 @@ public class PyreonAuthCore(private val backend: PyreonSecureBackend) {
         issuerParamSupported: Boolean = false,
         nowMs: Long = System.currentTimeMillis(),
     ): Pair<String, PyreonAuthFlow> {
-        val q = query(callbackUrl)
+        val q = PyreonCallbackQuery.parse(callbackUrl)
         val state = q["state"] ?: ""
         val raw = backend.read(key(state)) ?: throw PyreonAuthError.UnknownFlow
         // Read-and-delete, including an entry that fails to decode.
